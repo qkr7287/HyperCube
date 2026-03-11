@@ -42,6 +42,8 @@
 	let refreshInterval: ReturnType<typeof setInterval>;
 	let lastUpdate = new Date();
 	let cameraTransitioning = false;
+	let starfieldGroup: any = null;
+	let starfieldRotationId: number | null = null;
 
 	// Mock data for demo (used when API is not available)
 	const mockContainers: Container[] = [
@@ -429,10 +431,68 @@
 		pointLight.position.set(0, 100, 0);
 		scene.add(pointLight);
 
-		// Add grid floor
-		const gridHelper = new THREE.GridHelper(400, 40, 0x1a2a5e, 0x0d1a3a);
-		gridHelper.position.y = -60;
-		scene.add(gridHelper);
+		// ── Background: Starfield ──
+		starfieldGroup = new THREE.Group();
+
+		// Helper: generate star layer
+		function addStarLayer(count: number, minR: number, maxR: number, color: number, size: number, opacity: number) {
+			const positions = new Float32Array(count * 3);
+			for (let i = 0; i < count; i++) {
+				const r = minR + Math.random() * (maxR - minR);
+				const theta = Math.random() * Math.PI * 2;
+				const phi = Math.acos(2 * Math.random() - 1);
+				positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+				positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+				positions[i * 3 + 2] = r * Math.cos(phi);
+			}
+			const geo = new THREE.BufferGeometry();
+			geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+			const mat = new THREE.PointsMaterial({
+				color, size, transparent: true, opacity, sizeAttenuation: true,
+			});
+			starfieldGroup.add(new THREE.Points(geo, mat));
+		}
+
+		// Layer 1: Dense dim background stars (depth)
+		addStarLayer(5000, 500, 1200, 0xaabbcc, 0.8, 0.3);
+		// Layer 2: Mid-range white stars
+		addStarLayer(2000, 350, 800, 0xffffff, 1.4, 0.6);
+		// Layer 3: Bright prominent stars (close + large)
+		addStarLayer(150, 300, 600, 0xffffff, 3.0, 0.9);
+		// Layer 4: Cyan accent stars (theme color)
+		addStarLayer(300, 400, 900, 0x4fc3f7, 1.8, 0.4);
+		// Layer 5: Warm accent stars (variety)
+		addStarLayer(150, 400, 900, 0xffaa44, 1.5, 0.25);
+		// Layer 6: Purple accent stars
+		addStarLayer(100, 450, 900, 0xbb77ff, 1.6, 0.2);
+
+		// Nebula glow clouds - large transparent spheres for subtle color wash
+		const nebulaColors = [0x1a0a3e, 0x0a1a3e, 0x0a2a2a];
+		nebulaColors.forEach((color, i) => {
+			const nebulaGeo = new THREE.SphereGeometry(600 + i * 150, 16, 16);
+			const nebulaMat = new THREE.MeshBasicMaterial({
+				color: new THREE.Color(color),
+				transparent: true,
+				opacity: 0.08 - i * 0.02,
+				side: THREE.BackSide,
+				depthWrite: false,
+			});
+			const nebula = new THREE.Mesh(nebulaGeo, nebulaMat);
+			nebula.rotation.set(i * 0.5, i * 0.8, i * 0.3);
+			starfieldGroup.add(nebula);
+		});
+
+		scene.add(starfieldGroup);
+
+		// Slow dual-axis rotation for depth
+		function rotateStarfield() {
+			if (starfieldGroup) {
+				starfieldGroup.rotation.y += 0.00006;
+				starfieldGroup.rotation.x += 0.00002;
+			}
+			starfieldRotationId = requestAnimationFrame(rotateStarfield);
+		}
+		rotateStarfield();
 
 		// Reduce camera sensitivity
 		const controls = graph.controls();
@@ -785,6 +845,7 @@
 
 	onDestroy(() => {
 		stopHullUpdates();
+		if (starfieldRotationId) cancelAnimationFrame(starfieldRotationId);
 		if (refreshInterval) clearInterval(refreshInterval);
 		if (graph) graph._destructor?.();
 	});

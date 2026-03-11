@@ -4,6 +4,7 @@ import { defineConfig } from 'vite';
 export default defineConfig({
 	plugins: [sveltekit()],
 	server: {
+		host: true,
 		proxy: {
 			// /api/* 요청을 192.168.0.16 서버의 DCMTool로 전달
 			'/api': {
