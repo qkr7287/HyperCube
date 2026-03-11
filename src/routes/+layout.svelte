@@ -7,21 +7,19 @@
 <svelte:head>
 	<link rel="icon" href={favicon} />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-	<title>Docker Container Monitor</title>
+	<title>AGICS Container Monitor</title>
 </svelte:head>
 
-<main class="app">
-	{@render children?.()}
-</main>
+{@render children?.()}
 
 <style>
 	:global(html, body) {
 		margin: 0;
 		padding: 0;
-		font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-		background-color: #f5f6fa;
-		color: #2c3e50;
-		line-height: 1.6;
+		font-family: 'Pretendard GOV', 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+		background-color: var(--bg-base);
+		color: var(--text-primary);
+		line-height: 1.5;
 	}
 
 	:global(*) {
@@ -30,7 +28,7 @@
 
 	:global(h1, h2, h3, h4, h5, h6) {
 		margin: 0;
-		font-weight: 600;
+		font-weight: 700;
 	}
 
 	:global(p) {
@@ -41,9 +39,39 @@
 		font-family: inherit;
 	}
 
-	.app {
-		min-height: 100vh;
-		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-		background-attachment: fixed;
+	:global(:root) {
+		--bg-base: #0d1117;
+		--bg-card: #121720;
+		--bg-card-hover: #1e293b;
+		--bg-tab: #151c27;
+		--border: #1f2937;
+		--accent: #30d5c8;
+		--accent-dark: #094b66;
+		--error: #ef4444;
+		--error-soft: #ef3e5e;
+		--text-primary: #cbd5e1;
+		--text-secondary: #64748b;
+		--text-muted: #475569;
+		--tag-bg: #334155;
+		--radius-sm: 8px;
+		--radius-md: 12px;
+		--radius-full: 9999px;
+	}
+
+	:global(body) {
+		overflow: hidden;
+	}
+
+	:global(::-webkit-scrollbar) {
+		width: 4px;
+	}
+
+	:global(::-webkit-scrollbar-track) {
+		background: transparent;
+	}
+
+	:global(::-webkit-scrollbar-thumb) {
+		background: rgba(100, 116, 139, 0.3);
+		border-radius: 2px;
 	}
 </style>

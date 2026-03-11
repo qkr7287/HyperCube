@@ -1,1499 +1,951 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import ContainerCard from '$lib/components/ContainerCard.svelte';
-	import ContainerDetails from '$lib/components/ContainerDetails.svelte';
-	import ProjectDetails from '$lib/components/ProjectDetails.svelte';
-	import ServerDetails from '$lib/components/ServerDetails.svelte';
+	import { onMount, onDestroy } from 'svelte';
+	import { browser } from '$app/environment';
+	import LeftSidebar from '$lib/components/LeftSidebar.svelte';
+	import RightSidebar from '$lib/components/RightSidebar.svelte';
+	import TopologyToolbar from '$lib/components/TopologyToolbar.svelte';
+	import RackUtilization from '$lib/components/RackUtilization.svelte';
 
 	interface Container {
 		id: string;
 		shortId: string;
 		names: string[];
 		image: string;
-		imageId: string;
-		command: string;
-		created: number;
 		state: string;
 		status: string;
-		ports: any[];
 		labels: any;
-		sizeRw: number;
-		sizeRootFs: number;
-		hostConfig: any;
-		networkSettings: any;
-		mounts: any[];
 	}
 
 	interface Project {
 		name: string;
 		containers: Container[];
-		stats: {
-			total: number;
-			running: number;
-			stopped: number;
-			paused: number;
-			created: number;
-		};
-		zone: string;
 		color: string;
+		stats: { total: number; running: number; stopped: number; paused: number };
 	}
 
 	interface SystemInfo {
 		hostname: string;
 		os: string;
-		cpu: {
-			cores: number;
-			model: string;
-			usage: number;
-		};
-		memory: {
-			total: string;
-			used: string;
-			free: string;
-			usage: number;
-		};
-		disk: {
-			total: string;
-			used: string;
-			free: string;
-			usage: number;
-		};
-		network: {
-			connections: number;
-			interfaces: string[];
-		};
-		logins: {
-			total: number;
-			active: number;
-		};
-		processes: {
-			total: number;
-			running: number;
-		};
-		docker: {
-			version: string;
-			containers: number;
-			images: number;
-			driver: string;
-		};
+		cpu: { cores: number; model: string; usage: number };
+		memory: { total: string; used: string; free: string; usage: number };
+		disk: { total: string; used: string; free: string; usage: number };
+		docker: { version: string; containers: number; images: number };
 	}
+
+	const projectColors = [
+		'#4fc3f7', '#ff7043', '#66bb6a', '#ffa726', '#ab47bc',
+		'#26c6da', '#ef5350', '#5c6bc0', '#ffca28', '#ec407a'
+	];
 
 	let containers: Container[] = [];
 	let projects: Project[] = [];
 	let systemInfo: SystemInfo | null = null;
-	let loading = true;
-	let error = '';
-	let selectedContainer: Container | null = null;
-	let showContainerDetails = false;
-	let selectedProject: any = null;
-	let showProjectDetails = false;
-	let selectedServerDetail: 'network' | 'logins' | 'processes' | null = null;
-	let showServerDetails = false;
+	let selectedProject: string | null = null;
+	let graphContainer: HTMLDivElement;
+	let graph: any = null;
 	let refreshInterval: ReturnType<typeof setInterval>;
 	let lastUpdate = new Date();
-	let viewMode = 'isometric'; // 'isometric', 'grid', 'list'
-	let serverAddress = '';
+	let cameraTransitioning = false;
+	let starfieldGroup: any = null;
+	let starfieldRotationId: number | null = null;
+	let viewMode = 'group';
 
-	// 전체 통계 데이터
-	let stats = {
-		total: 0,
-		running: 0,
-		stopped: 0,
-		paused: 0,
-		created: 0
-	};
-
-	// 프로젝트 색상 팔레트
-	const projectColors = [
-		'#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6',
-		'#1abc9c', '#e67e22', '#34495e', '#f1c40f', '#e91e63'
+	// Mock data for demo (used when API is not available)
+	const mockContainers: Container[] = [
+		{ id: '1', shortId: 'abc1', names: ['/agdreamlog-api-api-1'], image: 'node:20', state: 'running', status: 'Up 2 days', labels: { 'com.docker.compose.project': 'agdreamlog-api' } },
+		{ id: '2', shortId: 'abc2', names: ['/agdreamlog-api-db-1'], image: 'postgres:15', state: 'running', status: 'Up 2 days', labels: { 'com.docker.compose.project': 'agdreamlog-api' } },
+		{ id: '3', shortId: 'abc3', names: ['/agdreamlog-api-redis-1'], image: 'redis:7', state: 'running', status: 'Up 2 days', labels: { 'com.docker.compose.project': 'agdreamlog-api' } },
+		{ id: '4', shortId: 'abc4', names: ['/agdreamlog-api-worker-1'], image: 'node:20', state: 'running', status: 'Up 2 days', labels: { 'com.docker.compose.project': 'agdreamlog-api' } },
+		{ id: '5', shortId: 'abc5', names: ['/agdreamlog-api-beat-1'], image: 'node:20', state: 'running', status: 'Up 1 day', labels: { 'com.docker.compose.project': 'agdreamlog-api' } },
+		{ id: '6', shortId: 'abc6', names: ['/agdreamlog-api-minio-1'], image: 'minio/minio', state: 'running', status: 'Up 2 days', labels: { 'com.docker.compose.project': 'agdreamlog-api' } },
+		{ id: '7', shortId: 'def1', names: ['/agdevblog_frontend'], image: 'node:20', state: 'running', status: 'Up 5 days', labels: { 'com.docker.compose.project': 'agdevblog' } },
+		{ id: '8', shortId: 'def2', names: ['/agdevblog_backend'], image: 'python:3.11', state: 'running', status: 'Up 5 days', labels: { 'com.docker.compose.project': 'agdevblog' } },
+		{ id: '9', shortId: 'def3', names: ['/agdevblog_postgres'], image: 'postgres:15', state: 'running', status: 'Up 5 days', labels: { 'com.docker.compose.project': 'agdevblog' } },
+		{ id: '10', shortId: 'def4', names: ['/agdevblog_minio'], image: 'minio/minio', state: 'running', status: 'Up 5 days', labels: { 'com.docker.compose.project': 'agdevblog' } },
+		{ id: '11', shortId: 'ghi1', names: ['/agsafecat-backend-backend-1'], image: 'python:3.11', state: 'running', status: 'Up 3 days', labels: { 'com.docker.compose.project': 'agsafecat-backend' } },
+		{ id: '12', shortId: 'ghi2', names: ['/agsafecat-backend-celery-1'], image: 'python:3.11', state: 'running', status: 'Up 3 days', labels: { 'com.docker.compose.project': 'agsafecat-backend' } },
+		{ id: '13', shortId: 'ghi3', names: ['/agsafecat-backend-db-1'], image: 'postgres:15', state: 'exited', status: 'Exited (0)', labels: { 'com.docker.compose.project': 'agsafecat-backend' } },
+		{ id: '14', shortId: 'jkl1', names: ['/ai_translate_frontend'], image: 'node:20', state: 'running', status: 'Up 1 day', labels: { 'com.docker.compose.project': 'aitranslateplatform' } },
+		{ id: '15', shortId: 'jkl2', names: ['/ai_translate_backend'], image: 'python:3.11', state: 'running', status: 'Up 1 day', labels: { 'com.docker.compose.project': 'aitranslateplatform' } },
+		{ id: '16', shortId: 'jkl3', names: ['/ai_translate_db'], image: 'postgres:15', state: 'running', status: 'Up 1 day', labels: { 'com.docker.compose.project': 'aitranslateplatform' } },
+		{ id: '17', shortId: 'mno1', names: ['/3d-widget-web-host-full-three-1'], image: 'node:20', state: 'running', status: 'Up 12 hours', labels: { 'com.docker.compose.project': '3d-widget-web-host' } },
+		{ id: '18', shortId: 'mno2', names: ['/3d-widget-web-host-full-babylon-1'], image: 'node:20', state: 'running', status: 'Up 12 hours', labels: { 'com.docker.compose.project': '3d-widget-web-host' } },
+		{ id: '19', shortId: 'mno3', names: ['/3d-widget-web-host-webhost-only-three-1'], image: 'node:20', state: 'running', status: 'Up 12 hours', labels: { 'com.docker.compose.project': '3d-widget-web-host' } },
+		{ id: '20', shortId: 'mno4', names: ['/3d-widget-web-host-webhost-only-babylon-1'], image: 'node:20', state: 'running', status: 'Up 12 hours', labels: { 'com.docker.compose.project': '3d-widget-web-host' } },
+		{ id: '21', shortId: 'pqr1', names: ['/coatervision-web-1'], image: 'node:20', state: 'running', status: 'Up 7 days', labels: { 'com.docker.compose.project': 'coatervision' } },
+		{ id: '22', shortId: 'pqr2', names: ['/coatervision-api-1'], image: 'python:3.11', state: 'running', status: 'Up 7 days', labels: { 'com.docker.compose.project': 'coatervision' } },
+		{ id: '23', shortId: 'stu1', names: ['/release-notes-frontend-1'], image: 'node:20', state: 'running', status: 'Up 4 days', labels: { 'com.docker.compose.project': 'release-notes' } },
+		{ id: '24', shortId: 'stu2', names: ['/release-notes-backend-1'], image: 'python:3.11', state: 'exited', status: 'Exited (1)', labels: { 'com.docker.compose.project': 'release-notes' } },
+		{ id: '25', shortId: 'stu3', names: ['/release-notes-db-1'], image: 'postgres:15', state: 'running', status: 'Up 4 days', labels: { 'com.docker.compose.project': 'release-notes' } },
 	];
 
-	// 존/지역 목록
-	let zones: string[] = [];
-
-	async function fetchContainers() {
-		try {
-			loading = true;
-			const response = await fetch('/api/containers');
-			const result = await response.json();
-			
-			if (result.success) {
-				containers = result.data;
-				groupContainersByProject();
-				updateStats();
-				error = '';
-				lastUpdate = new Date();
-			} else {
-				error = result.error;
-			}
-		} catch (err) {
-			error = '컨테이너 목록을 가져오는데 실패했습니다.';
-			console.error('Error fetching containers:', err);
-		} finally {
-			loading = false;
-		}
+	function extractProjectPrefix(name: string): string {
+		const parts = name.split(/[-_]/);
+		if (parts.length > 1 && parts[0].length >= 2) return parts[0];
+		return name;
 	}
 
-	async function fetchSystemInfo() {
-		try {
-			const response = await fetch('/api/system');
-			const result = await response.json();
-			
-			if (result.success) {
-				systemInfo = result.data;
-			}
-		} catch (err) {
-			console.error('Error fetching system info:', err);
-		}
-	}
-
-	function groupContainersByProject() {
+	function groupContainers(containerList: Container[]) {
 		const projectMap = new Map<string, Container[]>();
-		
-		// 기본 프로젝트 (라벨이 없는 컨테이너들)
-		const defaultProject = 'default';
-		projectMap.set(defaultProject, []);
-		
-		containers.forEach(container => {
-			// 프로젝트 라벨 찾기
-			let projectName = defaultProject;
-			let zone = 'default-zone';
-			
-			if (container.labels) {
-				const rawProjectName = container.labels['com.docker.compose.project'] || 
-									  container.labels['project'] || 
-									  container.labels['app'] || 
-									  container.labels['service'] ||
-									  defaultProject;
-				
-				// 공통 접두사로 그룹화 (예: agaptpisys-backend, agaptpisys-frontend -> agaptpisys)
-				projectName = extractProjectPrefix(rawProjectName);
-				
-				zone = container.labels['zone'] || 
-					  container.labels['region'] || 
-					  container.labels['environment'] ||
-					  'default-zone';
-			}
-			
-			if (!projectMap.has(projectName)) {
-				projectMap.set(projectName, []);
-			}
+
+		containerList.forEach(container => {
+			const rawProject = container.labels?.['com.docker.compose.project'] || 'default';
+			const projectName = extractProjectPrefix(rawProject);
+			if (!projectMap.has(projectName)) projectMap.set(projectName, []);
 			projectMap.get(projectName)!.push(container);
 		});
 
-		// 프로젝트별 통계 계산 및 색상 할당
-		projects = Array.from(projectMap.entries()).map(([name, containers], index) => ({
+		projects = Array.from(projectMap.entries()).map(([name, ctrs], i) => ({
 			name,
-			containers,
-			zone: containers[0]?.labels?.zone || containers[0]?.labels?.region || 'default-zone',
-			color: projectColors[index % projectColors.length],
+			containers: ctrs,
+			color: projectColors[i % projectColors.length],
 			stats: {
-				total: containers.length,
-				running: containers.filter(c => c.state === 'running').length,
-				stopped: containers.filter(c => c.state === 'exited').length,
-				paused: containers.filter(c => c.state === 'paused').length,
-				created: containers.filter(c => c.state === 'created').length
+				total: ctrs.length,
+				running: ctrs.filter(c => c.state === 'running').length,
+				stopped: ctrs.filter(c => c.state === 'exited').length,
+				paused: ctrs.filter(c => c.state === 'paused').length,
 			}
-		})).sort((a, b) => {
-			if (a.name === 'default') return 1;
-			if (b.name === 'default') return -1;
-			return a.name.localeCompare(b.name);
-		});
-
-		// 존 목록 업데이트
-		zones = [...new Set(projects.map(p => p.zone))];
-		
-		// 디버그 정보 출력
-		console.log('프로젝트별 그룹화 결과:', projects.map(p => ({
-			name: p.name,
-			containers: p.containers.length,
-			containerNames: p.containers.map(c => c.names?.[0]?.replace('/', '') || c.shortId),
-			stats: p.stats
-		})));
+		})).sort((a, b) => a.name.localeCompare(b.name));
 	}
 
-	function extractProjectPrefix(projectName: string): string {
-		// 하이픈이나 언더스코어로 구분된 경우 첫 번째 부분을 반환
-		// 예: agaptpisys-backend -> agaptpisys, agaptpisys_frontend -> agaptpisys
-		const parts = projectName.split(/[-_]/);
-		if (parts.length > 1) {
-			// 공통 접두사가 2글자 이상인 경우에만 적용
-			if (parts[0].length >= 2) {
-				return parts[0];
-			}
-		}
-		return projectName;
+	function getContainerDisplayName(container: Container): string {
+		const name = container.names?.[0]?.replace('/', '') || container.shortId;
+		return name.replace(/^[a-z0-9]+-/, '').replace(/-1$/, '').replace(/_1$/, '');
 	}
 
-	function removeProjectPrefix(containerName: string, projectPrefix: string): string {
-		// 컨테이너 이름에서 프로젝트 접두사 제거
-		// 예: agaptpisys-backend -> backend, agaptpisys_frontend -> frontend
-		if (containerName.startsWith(projectPrefix + '-') || containerName.startsWith(projectPrefix + '_')) {
-			return containerName.substring(projectPrefix.length + 1);
-		}
-		return containerName;
-	}
-
-	function getDisplayName(container: Container): string {
-		const containerName = container.names?.[0]?.replace('/', '') || container.shortId;
-		
-		// 컨테이너가 속한 프로젝트 찾기
+	function getNodeColor(container: Container): string {
 		const project = projects.find(p => p.containers.some(c => c.id === container.id));
-		if (project && project.name !== 'default') {
-			return removeProjectPrefix(containerName, project.name);
-		}
-		
-		return containerName;
-	}
-
-	function updateStats() {
-		stats = {
-			total: containers.length,
-			running: containers.filter(c => c.state === 'running').length,
-			stopped: containers.filter(c => c.state === 'exited').length,
-			paused: containers.filter(c => c.state === 'paused').length,
-			created: containers.filter(c => c.state === 'created').length
-		};
-	}
-
-	function selectContainer(container: Container) {
-		// 이전 팝업 완전히 닫기
-		selectedContainer = null;
-		showContainerDetails = false;
-		
-		// 다음 프레임에서 새 컨테이너 선택
-		requestAnimationFrame(() => {
-			selectedContainer = container;
-			showContainerDetails = true;
-		});
-	}
-
-	function closeDetails() {
-		selectedContainer = null;
-		showContainerDetails = false;
-	}
-
-	function selectProject(project: any) {
-		selectedProject = project;
-		showProjectDetails = true;
-	}
-
-	function closeProjectDetails() {
-		showProjectDetails = false;
-		selectedProject = null;
-	}
-
-	function selectServerDetail(type: 'network' | 'logins' | 'processes') {
-		selectedServerDetail = type;
-		showServerDetails = true;
-	}
-
-	function closeServerDetails() {
-		showServerDetails = false;
-		selectedServerDetail = null;
-	}
-
-	async function getServerAddress() {
-		try {
-			// 서버의 실제 IP 주소 가져오기
-			const response = await fetch('/api/server/ip');
-			const data = await response.json();
-			serverAddress = data.ip || 'localhost';
-		} catch (error) {
-			console.error('서버 IP 가져오기 실패:', error);
-			// 폴백: localhost 사용
-			serverAddress = 'localhost';
-		}
+		return project?.color || '#888';
 	}
 
 	function getStateColor(state: string): string {
 		switch (state) {
-			case 'running': return '#28a745';
-			case 'exited': return '#dc3545';
-			case 'paused': return '#ffc107';
-			case 'created': return '#17a2b8';
-			default: return '#6c757d';
+			case 'running': return '#00e676';
+			case 'exited': return '#ff1744';
+			case 'paused': return '#ff9100';
+			default: return '#546e7a';
 		}
 	}
 
-	function getProjectStats() {
-		return {
-			total: containers.length,
-			running: containers.filter(c => c.state === 'running').length,
-			stopped: containers.filter(c => c.state === 'exited').length,
-			paused: containers.filter(c => c.state === 'paused').length,
-			created: containers.filter(c => c.state === 'created').length
-		};
+	function getStateEmissive(state: string): string {
+		switch (state) {
+			case 'running': return '#00ff88';
+			case 'exited': return '#ff3333';
+			case 'paused': return '#ffaa00';
+			default: return '#333333';
+		}
 	}
 
-	function getStatusLevel(): 'critical' | 'warning' | 'info' {
-		const stats = getProjectStats();
-		if (stats.stopped > stats.running) return 'critical';
-		if (stats.paused > 0 || stats.created > 0) return 'warning';
-		return 'info';
+	function buildGraphData() {
+		const nodes: any[] = [];
+		const links: any[] = [];
+
+		containers.forEach(container => {
+			const project = projects.find(p => p.containers.some(c => c.id === container.id));
+			nodes.push({
+				id: container.id,
+				name: getContainerDisplayName(container),
+				fullName: container.names?.[0]?.replace('/', '') || container.shortId,
+				image: container.image,
+				state: container.state,
+				project: project?.name || 'default',
+				color: project?.color || '#888',
+				val: container.state === 'running' ? 8 : 4,
+				isHub: false,
+			});
+		});
+
+		projects.forEach(project => {
+			const hubId = `hub-${project.name}`;
+			nodes.push({
+				id: hubId,
+				name: project.name,
+				state: 'hub',
+				project: project.name,
+				color: project.color,
+				val: 15,
+				isHub: true,
+			});
+
+			project.containers.forEach(c => {
+				links.push({
+					source: hubId,
+					target: c.id,
+					project: project.name,
+				});
+			});
+		});
+
+		return { nodes, links };
 	}
 
-	onMount(() => {
-		fetchContainers();
-		fetchSystemInfo();
-		getServerAddress();
-		
-		// 5초마다 자동 새로고침
-		refreshInterval = setInterval(() => {
-			fetchContainers();
-			fetchSystemInfo();
-		}, 5000);
-		
-		return () => {
-			if (refreshInterval) {
-				clearInterval(refreshInterval);
+	async function initGraph() {
+		if (!browser || !graphContainer) return;
+
+		// @ts-ignore
+		const ForceGraph3D = (await import('3d-force-graph')).default;
+		const THREE = await import('three');
+
+		const data = buildGraphData();
+
+		// @ts-ignore
+		graph = ForceGraph3D({
+			extraRenderers: []
+		})(graphContainer)
+			.backgroundColor('#0a0e27')
+			.width(graphContainer.clientWidth)
+			.height(graphContainer.clientHeight)
+			.graphData(data)
+			.cooldownTicks(100)
+			.cooldownTime(3000)
+			.d3AlphaDecay(0.05)
+			.d3VelocityDecay(0.4)
+			.warmupTicks(50)
+			.nodeThreeObject((node: any) => {
+				if (!node) return new THREE.Object3D();
+
+				const group = new THREE.Group();
+
+				if (node.isHub) {
+					const hubSize = 5;
+					const geo = new THREE.IcosahedronGeometry(hubSize, 1);
+					const mat = new THREE.MeshPhongMaterial({
+						color: new THREE.Color(node.color),
+						emissive: new THREE.Color(node.color),
+						emissiveIntensity: 0.7,
+						transparent: true,
+						opacity: 0.6,
+						shininess: 200,
+						wireframe: false,
+					});
+					group.add(new THREE.Mesh(geo, mat));
+
+					const wireGeo = new THREE.IcosahedronGeometry(hubSize * 1.05, 1);
+					const wireMat = new THREE.MeshBasicMaterial({
+						color: new THREE.Color(node.color),
+						transparent: true,
+						opacity: 0.3,
+						wireframe: true,
+					});
+					group.add(new THREE.Mesh(wireGeo, wireMat));
+
+					const glowGeo = new THREE.IcosahedronGeometry(hubSize * 1.6, 1);
+					const glowMat = new THREE.MeshBasicMaterial({
+						color: new THREE.Color(node.color),
+						transparent: true,
+						opacity: 0.06,
+						side: THREE.BackSide,
+					});
+					group.add(new THREE.Mesh(glowGeo, glowMat));
+
+					const canvas = document.createElement('canvas');
+					const ctx = canvas.getContext('2d')!;
+					canvas.width = 512;
+					canvas.height = 64;
+					ctx.font = 'bold 24px Arial';
+					ctx.textAlign = 'center';
+					ctx.fillStyle = node.color;
+					ctx.fillText(node.name.toUpperCase(), 256, 40);
+
+					const texture = new THREE.CanvasTexture(canvas);
+					const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+						map: texture, transparent: true, opacity: 0.9,
+					}));
+					sprite.scale.set(30, 4, 1);
+					sprite.position.set(0, hubSize + 5, 0);
+					group.add(sprite);
+
+					return group;
+				}
+
+				const isRunning = node.state === 'running';
+				const size = isRunning ? 6 : 4;
+				const stateColor = getStateColor(node.state);
+
+				const geometry = new THREE.BoxGeometry(size, size, size);
+				const material = new THREE.MeshPhongMaterial({
+					color: new THREE.Color(stateColor),
+					emissive: new THREE.Color(getStateEmissive(node.state)),
+					emissiveIntensity: isRunning ? 0.6 : 0.15,
+					transparent: true,
+					opacity: isRunning ? 0.9 : 0.4,
+					shininess: isRunning ? 150 : 30,
+				});
+				group.add(new THREE.Mesh(geometry, material));
+
+				const wireGeo = new THREE.EdgesGeometry(geometry);
+				const wireMat = new THREE.LineBasicMaterial({
+					color: new THREE.Color(stateColor),
+					transparent: true,
+					opacity: isRunning ? 0.8 : 0.3,
+				});
+				group.add(new THREE.LineSegments(wireGeo, wireMat));
+
+				if (isRunning) {
+					const glowGeo = new THREE.BoxGeometry(size * 1.3, size * 1.3, size * 1.3);
+					const glowMat = new THREE.MeshBasicMaterial({
+						color: new THREE.Color(stateColor),
+						transparent: true,
+						opacity: 0.08,
+						side: THREE.BackSide,
+					});
+					group.add(new THREE.Mesh(glowGeo, glowMat));
+				}
+
+				const canvas = document.createElement('canvas');
+				const ctx = canvas.getContext('2d')!;
+				canvas.width = 256;
+				canvas.height = 64;
+				ctx.font = 'bold 18px Arial';
+				ctx.textAlign = 'center';
+				const label = node.name;
+				ctx.fillStyle = stateColor;
+				ctx.beginPath();
+				ctx.arc(128 - ctx.measureText(label).width / 2 - 10, 36, 4, 0, Math.PI * 2);
+				ctx.fill();
+				ctx.fillStyle = isRunning ? '#ffffff' : '#888888';
+				ctx.fillText(label, 128, 40);
+
+				const texture = new THREE.CanvasTexture(canvas);
+				const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+					map: texture, transparent: true, opacity: isRunning ? 0.9 : 0.5,
+				}));
+				sprite.scale.set(20, 5, 1);
+				sprite.position.set(0, size + 4, 0);
+				group.add(sprite);
+
+				return group;
+			})
+			.nodeVal((node: any) => node.val)
+			.linkColor((link: any) => {
+				const project = projects.find(p => p.name === link.project);
+				const c = project?.color || '#4fc3f7';
+				return c + '40';
+			})
+			.linkWidth(1.2)
+			.linkOpacity(0.4)
+			.linkDirectionalParticles(2)
+			.linkDirectionalParticleWidth(1.5)
+			.linkDirectionalParticleSpeed(0.004)
+			.linkDirectionalParticleColor((link: any) => {
+				const project = projects.find(p => p.name === link.project);
+				return project?.color || '#4fc3f7';
+			})
+			.d3Force('charge', null)
+			.d3Force('center', null)
+			.onNodeHover((node: any) => {
+				graphContainer.style.cursor = node ? 'pointer' : 'default';
+			})
+			.onNodeClick((node: any) => {
+				if (!node) return;
+				if (node.project) {
+					updateGraphForProject(
+						selectedProject === node.project ? null : node.project
+					);
+				}
+			})
+			.onNodeDrag((node: any) => {
+				if (node) graph.d3ReheatSimulation();
+				markHullDirty();
+			})
+			.onNodeDragEnd((node: any) => {
+				if (node) {
+					node.fx = node.x;
+					node.fy = node.y;
+					node.fz = node.z;
+				}
+				const controls = graph.controls();
+				if (controls) controls.enabled = true;
+			})
+			.enableNodeDrag(true)
+			.onEngineTick(() => {
+				markHullDirty();
+			});
+
+		// @ts-ignore
+		const d3 = await import('d3-force-3d');
+		graph.d3Force('charge', d3.forceManyBody().strength(-120));
+		graph.d3Force('center', d3.forceCenter(0, 0, 0).strength(0.05));
+
+		// Bloom post-processing
+		try {
+			const { UnrealBloomPass } = await import('three/examples/jsm/postprocessing/UnrealBloomPass.js');
+			const { EffectComposer } = await import('three/examples/jsm/postprocessing/EffectComposer.js');
+			const { RenderPass } = await import('three/examples/jsm/postprocessing/RenderPass.js');
+
+			const renderer = graph.renderer();
+			const scene = graph.scene();
+			const camera = graph.camera();
+
+			const composer = new EffectComposer(renderer);
+			composer.addPass(new RenderPass(scene, camera));
+
+			const bloomPass = new UnrealBloomPass(
+				new THREE.Vector2(window.innerWidth, window.innerHeight),
+				1.2, 0.4, 0.85
+			);
+			composer.addPass(bloomPass);
+			graph.postProcessingComposer(composer);
+		} catch (e) {
+			console.warn('Bloom post-processing not available:', e);
+		}
+
+		// Lighting
+		const scene = graph.scene();
+		const ambientLight = new THREE.AmbientLight(0x404060, 0.8);
+		scene.add(ambientLight);
+		const pointLight = new THREE.PointLight(0x4fc3f7, 1.5, 500);
+		pointLight.position.set(0, 100, 0);
+		scene.add(pointLight);
+
+		// Starfield
+		starfieldGroup = new THREE.Group();
+
+		function addStarLayer(count: number, minR: number, maxR: number, color: number, size: number, opacity: number) {
+			const positions = new Float32Array(count * 3);
+			for (let i = 0; i < count; i++) {
+				const r = minR + Math.random() * (maxR - minR);
+				const theta = Math.random() * Math.PI * 2;
+				const phi = Math.acos(2 * Math.random() - 1);
+				positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+				positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+				positions[i * 3 + 2] = r * Math.cos(phi);
 			}
+			const geo = new THREE.BufferGeometry();
+			geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+			const mat = new THREE.PointsMaterial({
+				color, size, transparent: true, opacity, sizeAttenuation: true,
+			});
+			starfieldGroup.add(new THREE.Points(geo, mat));
+		}
+
+		addStarLayer(5000, 500, 1200, 0xaabbcc, 0.8, 0.3);
+		addStarLayer(2000, 350, 800, 0xffffff, 1.4, 0.6);
+		addStarLayer(150, 300, 600, 0xffffff, 3.0, 0.9);
+		addStarLayer(300, 400, 900, 0x4fc3f7, 1.8, 0.4);
+		addStarLayer(150, 400, 900, 0xffaa44, 1.5, 0.25);
+		addStarLayer(100, 450, 900, 0xbb77ff, 1.6, 0.2);
+
+		const nebulaColors = [0x1a0a3e, 0x0a1a3e, 0x0a2a2a];
+		nebulaColors.forEach((color, i) => {
+			const nebulaGeo = new THREE.SphereGeometry(600 + i * 150, 16, 16);
+			const nebulaMat = new THREE.MeshBasicMaterial({
+				color: new THREE.Color(color),
+				transparent: true,
+				opacity: 0.08 - i * 0.02,
+				side: THREE.BackSide,
+				depthWrite: false,
+			});
+			const nebula = new THREE.Mesh(nebulaGeo, nebulaMat);
+			nebula.rotation.set(i * 0.5, i * 0.8, i * 0.3);
+			starfieldGroup.add(nebula);
+		});
+
+		scene.add(starfieldGroup);
+
+		function rotateStarfield() {
+			if (starfieldGroup) {
+				starfieldGroup.rotation.y += 0.00006;
+				starfieldGroup.rotation.x += 0.00002;
+			}
+			starfieldRotationId = requestAnimationFrame(rotateStarfield);
+		}
+		rotateStarfield();
+
+		const controls = graph.controls();
+		if (controls) {
+			controls.rotateSpeed = 1.2;
+			controls.zoomSpeed = 0.6;
+			controls.panSpeed = 0.05;
+			controls.dynamicDampingFactor = 0.25;
+
+			const origOnPointerUp = controls.onPointerUp?.bind(controls);
+			if (origOnPointerUp) {
+				controls.onPointerUp = function(event: any) {
+					try { origOnPointerUp(event); } catch (_) { /* ignore */ }
+				};
+			}
+		}
+
+		graphInitialized = true;
+
+		await ensureHullDeps();
+		startHullUpdates();
+
+		if (controls) {
+			controls.addEventListener('change', () => {
+				if (!selectedProject || !graph || cameraTransitioning) return;
+				const cam = graph.camera();
+				if (!cam) return;
+
+				const allNodes = graph.graphData().nodes;
+				const projectNodes = allNodes.filter((n: any) => n.project === selectedProject && !n.isHub);
+				if (projectNodes.length === 0) return;
+
+				const cx = projectNodes.reduce((s: number, n: any) => s + (n.x || 0), 0) / projectNodes.length;
+				const cy = projectNodes.reduce((s: number, n: any) => s + (n.y || 0), 0) / projectNodes.length;
+				const cz = projectNodes.reduce((s: number, n: any) => s + (n.z || 0), 0) / projectNodes.length;
+
+				const dx = cam.position.x - cx;
+				const dy = cam.position.y - cy;
+				const dz = cam.position.z - cz;
+				const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+				if (dist > 350) {
+					gatherNodesToCenter();
+				}
+			});
+		}
+	}
+
+	let hullMeshes: Map<string, any> = new Map();
+	let cachedConvexGeometry: any = null;
+	let cachedTHREE: any = null;
+
+	function removeHull(projectName?: string) {
+		if (!graph) return;
+		const scene = graph.scene();
+		if (projectName) {
+			const mesh = hullMeshes.get(projectName);
+			if (mesh) {
+				scene.remove(mesh);
+				mesh.children.forEach((child: any) => { child.geometry?.dispose(); child.material?.dispose(); });
+				mesh.geometry?.dispose();
+				mesh.material?.dispose();
+				hullMeshes.delete(projectName);
+			}
+		} else {
+			hullMeshes.forEach(mesh => {
+				scene.remove(mesh);
+				mesh.children.forEach((child: any) => { child.geometry?.dispose(); child.material?.dispose(); });
+				mesh.geometry?.dispose();
+				mesh.material?.dispose();
+			});
+			hullMeshes.clear();
+		}
+	}
+
+	async function ensureHullDeps() {
+		if (!cachedTHREE) cachedTHREE = await import('three');
+		if (!cachedConvexGeometry) {
+			// @ts-ignore
+			const mod = await import('three/examples/jsm/geometries/ConvexGeometry.js');
+			cachedConvexGeometry = mod.ConvexGeometry;
+		}
+	}
+
+	function rebuildAllHulls() {
+		if (!graph) return;
+		const THREE = cachedTHREE;
+		const ConvexGeometry = cachedConvexGeometry;
+		if (!THREE || !ConvexGeometry) return;
+
+		projects.forEach(project => {
+			const projectNodes = graph.graphData().nodes.filter(
+				(n: any) => n.project === project.name
+			);
+			if (projectNodes.length < 2) {
+				removeHull(project.name);
+				return;
+			}
+
+			removeHull(project.name);
+
+			try {
+				const points: any[] = [];
+				const padding = 18;
+				projectNodes.forEach((n: any) => {
+					const x = n.x || 0, y = n.y || 0, z = n.z || 0;
+					points.push(new THREE.Vector3(x + padding, y, z));
+					points.push(new THREE.Vector3(x - padding, y, z));
+					points.push(new THREE.Vector3(x, y + padding, z));
+					points.push(new THREE.Vector3(x, y - padding, z));
+					points.push(new THREE.Vector3(x, y, z + padding));
+					points.push(new THREE.Vector3(x, y, z - padding));
+				});
+
+				const isSelected = project.name === selectedProject;
+				const geo = new ConvexGeometry(points);
+				const mat = new THREE.MeshBasicMaterial({
+					color: new THREE.Color(project.color),
+					transparent: true,
+					opacity: isSelected ? 0.06 : 0.03,
+					side: THREE.DoubleSide,
+					depthWrite: false,
+				});
+				const mesh = new THREE.Mesh(geo, mat);
+
+				const edgeGeo = new THREE.EdgesGeometry(geo);
+				const edgeMat = new THREE.LineBasicMaterial({
+					color: new THREE.Color(project.color),
+					transparent: true,
+					opacity: isSelected ? 0.2 : 0.08,
+				});
+				mesh.add(new THREE.LineSegments(edgeGeo, edgeMat));
+
+				graph.scene().add(mesh);
+				hullMeshes.set(project.name, mesh);
+			} catch (e) {
+				// Hull is cosmetic
+			}
+		});
+	}
+
+	let hullAnimationId: number | null = null;
+	let hullDirty = false;
+
+	function stopHullUpdates() {
+		if (hullAnimationId) {
+			cancelAnimationFrame(hullAnimationId);
+			hullAnimationId = null;
+		}
+		hullDirty = false;
+	}
+
+	function markHullDirty() {
+		hullDirty = true;
+	}
+
+	function startHullUpdates() {
+		stopHullUpdates();
+		function tick() {
+			if (hullDirty) {
+				rebuildAllHulls();
+				hullDirty = false;
+			}
+			hullAnimationId = requestAnimationFrame(tick);
+		}
+		hullDirty = true;
+		hullAnimationId = requestAnimationFrame(tick);
+	}
+
+	async function updateGraphForProject(projectName: string | null) {
+		if (!graph) return;
+
+		selectedProject = projectName;
+
+		if (projectName) {
+			cameraTransitioning = true;
+
+			graph.graphData().nodes.forEach((n: any) => {
+				n.fx = undefined;
+				n.fy = undefined;
+				n.fz = undefined;
+			});
+
+			const hubNode = graph.graphData().nodes.find((n: any) => n.id === `hub-${projectName}`);
+			const anchorX = hubNode?.x || 0;
+			const anchorY = hubNode?.y || 0;
+			const anchorZ = hubNode?.z || 0;
+
+			const camDist = 150;
+			graph.cameraPosition(
+				{ x: anchorX + camDist * 0.55, y: anchorY + camDist * 0.35, z: anchorZ + camDist * 0.55 },
+				{ x: anchorX, y: anchorY, z: anchorZ },
+				1500
+			);
+
+			// @ts-ignore
+			import('d3-force-3d').then(d3 => {
+				graph.d3Force('cluster', d3.forceRadial(35, anchorX, anchorY, anchorZ)
+					.strength((node: any) => node.project === projectName ? 0.3 : 0));
+				graph.d3Force('scatter', d3.forceManyBody()
+					.strength((node: any) => node.project !== projectName ? -150 : 0));
+				graph.cooldownTicks(300);
+				graph.d3AlphaDecay(0.008);
+				graph.d3VelocityDecay(0.6);
+				graph.d3ReheatSimulation();
+			});
+
+			setTimeout(() => {
+				const projectNodes = graph.graphData().nodes.filter((n: any) => n.project === projectName);
+				if (projectNodes.length === 0) return;
+
+				const cx = projectNodes.reduce((s: number, n: any) => s + (n.x || 0), 0) / projectNodes.length;
+				const cy = projectNodes.reduce((s: number, n: any) => s + (n.y || 0), 0) / projectNodes.length;
+				const cz = projectNodes.reduce((s: number, n: any) => s + (n.z || 0), 0) / projectNodes.length;
+
+				let maxDist = 0;
+				projectNodes.forEach((n: any) => {
+					const d = Math.hypot((n.x || 0) - cx, (n.y || 0) - cy, (n.z || 0) - cz);
+					if (d > maxDist) maxDist = d;
+				});
+
+				const camera = graph.camera();
+				const fov = camera?.fov || 60;
+				const halfFovRad = (fov / 2) * (Math.PI / 180);
+				const radius = Math.max(maxDist, 30) + 30;
+				const fitDist = (radius / Math.tan(halfFovRad)) * 1.6;
+
+				graph.cameraPosition(
+					{ x: cx + fitDist * 0.55, y: cy + fitDist * 0.35, z: cz + fitDist * 0.55 },
+					{ x: cx, y: cy, z: cz },
+					800
+				);
+
+				setTimeout(() => { cameraTransitioning = false; }, 1600);
+				markHullDirty();
+			}, 1000);
+		} else {
+			gatherNodesToCenter();
+		}
+	}
+
+	function gatherNodesToCenter() {
+		if (!graph) return;
+
+		selectedProject = null;
+
+		graph.graphData().nodes.forEach((n: any) => {
+			n.fx = undefined;
+			n.fy = undefined;
+			n.fz = undefined;
+		});
+
+		// @ts-ignore
+		import('d3-force-3d').then(d3 => {
+			graph.d3Force('scatter', null);
+			graph.d3Force('cluster', d3.forceRadial(30, 0, 0, 0).strength(0.08));
+			graph.cooldownTicks(300);
+			graph.d3AlphaDecay(0.008);
+			graph.d3VelocityDecay(0.6);
+			graph.d3ReheatSimulation();
+		});
+
+		markHullDirty();
+	}
+
+	let graphInitialized = false;
+
+	async function fetchData() {
+		try {
+			const response = await fetch('/api/containers');
+			const result = await response.json();
+			if (result.success) {
+				containers = result.data;
+				groupContainers(containers);
+				lastUpdate = new Date();
+				if (graph && graphInitialized) {
+					const currentNodes = graph.graphData().nodes;
+					currentNodes.forEach((node: any) => {
+						const updated = containers.find((c: Container) => c.id === node.id);
+						if (updated) {
+							node.state = updated.state;
+							node.val = updated.state === 'running' ? 8 : 4;
+						}
+					});
+					graph.nodeThreeObject(graph.nodeThreeObject());
+				}
+				return;
+			}
+		} catch (e) {
+			// API not available, use mock data
+		}
+		containers = mockContainers;
+		groupContainers(containers);
+		lastUpdate = new Date();
+	}
+
+	async function fetchSystemInfoData() {
+		try {
+			const response = await fetch('/api/system');
+			const result = await response.json();
+			if (result.success) {
+				systemInfo = result.data;
+				return;
+			}
+		} catch (e) {
+			// Use mock
+		}
+		systemInfo = {
+			hostname: 'agicsai-desktop',
+			os: 'Ubuntu 22.04.3 LTS',
+			cpu: { cores: 16, model: 'AMD Ryzen 9 5950X', usage: 23.5 },
+			memory: { total: '64.0 GB', used: '28.3 GB', free: '35.7 GB', usage: 44.2 },
+			disk: { total: '1.0 TB', used: '456 GB', free: '544 GB', usage: 45.6 },
+			docker: { version: '24.0.7', containers: 25, images: 42 },
 		};
+	}
+
+	// Toolbar actions
+	function handleScreenshot() {
+		if (!graph) return;
+		const renderer = graph.renderer();
+		if (!renderer) return;
+		renderer.render(graph.scene(), graph.camera());
+		const dataUrl = renderer.domElement.toDataURL('image/png');
+		const link = document.createElement('a');
+		link.download = `topology-${Date.now()}.png`;
+		link.href = dataUrl;
+		link.click();
+	}
+
+	function handleRotate() {
+		if (!graph) return;
+		const cam = graph.camera();
+		if (!cam) return;
+		const pos = cam.position;
+		const angle = Math.PI / 6;
+		const x = pos.x * Math.cos(angle) - pos.z * Math.sin(angle);
+		const z = pos.x * Math.sin(angle) + pos.z * Math.cos(angle);
+		graph.cameraPosition({ x, y: pos.y, z }, { x: 0, y: 0, z: 0 }, 1000);
+	}
+
+	function handleZoom() {
+		if (!graph) return;
+		const cam = graph.camera();
+		if (!cam) return;
+		const pos = cam.position;
+		graph.cameraPosition(
+			{ x: pos.x * 0.7, y: pos.y * 0.7, z: pos.z * 0.7 },
+			{ x: 0, y: 0, z: 0 },
+			800
+		);
+	}
+
+	onMount(async () => {
+		await fetchData();
+		await fetchSystemInfoData();
+		await initGraph();
+
+		if (graphContainer) {
+			graphContainer.addEventListener('pointerleave', () => {
+				const controls = graph?.controls();
+				if (controls) controls.enabled = true;
+			});
+		}
+
+		refreshInterval = setInterval(async () => {
+			await fetchData();
+			await fetchSystemInfoData();
+		}, 10000);
 	});
+
+	onDestroy(() => {
+		stopHullUpdates();
+		if (starfieldRotationId) cancelAnimationFrame(starfieldRotationId);
+		if (refreshInterval) clearInterval(refreshInterval);
+		if (graph) graph._destructor?.();
+	});
+
+	function handleResize() {
+		if (graph && graphContainer) {
+			graph.width(graphContainer.clientWidth);
+			graph.height(graphContainer.clientHeight);
+		}
+	}
 </script>
 
+<svelte:window on:resize={handleResize} />
+
 <svelte:head>
-	<title>AGICS Container Monitor Tool</title>
+	<title>AGICS Container Monitor</title>
 </svelte:head>
 
-<main class="dashboard">
-	<!-- 상단 필터 및 컨트롤 -->
-	<header class="dashboard-header">
-		<div class="header-top">
-			<div class="title-section">
-				<h1>🐳 AGICS Container Monitor Tool</h1>
-				<p class="subtitle">고급 인프라 모니터링 시스템 - Docker 컨테이너, 서버 리소스, 네트워크 상태를 실시간으로 추적하고 관리합니다</p>
-				{#if serverAddress}
-					<span class="server-address">
-						🌐 {serverAddress}
-					</span>
-				{:else}
-					<p class="server-address">🌐 Loading...</p>
-				{/if}
-			</div>
-			<div class="header-controls">
-				<div class="last-update">
-					Last Update: {lastUpdate.toLocaleTimeString('ko-KR')}
-				</div>
-				<button class="refresh-btn" on:click={fetchContainers} disabled={loading} title="새로고침">
-					{#if loading}
-						<div class="spinner"></div>
-					{:else}
-						🔄
-					{/if}
-				</button>
+<div class="layout">
+	<!-- Left Sidebar: Server Info -->
+	<LeftSidebar
+		{systemInfo}
+		totalContainers={containers.length}
+	/>
+
+	<!-- Center: 3D Topology -->
+	<main class="topology-area">
+		<div class="topology-header">
+			<span class="topology-title">SYSTEM TOPOLOGY</span>
+			<div class="live-indicator">
+				<span class="live-dot"></span>
+				<span class="live-text">LIVE RENDER</span>
 			</div>
 		</div>
-		
-		<div class="view-controls">
-			<button class="view-btn {viewMode === 'isometric' ? 'active' : ''}" on:click={() => viewMode = 'isometric'}>
-				🏗️ Group
-			</button>
-			<button class="view-btn {viewMode === 'grid' ? 'active' : ''}" on:click={() => viewMode = 'grid'}>
-				🔲 Grid
-			</button>
-			<button class="view-btn {viewMode === 'list' ? 'active' : ''}" on:click={() => viewMode = 'list'}>
-				📋 List
-			</button>
+
+		<div class="graph-wrapper">
+			<div class="graph-container" bind:this={graphContainer}></div>
+			<RackUtilization {systemInfo} />
+			<TopologyToolbar
+				onScreenshot={handleScreenshot}
+				onRotate={handleRotate}
+				onZoom={handleZoom}
+			/>
 		</div>
-	</header>
+	</main>
 
-	<!-- 시스템 정보 카드 -->
-	{#if systemInfo}
-		<section class="system-info-section">
-			<div class="system-cards">
-				<div class="system-card">
-					<div class="card-icon">🖥️</div>
-					<div class="card-content">
-						<div class="card-label">Hostname</div>
-						<div class="card-value">{systemInfo.hostname}</div>
-					</div>
-				</div>
-				
-				<div class="system-card">
-					<div class="card-icon">💻</div>
-					<div class="card-content">
-						<div class="card-label">OS</div>
-						<div class="card-value">{systemInfo.os}</div>
-					</div>
-				</div>
-				
-				<div class="system-card">
-					<div class="card-icon">⚡</div>
-					<div class="card-content">
-						<div class="card-label">CPU Cores</div>
-						<div class="card-value">{systemInfo.cpu.cores}</div>
-					</div>
-				</div>
-				
-				<div class="system-card">
-					<div class="card-icon">🧠</div>
-					<div class="card-content">
-						<div class="card-label">Memory</div>
-						<div class="card-value">{systemInfo.memory.total}</div>
-					</div>
-				</div>
-				
-				<div class="system-card">
-					<div class="card-icon">💾</div>
-					<div class="card-content">
-						<div class="card-label">Disk Total</div>
-						<div class="card-value">{systemInfo.disk.total}</div>
-					</div>
-				</div>
-				
-				<div 
-					class="system-card clickable" 
-					on:click={() => selectServerDetail('network')}
-					on:keydown={(e) => e.key === 'Enter' && selectServerDetail('network')}
-					role="button"
-					tabindex="0"
-					title="네트워크 상세보기"
-				>
-					<div class="card-icon">🌐</div>
-					<div class="card-content">
-						<div class="card-label">Network</div>
-						<div class="card-value">{systemInfo.network.connections}</div>
-						<div class="card-subtitle">연결 수</div>
-					</div>
-					<div class="card-arrow">→</div>
-				</div>
-				
-				<div 
-					class="system-card clickable" 
-					on:click={() => selectServerDetail('logins')}
-					on:keydown={(e) => e.key === 'Enter' && selectServerDetail('logins')}
-					role="button"
-					tabindex="0"
-					title="로그인 상세보기"
-				>
-					<div class="card-icon">🔐</div>
-					<div class="card-content">
-						<div class="card-label">Logins</div>
-						<div class="card-value">{systemInfo.logins?.active || 0}</div>
-					</div>
-					<div class="card-arrow">→</div>
-				</div>
-				
-				<div 
-					class="system-card clickable" 
-					on:click={() => selectServerDetail('processes')}
-					on:keydown={(e) => e.key === 'Enter' && selectServerDetail('processes')}
-					role="button"
-					tabindex="0"
-					title="프로세스 상세보기"
-				>
-					<div class="card-icon">⚙️</div>
-					<div class="card-content">
-						<div class="card-label">Process Total</div>
-						<div class="card-value">{systemInfo.processes?.total || 0}</div>
-					</div>
-					<div class="card-arrow">→</div>
-				</div>
-			</div>
-		</section>
-	{/if}
-
-	<!-- 상태 알림 카드 -->
-	<section class="status-alerts">
-		<div class="alert-card critical">
-			<div class="alert-icon">🚨</div>
-			<div class="alert-content">
-				<div class="alert-label">CRITICAL</div>
-				<div class="alert-value">{getProjectStats().stopped}</div>
-			</div>
-		</div>
-		
-		<div class="alert-card warning">
-			<div class="alert-icon">⚠️</div>
-			<div class="alert-content">
-				<div class="alert-label">WARNING</div>
-				<div class="alert-value">{getProjectStats().paused + getProjectStats().created}</div>
-			</div>
-		</div>
-		
-		<div class="alert-card info">
-			<div class="alert-icon">ℹ️</div>
-			<div class="alert-content">
-				<div class="alert-label">INFO</div>
-				<div class="alert-value">{getProjectStats().running}</div>
-			</div>
-		</div>
-	</section>
-
-	<!-- 컨테이너 섹션 -->
-	<section class="containers-section">
-		<div class="section-header">
-			<h2>컨테이너 상태</h2>
-		</div>
-
-		{#if error}
-			<div class="error-banner">
-				<p>❌ {error}</p>
-			</div>
-		{/if}
-
-		{#if loading && containers.length === 0}
-			<div class="loading-state">
-				<div class="loading-spinner"></div>
-				<p>Loading containers...</p>
-			</div>
-		{:else if containers.length === 0}
-			<div class="empty-state">
-				<div class="empty-icon">📦</div>
-				<h3>No Containers</h3>
-				<p>No containers found.</p>
-			</div>
-		{:else}
-			{#if viewMode === 'isometric'}
-				<!-- 3D 아이소메트릭 뷰 -->
-				<div class="isometric-container">
-					{#each projects as project (project.name)}
-						<div class="project-zone" style="border-color: {project.color}">
-							<div class="zone-header">
-								<div class="zone-label" style="background-color: {project.color}">
-									{project.name === 'default' ? 'Default' : project.name}
-								</div>
-								<button 
-									class="project-details-btn"
-									on:click={() => selectProject(project)}
-									title="프로젝트 상세보기"
-								>
-									📊
-								</button>
-							</div>
-							<div class="zone-stats">
-								{project.stats.running} running, {project.stats.stopped} stopped
-							</div>
-							<div class="containers-3d">
-								{#each project.containers as container (container.id)}
-									<div 
-										class="container-cube {container.state}" 
-										style="background-color: {getStateColor(container.state)}"
-										on:click={() => selectContainer(container)}
-										on:keydown={(e) => e.key === 'Enter' && selectContainer(container)}
-										role="button"
-										tabindex="0"
-										title="{getDisplayName(container)}"
-									>
-										<div class="cube-face front">
-											<div class="cube-content">
-												<div class="container-icon">
-													{container.state === 'running' ? '🟢' : 
-													 container.state === 'exited' ? '🔴' : 
-													 container.state === 'paused' ? '🟡' : '🔵'}
-												</div>
-												<div class="container-name">
-													{getDisplayName(container)}
-												</div>
-											</div>
-										</div>
-										<div class="cube-face back"></div>
-										<div class="cube-face right"></div>
-										<div class="cube-face left"></div>
-										<div class="cube-face top"></div>
-										<div class="cube-face bottom"></div>
-									</div>
-								{/each}
-							</div>
-						</div>
-					{/each}
-				</div>
-			{:else if viewMode === 'grid'}
-				<!-- 그리드 뷰 -->
-				<div class="containers-grid">
-					{#each containers as container (container.id)}
-						<div 
-							class="container-cell {container.state}" 
-							style="background-color: {getStateColor(container.state)}"
-							on:click={() => selectContainer(container)}
-							on:keydown={(e) => e.key === 'Enter' && selectContainer(container)}
-							role="button"
-							tabindex="0"
-							title="{getDisplayName(container)}"
-						>
-							<div class="cell-content">
-								<div class="container-name">
-									{getDisplayName(container)}
-								</div>
-								<div class="container-status">
-									{container.state === 'running' ? '🟢' : 
-									 container.state === 'exited' ? '🔴' : 
-									 container.state === 'paused' ? '🟡' : '🔵'}
-								</div>
-							</div>
-						</div>
-					{/each}
-				</div>
-			{:else}
-				<!-- 리스트 뷰 (테이블 형태) -->
-				<div class="table-view">
-					<table class="containers-table">
-						<thead>
-							<tr>
-								<th>상태</th>
-								<th>컨테이너명</th>
-								<th>이미지</th>
-								<th>프로젝트</th>
-								<th>포트</th>
-								<th>생성일</th>
-								<th>동작</th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each projects as project}
-								{#each project.containers as container}
-									<tr class="container-row" on:click={() => selectContainer(container)}>
-										<td>
-											<span class="status-indicator {container.state}"></span>
-											<span class="status-text">{container.state}</span>
-										</td>
-										<td class="container-name">{getDisplayName(container)}</td>
-										<td class="container-image">{container.image}</td>
-										<td class="project-name">{project.name}</td>
-										<td class="container-ports">
-											{#if container.ports && container.ports.length > 0}
-												{#each container.ports as port}
-													<span class="port-badge">{port.privatePort}:{port.publicPort}</span>
-												{/each}
-											{:else}
-												<span class="no-ports">-</span>
-											{/if}
-										</td>
-										<td class="created-date">{new Date(container.created * 1000).toLocaleDateString('ko-KR')}</td>
-										<td>
-											<button class="action-btn" on:click|stopPropagation={() => selectContainer(container)}>
-												상세보기
-											</button>
-										</td>
-									</tr>
-								{/each}
-							{/each}
-						</tbody>
-					</table>
-				</div>
-			{/if}
-		{/if}
-	</section>
-
-	{#if showContainerDetails && selectedContainer}
-		<ContainerDetails 
-			container={selectedContainer} 
-			on:close={closeDetails}
-		/>
-	{/if}
-</main>
+	<!-- Right Sidebar: Container Info -->
+	<RightSidebar
+		{projects}
+		{containers}
+		{selectedProject}
+		onSelectProject={updateGraphForProject}
+		{viewMode}
+		onViewModeChange={(mode) => viewMode = mode}
+	/>
+</div>
 
 <style>
-	.dashboard {
-		min-height: 100vh;
-		background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-		background-attachment: fixed;
-		padding: 20px;
-		color: #ffffff;
+	.layout {
+		display: flex;
+		height: 100vh;
+		width: 100vw;
+		background: var(--bg-base);
 	}
 
-	.dashboard-header {
-		background: rgba(255, 255, 255, 0.1);
-		backdrop-filter: blur(20px);
-		border-radius: 20px;
-		padding: 30px;
-		margin-bottom: 30px;
-		border: 1px solid rgba(255, 255, 255, 0.2);
-		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+	.topology-area {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		background: var(--bg-base);
 	}
 
-	.header-top {
+	.topology-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		margin-bottom: 20px;
+		padding: 24px;
+		flex-shrink: 0;
 	}
 
-	.title-section h1 {
-		margin: 0 0 10px 0;
-		font-size: 2.5rem;
+	.topology-title {
+		font-size: 13px;
 		font-weight: 700;
-		background: linear-gradient(45deg, #00d4ff, #0099cc);
-		-webkit-background-clip: text;
-		-webkit-text-fill-color: transparent;
-		background-clip: text;
+		color: var(--text-secondary);
+		letter-spacing: -0.01em;
 	}
 
-	.subtitle {
-		margin: 0;
-		color: #b0b0b0;
-		font-size: 1.1rem;
-	}
-
-	.header-controls {
+	.live-indicator {
 		display: flex;
 		align-items: center;
-		gap: 20px;
+		gap: 6px;
 	}
 
-	.last-update {
-		color: #b0b0b0;
-		font-size: 0.9rem;
+	.live-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: var(--radius-full);
+		background: var(--accent);
+		animation: pulse 2s ease-in-out infinite;
 	}
 
-	.view-controls {
-		display: flex;
-		gap: 10px;
-		justify-content: center;
-		margin-top: 20px;
+	.live-text {
+		font-size: 13px;
+		font-weight: 700;
+		color: var(--accent);
+		letter-spacing: -0.01em;
 	}
 
-	.view-btn {
-		padding: 10px 16px;
-		border: 2px solid rgba(255, 255, 255, 0.2);
-		background: transparent;
-		border-radius: 10px;
-		cursor: pointer;
-		font-size: 0.9rem;
-		font-weight: 500;
-		color: #b0b0b0;
-		transition: all 0.3s ease;
-		display: flex;
-		align-items: center;
-		gap: 8px;
+	@keyframes pulse {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.4; }
 	}
 
-	.view-btn.active {
-		background: linear-gradient(45deg, #00d4ff, #0099cc);
-		border-color: #00d4ff;
-		color: #ffffff;
-		box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3);
-	}
-
-	.view-btn:hover:not(.active) {
-		border-color: #00d4ff;
-		color: #00d4ff;
-	}
-
-	.btn {
-		padding: 12px 24px;
-		border: none;
-		border-radius: 10px;
-		cursor: pointer;
-		font-size: 14px;
-		font-weight: 600;
-		transition: all 0.3s ease;
-		display: flex;
-		align-items: center;
-		gap: 8px;
-	}
-
-	.btn-primary {
-		background: linear-gradient(45deg, #00d4ff, #0099cc);
-		color: white;
-		box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3);
-	}
-
-	.btn-primary:hover:not(:disabled) {
-		transform: translateY(-2px);
-		box-shadow: 0 6px 20px rgba(0, 212, 255, 0.4);
-	}
-
-	.btn-primary:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-		transform: none;
-	}
-
-	.system-info-section {
-		margin-bottom: 30px;
-	}
-
-	.system-cards {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-		gap: 20px;
-	}
-
-	.system-card {
-		background: rgba(255, 255, 255, 0.1);
-		backdrop-filter: blur(20px);
-		border-radius: 15px;
-		padding: 25px;
-		display: flex;
-		align-items: center;
-		gap: 20px;
-		border: 1px solid rgba(255, 255, 255, 0.2);
-		transition: all 0.3s ease;
-	}
-
-	.system-card:hover {
-		transform: translateY(-5px);
-		box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
-	}
-
-	.card-icon {
-		font-size: 2.5rem;
-		opacity: 0.8;
-	}
-
-	.card-content {
+	.graph-wrapper {
 		flex: 1;
-	}
-
-	.card-label {
-		font-size: 0.9rem;
-		color: #b0b0b0;
-		margin-bottom: 5px;
-		font-weight: 500;
-	}
-
-	.card-value {
-		font-size: 1.8rem;
-		font-weight: 700;
-		color: #ffffff;
-		line-height: 1;
-	}
-
-	.status-alerts {
-		display: grid;
-		grid-template-columns: repeat(3, 1fr);
-		gap: 20px;
-		margin-bottom: 30px;
-	}
-
-	.alert-card {
-		border-radius: 15px;
-		padding: 25px;
-		display: flex;
-		align-items: center;
-		gap: 20px;
-		transition: all 0.3s ease;
-	}
-
-	.alert-card.critical {
-		background: linear-gradient(135deg, #e74c3c, #c0392b);
-		box-shadow: 0 8px 32px rgba(231, 76, 60, 0.3);
-	}
-
-	.alert-card.warning {
-		background: linear-gradient(135deg, #f39c12, #e67e22);
-		box-shadow: 0 8px 32px rgba(243, 156, 18, 0.3);
-	}
-
-	.alert-card.info {
-		background: linear-gradient(135deg, #3498db, #2980b9);
-		box-shadow: 0 8px 32px rgba(52, 152, 219, 0.3);
-	}
-
-	.alert-card:hover {
-		transform: translateY(-5px);
-	}
-
-	.alert-icon {
-		font-size: 2.5rem;
-		opacity: 0.9;
-	}
-
-	.alert-content {
-		flex: 1;
-	}
-
-	.alert-label {
-		font-size: 0.9rem;
-		color: rgba(255, 255, 255, 0.8);
-		margin-bottom: 5px;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 1px;
-	}
-
-	.alert-value {
-		font-size: 2.5rem;
-		font-weight: 700;
-		color: #ffffff;
-		line-height: 1;
-	}
-
-	.containers-section {
-		background: rgba(255, 255, 255, 0.1);
-		backdrop-filter: blur(20px);
-		border-radius: 20px;
-		padding: 30px;
-		border: 1px solid rgba(255, 255, 255, 0.2);
-		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-	}
-
-	.section-header {
-		margin-bottom: 30px;
-	}
-
-	.section-header h2 {
-		margin: 0;
-		color: #ffffff;
-		font-size: 1.8rem;
-		font-weight: 600;
-	}
-
-	.isometric-container {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-		gap: 30px;
-		margin-bottom: 30px;
-	}
-
-	.project-zone {
-		background: rgba(255, 255, 255, 0.05);
-		border: 2px dashed rgba(255, 255, 255, 0.3);
-		border-radius: 15px;
-		padding: 20px;
-		position: relative;
-		transition: all 0.3s ease;
-	}
-
-	.project-zone:hover {
-		background: rgba(255, 255, 255, 0.1);
-		transform: translateY(-5px);
-	}
-
-	.zone-label {
-		position: absolute;
-		top: -15px;
-		left: 20px;
-		padding: 8px 16px;
-		border-radius: 20px;
-		color: white;
-		font-weight: 600;
-		font-size: 0.9rem;
-		text-transform: uppercase;
-		letter-spacing: 1px;
-	}
-
-	.zone-stats {
-		color: #b0b0b0;
-		font-size: 0.8rem;
-		margin-bottom: 20px;
-		margin-top: 10px;
-	}
-
-	.containers-3d {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-		gap: 15px;
-	}
-
-	.container-cube {
-		position: relative;
-		width: 60px;
-		height: 60px;
-		cursor: pointer;
-		transform-style: preserve-3d;
-		transition: all 0.3s ease;
-	}
-
-	.container-cube:hover {
-		transform: rotateX(-10deg) rotateY(10deg) scale(1.1);
-	}
-
-	.cube-face {
-		position: absolute;
-		width: 60px;
-		height: 60px;
-		border: 2px solid rgba(255, 255, 255, 0.3);
-	}
-
-	.cube-face.front {
-		transform: rotateY(0deg) translateZ(30px);
-		background: linear-gradient(135deg, currentColor, rgba(255, 255, 255, 0.1));
-	}
-
-	.cube-face.back {
-		transform: rotateY(180deg) translateZ(30px);
-		background: linear-gradient(135deg, currentColor, rgba(0, 0, 0, 0.3));
-	}
-
-	.cube-face.right {
-		transform: rotateY(90deg) translateZ(30px);
-		background: linear-gradient(135deg, currentColor, rgba(0, 0, 0, 0.2));
-	}
-
-	.cube-face.left {
-		transform: rotateY(-90deg) translateZ(30px);
-		background: linear-gradient(135deg, currentColor, rgba(0, 0, 0, 0.2));
-	}
-
-	.cube-face.top {
-		transform: rotateX(90deg) translateZ(30px);
-		background: linear-gradient(135deg, currentColor, rgba(255, 255, 255, 0.2));
-	}
-
-	.cube-face.bottom {
-		transform: rotateX(-90deg) translateZ(30px);
-		background: linear-gradient(135deg, currentColor, rgba(0, 0, 0, 0.4));
-	}
-
-	.cube-content {
-		position: absolute;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
-		text-align: center;
-		color: white;
-		z-index: 10;
-	}
-
-	.container-icon {
-		font-size: 1.2rem;
-		margin-bottom: 2px;
-	}
-
-	.container-name {
-		font-size: 0.6rem;
-		font-weight: 600;
-		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		max-width: 50px;
-	}
-
-	.containers-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
-		gap: 8px;
-		margin-bottom: 30px;
-	}
-
-	.containers-list {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-		gap: 20px;
-		margin-bottom: 30px;
-	}
-
-	.container-cell {
-		aspect-ratio: 1;
-		border-radius: 6px;
-		cursor: pointer;
-		position: relative;
-		transition: all 0.2s ease;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		overflow: hidden;
-	}
-
-	.container-cell:hover {
-		transform: scale(1.1);
-		z-index: 10;
-		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-	}
-
-	.container-cell.running {
-		background: linear-gradient(135deg, #28a745, #20c997);
-	}
-
-	.container-cell.exited {
-		background: linear-gradient(135deg, #dc3545, #e74c3c);
-	}
-
-	.container-cell.paused {
-		background: linear-gradient(135deg, #ffc107, #fd7e14);
-	}
-
-	.container-cell.created {
-		background: linear-gradient(135deg, #17a2b8, #6f42c1);
-	}
-
-	.cell-content {
-		text-align: center;
-		color: white;
-		font-weight: 600;
-		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-	}
-
-	.container-name {
-		font-size: 0.7rem;
-		line-height: 1;
-		margin-bottom: 2px;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		max-width: 50px;
-	}
-
-	.container-status {
-		font-size: 0.8rem;
-	}
-
-	.error-banner {
-		background: #e74c3c;
-		color: white;
-		padding: 15px 20px;
-		border-radius: 8px;
-		margin-bottom: 20px;
-		text-align: center;
-	}
-
-	.loading-state {
-		text-align: center;
-		padding: 60px 20px;
-	}
-
-	.loading-spinner {
-		width: 40px;
-		height: 40px;
-		border: 4px solid rgba(255, 255, 255, 0.3);
-		border-top: 4px solid #00d4ff;
-		border-radius: 50%;
-		animation: spin 1s linear infinite;
-		margin: 0 auto 20px;
-	}
-
-	@keyframes spin {
-		0% { transform: rotate(0deg); }
-		100% { transform: rotate(360deg); }
-	}
-
-	.empty-state {
-		text-align: center;
-		padding: 60px 20px;
-		color: #b0b0b0;
-	}
-
-	.empty-icon {
-		font-size: 4rem;
-		margin-bottom: 20px;
-		opacity: 0.5;
-	}
-
-	.empty-state h3 {
-		margin: 0 0 10px 0;
-		color: #ffffff;
-		font-size: 1.5rem;
-	}
-
-	.empty-state p {
-		margin: 0;
-		font-size: 1rem;
-	}
-
-	@media (max-width: 768px) {
-		.dashboard {
-			padding: 10px;
-		}
-
-		.header-top {
-			flex-direction: column;
-			text-align: center;
-			gap: 20px;
-		}
-
-		.title-section h1 {
-			font-size: 2rem;
-		}
-
-		.view-controls {
-			justify-content: center;
-		}
-
-		.system-cards {
-			grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-			gap: 15px;
-		}
-
-		.status-alerts {
-			grid-template-columns: 1fr;
-		}
-
-		.isometric-container {
-			grid-template-columns: 1fr;
-		}
-
-		.containers-grid {
-			grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
-			gap: 6px;
-		}
-
-		.containers-list {
-			grid-template-columns: 1fr;
-		}
-	}
-
-	.zone-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 10px;
-	}
-
-	.project-details-btn {
-		background: rgba(255, 255, 255, 0.2);
-		border: 1px solid rgba(255, 255, 255, 0.3);
-		border-radius: 6px;
-		padding: 6px 10px;
-		cursor: pointer;
-		font-size: 1rem;
-		color: white;
-		transition: all 0.2s ease;
-		backdrop-filter: blur(10px);
-	}
-
-	.project-details-btn:hover {
-		background: rgba(255, 255, 255, 0.3);
-		transform: scale(1.05);
-	}
-
-	.system-card.clickable {
-		cursor: pointer;
-		transition: all 0.2s ease;
 		position: relative;
 		overflow: hidden;
 	}
 
-	.system-card.clickable:hover {
-		transform: translateY(-2px);
-		box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-		color: white;
-	}
-
-	.system-card.clickable:hover .card-icon {
-		transform: scale(1.1);
-	}
-
-	.system-card.clickable:hover .card-arrow {
-		opacity: 1;
-		transform: translateX(0);
-	}
-
-	.card-arrow {
-		position: absolute;
-		right: 15px;
-		top: 50%;
-		transform: translateY(-50%) translateX(10px);
-		font-size: 1.2rem;
-		opacity: 0;
-		transition: all 0.2s ease;
-		font-weight: bold;
-	}
-
-	.card-subtitle {
-		font-size: 0.8rem;
-		color: #7f8c8d;
-		margin-top: 2px;
-		opacity: 0.8;
-	}
-
-	.server-address {
-		margin: 8px 0 0 0;
-		color: #3498db;
-		font-size: 0.9rem;
-		font-weight: 500;
-		background: rgba(52, 152, 219, 0.1);
-		padding: 4px 12px;
-		border-radius: 12px;
-		display: inline-block;
-		border: 1px solid rgba(52, 152, 219, 0.2);
-		text-decoration: none;
-		transition: all 0.2s ease;
-		cursor: pointer;
-	}
-
-	.server-address:hover {
-		background: rgba(52, 152, 219, 0.2);
-		border-color: rgba(52, 152, 219, 0.4);
-		transform: translateY(-1px);
-		box-shadow: 0 2px 8px rgba(52, 152, 219, 0.2);
-	}
-
-	.refresh-btn {
-		background: #3498db;
-		border: none;
-		border-radius: 8px;
-		padding: 8px 12px;
-		color: white;
-		font-size: 1.2rem;
-		cursor: pointer;
-		transition: all 0.2s ease;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		min-width: 40px;
-		height: 40px;
-	}
-
-	.refresh-btn:hover:not(:disabled) {
-		background: #2980b9;
-		transform: translateY(-1px);
-		box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
-	}
-
-	.refresh-btn:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
-
-	.spinner {
-		width: 16px;
-		height: 16px;
-		border: 2px solid rgba(255, 255, 255, 0.3);
-		border-top: 2px solid white;
-		border-radius: 50%;
-		animation: spin 1s linear infinite;
-	}
-
-	@keyframes spin {
-		0% { transform: rotate(0deg); }
-		100% { transform: rotate(360deg); }
-	}
-
-	/* 테이블 뷰 스타일 */
-	.table-view {
-		background: rgba(255, 255, 255, 0.05);
-		border-radius: 12px;
-		overflow: hidden;
-		backdrop-filter: blur(10px);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-	}
-
-	.containers-table {
+	.graph-container {
 		width: 100%;
-		border-collapse: collapse;
-		background: transparent;
-	}
-
-	.containers-table thead {
-		background: rgba(52, 152, 219, 0.2);
-	}
-
-	.containers-table th {
-		padding: 16px 12px;
-		text-align: left;
-		font-weight: 600;
-		color: #ecf0f1;
-		border-bottom: 2px solid rgba(52, 152, 219, 0.3);
-		font-size: 0.9rem;
-		text-transform: uppercase;
-		letter-spacing: 0.5px;
-	}
-
-	.containers-table td {
-		padding: 12px;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-		color: #bdc3c7;
-		vertical-align: middle;
-	}
-
-	.container-row {
-		cursor: pointer;
-		transition: all 0.2s ease;
-	}
-
-	.container-row:hover {
-		background: rgba(52, 152, 219, 0.1);
-		transform: translateX(2px);
-	}
-
-	.status-indicator {
-		display: inline-block;
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		margin-right: 8px;
-	}
-
-	.status-indicator.running {
-		background: #28a745;
-		box-shadow: 0 0 6px rgba(40, 167, 69, 0.5);
-	}
-
-	.status-indicator.exited {
-		background: #dc3545;
-		box-shadow: 0 0 6px rgba(220, 53, 69, 0.5);
-	}
-
-	.status-indicator.paused {
-		background: #ffc107;
-		box-shadow: 0 0 6px rgba(255, 193, 7, 0.5);
-	}
-
-	.status-text {
-		font-weight: 500;
-		text-transform: capitalize;
-	}
-
-	.container-name {
-		font-weight: 600;
-		color: #ecf0f1;
-	}
-
-	.container-image {
-		font-family: 'Courier New', monospace;
-		font-size: 0.85rem;
-		color: #95a5a6;
-	}
-
-	.project-name {
-		background: rgba(52, 152, 219, 0.2);
-		padding: 4px 8px;
-		border-radius: 6px;
-		font-size: 0.8rem;
-		font-weight: 500;
-		color: #3498db;
-		display: inline-block;
-	}
-
-	.port-badge {
-		background: rgba(46, 204, 113, 0.2);
-		color: #2ecc71;
-		padding: 2px 6px;
-		border-radius: 4px;
-		font-size: 0.75rem;
-		font-family: 'Courier New', monospace;
-		margin-right: 4px;
-		display: inline-block;
-	}
-
-	.no-ports {
-		color: #7f8c8d;
-		font-style: italic;
-	}
-
-	.created-date {
-		font-size: 0.85rem;
-		color: #95a5a6;
-	}
-
-	.action-btn {
-		background: #3498db;
-		border: none;
-		color: white;
-		padding: 6px 12px;
-		border-radius: 6px;
-		font-size: 0.8rem;
-		font-weight: 500;
-		cursor: pointer;
-		transition: all 0.2s ease;
-	}
-
-	.action-btn:hover {
-		background: #2980b9;
-		transform: translateY(-1px);
-		box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+		height: 100%;
 	}
 </style>
-
-
-<!-- 프로젝트 상세보기 모달 -->
-{#if showProjectDetails && selectedProject}
-	<ProjectDetails 
-		project={selectedProject} 
-		on:close={closeProjectDetails}
-	/>
-{/if}
-
-<!-- 서버 상세보기 모달 -->
-{#if showServerDetails && selectedServerDetail}
-	<ServerDetails 
-		detailType={selectedServerDetail}
-		on:close={closeServerDetails}
-	/>
-{/if}
