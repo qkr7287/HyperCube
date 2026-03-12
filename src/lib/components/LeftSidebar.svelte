@@ -15,9 +15,9 @@
 		memory: { total: string; used: string; free: string; usage: number };
 		disk: { total: string; used: string; free: string; usage: number };
 		docker: { version: string; containers: number; images: number };
-		network?: { speed?: string };
-		logins?: number;
-		processTotal?: number;
+		network?: { connections?: number; interfaces?: string[] };
+		logins?: { total?: number; active?: number };
+		processes?: { total?: number; running?: number };
 	}
 
 	let {
@@ -92,7 +92,7 @@
 						<img src={iconNetwork} alt="" class="icon" />
 						<span class="label">Network</span>
 					</div>
-					<span class="value">{systemInfo.network?.speed || '-'}</span>
+					<span class="value">{systemInfo.network?.connections ?? '-'}</span>
 				</div>
 
 				<div class="info-row">
@@ -100,15 +100,15 @@
 						<img src={iconLogins} alt="" class="icon" />
 						<span class="label">Logins</span>
 					</div>
-					<span class="value">{systemInfo.logins ?? 0}</span>
+					<span class="value">{systemInfo.logins?.total ?? 0}</span>
 				</div>
 
-				<div class="info-row border-top">
+				<div class="info-row">
 					<div class="info-label-group">
 						<img src={iconProcess} alt="" class="icon" />
 						<span class="label">Process Total</span>
 					</div>
-					<span class="value">{systemInfo.processTotal ?? '-'}</span>
+					<span class="value">{systemInfo.processes?.total ?? '-'}</span>
 				</div>
 			</div>
 		{:else}
