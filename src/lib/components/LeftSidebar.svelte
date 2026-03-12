@@ -1,4 +1,13 @@
 <script lang="ts">
+	import iconHostname from '$lib/assets/icons/sidebar-hostname.svg';
+	import iconOs from '$lib/assets/icons/sidebar-os.svg';
+	import iconCpu from '$lib/assets/icons/sidebar-cpu.svg';
+	import iconMemory from '$lib/assets/icons/sidebar-memory.svg';
+	import iconDisk from '$lib/assets/icons/sidebar-disk.svg';
+	import iconNetwork from '$lib/assets/icons/sidebar-network.svg';
+	import iconLogins from '$lib/assets/icons/sidebar-logins.svg';
+	import iconProcess from '$lib/assets/icons/sidebar-process.svg';
+
 	interface SystemInfo {
 		hostname: string;
 		os: string;
@@ -40,7 +49,7 @@
 			<div class="info-list">
 				<div class="info-row">
 					<div class="info-label-group">
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2"/><path d="M7 12h10M12 7v10"/></svg>
+						<img src={iconHostname} alt="" class="icon" />
 						<span class="label">Hostname</span>
 					</div>
 					<span class="value">{systemInfo.hostname}</span>
@@ -48,7 +57,7 @@
 
 				<div class="info-row">
 					<div class="info-label-group">
-						<svg width="15" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+						<img src={iconOs} alt="" class="icon" />
 						<span class="label">OS</span>
 					</div>
 					<span class="value small">{systemInfo.os}</span>
@@ -56,7 +65,7 @@
 
 				<div class="info-row">
 					<div class="info-label-group">
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg>
+						<img src={iconCpu} alt="" class="icon" />
 						<span class="label">CPU Cores</span>
 					</div>
 					<span class="value">{systemInfo.cpu.cores}</span>
@@ -64,7 +73,7 @@
 
 				<div class="info-row">
 					<div class="info-label-group">
-						<svg width="15" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="1"/><path d="M6 10h2M10 10h2M14 10h2"/></svg>
+						<img src={iconMemory} alt="" class="icon" />
 						<span class="label">Memory</span>
 					</div>
 					<span class="value">{systemInfo.memory.total}</span>
@@ -72,7 +81,7 @@
 
 				<div class="info-row">
 					<div class="info-label-group">
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+						<img src={iconDisk} alt="" class="icon" />
 						<span class="label">Disk Total</span>
 					</div>
 					<span class="value">{systemInfo.disk.total}</span>
@@ -80,7 +89,7 @@
 
 				<div class="info-row">
 					<div class="info-label-group">
-						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+						<img src={iconNetwork} alt="" class="icon" />
 						<span class="label">Network</span>
 					</div>
 					<span class="value">{systemInfo.network?.speed || '-'}</span>
@@ -88,7 +97,7 @@
 
 				<div class="info-row">
 					<div class="info-label-group">
-						<svg width="15" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+						<img src={iconLogins} alt="" class="icon" />
 						<span class="label">Logins</span>
 					</div>
 					<span class="value">{systemInfo.logins ?? 0}</span>
@@ -96,7 +105,7 @@
 
 				<div class="info-row border-top">
 					<div class="info-label-group">
-						<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg>
+						<img src={iconProcess} alt="" class="icon" />
 						<span class="label">Process Total</span>
 					</div>
 					<span class="value">{systemInfo.processTotal ?? '-'}</span>
@@ -186,8 +195,9 @@
 		color: var(--text-primary);
 	}
 
-	.info-label-group svg {
-		color: var(--text-secondary);
+	.icon {
+		width: 16px;
+		height: 16px;
 		flex-shrink: 0;
 	}
 

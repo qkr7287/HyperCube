@@ -23,7 +23,7 @@
 	<div class="rack-items">
 		<div class="rack-item">
 			<div class="rack-item-header">
-				<span class="rack-label">Node 01</span>
+				<span class="rack-label">CPU</span>
 				<span class="rack-value" class:danger={systemInfo.cpu.usage > 90}>
 					{systemInfo.cpu.usage.toFixed(0)}%
 				</span>
@@ -39,7 +39,7 @@
 
 		<div class="rack-item">
 			<div class="rack-item-header">
-				<span class="rack-label">Node 02</span>
+				<span class="rack-label">Memory</span>
 				<span class="rack-value" class:danger={systemInfo.memory.usage > 90}>
 					{systemInfo.memory.usage.toFixed(0)}%
 				</span>

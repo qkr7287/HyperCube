@@ -1,4 +1,8 @@
 <script lang="ts">
+	import iconRunning from '$lib/assets/icons/stat-running.svg';
+	import iconWaiting from '$lib/assets/icons/stat-waiting.svg';
+	import iconStopped from '$lib/assets/icons/stat-stopped.svg';
+
 	let {
 		count = 0,
 		label = '',
@@ -10,10 +14,10 @@
 	} = $props();
 
 	const iconMap = {
-		running: { bg: 'var(--accent)', icon: 'play' },
-		waiting: { bg: 'var(--bg-tab)', icon: 'pause' },
-		stopped: { bg: 'var(--error-soft)', icon: 'stop' },
-		default: { bg: 'var(--bg-tab)', icon: 'circle' },
+		running: { bg: 'rgba(48, 213, 200, 0.1)', icon: iconRunning },
+		waiting: { bg: '#151C27', icon: iconWaiting },
+		stopped: { bg: 'rgba(239, 62, 94, 0.1)', icon: iconStopped },
+		default: { bg: '#151C27', icon: iconWaiting },
 	};
 
 	let config = $derived(iconMap[type] || iconMap.default);
@@ -21,20 +25,7 @@
 
 <div class="stat-card">
 	<div class="icon-circle" style="background: {config.bg}">
-		{#if type === 'running'}
-			<svg width="11" height="12" viewBox="0 0 11 12" fill="none">
-				<path d="M1 1L10 6L1 11V1Z" fill={type === 'running' ? '#0d1117' : '#cbd5e1'} stroke="none"/>
-			</svg>
-		{:else if type === 'waiting'}
-			<svg width="9" height="15" viewBox="0 0 9 15" fill="none">
-				<rect x="0" y="0" width="3" height="15" rx="1" fill="#cbd5e1"/>
-				<rect x="6" y="0" width="3" height="15" rx="1" fill="#cbd5e1"/>
-			</svg>
-		{:else}
-			<svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-				<rect width="15" height="15" rx="2" fill="#0d1117"/>
-			</svg>
-		{/if}
+		<img src={config.icon} alt="" class="stat-icon" />
 	</div>
 	<div class="stat-text">
 		<span class="stat-label">{label}</span>
@@ -63,6 +54,11 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
+	}
+
+	.stat-icon {
+		width: 16px;
+		height: 16px;
 	}
 
 	.stat-text {

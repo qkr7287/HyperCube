@@ -1,39 +1,38 @@
 <script lang="ts">
+	import iconScreenshot from '$lib/assets/icons/toolbar-screenshot.svg';
+	import iconRotate from '$lib/assets/icons/toolbar-rotate.svg';
+	import iconZoom from '$lib/assets/icons/toolbar-zoom.svg';
+
 	let {
 		onScreenshot = () => {},
 		onRotate = () => {},
 		onZoom = () => {},
+		isRotating = false,
 	}: {
 		onScreenshot: () => void;
 		onRotate: () => void;
 		onZoom: () => void;
+		isRotating: boolean;
 	} = $props();
 </script>
 
 <div class="toolbar">
 	<button class="toolbar-btn" onclick={onScreenshot}>
-		<svg width="12" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-			<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M3 9h1M20 9h1"/>
-		</svg>
+		<img src={iconScreenshot} alt="" class="toolbar-icon" />
 		<span>Screenshot</span>
 	</button>
 
 	<div class="divider"></div>
 
-	<button class="toolbar-btn" onclick={onRotate}>
-		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-			<path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0115-6.7L21 8"/>
-			<path d="M3 22v-6h6"/><path d="M21 12a9 9 0 01-15 6.7L3 16"/>
-		</svg>
-		<span>Rotate</span>
+	<button class="toolbar-btn" class:active={isRotating} onclick={onRotate}>
+		<img src={iconRotate} alt="" class="toolbar-icon" class:spinning={isRotating} />
+		<span>{isRotating ? 'Stop' : 'Rotate'}</span>
 	</button>
 
 	<div class="divider"></div>
 
 	<button class="toolbar-btn" onclick={onZoom}>
-		<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-			<circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/><path d="M11 8v6M8 11h6"/>
-		</svg>
+		<img src={iconZoom} alt="" class="toolbar-icon" />
 		<span>Zoom</span>
 	</button>
 </div>
@@ -74,8 +73,24 @@
 		color: var(--accent);
 	}
 
-	.toolbar-btn svg {
+	.toolbar-btn.active {
+		color: var(--accent);
+	}
+
+	.toolbar-icon {
+		width: 14px;
+		height: 14px;
 		opacity: 0.7;
+	}
+
+	.toolbar-icon.spinning {
+		opacity: 1;
+		animation: spin 2s linear infinite;
+	}
+
+	@keyframes spin {
+		from { transform: rotate(0deg); }
+		to { transform: rotate(360deg); }
 	}
 
 	.divider {

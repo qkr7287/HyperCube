@@ -27,6 +27,7 @@
 		"chart.js": "^4.5.0",
 		"chartjs-adapter-date-fns": "^3.0.0",
 		"dockerode": "^4.0.8",
+		"html2canvas": "^1.4.1",
 		"three": "^0.183.2"
 	}
 }

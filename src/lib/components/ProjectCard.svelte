@@ -20,10 +20,12 @@
 		project,
 		selected = false,
 		onclick = () => {},
+		onContainerClick = (container: Container) => {},
 	}: {
 		project: Project;
 		selected: boolean;
 		onclick: () => void;
+		onContainerClick: (container: Container) => void;
 	} = $props();
 </script>
 
@@ -33,7 +35,10 @@
 	onclick={onclick}
 >
 	<div class="card-header">
-		<span class="project-name" class:accent={selected}>{project.name.toUpperCase()}</span>
+		<div class="name-group">
+			<span class="color-dot" style="background: {project.color}"></span>
+			<span class="project-name" class:accent={selected}>{project.name.toUpperCase()}</span>
+		</div>
 		<div class="counts">
 			<span class="count running">{project.stats.running} 실행중</span>
 			<span class="count stopped" class:muted={project.stats.stopped === 0}>
@@ -43,7 +48,7 @@
 	</div>
 	<div class="container-dots">
 		{#each project.containers as container}
-			<div class="dot-wrapper">
+			<div class="dot-wrapper" onclick={(e) => { e.stopPropagation(); onContainerClick(container); }} role="button" tabindex="0" title={container.names?.[0]?.replace('/', '') || container.shortId}>
 				<svg width="28" height="24" viewBox="0 0 28 24" fill="none">
 					<path d="M7 0h14l7 12-7 12H7L0 12 7 0Z"
 						fill={container.state === 'running' ? 'var(--accent)' : 'var(--error)'}
@@ -84,6 +89,19 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
+	}
+
+	.name-group {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.color-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		flex-shrink: 0;
 	}
 
 	.project-name {
@@ -127,5 +145,11 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		cursor: pointer;
+		transition: transform 0.15s;
+	}
+
+	.dot-wrapper:hover {
+		transform: scale(1.2);
 	}
 </style>

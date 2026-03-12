@@ -5,6 +5,7 @@
 	import RightSidebar from '$lib/components/RightSidebar.svelte';
 	import TopologyToolbar from '$lib/components/TopologyToolbar.svelte';
 	import RackUtilization from '$lib/components/RackUtilization.svelte';
+	import ContainerDetailModal from '$lib/components/ContainerDetailModal.svelte';
 
 	interface Container {
 		id: string;
@@ -49,6 +50,15 @@
 	let starfieldGroup: any = null;
 	let starfieldRotationId: number | null = null;
 	let viewMode = 'group';
+	let selectedContainer: Container | null = null;
+
+	function openContainerDetail(container: Container) {
+		selectedContainer = container;
+	}
+
+	function closeContainerDetail() {
+		selectedContainer = null;
+	}
 
 	// Mock data for demo (used when API is not available)
 	const mockContainers: Container[] = [
@@ -192,7 +202,7 @@
 		graph = ForceGraph3D({
 			extraRenderers: []
 		})(graphContainer)
-			.backgroundColor('#0a0e27')
+			.backgroundColor('#0d1117')
 			.width(graphContainer.clientWidth)
 			.height(graphContainer.clientHeight)
 			.graphData(data)
@@ -768,27 +778,92 @@
 	}
 
 	// Toolbar actions
-	function handleScreenshot() {
-		if (!graph) return;
-		const renderer = graph.renderer();
-		if (!renderer) return;
-		renderer.render(graph.scene(), graph.camera());
-		const dataUrl = renderer.domElement.toDataURL('image/png');
-		const link = document.createElement('a');
-		link.download = `topology-${Date.now()}.png`;
-		link.href = dataUrl;
-		link.click();
+	async function handleScreenshot() {
+		try {
+			const html2canvas = (await import('html2canvas')).default;
+			const canvas = await html2canvas(document.body, {
+				backgroundColor: '#0d1117',
+				scale: 2,
+				useCORS: true,
+				logging: false,
+			});
+			const dataUrl = canvas.toDataURL('image/png');
+			const link = document.createElement('a');
+			link.download = `agics-monitor-${Date.now()}.png`;
+			link.href = dataUrl;
+			link.click();
+		} catch (e) {
+			// Fallback: 3D canvas only
+			if (!graph) return;
+			const renderer = graph.renderer();
+			if (!renderer) return;
+			renderer.render(graph.scene(), graph.camera());
+			const dataUrl = renderer.domElement.toDataURL('image/png');
+			const link = document.createElement('a');
+			link.download = `topology-${Date.now()}.png`;
+			link.href = dataUrl;
+			link.click();
+		}
 	}
 
+	let autoRotating = false;
+	let autoRotateId: number | null = null;
+	let autoRotatePausedByDrag = false;
+
 	function handleRotate() {
-		if (!graph) return;
-		const cam = graph.camera();
-		if (!cam) return;
-		const pos = cam.position;
-		const angle = Math.PI / 6;
-		const x = pos.x * Math.cos(angle) - pos.z * Math.sin(angle);
-		const z = pos.x * Math.sin(angle) + pos.z * Math.cos(angle);
-		graph.cameraPosition({ x, y: pos.y, z }, { x: 0, y: 0, z: 0 }, 1000);
+		autoRotating = !autoRotating;
+		if (autoRotating) {
+			startAutoRotate();
+		} else {
+			stopAutoRotate();
+		}
+	}
+
+	function startAutoRotate() {
+		stopAutoRotate();
+		const controls = graph?.controls();
+		if (controls) {
+			controls.addEventListener('start', pauseAutoRotateOnDrag);
+			controls.addEventListener('end', resumeAutoRotateAfterDrag);
+		}
+		function tick() {
+			if (!graph || !autoRotating || autoRotatePausedByDrag) {
+				autoRotateId = requestAnimationFrame(tick);
+				return;
+			}
+			const cam = graph.camera();
+			if (cam) {
+				const speed = 0.003;
+				const x = cam.position.x * Math.cos(speed) - cam.position.z * Math.sin(speed);
+				const z = cam.position.x * Math.sin(speed) + cam.position.z * Math.cos(speed);
+				cam.position.x = x;
+				cam.position.z = z;
+				cam.lookAt(0, 0, 0);
+			}
+			autoRotateId = requestAnimationFrame(tick);
+		}
+		autoRotateId = requestAnimationFrame(tick);
+	}
+
+	function stopAutoRotate() {
+		if (autoRotateId) {
+			cancelAnimationFrame(autoRotateId);
+			autoRotateId = null;
+		}
+		const controls = graph?.controls();
+		if (controls) {
+			controls.removeEventListener('start', pauseAutoRotateOnDrag);
+			controls.removeEventListener('end', resumeAutoRotateAfterDrag);
+		}
+		autoRotatePausedByDrag = false;
+	}
+
+	function pauseAutoRotateOnDrag() {
+		autoRotatePausedByDrag = true;
+	}
+
+	function resumeAutoRotateAfterDrag() {
+		autoRotatePausedByDrag = false;
 	}
 
 	function handleZoom() {
@@ -823,6 +898,7 @@
 
 	onDestroy(() => {
 		stopHullUpdates();
+		stopAutoRotate();
 		if (starfieldRotationId) cancelAnimationFrame(starfieldRotationId);
 		if (refreshInterval) clearInterval(refreshInterval);
 		if (graph) graph._destructor?.();
@@ -866,6 +942,7 @@
 				onScreenshot={handleScreenshot}
 				onRotate={handleRotate}
 				onZoom={handleZoom}
+				isRotating={autoRotating}
 			/>
 		</div>
 	</main>
@@ -876,10 +953,20 @@
 		{containers}
 		{selectedProject}
 		onSelectProject={updateGraphForProject}
+		onSelectContainer={openContainerDetail}
 		{viewMode}
-		onViewModeChange={(mode) => viewMode = mode}
+		onViewModeChange={(mode) => {
+			viewMode = mode;
+			setTimeout(() => handleResize(), 350);
+		}}
 	/>
 </div>
+
+<ContainerDetailModal
+	container={selectedContainer}
+	onClose={closeContainerDetail}
+	onStateChange={fetchData}
+/>
 
 <style>
 	.layout {
