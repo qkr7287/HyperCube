@@ -66,6 +66,11 @@
 
 	let memLimitMB = $derived((metricsData?.memory?.limit || 1) / 1048576);
 
+	// Safe accessors for details
+	let inspectConfig = $derived(details?.inspect?.Config);
+	let inspectStats = $derived(details?.stats);
+	let envVars = $derived(inspectConfig?.Env || []);
+
 	async function fetchDetails() {
 		if (!container) return;
 		try {
@@ -73,8 +78,8 @@
 			const data = await res.json();
 			if (data.success) {
 				details = data.data;
-				containerState = details.inspect?.State?.Status || container.state;
-				containerStatus = details.inspect?.State?.Status || container.status;
+				containerState = details?.inspect?.State?.Status || container.state;
+				containerStatus = details?.inspect?.State?.Status || container.status;
 			} else {
 				errorMsg = data.error || 'Failed to fetch details';
 			}
@@ -86,7 +91,6 @@
 
 	async function fetchMetrics() {
 		if (!container) return;
-		// Use container.state for first call, containerState for subsequent
 		const state = containerState || container?.state;
 		if (state !== 'running') return;
 		try {
@@ -124,9 +128,7 @@
 	}
 
 	function parseLogLine(line: string): { timestamp: string; level: string; message: string } {
-		// ISO timestamp format
 		const tsMatch = line.match(/^(\d{4}-\d{2}-\d{2}[\sT]\d{2}:\d{2}:\d{2}[\.\d]*)/);
-		// Nginx/Apache log format: [11/Mar/2026:09:26:42 +0000]
 		const nginxTsMatch = line.match(/\[(\d{2}\/\w{3}\/\d{4}:\d{2}:\d{2}:\d{2}[^\]]*)\]/);
 		const levelMatch = line.match(/\b(INFO|WARN|ERROR|DEBUG)\b/i);
 		const timestamp = tsMatch ? tsMatch[1] : (nginxTsMatch ? nginxTsMatch[1] : '');
@@ -204,7 +206,6 @@
 		if (e.key === 'Escape') onClose();
 	}
 
-	// Sparkline: handle 1+ data points
 	function buildSparklinePath(history: number[], maxVal: number, width: number, height: number): string {
 		if (history.length === 0) return '';
 		const effectiveMax = maxVal > 0 ? maxVal : 1;
@@ -212,7 +213,6 @@
 		const offsetX = (MAX_HISTORY - history.length) * stepX;
 		if (history.length === 1) {
 			const y = height - (Math.min(history[0], effectiveMax) / effectiveMax) * height;
-			// Draw a horizontal line at the current value
 			return `M${offsetX.toFixed(1)},${y.toFixed(1)} L${width.toFixed(1)},${y.toFixed(1)}`;
 		}
 		return history.map((val, i) => {
@@ -269,9 +269,36 @@
 		await fetchMetrics();
 	}
 
+	$effect(() => {
+		const current = container;
+		if (current) {
+			// Reset state for new container
+			activeTab = 'info';
+			details = null;
+			metricsData = null;
+			cpuHistory = [];
+			memoryHistory = [];
+			logs = [];
+			errorMsg = '';
+			envExpanded = false;
+			containerState = current.state;
+			containerStatus = current.status;
+
+			loadData();
+
+			// Clear previous intervals
+			if (metricsInterval) clearInterval(metricsInterval);
+			if (logsInterval) clearInterval(logsInterval);
+			metricsInterval = setInterval(fetchMetrics, 5000);
+		} else {
+			if (metricsInterval) clearInterval(metricsInterval);
+			if (logsInterval) clearInterval(logsInterval);
+			metricsInterval = null;
+			logsInterval = null;
+		}
+	});
+
 	onMount(() => {
-		loadData();
-		metricsInterval = setInterval(fetchMetrics, 5000);
 		document.addEventListener('keydown', handleKeydown);
 	});
 
@@ -343,17 +370,17 @@
 								</div>
 								<div class="info-item">
 									<span class="info-label">생성일</span>
-									<span class="info-value">{details?.inspect?.Created ? new Date(details.inspect.Created).toLocaleString('ko-KR') : '-'}</span>
+									<span class="info-value">{details?.inspect?.Created ? new Date(details?.inspect?.Created).toLocaleString('ko-KR') : '-'}</span>
 								</div>
 								<div class="info-item">
 									<span class="info-label">시작 시각</span>
-									<span class="info-value">{details?.inspect?.State?.StartedAt ? new Date(details.inspect.State.StartedAt).toLocaleString('ko-KR') : '-'}</span>
+									<span class="info-value">{details?.inspect?.State?.StartedAt ? new Date(details?.inspect?.State?.StartedAt).toLocaleString('ko-KR') : '-'}</span>
 								</div>
 							</div>
 						</div>
 					</section>
 
-					{#if details?.inspect?.Config}
+					{#if inspectConfig}
 						<section class="section">
 							<div class="section-title">
 								<div class="section-dot"></div>
@@ -362,24 +389,24 @@
 							<div class="settings-grid">
 								<div class="info-card compact">
 									<span class="info-label">명령어</span>
-									<span class="info-value">{details.inspect.Config.Cmd?.join(' ') || 'N/A'}</span>
+									<span class="info-value">{inspectConfig?.Cmd?.join(' ') || 'N/A'}</span>
 								</div>
 								<div class="info-card compact">
 									<span class="info-label">작업 디렉토리</span>
-									<span class="info-value">{details.inspect.Config.WorkingDir || 'N/A'}</span>
+									<span class="info-value">{inspectConfig?.WorkingDir || 'N/A'}</span>
 								</div>
 							</div>
 							<div class="info-card">
 								<div class="env-header">
 									<span class="info-label">환경 변수</span>
-									{#if (details.inspect.Config.Env || []).length > 3}
+									{#if envVars.length > 3}
 										<button class="env-toggle" onclick={() => envExpanded = !envExpanded}>
-											{envExpanded ? '접기' : `전체 보기 (${details.inspect.Config.Env.length})`}
+											{envExpanded ? '접기' : `전체 보기 (${envVars.length})`}
 										</button>
 									{/if}
 								</div>
 								<div class="env-list">
-									{#each (envExpanded ? (details.inspect.Config.Env || []) : (details.inspect.Config.Env || []).slice(0, 3)) as env}
+									{#each (envExpanded ? envVars : envVars.slice(0, 3)) as env}
 										{@const parts = env.split('=')}
 										<div class="env-item">
 											<span class="env-key">{parts[0]}</span>
@@ -391,7 +418,7 @@
 						</section>
 					{/if}
 
-					{#if details?.stats}
+					{#if inspectStats}
 						<section class="section">
 							<div class="section-title">
 								<div class="section-dot"></div>
@@ -404,7 +431,7 @@
 								</div>
 								<div class="resource-card">
 									<span class="info-label">메모리 사용량</span>
-									<span class="resource-value">{metricsData?.memory ? formatMemoryMB(metricsData.memory.usage) : (details.stats.memory_stats ? formatBytes(details.stats.memory_stats.usage) : 'N/A')} <small class="resource-unit">{metricsData?.memory ? 'MB' : ''}</small></span>
+									<span class="resource-value">{metricsData?.memory ? formatMemoryMB(metricsData.memory.usage) : (inspectStats?.memory_stats ? formatBytes(inspectStats.memory_stats.usage) : 'N/A')} <small class="resource-unit">{metricsData?.memory ? 'MB' : ''}</small></span>
 								</div>
 								<div class="resource-card">
 									<span class="info-label">네트워크 (RX/TX)</span>

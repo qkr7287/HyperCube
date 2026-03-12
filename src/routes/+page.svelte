@@ -54,6 +54,9 @@
 
 	function openContainerDetail(container: Container) {
 		selectedContainer = container;
+		const rawProject = container.labels?.['com.docker.compose.project'] || 'default';
+		const projectName = extractProjectPrefix(rawProject);
+		updateGraphForProject(projectName);
 	}
 
 	function closeContainerDetail() {
