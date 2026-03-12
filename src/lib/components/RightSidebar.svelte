@@ -183,14 +183,6 @@
 			{/each}
 		</div>
 
-		<!-- Show All Button -->
-		<button class="show-all-btn">
-			<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-				<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-				<rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
-			</svg>
-			<span>SHOW ALL {projects.length} CONTAINER GROUPS</span>
-		</button>
 	{:else}
 		<!-- List View: Stat Cards (Figma) -->
 		<div class="list-stats">
@@ -388,29 +380,6 @@
 		font-size: 12px;
 		font-weight: 700;
 		width: fit-content;
-	}
-
-	.show-all-btn {
-		flex-shrink: 0;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 8px;
-		width: 100%;
-		padding: 16px;
-		background: transparent;
-		border: 1px solid var(--accent);
-		border-radius: var(--radius-md);
-		color: var(--accent);
-		font-size: 11px;
-		font-weight: 700;
-		cursor: pointer;
-		transition: all 0.2s;
-		margin-top: 8px;
-	}
-
-	.show-all-btn:hover {
-		background: rgba(48, 213, 200, 0.1);
 	}
 
 	/* List View Styles */

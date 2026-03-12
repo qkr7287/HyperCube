@@ -23,9 +23,15 @@
 	let {
 		systemInfo = null,
 		totalContainers = 0,
+		onOpenNetwork = () => {},
+		onOpenLogin = () => {},
+		onOpenProcess = () => {},
 	}: {
 		systemInfo: SystemInfo | null;
 		totalContainers: number;
+		onOpenNetwork: () => void;
+		onOpenLogin: () => void;
+		onOpenProcess: () => void;
 	} = $props();
 
 	function getHealthPercent(info: SystemInfo): number {
@@ -87,7 +93,7 @@
 					<span class="value">{systemInfo.disk.total}</span>
 				</div>
 
-				<div class="info-row">
+				<div class="info-row clickable" onclick={onOpenNetwork} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenNetwork()}>
 					<div class="info-label-group">
 						<img src={iconNetwork} alt="" class="icon" />
 						<span class="label">Network</span>
@@ -95,7 +101,7 @@
 					<span class="value">{systemInfo.network?.connections ?? '-'}</span>
 				</div>
 
-				<div class="info-row">
+				<div class="info-row clickable" onclick={onOpenLogin} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenLogin()}>
 					<div class="info-label-group">
 						<img src={iconLogins} alt="" class="icon" />
 						<span class="label">Logins</span>
@@ -103,7 +109,7 @@
 					<span class="value">{systemInfo.logins?.total ?? 0}</span>
 				</div>
 
-				<div class="info-row">
+				<div class="info-row clickable" onclick={onOpenProcess} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenProcess()}>
 					<div class="info-label-group">
 						<img src={iconProcess} alt="" class="icon" />
 						<span class="label">Process Total</span>
@@ -183,9 +189,16 @@
 		align-items: center;
 	}
 
-	.info-row.border-top {
-		padding-top: 20px;
-		border-top: 1px solid var(--border);
+	.info-row.clickable {
+		cursor: pointer;
+		border-radius: 6px;
+		padding: 4px 8px;
+		margin: -4px -8px;
+		transition: background 0.15s ease;
+	}
+
+	.info-row.clickable:hover {
+		background: rgba(48, 213, 200, 0.08);
 	}
 
 	.info-label-group {

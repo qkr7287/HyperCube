@@ -6,6 +6,9 @@
 	import TopologyToolbar from '$lib/components/TopologyToolbar.svelte';
 	import RackUtilization from '$lib/components/RackUtilization.svelte';
 	import ContainerDetailModal from '$lib/components/ContainerDetailModal.svelte';
+	import NetworkDetailModal from '$lib/components/NetworkDetailModal.svelte';
+	import LoginDetailModal from '$lib/components/LoginDetailModal.svelte';
+	import ProcessDetailModal from '$lib/components/ProcessDetailModal.svelte';
 
 	interface Container {
 		id: string;
@@ -51,6 +54,9 @@
 	let starfieldRotationId: number | null = null;
 	let viewMode = 'group';
 	let selectedContainer: Container | null = null;
+	let networkModalOpen = false;
+	let loginModalOpen = false;
+	let processModalOpen = false;
 
 	function openContainerDetail(container: Container) {
 		selectedContainer = container;
@@ -926,6 +932,9 @@
 	<LeftSidebar
 		{systemInfo}
 		totalContainers={containers.length}
+		onOpenNetwork={() => { networkModalOpen = true; }}
+		onOpenLogin={() => { loginModalOpen = true; }}
+		onOpenProcess={() => { processModalOpen = true; }}
 	/>
 
 	<!-- Center: 3D Topology -->
@@ -969,6 +978,21 @@
 	container={selectedContainer}
 	onClose={closeContainerDetail}
 	onStateChange={fetchData}
+/>
+
+<NetworkDetailModal
+	open={networkModalOpen}
+	onClose={() => { networkModalOpen = false; }}
+/>
+
+<LoginDetailModal
+	open={loginModalOpen}
+	onClose={() => { loginModalOpen = false; }}
+/>
+
+<ProcessDetailModal
+	open={processModalOpen}
+	onClose={() => { processModalOpen = false; }}
 />
 
 <style>
