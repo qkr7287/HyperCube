@@ -41,7 +41,7 @@
 	let stoppedCount = $derived(containers.filter(c => c.state === 'exited').length);
 	let waitingCount = $derived(containers.length - runningCount - stoppedCount);
 
-	let alertingProjects = $derived(projects.filter(p => p.stats.stopped > 0));
+
 
 	// List view state
 	let searchQuery = $state('');
@@ -167,12 +167,6 @@
 
 		<!-- Project List -->
 		<div class="project-list">
-			{#if alertingProjects.length > 0}
-				<div class="alert-badge">
-					{alertingProjects.length} ALERTING OPS
-				</div>
-			{/if}
-
 			{#each projects as project}
 				<ProjectCard
 					{project}
@@ -366,20 +360,6 @@
 		flex: 1;
 		min-height: 0;
 		padding-bottom: 16px;
-	}
-
-	.alert-badge {
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		padding: 6px 12px;
-		background: rgba(239, 62, 94, 0.1);
-		border: 1px solid rgba(239, 62, 94, 0.3);
-		border-radius: var(--radius-sm);
-		color: var(--error-soft);
-		font-size: 12px;
-		font-weight: 700;
-		width: fit-content;
 	}
 
 	/* List View Styles */

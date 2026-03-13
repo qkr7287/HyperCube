@@ -724,7 +724,7 @@
 		// @ts-ignore
 		import('d3-force-3d').then(d3 => {
 			graph.d3Force('scatter', null);
-			graph.d3Force('cluster', d3.forceRadial(30, 0, 0, 0).strength(0.08));
+			graph.d3Force('cluster', d3.forceRadial(8, 0, 0, 0).strength(0.25));
 			graph.cooldownTicks(300);
 			graph.d3AlphaDecay(0.008);
 			graph.d3VelocityDecay(0.6);
