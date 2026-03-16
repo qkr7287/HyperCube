@@ -9,6 +9,7 @@ export default defineConfig(({ mode }) => {
 		plugins: [sveltekit()],
 		server: {
 			host: true,
+			port: 3334,
 			proxy: {
 				'/api': {
 					target: apiTarget,

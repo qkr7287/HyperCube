@@ -8,7 +8,6 @@ RUN npm ci
 
 COPY . .
 
-ENV BASE_PATH=/dcmtool
 RUN npm run build
 
 # Production stage
@@ -26,11 +25,10 @@ COPY --from=builder /app/node_modules ./node_modules
 ENV NODE_ENV=production
 ENV PORT=3334
 ENV ORIGIN=http://192.168.0.16:7003
-ENV BASE_PATH=/dcmtool
 
 EXPOSE 3334
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost:3334/dcmtool/ || exit 1
+  CMD wget -qO- http://localhost:3334/ || exit 1
 
 CMD ["node", "build"]
