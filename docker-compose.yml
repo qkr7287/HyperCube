@@ -1,33 +1,19 @@
-version: '3.8'
-
 services:
   dcm-frontend:
     build: .
     container_name: dcm-frontend
-    # network_mode: host 사용시 포트 매핑 불필요 (호스트의 5173 포트 직접 사용)
-    # ports:
-    #   - "3334:5173"
+    restart: unless-stopped
+    ports:
+      - "3334:3334"
     volumes:
-      # Docker 소켓 마운트 (컨테이너 모니터링을 위해 필요)
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      # 호스트 시스템 정보 접근을 위한 추가 볼륨
+      - /var/run/docker.sock:/var/run/docker.sock
       - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /etc:/host/etc:ro
-      - /var/run:/host/var/run:ro
-      - /dev:/host/dev:ro
+      - /etc/hostname:/host/etc/hostname:ro
+      - /var/run/utmp:/host/var/run/utmp:ro
     environment:
       - NODE_ENV=production
-      - HOST=0.0.0.0
       - PORT=3334
-    restart: unless-stopped
-    privileged: true  # 시스템 정보 접근을 위해 필요
-    pid: host  # 호스트의 프로세스 네임스페이스 사용
-    network_mode: host  # 호스트의 네트워크 네임스페이스 사용
-    # network_mode: host 사용시 networks 섹션 불필요
-    # networks:
-    #   - monitor-network
-
-networks:
-  monitor-network:
-    driver: bridge
+      - ORIGIN=http://192.168.0.16:7003
+      - BASE_PATH=/dcmtool
+    pid: host
+    privileged: true

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
+	import { base } from '$app/paths';
 	import LeftSidebar from '$lib/components/LeftSidebar.svelte';
 	import RightSidebar from '$lib/components/RightSidebar.svelte';
 	import TopologyToolbar from '$lib/components/TopologyToolbar.svelte';
@@ -738,7 +739,7 @@
 
 	async function fetchData() {
 		try {
-			const response = await fetch('/api/containers');
+			const response = await fetch(`${base}/api/containers`);
 			const result = await response.json();
 			if (result.success) {
 				containers = result.data;
@@ -767,7 +768,7 @@
 
 	async function fetchSystemInfoData() {
 		try {
-			const response = await fetch('/api/system');
+			const response = await fetch(`${base}/api/system`);
 			const result = await response.json();
 			if (result.success) {
 				systemInfo = result.data;

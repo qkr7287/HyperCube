@@ -117,6 +117,49 @@ src/
 - 주요 프레임: `01.메인`, `02.메인 > 리스트`, `04~06.컨테이너 상세 정보`
 - 아이콘은 이미 `src/lib/assets/icons/`에 추출 완료
 
+## 배포 아키텍처
+
+### 인프라 구조
+- **개발**: Windows PC → `npm run dev` (localhost:5173) → vite proxy → 192.168.0.16:3334
+- **운영**: nginx(agdevblog_frontend, port 7003) → `/dcmtool` reverse proxy → dcm-frontend 컨테이너(port 3334)
+- **접속 URL**: `http://192.168.0.16:7003/dcmtool`
+
+### 배포 설정 (adapter-node)
+- `svelte.config.js`: `paths.base: process.env.BASE_PATH || ''`
+- `vite.config.ts`: `API_TARGET` 환경변수로 프록시 대상 설정
+- 모든 fetch 경로에 `${base}` 적용 완료 (`import { base } from '$app/paths'`)
+- Dockerfile: multi-stage build, `BASE_PATH=/dcmtool`, port 3334
+- docker-compose.yml: docker.sock, /proc, /etc/hostname, utmp 마운트, pid:host, privileged
+- 로컬 빌드 테스트: `MSYS_NO_PATHCONV=1 BASE_PATH=/dcmtool npm run build` (Git Bash path conversion 방지)
+
+### CI/CD 플로우 (GitHub Actions)
+```
+1. DCMTool_TS dev → PR → DCMTool_TS main  (수동 승인)
+2. DCMTool_TS main → DCMTool dev           (자동, sync-to-dcmtool.yml)
+3. DCMTool dev → PR → DCMTool main         (수동 승인)
+4. DCMTool main 머지 → 16번 서버 배포       (자동, deploy.yml, self-hosted runner)
+```
+
+### Repo 정보
+- **DCMTool_TS**: `qkr7287/DCMTool_TS` (개인 작업 repo, Claude Code MCP 연결)
+- **DCMTool**: `dev-agics/DCMTool` (팀 공유 repo, 배포 대상)
+
+### CI/CD 진행상황 (TODO)
+- [x] adapter-node 전환 + BASE_PATH 설정
+- [x] 모든 fetch 경로 `${base}` 적용
+- [x] Dockerfile, docker-compose.yml, .dockerignore 작성
+- [x] 로컬 빌드 테스트 통과
+- [x] DCMTool_TS: `.github/workflows/sync-to-dcmtool.yml` 작성
+- [x] DCMTool: `.github/workflows/deploy.yml` 작성 (self-hosted runner)
+- [ ] 두 repo에 `dev` 브랜치 생성
+- [ ] GitHub Secrets 설정:
+  - DCMTool_TS: `DCMTOOL_PAT` (dev-agics/DCMTool push 권한 PAT)
+  - DCMTool: `DEPLOY_PATH` (16번 서버의 DCMTool 프로젝트 경로)
+- [ ] 16번 서버에 self-hosted runner 설치 (Settings → Actions → Runners)
+- [ ] DCMTool_TS 변경사항 commit + push
+- [ ] DCMTool에 workflow 파일 commit + push
+- [ ] 전체 플로우 테스트 (dev→main PR → 동기화 → 배포)
+
 ## 참고: 이전 프로젝트
 
 `C:\Users\agics\Desktop\workspace\01. git\DCMTool` - Svelte 4 버전. 192.168.0.16 서버에서 운영.

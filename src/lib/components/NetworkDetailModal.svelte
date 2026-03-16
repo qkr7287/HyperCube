@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { base } from '$app/paths';
+
 	let {
 		open = false,
 		onClose = () => {},
@@ -25,7 +27,7 @@
 	async function fetchData() {
 		loading = true;
 		try {
-			const res = await fetch('/api/system/network');
+			const res = await fetch(`${base}/api/system/network`);
 			const result = await res.json();
 			if (result.success) data = result.data;
 		} catch (e) {
