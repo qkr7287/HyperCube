@@ -9,7 +9,7 @@ export const GET: RequestHandler = async () => {
 	try {
 		// 호스트 네임스페이스 직접 사용 - 정확한 로그인 정보 가져오기
 		const [whoOutput, uptimeOutput, lastBootOutput] = await Promise.all([
-			execAsync('nsenter -t 1 -n who 2>/dev/null || who'),
+			execAsync('nsenter -t 1 -m -u who 2>/dev/null || who'),
 			execAsync('cat /host/proc/uptime'),
 			execAsync('cat /host/proc/stat | grep btime')
 		]);

@@ -1,6 +1,9 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, untrack } from 'svelte';
 	import { base } from '$app/paths';
+	import { Chart, LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend } from 'chart.js';
+
+	Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend);
 
 	interface Container {
 		id: string;
@@ -67,6 +70,150 @@
 
 	let memLimitMB = $derived((metricsData?.memory?.limit || 1) / 1048576);
 
+	// Chart.js
+	let cpuCanvas: HTMLCanvasElement | undefined = $state(undefined);
+	let memCanvas: HTMLCanvasElement | undefined = $state(undefined);
+	let cpuChart: Chart | null = null;
+	let memChart: Chart | null = null;
+	let timeLabels: string[] = $state([]);
+
+	function formatTime(date: Date): string {
+		return date.toTimeString().slice(0, 8); // HH:MM:SS
+	}
+
+	function calcYRange(data: number[], unit: string): { min: number; max: number } {
+		if (data.length === 0) return unit === '%' ? { min: 0, max: 10 } : { min: 0, max: 100 };
+		const min = Math.min(...data);
+		const max = Math.max(...data);
+		const range = max - min || 1;
+		const padBottom = range * 0.15;
+		const padTop = range * 0.3; // extra top padding so dot is never clipped
+		const yMin = Math.max(0, Math.floor((min - padBottom) * 10) / 10);
+		let yMax = Math.ceil((max + padTop) * 10) / 10;
+		if (unit === '%') yMax = Math.min(yMax, 100);
+		if (yMin === yMax) return { min: yMin, max: yMax + 1 };
+		return { min: yMin, max: yMax };
+	}
+
+	function createChart(canvas: HTMLCanvasElement, color: string, unit: string): Chart {
+		const ctx = canvas.getContext('2d')!;
+		const gradient = ctx.createLinearGradient(0, 0, 0, canvas.clientHeight);
+		gradient.addColorStop(0, color.replace(')', ', 0.4)').replace('rgb', 'rgba'));
+		gradient.addColorStop(0.6, color.replace(')', ', 0.08)').replace('rgb', 'rgba'));
+		gradient.addColorStop(1, color.replace(')', ', 0)').replace('rgb', 'rgba'));
+
+		return new Chart(ctx, {
+			type: 'line',
+			data: {
+				labels: [],
+				datasets: [{
+					data: [],
+					borderColor: color,
+					backgroundColor: gradient,
+					borderWidth: 2,
+					fill: true,
+					tension: 0.35,
+					pointRadius: 0,
+					pointHoverRadius: 5,
+					pointHoverBackgroundColor: color,
+					pointHoverBorderColor: '#0d1117',
+					pointHoverBorderWidth: 2,
+					clip: false as any,
+				}]
+			},
+			options: {
+				responsive: true,
+				maintainAspectRatio: false,
+				animation: { duration: 400, easing: 'easeOutQuart' },
+				interaction: { intersect: false, mode: 'index' },
+				plugins: {
+					legend: { display: false },
+					tooltip: {
+						backgroundColor: '#1e293b',
+						titleColor: '#94a3b8',
+						bodyColor: '#e2e8f0',
+						borderColor: '#334155',
+						borderWidth: 1,
+						padding: 10,
+						titleFont: { size: 11 },
+						bodyFont: { size: 13, weight: 'bold' as const },
+						displayColors: false,
+						callbacks: {
+							label: (item) => {
+								const val = item.parsed.y;
+								return unit === '%' ? `${val.toFixed(2)}%` : `${val.toFixed(1)} MB`;
+							}
+						}
+					}
+				},
+				scales: {
+					x: {
+						grid: { color: 'rgba(255,255,255,0.04)', drawTicks: false },
+						ticks: {
+							color: '#64748b',
+							font: { size: 10, family: "'JetBrains Mono', monospace" },
+							maxRotation: 0,
+							padding: 6,
+							autoSkip: true,
+							maxTicksLimit: 8,
+						},
+						border: { display: false }
+					},
+					y: {
+						grid: { color: 'rgba(255,255,255,0.05)', drawTicks: false },
+						ticks: {
+							color: '#64748b',
+							font: { size: 10, family: "'JetBrains Mono', monospace" },
+							padding: 8,
+							maxTicksLimit: 5,
+							callback: (value) => unit === '%'
+								? `${Number(value).toFixed(1)}%`
+								: (Number(value) >= 1024 ? `${(Number(value) / 1024).toFixed(1)}G` : `${Math.round(Number(value))}M`)
+						},
+						border: { display: false }
+					}
+				}
+			}
+		});
+	}
+
+	function pushChartData(chart: Chart | null, data: number[], labels: string[], unit: string) {
+		if (!chart) return;
+		const ds = chart.data;
+		// Spread to plain arrays - Svelte 5 $state proxies break Chart.js property descriptors
+		ds.labels = [...labels];
+		ds.datasets[0].data = [...data];
+
+		// Dynamic Y range
+		const { min, max } = calcYRange(data, unit);
+		const yScale = chart.options.scales!.y!;
+		(yScale as any).min = min;
+		(yScale as any).max = max;
+
+		// Last point dot
+		ds.datasets[0].pointRadius = data.map((_, i) => i === data.length - 1 ? 4 : 0) as any;
+		ds.datasets[0].pointBackgroundColor = ds.datasets[0].borderColor as string;
+
+		chart.update('none');
+	}
+
+	function initCharts() {
+		destroyCharts();
+		if (cpuCanvas) {
+			cpuChart = createChart(cpuCanvas, 'rgb(48, 213, 200)', '%');
+			if (cpuHistory.length > 0) pushChartData(cpuChart, cpuHistory, timeLabels, '%');
+		}
+		if (memCanvas) {
+			memChart = createChart(memCanvas, 'rgb(188, 19, 254)', 'MB');
+			if (memoryHistory.length > 0) pushChartData(memChart, memoryHistory, timeLabels, 'MB');
+		}
+	}
+
+	function destroyCharts() {
+		if (cpuChart) { cpuChart.destroy(); cpuChart = null; }
+		if (memChart) { memChart.destroy(); memChart = null; }
+	}
+
 	// Safe accessors for details
 	let inspectConfig = $derived(details?.inspect?.Config);
 	let inspectStats = $derived(details?.stats);
@@ -101,8 +248,12 @@
 				metricsData = data.data;
 				const cpuVal = metricsData.cpu?.usage || 0;
 				const memVal = (metricsData.memory?.usage || 0) / 1048576;
+				const now = formatTime(new Date());
 				cpuHistory = [...cpuHistory.slice(-(MAX_HISTORY - 1)), cpuVal];
 				memoryHistory = [...memoryHistory.slice(-(MAX_HISTORY - 1)), memVal];
+				timeLabels = [...timeLabels.slice(-(MAX_HISTORY - 1)), now];
+				pushChartData(cpuChart, cpuHistory, timeLabels, '%');
+				pushChartData(memChart, memoryHistory, timeLabels, 'MB');
 			}
 		} catch (e) {
 			console.error('Failed to fetch metrics:', e);
@@ -207,40 +358,6 @@
 		if (e.key === 'Escape') onClose();
 	}
 
-	function buildSparklinePath(history: number[], maxVal: number, width: number, height: number): string {
-		if (history.length === 0) return '';
-		const effectiveMax = maxVal > 0 ? maxVal : 1;
-		const stepX = width / (MAX_HISTORY - 1);
-		const offsetX = (MAX_HISTORY - history.length) * stepX;
-		if (history.length === 1) {
-			const y = height - (Math.min(history[0], effectiveMax) / effectiveMax) * height;
-			return `M${offsetX.toFixed(1)},${y.toFixed(1)} L${width.toFixed(1)},${y.toFixed(1)}`;
-		}
-		return history.map((val, i) => {
-			const x = offsetX + i * stepX;
-			const y = height - (Math.min(val, effectiveMax) / effectiveMax) * height;
-			return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-		}).join(' ');
-	}
-
-	function buildSparklineArea(history: number[], maxVal: number, width: number, height: number): string {
-		if (history.length === 0) return '';
-		const effectiveMax = maxVal > 0 ? maxVal : 1;
-		const stepX = width / (MAX_HISTORY - 1);
-		const offsetX = (MAX_HISTORY - history.length) * stepX;
-		if (history.length === 1) {
-			const y = height - (Math.min(history[0], effectiveMax) / effectiveMax) * height;
-			return `M${offsetX.toFixed(1)},${y.toFixed(1)} L${width.toFixed(1)},${y.toFixed(1)} L${width.toFixed(1)},${height} L${offsetX.toFixed(1)},${height} Z`;
-		}
-		const path = history.map((val, i) => {
-			const x = offsetX + i * stepX;
-			const y = height - (Math.min(val, effectiveMax) / effectiveMax) * height;
-			return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-		}).join(' ');
-		const lastX = offsetX + (history.length - 1) * stepX;
-		return `${path} L${lastX.toFixed(1)},${height} L${offsetX.toFixed(1)},${height} Z`;
-	}
-
 	async function loadData() {
 		if (!container) return;
 		loadingInfo = true;
@@ -272,31 +389,51 @@
 
 	$effect(() => {
 		const current = container;
-		if (current) {
-			// Reset state for new container
-			activeTab = 'info';
-			details = null;
-			metricsData = null;
-			cpuHistory = [];
-			memoryHistory = [];
-			logs = [];
-			errorMsg = '';
-			envExpanded = false;
-			containerState = current.state;
-			containerStatus = current.status;
 
-			loadData();
+		untrack(() => {
+			if (current) {
+				// Reset state for new container
+				activeTab = 'info';
+				details = null;
+				metricsData = null;
+				cpuHistory = [];
+				memoryHistory = [];
+				timeLabels = [];
+				logs = [];
+				errorMsg = '';
+				envExpanded = false;
+				containerState = current.state;
+				containerStatus = current.status;
 
-			// Clear previous intervals
-			if (metricsInterval) clearInterval(metricsInterval);
-			if (logsInterval) clearInterval(logsInterval);
-			metricsInterval = setInterval(fetchMetrics, 5000);
-		} else {
-			if (metricsInterval) clearInterval(metricsInterval);
-			if (logsInterval) clearInterval(logsInterval);
-			metricsInterval = null;
-			logsInterval = null;
-		}
+				loadData();
+
+				// Clear previous intervals
+				if (metricsInterval) clearInterval(metricsInterval);
+				if (logsInterval) clearInterval(logsInterval);
+				metricsInterval = setInterval(fetchMetrics, 5000);
+			} else {
+				if (metricsInterval) clearInterval(metricsInterval);
+				if (logsInterval) clearInterval(logsInterval);
+				metricsInterval = null;
+				logsInterval = null;
+			}
+		});
+	});
+
+	// Initialize charts when metrics tab is active and canvases are ready
+	$effect(() => {
+		const tab = activeTab;
+		const cpu = cpuCanvas;
+		const mem = memCanvas;
+
+		untrack(() => {
+			if (tab === 'metrics' && cpu && mem) {
+				// Wait for canvas to be rendered in DOM
+				setTimeout(() => initCharts(), 0);
+			} else {
+				destroyCharts();
+			}
+		});
 	});
 
 	onMount(() => {
@@ -306,6 +443,7 @@
 	onDestroy(() => {
 		if (metricsInterval) clearInterval(metricsInterval);
 		if (logsInterval) clearInterval(logsInterval);
+		destroyCharts();
 		document.removeEventListener('keydown', handleKeydown);
 	});
 </script>
@@ -453,36 +591,20 @@
 					<div class="metrics-grid-top">
 						<div class="metrics-card">
 							<div class="metrics-card-header">
-								<span class="metrics-card-title">CPU Usage (%)</span>
-								<span class="metrics-current cpu">{metricsData.cpu?.usage?.toFixed(2) || '0.00'}% Current</span>
+								<span class="metrics-card-title">CPU Usage</span>
+								<span class="metrics-current cpu">{metricsData.cpu?.usage?.toFixed(2) || '0.00'}%</span>
 							</div>
-							<div class="chart-area">
-								<svg width="100%" height="160" viewBox="0 0 400 160" preserveAspectRatio="none">
-									{#each [0, 25, 50, 75, 100] as pct}
-										<line x1="0" y1={160 - pct * 1.6} x2="400" y2={160 - pct * 1.6} stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
-									{/each}
-									{#if cpuHistory.length >= 1}
-										<path d={buildSparklineArea(cpuHistory, 100, 400, 160)} fill="rgba(48,213,200,0.15)" />
-										<path d={buildSparklinePath(cpuHistory, 100, 400, 160)} fill="none" stroke="#30d5c8" stroke-width="2" />
-									{/if}
-								</svg>
+							<div class="chart-area-canvas">
+								<canvas bind:this={cpuCanvas}></canvas>
 							</div>
 						</div>
 						<div class="metrics-card">
 							<div class="metrics-card-header">
-								<span class="metrics-card-title">Memory Usage (MB)</span>
+								<span class="metrics-card-title">Memory Usage</span>
 								<span class="metrics-current memory">{formatMemoryMB(metricsData.memory?.usage || 0)} MB</span>
 							</div>
-							<div class="chart-area">
-								<svg width="100%" height="160" viewBox="0 0 400 160" preserveAspectRatio="none">
-									{#each [0, 25, 50, 75, 100] as pct}
-										<line x1="0" y1={160 - pct * 1.6} x2="400" y2={160 - pct * 1.6} stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
-									{/each}
-									{#if memoryHistory.length >= 1}
-										<path d={buildSparklineArea(memoryHistory, memLimitMB, 400, 160)} fill="rgba(188,19,254,0.15)" />
-										<path d={buildSparklinePath(memoryHistory, memLimitMB, 400, 160)} fill="none" stroke="#bc13fe" stroke-width="2" />
-									{/if}
-								</svg>
+							<div class="chart-area-canvas">
+								<canvas bind:this={memCanvas}></canvas>
 							</div>
 						</div>
 					</div>
@@ -871,12 +993,18 @@
 	.metrics-current.cpu { color: #30d5c8; }
 	.metrics-current.memory { color: #bc13fe; }
 
-	.chart-area {
-		height: 160px;
+	.chart-area-canvas {
+		height: 240px;
 		background: #151c27;
 		border: 1px solid #1f2937;
-		border-radius: 4px;
-		overflow: hidden;
+		border-radius: 6px;
+		padding: 8px 8px 8px 4px;
+		position: relative;
+	}
+
+	.chart-area-canvas canvas {
+		width: 100% !important;
+		height: 100% !important;
 	}
 
 	/* Network */

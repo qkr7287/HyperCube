@@ -250,13 +250,11 @@ async function getNetworkInfo(): Promise<{connections: number, interfaces: strin
 
 async function getLoginInfo(): Promise<{totalUsers: number, activeUsers: number}> {
 	try {
-		// /host/var/run/utmp 직접 읽기로 로그인 정보 가져오기
-		const { stdout } = await execAsync('cat /host/var/run/utmp | strings | grep -E "^[a-zA-Z0-9_-]+" | wc -l');
-		const totalUsers = parseInt(stdout.trim()) || 0;
-		
-		const { stdout: whoResult } = await execAsync('cat /host/var/run/utmp | strings | grep -E "pts[0-9]+" | wc -l');
-		const activeUsers = parseInt(whoResult.trim()) || 0;
-			
+		const { stdout } = await execAsync('nsenter -t 1 -m -u who 2>/dev/null || who');
+		const lines = stdout.split('\n').filter(line => line.trim());
+		const totalUsers = lines.length;
+		const activeUsers = lines.filter(line => line.includes('pts/')).length;
+
 		return {
 			totalUsers: Math.max(0, totalUsers),
 			activeUsers: Math.max(0, activeUsers)
