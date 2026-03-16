@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { base } from '$app/paths';
+
 	let {
 		open = false,
 		onClose = () => {},
@@ -29,7 +31,7 @@
 	async function fetchData() {
 		loading = true;
 		try {
-			const res = await fetch('/api/system/processes');
+			const res = await fetch(`${base}/api/system/processes`);
 			const result = await res.json();
 			if (result.success) data = result.data;
 		} catch (e) {

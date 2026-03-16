@@ -1,0 +1,21 @@
+# DCMTool_TS main → DCMTool dev 자동 동기화
+name: Sync to DCMTool
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout DCMTool_TS
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to DCMTool dev branch
+        run: |
+          git remote add dcmtool https://x-access-token:${{ secrets.DCMTOOL_PAT }}@github.com/dev-agics/DCMTool.git
+          git push dcmtool main:dev --force

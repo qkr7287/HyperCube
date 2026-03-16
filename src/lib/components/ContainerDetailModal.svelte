@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { base } from '$app/paths';
 
 	interface Container {
 		id: string;
@@ -74,7 +75,7 @@
 	async function fetchDetails() {
 		if (!container) return;
 		try {
-			const res = await fetch(`/api/containers/${container.id}`);
+			const res = await fetch(`${base}/api/containers/${container.id}`);
 			const data = await res.json();
 			if (data.success) {
 				details = data.data;
@@ -94,7 +95,7 @@
 		const state = containerState || container?.state;
 		if (state !== 'running') return;
 		try {
-			const res = await fetch(`/api/containers/${container.id}/metrics`);
+			const res = await fetch(`${base}/api/containers/${container.id}/metrics`);
 			const data = await res.json();
 			if (data.success) {
 				metricsData = data.data;
@@ -111,7 +112,7 @@
 	async function fetchLogs() {
 		if (!container) return;
 		try {
-			const res = await fetch(`/api/containers/${container.id}/logs?tail=100`);
+			const res = await fetch(`${base}/api/containers/${container.id}/logs?tail=100`);
 			const data = await res.json();
 			if (data.success && data.data?.logs) {
 				logs = data.data.logs;
@@ -162,7 +163,7 @@
 		if (!container || controlLoading) return;
 		controlLoading = action;
 		try {
-			const res = await fetch(`/api/containers/${container.id}/control`, {
+			const res = await fetch(`${base}/api/containers/${container.id}/control`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ action }),
