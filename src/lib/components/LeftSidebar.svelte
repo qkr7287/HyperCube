@@ -23,12 +23,18 @@
 	let {
 		systemInfo = null,
 		totalContainers = 0,
+		onOpenCpu = () => {},
+		onOpenMemory = () => {},
+		onOpenDisk = () => {},
 		onOpenNetwork = () => {},
 		onOpenLogin = () => {},
 		onOpenProcess = () => {},
 	}: {
 		systemInfo: SystemInfo | null;
 		totalContainers: number;
+		onOpenCpu: () => void;
+		onOpenMemory: () => void;
+		onOpenDisk: () => void;
 		onOpenNetwork: () => void;
 		onOpenLogin: () => void;
 		onOpenProcess: () => void;
@@ -69,7 +75,7 @@
 					<span class="value small">{systemInfo.os}</span>
 				</div>
 
-				<div class="info-row">
+				<div class="info-row clickable" onclick={onOpenCpu} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenCpu()}>
 					<div class="info-label-group">
 						<img src={iconCpu} alt="" class="icon" />
 						<span class="label">CPU Cores</span>
@@ -77,7 +83,7 @@
 					<span class="value">{systemInfo.cpu.cores}</span>
 				</div>
 
-				<div class="info-row">
+				<div class="info-row clickable" onclick={onOpenMemory} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenMemory()}>
 					<div class="info-label-group">
 						<img src={iconMemory} alt="" class="icon" />
 						<span class="label">Memory</span>
@@ -85,7 +91,7 @@
 					<span class="value">{systemInfo.memory.total}</span>
 				</div>
 
-				<div class="info-row">
+				<div class="info-row clickable" onclick={onOpenDisk} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenDisk()}>
 					<div class="info-label-group">
 						<img src={iconDisk} alt="" class="icon" />
 						<span class="label">Disk Total</span>

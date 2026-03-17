@@ -1,17 +1,17 @@
 <script lang="ts">
 	import iconScreenshot from '$lib/assets/icons/toolbar-screenshot.svg';
 	import iconRotate from '$lib/assets/icons/toolbar-rotate.svg';
-	import iconZoom from '$lib/assets/icons/toolbar-zoom.svg';
+	import iconReset from '$lib/assets/icons/toolbar-zoom.svg';
 
 	let {
 		onScreenshot = () => {},
 		onRotate = () => {},
-		onZoom = () => {},
+		onReset = () => {},
 		isRotating = false,
 	}: {
 		onScreenshot: () => void;
 		onRotate: () => void;
-		onZoom: () => void;
+		onReset: () => void;
 		isRotating: boolean;
 	} = $props();
 </script>
@@ -31,9 +31,9 @@
 
 	<div class="divider"></div>
 
-	<button class="toolbar-btn" onclick={onZoom}>
-		<img src={iconZoom} alt="" class="toolbar-icon" />
-		<span>Zoom</span>
+	<button class="toolbar-btn" onclick={onReset}>
+		<img src={iconReset} alt="" class="toolbar-icon" />
+		<span>Reset</span>
 	</button>
 </div>
 

@@ -10,6 +10,9 @@
 	import NetworkDetailModal from '$lib/components/NetworkDetailModal.svelte';
 	import LoginDetailModal from '$lib/components/LoginDetailModal.svelte';
 	import ProcessDetailModal from '$lib/components/ProcessDetailModal.svelte';
+	import CpuDetailModal from '$lib/components/CpuDetailModal.svelte';
+	import MemoryDetailModal from '$lib/components/MemoryDetailModal.svelte';
+	import DiskDetailModal from '$lib/components/DiskDetailModal.svelte';
 
 	interface Container {
 		id: string;
@@ -55,6 +58,9 @@
 	let starfieldRotationId: number | null = null;
 	let viewMode = 'group';
 	let selectedContainer: Container | null = null;
+	let cpuModalOpen = false;
+	let memoryModalOpen = false;
+	let diskModalOpen = false;
 	let networkModalOpen = false;
 	let loginModalOpen = false;
 	let processModalOpen = false;
@@ -487,6 +493,9 @@
 			}
 		}
 
+		// Set initial camera position
+		graph.cameraPosition({ x: 0, y: 0, z: 500 }, { x: 0, y: 0, z: 0 });
+
 		graphInitialized = true;
 
 		await ensureHullDeps();
@@ -876,13 +885,18 @@
 		autoRotatePausedByDrag = false;
 	}
 
-	function handleZoom() {
+	function handleReset() {
 		if (!graph) return;
-		const cam = graph.camera();
-		if (!cam) return;
-		const pos = cam.position;
+
+		// Deselect project
+		selectedProject = null;
+
+		// Unfix all nodes, gather to center
+		gatherNodesToCenter();
+
+		// Reset camera to initial default position
 		graph.cameraPosition(
-			{ x: pos.x * 0.7, y: pos.y * 0.7, z: pos.z * 0.7 },
+			{ x: 0, y: 0, z: 500 },
 			{ x: 0, y: 0, z: 0 },
 			800
 		);
@@ -933,6 +947,9 @@
 	<LeftSidebar
 		{systemInfo}
 		totalContainers={containers.length}
+		onOpenCpu={() => { cpuModalOpen = true; }}
+		onOpenMemory={() => { memoryModalOpen = true; }}
+		onOpenDisk={() => { diskModalOpen = true; }}
 		onOpenNetwork={() => { networkModalOpen = true; }}
 		onOpenLogin={() => { loginModalOpen = true; }}
 		onOpenProcess={() => { processModalOpen = true; }}
@@ -954,7 +971,7 @@
 			<TopologyToolbar
 				onScreenshot={handleScreenshot}
 				onRotate={handleRotate}
-				onZoom={handleZoom}
+				onReset={handleReset}
 				isRotating={autoRotating}
 			/>
 		</div>
@@ -979,6 +996,24 @@
 	container={selectedContainer}
 	onClose={closeContainerDetail}
 	onStateChange={fetchData}
+/>
+
+<CpuDetailModal
+	open={cpuModalOpen}
+	{systemInfo}
+	onClose={() => { cpuModalOpen = false; }}
+/>
+
+<MemoryDetailModal
+	open={memoryModalOpen}
+	{systemInfo}
+	onClose={() => { memoryModalOpen = false; }}
+/>
+
+<DiskDetailModal
+	open={diskModalOpen}
+	{systemInfo}
+	onClose={() => { diskModalOpen = false; }}
 />
 
 <NetworkDetailModal
