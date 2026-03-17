@@ -19,6 +19,7 @@ WORKDIR /app
 RUN apk add --no-cache util-linux procps iproute2 net-tools
 
 COPY --from=builder /app/build ./build
+COPY --from=builder /app/server.js ./
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/node_modules ./node_modules
 
@@ -31,4 +32,4 @@ EXPOSE 3334
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD wget -qO- http://localhost:3334/ || exit 1
 
-CMD ["node", "build"]
+CMD ["node", "server.js"]

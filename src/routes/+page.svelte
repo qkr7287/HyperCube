@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
 	import { base } from '$app/paths';
+	import { systemStore, containersStore, connect, disconnect } from '$lib/stores/ws-store';
 	import LeftSidebar from '$lib/components/LeftSidebar.svelte';
 	import RightSidebar from '$lib/components/RightSidebar.svelte';
 	import TopologyToolbar from '$lib/components/TopologyToolbar.svelte';
@@ -51,8 +52,11 @@
 	let selectedProject: string | null = null;
 	let graphContainer: HTMLDivElement;
 	let graph: any = null;
-	let refreshInterval: ReturnType<typeof setInterval>;
 	let lastUpdate = new Date();
+	let unsubSystem: (() => void) | null = null;
+	let unsubContainers: (() => void) | null = null;
+	let fallbackInterval: ReturnType<typeof setInterval> | null = null;
+	let wsDataReceived = false;
 	let cameraTransitioning = false;
 	let starfieldGroup: any = null;
 	let starfieldRotationId: number | null = null;
@@ -903,6 +907,7 @@
 	}
 
 	onMount(async () => {
+		// Initial data fetch (REST fallback for first paint)
 		await fetchData();
 		await fetchSystemInfoData();
 		await initGraph();
@@ -914,17 +919,56 @@
 			});
 		}
 
-		refreshInterval = setInterval(async () => {
-			await fetchData();
-			await fetchSystemInfoData();
-		}, 10000);
+		// Connect WebSocket and subscribe to stores
+		connect();
+
+		unsubSystem = systemStore.subscribe((data) => {
+			if (data) {
+				systemInfo = data;
+				wsDataReceived = true;
+				// WS is working, stop REST fallback
+				if (fallbackInterval) { clearInterval(fallbackInterval); fallbackInterval = null; }
+			}
+		});
+
+		unsubContainers = containersStore.subscribe((data) => {
+			if (data && data.length > 0) {
+				containers = data;
+				groupContainers(containers);
+				lastUpdate = new Date();
+				if (graph && graphInitialized) {
+					const currentNodes = graph.graphData().nodes;
+					currentNodes.forEach((node: any) => {
+						const updated = containers.find((c: Container) => c.id === node.id);
+						if (updated) {
+							node.state = updated.state;
+							node.val = updated.state === 'running' ? 8 : 4;
+						}
+					});
+					graph.nodeThreeObject(graph.nodeThreeObject());
+				}
+			}
+		});
+
+		// REST fallback: if WS doesn't deliver within 3s, poll via REST
+		setTimeout(() => {
+			if (!wsDataReceived) {
+				fallbackInterval = setInterval(async () => {
+					await fetchData();
+					await fetchSystemInfoData();
+				}, 10000);
+			}
+		}, 3000);
 	});
 
 	onDestroy(() => {
 		stopHullUpdates();
 		stopAutoRotate();
 		if (starfieldRotationId) cancelAnimationFrame(starfieldRotationId);
-		if (refreshInterval) clearInterval(refreshInterval);
+		if (unsubSystem) unsubSystem();
+		if (unsubContainers) unsubContainers();
+		if (fallbackInterval) clearInterval(fallbackInterval);
+		disconnect();
 		if (graph) graph._destructor?.();
 	});
 

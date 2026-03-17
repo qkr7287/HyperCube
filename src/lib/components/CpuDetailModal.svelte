@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { base } from '$app/paths';
 	import { untrack } from 'svelte';
+	import { cpuDetailStore, wsConnected, subscribe as wsSubscribe, unsubscribe as wsUnsubscribe } from '$lib/stores/ws-store';
 
 	let {
 		open = false,
@@ -14,7 +15,8 @@
 
 	let loading = $state(true);
 	let data: any = $state(null);
-	let refreshInterval: ReturnType<typeof setInterval> | null = null;
+	let unsubStore: (() => void) | null = null;
+	let fallbackInterval: ReturnType<typeof setInterval> | null = null;
 
 	function getHeatColor(usage: number): string {
 		if (usage < 15) return '#0d4f3c';
@@ -34,15 +36,27 @@
 		return '0 0 16px rgba(220,38,38,0.5)';
 	}
 
-	async function fetchData() {
+	async function fetchDataRest() {
 		try {
 			const res = await fetch(`${base}/api/system/cpu`);
 			const result = await res.json();
-			if (result.success) data = result.data;
+			if (result.success) {
+				data = result.data;
+				loading = false;
+			}
 		} catch (e) {
 			console.error('Failed to fetch CPU data:', e);
 		}
-		loading = false;
+	}
+
+	function startFallbackPolling() {
+		stopFallbackPolling();
+		fetchDataRest();
+		fallbackInterval = setInterval(fetchDataRest, 3000);
+	}
+
+	function stopFallbackPolling() {
+		if (fallbackInterval) { clearInterval(fallbackInterval); fallbackInterval = null; }
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -54,11 +68,25 @@
 		untrack(() => {
 			if (isOpen) {
 				loading = true;
-				fetchData();
-				refreshInterval = setInterval(fetchData, 3000);
+				// Subscribe to cpu-detail WebSocket channel
+				wsSubscribe('cpu-detail');
+				unsubStore = cpuDetailStore.subscribe((storeData) => {
+					if (storeData) {
+						data = storeData;
+						loading = false;
+						// WS is delivering data, stop REST fallback
+						stopFallbackPolling();
+					}
+				});
+				// REST fallback: if WS doesn't deliver within 2s, start polling
+				setTimeout(() => {
+					if (loading) startFallbackPolling();
+				}, 2000);
 				document.addEventListener('keydown', handleKeydown);
 			} else {
-				if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
+				wsUnsubscribe('cpu-detail');
+				if (unsubStore) { unsubStore(); unsubStore = null; }
+				stopFallbackPolling();
 				document.removeEventListener('keydown', handleKeydown);
 			}
 		});
