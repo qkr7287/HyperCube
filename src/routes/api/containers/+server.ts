@@ -1,36 +1,11 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import Docker from 'dockerode';
-
-const docker = new Docker();
+import { getContainerList } from '$lib/server/services/system-service';
 
 export const GET: RequestHandler = async () => {
 	try {
-		const containers = await docker.listContainers({ all: true });
-		
-		const containerData = containers.map(container => ({
-			id: container.Id,
-			shortId: container.Id.substring(0, 12),
-			names: container.Names,
-			image: container.Image,
-			imageId: container.ImageID,
-			command: container.Command,
-			created: container.Created,
-			state: container.State,
-			status: container.Status,
-			ports: container.Ports,
-			labels: container.Labels,
-			sizeRw: container.SizeRw,
-			sizeRootFs: container.SizeRootFs,
-			hostConfig: container.HostConfig,
-			networkSettings: container.NetworkSettings,
-			mounts: container.Mounts
-		}));
-
-		return json({
-			success: true,
-			data: containerData
-		});
+		const containerData = await getContainerList();
+		return json({ success: true, data: containerData });
 	} catch (error) {
 		console.error('Docker API Error:', error);
 		return json({

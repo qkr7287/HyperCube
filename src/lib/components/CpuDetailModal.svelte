@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { base } from '$app/paths';
 	import { untrack } from 'svelte';
+	import { cpuDetailStore, subscribe as wsSubscribe, unsubscribe as wsUnsubscribe } from '$lib/stores/ws-store';
 
 	let {
 		open = false,
@@ -14,7 +14,7 @@
 
 	let loading = $state(true);
 	let data: any = $state(null);
-	let refreshInterval: ReturnType<typeof setInterval> | null = null;
+	let unsubStore: (() => void) | null = null;
 
 	function getHeatColor(usage: number): string {
 		if (usage < 15) return '#0d4f3c';
@@ -34,17 +34,6 @@
 		return '0 0 16px rgba(220,38,38,0.5)';
 	}
 
-	async function fetchData() {
-		try {
-			const res = await fetch(`${base}/api/system/cpu`);
-			const result = await res.json();
-			if (result.success) data = result.data;
-		} catch (e) {
-			console.error('Failed to fetch CPU data:', e);
-		}
-		loading = false;
-	}
-
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') onClose();
 	}
@@ -54,11 +43,19 @@
 		untrack(() => {
 			if (isOpen) {
 				loading = true;
-				fetchData();
-				refreshInterval = setInterval(fetchData, 3000);
+				// Subscribe to cpu-detail WebSocket channel
+				wsSubscribe('cpu-detail');
+				unsubStore = cpuDetailStore.subscribe((storeData) => {
+					if (storeData) {
+						data = storeData;
+						loading = false;
+					}
+				});
 				document.addEventListener('keydown', handleKeydown);
 			} else {
-				if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
+				// Unsubscribe from cpu-detail channel
+				wsUnsubscribe('cpu-detail');
+				if (unsubStore) { unsubStore(); unsubStore = null; }
 				document.removeEventListener('keydown', handleKeydown);
 			}
 		});
