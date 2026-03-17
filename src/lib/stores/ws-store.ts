@@ -11,7 +11,9 @@ let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let activeSubscriptions = new Set<string>();
 
-const RECONNECT_DELAY = 3000;
+const RECONNECT_BASE = 3000;
+const RECONNECT_MAX = 30000;
+let reconnectAttempts = 0;
 
 function getWsUrl(): string {
 	if (!browser) return '';
@@ -40,10 +42,12 @@ function handleMessage(event: MessageEvent) {
 
 function scheduleReconnect() {
 	if (reconnectTimer) return;
+	const delay = Math.min(RECONNECT_BASE * Math.pow(2, reconnectAttempts), RECONNECT_MAX);
+	reconnectAttempts++;
 	reconnectTimer = setTimeout(() => {
 		reconnectTimer = null;
 		connect();
-	}, RECONNECT_DELAY);
+	}, delay);
 }
 
 export function connect() {
@@ -54,9 +58,9 @@ export function connect() {
 	ws = new WebSocket(url);
 
 	ws.onopen = () => {
+		reconnectAttempts = 0;
 		wsConnected.set(true);
 		console.log('[WS] Connected');
-		// Re-subscribe after reconnect
 		for (const channel of activeSubscriptions) {
 			ws!.send(JSON.stringify({ type: 'subscribe', channel }));
 		}
@@ -80,8 +84,9 @@ export function disconnect() {
 		clearTimeout(reconnectTimer);
 		reconnectTimer = null;
 	}
+	reconnectAttempts = 0;
 	if (ws) {
-		ws.onclose = null; // prevent reconnect
+		ws.onclose = null;
 		ws.close();
 		ws = null;
 	}
