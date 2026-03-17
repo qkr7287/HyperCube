@@ -10,6 +10,9 @@
 	import NetworkDetailModal from '$lib/components/NetworkDetailModal.svelte';
 	import LoginDetailModal from '$lib/components/LoginDetailModal.svelte';
 	import ProcessDetailModal from '$lib/components/ProcessDetailModal.svelte';
+	import CpuDetailModal from '$lib/components/CpuDetailModal.svelte';
+	import MemoryDetailModal from '$lib/components/MemoryDetailModal.svelte';
+	import DiskDetailModal from '$lib/components/DiskDetailModal.svelte';
 
 	interface Container {
 		id: string;
@@ -55,6 +58,9 @@
 	let starfieldRotationId: number | null = null;
 	let viewMode = 'group';
 	let selectedContainer: Container | null = null;
+	let cpuModalOpen = false;
+	let memoryModalOpen = false;
+	let diskModalOpen = false;
 	let networkModalOpen = false;
 	let loginModalOpen = false;
 	let processModalOpen = false;
@@ -941,6 +947,9 @@
 	<LeftSidebar
 		{systemInfo}
 		totalContainers={containers.length}
+		onOpenCpu={() => { cpuModalOpen = true; }}
+		onOpenMemory={() => { memoryModalOpen = true; }}
+		onOpenDisk={() => { diskModalOpen = true; }}
 		onOpenNetwork={() => { networkModalOpen = true; }}
 		onOpenLogin={() => { loginModalOpen = true; }}
 		onOpenProcess={() => { processModalOpen = true; }}
@@ -987,6 +996,24 @@
 	container={selectedContainer}
 	onClose={closeContainerDetail}
 	onStateChange={fetchData}
+/>
+
+<CpuDetailModal
+	open={cpuModalOpen}
+	{systemInfo}
+	onClose={() => { cpuModalOpen = false; }}
+/>
+
+<MemoryDetailModal
+	open={memoryModalOpen}
+	{systemInfo}
+	onClose={() => { memoryModalOpen = false; }}
+/>
+
+<DiskDetailModal
+	open={diskModalOpen}
+	{systemInfo}
+	onClose={() => { diskModalOpen = false; }}
 />
 
 <NetworkDetailModal
