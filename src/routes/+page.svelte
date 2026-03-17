@@ -487,6 +487,9 @@
 			}
 		}
 
+		// Set initial camera position
+		graph.cameraPosition({ x: 0, y: 0, z: 500 }, { x: 0, y: 0, z: 0 });
+
 		graphInitialized = true;
 
 		await ensureHullDeps();
@@ -876,13 +879,18 @@
 		autoRotatePausedByDrag = false;
 	}
 
-	function handleZoom() {
+	function handleReset() {
 		if (!graph) return;
-		const cam = graph.camera();
-		if (!cam) return;
-		const pos = cam.position;
+
+		// Deselect project
+		selectedProject = null;
+
+		// Unfix all nodes, gather to center
+		gatherNodesToCenter();
+
+		// Reset camera to initial default position
 		graph.cameraPosition(
-			{ x: pos.x * 0.7, y: pos.y * 0.7, z: pos.z * 0.7 },
+			{ x: 0, y: 0, z: 500 },
 			{ x: 0, y: 0, z: 0 },
 			800
 		);
@@ -954,7 +962,7 @@
 			<TopologyToolbar
 				onScreenshot={handleScreenshot}
 				onRotate={handleRotate}
-				onZoom={handleZoom}
+				onReset={handleReset}
 				isRotating={autoRotating}
 			/>
 		</div>
