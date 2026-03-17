@@ -55,6 +55,8 @@
 	let lastUpdate = new Date();
 	let unsubSystem: (() => void) | null = null;
 	let unsubContainers: (() => void) | null = null;
+	let fallbackInterval: ReturnType<typeof setInterval> | null = null;
+	let wsDataReceived = false;
 	let cameraTransitioning = false;
 	let starfieldGroup: any = null;
 	let starfieldRotationId: number | null = null;
@@ -923,6 +925,9 @@
 		unsubSystem = systemStore.subscribe((data) => {
 			if (data) {
 				systemInfo = data;
+				wsDataReceived = true;
+				// WS is working, stop REST fallback
+				if (fallbackInterval) { clearInterval(fallbackInterval); fallbackInterval = null; }
 			}
 		});
 
@@ -944,6 +949,16 @@
 				}
 			}
 		});
+
+		// REST fallback: if WS doesn't deliver within 3s, poll via REST
+		setTimeout(() => {
+			if (!wsDataReceived) {
+				fallbackInterval = setInterval(async () => {
+					await fetchData();
+					await fetchSystemInfoData();
+				}, 10000);
+			}
+		}, 3000);
 	});
 
 	onDestroy(() => {
@@ -952,6 +967,7 @@
 		if (starfieldRotationId) cancelAnimationFrame(starfieldRotationId);
 		if (unsubSystem) unsubSystem();
 		if (unsubContainers) unsubContainers();
+		if (fallbackInterval) clearInterval(fallbackInterval);
 		disconnect();
 		if (graph) graph._destructor?.();
 	});
