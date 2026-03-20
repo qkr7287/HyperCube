@@ -23,53 +23,71 @@ graph TB
         Viewer["열람자"]
     end
 
-    subgraph Central["중앙 서버 (DCMTool Main)"]
-        Web["웹 대시보드<br/>SvelteKit + 3D 토폴로지"]
-        API["API 서버"]
-        WS["WebSocket 허브"]
-        DB["SQLite DB<br/>사용자/템플릿/설정"]
-        Auth["인증/권한 관리"]
+    subgraph MainServer["메인 서버 (192.168.0.16)"]
+        Nginx["nginx :7003"]
+
+        subgraph DockerMain["Docker"]
+            subgraph FE["Frontend 컨테이너 :3000"]
+                SvelteKit["SvelteKit SSR"]
+                Topo["3D 토폴로지"]
+                Dashboard["대시보드"]
+            end
+
+            subgraph BE["Backend 컨테이너 :4000"]
+                Fastify["Fastify (Node.js)"]
+                WSHub["WebSocket Hub"]
+                AuthMW["인증 미들웨어"]
+                Repo["Repository 계층"]
+                SQLite["SQLite DB"]
+            end
+
+            subgraph AgentMain["Agent 컨테이너"]
+                AgentM["DCM Agent"]
+            end
+        end
     end
 
-    subgraph Server1["서버 A (예: 16번 서버)"]
-        Agent1["DCM Agent"]
+    subgraph SubServer1["서브 서버 A"]
+        subgraph DockerSub1["Docker"]
+            Agent1["DCM Agent"]
+        end
         Docker1["Docker Engine"]
         System1["OS / Hardware"]
     end
 
-    subgraph Server2["서버 B (예: 17번 서버)"]
-        Agent2["DCM Agent"]
+    subgraph SubServer2["서브 서버 B"]
+        subgraph DockerSub2["Docker"]
+            Agent2["DCM Agent"]
+        end
         Docker2["Docker Engine"]
         System2["OS / Hardware"]
     end
 
-    subgraph Server3["서버 C"]
-        Agent3["DCM Agent"]
-        Docker3["Docker Engine"]
-        System3["OS / Hardware"]
-    end
+    Admin & Viewer -->|HTTPS| Nginx
+    Nginx -->|"/dcmtool"| SvelteKit
+    Nginx -->|"/dcmtool/api"| Fastify
+    Nginx -->|"/dcmtool/ws"| WSHub
 
-    Admin & Viewer -->|HTTPS| Web
-    Web --> API
-    Web <-->|실시간 데이터| WS
-    API --> DB
-    API --> Auth
+    SvelteKit -->|REST + WS| Fastify
+    Fastify --> AuthMW
+    Fastify --> Repo --> SQLite
 
-    Agent1 <-->|WebSocket| WS
-    Agent2 <-->|WebSocket| WS
-    Agent3 <-->|WebSocket| WS
+    AgentM <-->|WS| WSHub
+    Agent1 <-->|WS| WSHub
+    Agent2 <-->|WS| WSHub
 
     Agent1 --> Docker1
     Agent1 --> System1
     Agent2 --> Docker2
     Agent2 --> System2
-    Agent3 --> Docker3
-    Agent3 --> System3
 
-    style Central fill:#1c2333,stroke:#4a5568,color:#e6edf3
-    style Server1 fill:#0d1117,stroke:#4a5568,color:#c9d1d9
-    style Server2 fill:#0d1117,stroke:#4a5568,color:#c9d1d9
-    style Server3 fill:#0d1117,stroke:#4a5568,color:#c9d1d9
+    style MainServer fill:#1c2333,stroke:#4a5568,color:#e6edf3
+    style DockerMain fill:#161b22,stroke:#4a5568,color:#c9d1d9
+    style FE fill:#1c2333,stroke:#586474,color:#c9d1d9
+    style BE fill:#1c2333,stroke:#586474,color:#c9d1d9
+    style AgentMain fill:#0d1117,stroke:#586474,color:#c9d1d9
+    style SubServer1 fill:#0d1117,stroke:#4a5568,color:#c9d1d9
+    style SubServer2 fill:#0d1117,stroke:#4a5568,color:#c9d1d9
 ```
 
 ---
@@ -151,55 +169,116 @@ services:
 #### 역할
 
 모든 Agent의 데이터를 수신하고, 웹 대시보드를 통해 사용자에게 보여주는 **허브** 역할입니다.
+Frontend, Backend, Agent 3개의 Docker 컨테이너로 분리되어 있으며, nginx가 앞에서 라우팅합니다.
 
-#### 구성 요소
+#### 컨테이너 구성
 
 ```mermaid
-graph LR
-    subgraph 중앙서버["중앙 서버 내부 구조"]
-        direction TB
+graph TB
+    subgraph MainServer["메인 서버 (192.168.0.16)"]
+        Nginx["nginx :7003<br/>(기존 리버스 프록시)"]
 
-        subgraph Frontend["프론트엔드"]
-            UI["SvelteKit SSR"]
-            Topo["3D 토폴로지<br/>(three.js)"]
-            Dash["대시보드<br/>차트/테이블"]
+        subgraph Docker["Docker Compose"]
+            subgraph FE["Frontend 컨테이너 :3000"]
+                direction TB
+                SSR["SvelteKit SSR"]
+                ThreeJS["3D 토폴로지<br/>(three.js + 3d-force-graph)"]
+                Charts["대시보드<br/>차트 / 테이블"]
+                StaticAssets["정적 자산<br/>(CSS, JS, 이미지)"]
+            end
+
+            subgraph BE["Backend 컨테이너 :4000"]
+                direction TB
+                FastifyServer["Fastify (Node.js)"]
+
+                subgraph API["REST API 계층"]
+                    Routes["/api/agents<br/>/api/containers<br/>/api/templates<br/>/api/users"]
+                    AuthMiddleware["인증 미들웨어<br/>JWT 검증"]
+                end
+
+                subgraph WS["WebSocket 계층"]
+                    Hub["WebSocket Hub<br/>Agent 연결 관리"]
+                    Channels["채널 관리<br/>server:{id}"]
+                end
+
+                subgraph Data["데이터 계층"]
+                    Repo["Repository 계층<br/>(DB 추상화)"]
+                    DB["SQLite<br/>(better-sqlite3)<br/>Volume 마운트"]
+                end
+
+                FastifyServer --> Routes
+                FastifyServer --> Hub
+                Routes --> AuthMiddleware
+                Routes --> Repo
+                Hub --> Channels
+                Hub --> Repo
+                Repo --> DB
+            end
+
+            subgraph AgentLocal["Agent 컨테이너 (메인 서버용)"]
+                AgentProcess["DCM Agent<br/>(메인 서버 자체 모니터링)"]
+                AgentWS["WS Client<br/>→ Backend :4000"]
+            end
         end
 
-        subgraph Backend["백엔드"]
-            Routes["API Routes<br/>/api/*"]
-            WSHub["WebSocket Hub<br/>Agent 연결 관리"]
-            AuthMW["인증 미들웨어<br/>JWT 검증"]
-        end
-
-        subgraph Data["데이터 계층"]
-            Repo["Repository 계층<br/>(DB 추상화)"]
-            SQLite["SQLite<br/>(better-sqlite3)"]
-        end
-
-        UI --> Routes
-        Topo --> WSHub
-        Dash --> WSHub
-        Routes --> AuthMW
-        Routes --> Repo
-        WSHub --> Repo
-        Repo --> SQLite
+        Nginx -->|"/dcmtool"| SSR
+        Nginx -->|"/dcmtool/api/*"| FastifyServer
+        Nginx -->|"/dcmtool/ws"| Hub
     end
 
-    style Frontend fill:#1c2333,stroke:#4a5568,color:#c9d1d9
-    style Backend fill:#161b22,stroke:#4a5568,color:#c9d1d9
-    style Data fill:#0d1117,stroke:#4a5568,color:#c9d1d9
+    Browser["사용자 브라우저"] --> Nginx
+    SSR -->|"REST + WS"| FastifyServer
+    AgentProcess --> AgentWS --> Hub
+
+    style MainServer fill:#0d1117,stroke:#4a5568,color:#e6edf3
+    style Docker fill:#161b22,stroke:#4a5568,color:#c9d1d9
+    style FE fill:#1c2333,stroke:#586474,color:#c9d1d9
+    style BE fill:#1c2333,stroke:#586474,color:#c9d1d9
+    style API fill:#161b22,stroke:#4a5568,color:#8b949e
+    style WS fill:#161b22,stroke:#4a5568,color:#8b949e
+    style Data fill:#0d1117,stroke:#4a5568,color:#8b949e
+    style AgentLocal fill:#0d1117,stroke:#586474,color:#c9d1d9
 ```
 
+#### 각 컨테이너 역할
+
+| 컨테이너 | 기술 | 역할 | 포트 |
+|----------|------|------|------|
+| **Frontend** | SvelteKit (adapter-node) | SSR, 3D 토폴로지, 대시보드 UI | :3000 |
+| **Backend** | Fastify (Node.js) | REST API, WebSocket Hub, 인증, DB 관리 | :4000 |
+| **Agent** | Node.js (경량 데몬) | 메인 서버 자체의 Docker/System 데이터 수집 | - |
+
+#### nginx 라우팅
+
+```
+nginx (:7003)
+├── /dcmtool           → Frontend :3000  (SSR 페이지)
+├── /dcmtool/api/*     → Backend :4000   (REST API)
+└── /dcmtool/ws        → Backend :4000   (WebSocket, upgrade)
+```
+
+사용자는 포트 하나(7003)로 모든 기능에 접근합니다. CORS 문제 없이 같은 도메인에서 동작합니다.
+
 #### 개발자 상세
+
+**Frontend 컨테이너**
 
 | 항목 | 내용 |
 |------|------|
 | 프레임워크 | SvelteKit 2 + Svelte 5 (runes mode) |
-| 빌드 | adapter-node, Docker 컨테이너 배포 |
-| WebSocket | server.js에서 HTTP upgrade 핸들링 |
-| DB | SQLite (better-sqlite3), Repository 패턴으로 추상화 |
-| 인증 | JWT (사용자 세션 + Agent 토큰) |
+| 빌드 | adapter-node |
 | 3D | 3d-force-graph + three.js |
+| Backend 통신 | REST API 호출 + WebSocket 연결 (Backend :4000) |
+
+**Backend 컨테이너**
+
+| 항목 | 내용 |
+|------|------|
+| 프레임워크 | Fastify (Node.js) |
+| WebSocket | ws 라이브러리, server:{id} 채널 |
+| DB | SQLite (better-sqlite3), Docker Volume으로 영구 저장 |
+| 인증 | JWT (사용자 세션 + Agent 토큰) |
+| 패턴 | Repository 패턴으로 DB 추상화 (교체 대비) |
 
 **Repository 패턴 (DB 교체 대비)**
 
@@ -210,6 +289,11 @@ graph LR
 
 서비스 코드는 SQL을 직접 호출하지 않고, Repository 메서드만 사용합니다.
 향후 DB를 교체할 때 구현체만 바꾸면 됩니다.
+
+**Agent 컨테이너 (메인 서버용)**
+
+메인 서버도 서브 서버와 동일한 Agent를 실행합니다.
+"메인 서버는 특별 취급"이라는 예외 없이, 모든 서버가 같은 방식으로 모니터링됩니다.
 
 ---
 
@@ -479,42 +563,51 @@ graph TB
     end
 
     subgraph Central["중앙 서버 (192.168.0.16)"]
-        Nginx["nginx :7003<br/>/dcmtool"]
-        DCM["DCMTool 컨테이너<br/>:3334"]
+        Nginx["nginx :7003"]
+        subgraph DockerCompose["Docker Compose"]
+            FE["Frontend :3000"]
+            BE["Backend :4000"]
+            AgentM["Agent<br/>(메인 서버 모니터링)"]
+        end
         Runner["GitHub Actions<br/>Self-hosted Runner"]
-        Nginx --> DCM
+        Nginx -->|"/dcmtool"| FE
+        Nginx -->|"/dcmtool/api, /ws"| BE
+        AgentM -->|WS| BE
     end
 
-    subgraph Remote1["서버 A"]
+    subgraph Remote1["서브 서버 A"]
         AgentA["DCM Agent"]
     end
 
-    subgraph Remote2["서버 B"]
+    subgraph Remote2["서브 서버 B"]
         AgentB["DCM Agent"]
     end
 
     DevPC -->|push| TS
     Team -->|deploy| Runner
-    Runner --> DCM
-    AgentA -->|WS| DCM
-    AgentB -->|WS| DCM
+    Runner --> DockerCompose
+    AgentA -->|WS| BE
+    AgentB -->|WS| BE
 
     style Dev fill:#161b22,stroke:#4a5568,color:#c9d1d9
     style GitHub fill:#0d1117,stroke:#4a5568,color:#c9d1d9
     style Central fill:#1c2333,stroke:#4a5568,color:#c9d1d9
+    style DockerCompose fill:#161b22,stroke:#586474,color:#c9d1d9
     style Remote1 fill:#0d1117,stroke:#4a5568,color:#c9d1d9
     style Remote2 fill:#0d1117,stroke:#4a5568,color:#c9d1d9
 ```
 
 ### 포트 & 네트워크
 
-| 구성 요소 | 주소 | 포트 | 프로토콜 |
-|-----------|------|------|----------|
-| nginx | 192.168.0.16 | 7003 | HTTP (reverse proxy) |
-| DCMTool 중앙 서버 | 192.168.0.16 | 3334 | HTTP + WebSocket |
-| Agent → 중앙 서버 | - | 3334 | WebSocket (server:{id}) |
-| Agent → Docker | localhost | unix socket | docker.sock |
-| Agent 내부 헬스체크 | localhost | 자동 할당 | HTTP /health |
+| 구성 요소 | 주소 | 포트 | 프로토콜 | 비고 |
+|-----------|------|------|----------|------|
+| nginx | 192.168.0.16 | 7003 | HTTP | 리버스 프록시, 기존 서비스와 공존 |
+| Frontend | Docker 내부 | 3000 | HTTP | SvelteKit SSR |
+| Backend | Docker 내부 | 4000 | HTTP + WS | Fastify + WebSocket Hub |
+| Agent (메인) | Docker 내부 | - | WS | Backend :4000에 WS 연결 |
+| Agent (서브) → nginx | 외부 | 7003 | WS | /dcmtool/ws 경로로 연결 |
+| Agent → Docker | localhost | unix socket | - | docker.sock |
+| SQLite | Docker Volume | - | 파일 | dcm-data:/app/data |
 
 ---
 
@@ -577,10 +670,12 @@ gantt
 
 | 항목 | As-Is (현재) | To-Be (목표) |
 |------|-------------|-------------|
-| 모니터링 범위 | 서버 1대 | 다수 서버 |
+| 서버 구조 | SvelteKit 모놀리식 (API+UI 한 컨테이너) | Frontend + Backend + Agent 3컨테이너 분리 |
+| Backend | SvelteKit API Routes | Fastify (Node.js) 독립 서버 |
+| 모니터링 범위 | 서버 1대 | 다수 서버 (메인 서버 포함) |
 | 데이터 수집 | 중앙 서버가 직접 docker.sock 접근 | Agent가 각 서버에서 수집 후 전송 |
 | 전송 방식 | REST polling + WebSocket | WebSocket Delta Sync |
-| 데이터베이스 | 없음 (stateless) | SQLite (사용자/템플릿/설정) |
+| 데이터베이스 | 없음 (stateless) | SQLite (사용자/템플릿/설정), Volume 영구 저장 |
 | 인증 | 없음 (누구나 접근) | JWT 기반 3단계 권한 |
 | Docker 배포 | 수동 (CLI) | 템플릿 카탈로그 + 마법사 UI |
 | 3D 시각화 | 프로젝트-컨테이너 2계층 | 서버-프로젝트-컨테이너 3계층 (Galaxy Cluster) |
