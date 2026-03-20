@@ -38,7 +38,7 @@ graph TB
                 WSHub["WebSocket Hub"]
                 AuthMW["인증 미들웨어"]
                 Repo["Repository 계층"]
-                SQLite["SQLite DB"]
+                PgDB["PostgreSQL"]
             end
 
             subgraph AgentMain["Agent 컨테이너"]
@@ -70,7 +70,7 @@ graph TB
 
     SvelteKit -->|REST + WS| Fastify
     Fastify --> AuthMW
-    Fastify --> Repo --> SQLite
+    Fastify --> Repo --> PgDB
 
     AgentM <-->|WS| WSHub
     Agent1 <-->|WS| WSHub
@@ -203,7 +203,7 @@ graph TB
 
                 subgraph Data["데이터 계층"]
                     Repo["Repository 계층<br/>(DB 추상화)"]
-                    DB["SQLite<br/>(better-sqlite3)<br/>Volume 마운트"]
+                    DB["PostgreSQL<br/>(컨테이너 분리)"]
                 end
 
                 FastifyServer --> Routes
@@ -215,9 +215,19 @@ graph TB
                 Repo --> DB
             end
 
+            subgraph PgContainer["PostgreSQL 컨테이너 :5432"]
+                PgDB2["PostgreSQL 16<br/>Volume 영구 저장"]
+            end
+
             subgraph AgentLocal["Agent 컨테이너 (메인 서버용)"]
                 AgentProcess["DCM Agent<br/>(메인 서버 자체 모니터링)"]
                 AgentWS["WS Client<br/>→ Backend :4000"]
+            end
+
+            subgraph AIContainer["AI Service 컨테이너 :5000 (향후)"]
+                FastAPI["FastAPI (Python)"]
+                VectorDB["pgvector 연동"]
+                MLModels["이상 탐지 / 로그 분석"]
             end
         end
 
@@ -229,6 +239,8 @@ graph TB
     Browser["사용자 브라우저"] --> Nginx
     SSR -->|"REST + WS"| FastifyServer
     AgentProcess --> AgentWS --> Hub
+    Repo --> PgDB2
+    FastAPI --> PgDB2
 
     style MainServer fill:#0d1117,stroke:#4a5568,color:#e6edf3
     style Docker fill:#161b22,stroke:#4a5568,color:#c9d1d9
@@ -238,6 +250,8 @@ graph TB
     style WS fill:#161b22,stroke:#4a5568,color:#8b949e
     style Data fill:#0d1117,stroke:#4a5568,color:#8b949e
     style AgentLocal fill:#0d1117,stroke:#586474,color:#c9d1d9
+    style PgContainer fill:#0d1117,stroke:#586474,color:#c9d1d9
+    style AIContainer fill:#0d1117,stroke:#3d4f5f,color:#6e7681,stroke-dasharray: 5 5
 ```
 
 #### 각 컨테이너 역할
@@ -245,8 +259,10 @@ graph TB
 | 컨테이너 | 기술 | 역할 | 포트 |
 |----------|------|------|------|
 | **Frontend** | SvelteKit (adapter-node) | SSR, 3D 토폴로지, 대시보드 UI | :3000 |
-| **Backend** | Fastify (Node.js) | REST API, WebSocket Hub, 인증, DB 관리 | :4000 |
+| **Backend** | Fastify (Node.js) | REST API, WebSocket Hub, 인증 | :4000 |
+| **PostgreSQL** | PostgreSQL 16 | 데이터 영구 저장 (사용자/템플릿/설정/로그) | :5432 |
 | **Agent** | Node.js (경량 데몬) | 메인 서버 자체의 Docker/System 데이터 수집 | - |
+| **AI Service** | FastAPI (Python) | 이상 탐지, 로그 분석, 벡터 검색 (향후) | :5000 |
 
 #### nginx 라우팅
 
@@ -276,24 +292,47 @@ nginx (:7003)
 |------|------|
 | 프레임워크 | Fastify (Node.js) |
 | WebSocket | ws 라이브러리, server:{id} 채널 |
-| DB | SQLite (better-sqlite3), Docker Volume으로 영구 저장 |
+| DB | PostgreSQL 16 (별도 컨테이너 :5432), Prisma ORM |
 | 인증 | JWT (사용자 세션 + Agent 토큰) |
-| 패턴 | Repository 패턴으로 DB 추상화 (교체 대비) |
+| 패턴 | Repository 패턴으로 DB 추상화 |
 
-**Repository 패턴 (DB 교체 대비)**
+**Repository 패턴**
 
 ```
-서비스 계층 → Repository 인터페이스 → SQLite 구현체
-                                    → (향후) PostgreSQL 구현체
+서비스 계층 → Repository 인터페이스 → PostgreSQL 구현체 (Prisma)
 ```
 
 서비스 코드는 SQL을 직접 호출하지 않고, Repository 메서드만 사용합니다.
-향후 DB를 교체할 때 구현체만 바꾸면 됩니다.
 
 **Agent 컨테이너 (메인 서버용)**
 
 메인 서버도 서브 서버와 동일한 Agent를 실행합니다.
 "메인 서버는 특별 취급"이라는 예외 없이, 모든 서버가 같은 방식으로 모니터링됩니다.
+
+**AI Service 컨테이너 (향후 확장)**
+
+향후 AI 기능을 위한 Python 마이크로서비스입니다. 현재 Phase에는 포함되지 않으며, 추후 별도 Phase로 추가합니다.
+
+```mermaid
+graph LR
+    BE["Backend<br/>(Fastify)"] <-->|REST API| AI["AI Service<br/>(FastAPI)"]
+    AI -->|벡터 검색| PG["PostgreSQL<br/>+ pgvector"]
+    AI -->|모델 추론| Models["PyTorch<br/>scikit-learn"]
+
+    style BE fill:#1c2333,stroke:#4a5568,color:#c9d1d9
+    style AI fill:#1c2333,stroke:#3d4f5f,color:#c9d1d9
+    style PG fill:#0d1117,stroke:#4a5568,color:#c9d1d9
+    style Models fill:#0d1117,stroke:#3d4f5f,color:#8b949e
+```
+
+| 기능 | 설명 | 기술 |
+|------|------|------|
+| 로그 이상 탐지 | 평소와 다른 로그 패턴 자동 감지 | 벡터 유사도 검색 (pgvector) |
+| 리소스 예측 | CPU/Memory 사용 추이 기반 예측 | 시계열 분석 (Prophet, ARIMA) |
+| 자연어 질의 | "어제 메모리 터진 서버 어디?" | LLM 연동 (LangChain) |
+| 장애 원인 분석 | 알림 발생 시 유사 과거 사례 자동 조회 | 벡터 검색 + RAG |
+
+Backend가 AI Service에 REST API로 요청하고, AI Service가 PostgreSQL의 pgvector 확장을 사용해서 벡터 검색을 수행합니다. Node.js 백엔드는 그대로 유지하면서 AI 기능만 Python으로 처리하는 구조입니다.
 
 ---
 
@@ -330,14 +369,14 @@ graph LR
 }
 ```
 
-#### 설정/관리 데이터 (REST + SQLite)
+#### 설정/관리 데이터 (REST + PostgreSQL)
 
 사용자 계정, 템플릿, 알림 설정 등은 REST API를 통해 DB에 저장됩니다.
 
 ```mermaid
 graph LR
     Browser["브라우저"] -->|REST API| Server["중앙서버"]
-    Server -->|Repository| DB["SQLite"]
+    Server -->|Repository| DB["PostgreSQL"]
 
     style Browser fill:#161b22,stroke:#4a5568,color:#c9d1d9
     style Server fill:#1c2333,stroke:#4a5568,color:#c9d1d9
@@ -478,12 +517,12 @@ graph TB
 |--------|----------|------|
 | CPU/Mem/Disk 메트릭 | WebSocket (메모리) | 실시간 표시용, 저장 불필요 |
 | 컨테이너 상태 | WebSocket (메모리) | 실시간 표시용, 저장 불필요 |
-| Agent 등록 정보 | SQLite | 서버 재시작 후에도 유지 필요 |
-| 사용자 계정/권한 | SQLite | 영구 보관 |
-| 템플릿 | SQLite | JSON 형태로 저장 |
-| 알림 설정 | SQLite | 서버/전역 임계치 |
-| 알림 히스토리 | SQLite | 이력 조회용 |
-| 감사 로그 | SQLite | who/when/what 기록 |
+| Agent 등록 정보 | PostgreSQL | 서버 재시작 후에도 유지 필요 |
+| 사용자 계정/권한 | PostgreSQL | 영구 보관 |
+| 템플릿 | PostgreSQL | JSON 형태로 저장 (JSONB 타입) |
+| 알림 설정 | PostgreSQL | 서버/전역 임계치 |
+| 알림 히스토리 | PostgreSQL | 이력 조회용 |
+| 감사 로그 | PostgreSQL | who/when/what 기록 |
 
 ### DB 스키마 (주요 테이블)
 
@@ -607,7 +646,7 @@ graph TB
 | Agent (메인) | Docker 내부 | - | WS | Backend :4000에 WS 연결 |
 | Agent (서브) → nginx | 외부 | 7003 | WS | /dcmtool/ws 경로로 연결 |
 | Agent → Docker | localhost | unix socket | - | docker.sock |
-| SQLite | Docker Volume | - | 파일 | dcm-data:/app/data |
+| PostgreSQL | Docker 내부 | 5432 | TCP | 별도 컨테이너, Volume 영구 저장 |
 
 ---
 
@@ -656,7 +695,7 @@ gantt
 
 | Phase | 기간 | 핵심 목표 | 주요 산출물 |
 |-------|------|----------|-----------|
-| **Phase 1** | 3/24 ~ 3/27 (4일) | API 기반 구축 | SQLite, Repository 패턴, API 표준화, WS Hub 스켈레톤 |
+| **Phase 1** | 3/24 ~ 3/27 (4일) | API 기반 구축 | PostgreSQL, Repository 패턴, API 표준화, WS Hub 스켈레톤 |
 | **Phase 2** | 3/30 ~ 4/7 (7일) | 멀티서버 아키텍처 | Agent, Auto-register, 서버 관리 UI, 통합 뷰 |
 | **Phase 3** | 4/8 ~ 4/10 (3일) | 모니터링 고도화 | 통합 대시보드, GPU, 알림, WS 통합 채널 |
 | **Phase 4** | 4/13 ~ 4/16 (4일) | 비전문가 Docker 관리 | 템플릿 카탈로그, Compose, 롤백 |
@@ -675,7 +714,7 @@ gantt
 | 모니터링 범위 | 서버 1대 | 다수 서버 (메인 서버 포함) |
 | 데이터 수집 | 중앙 서버가 직접 docker.sock 접근 | Agent가 각 서버에서 수집 후 전송 |
 | 전송 방식 | REST polling + WebSocket | WebSocket Delta Sync |
-| 데이터베이스 | 없음 (stateless) | SQLite (사용자/템플릿/설정), Volume 영구 저장 |
+| 데이터베이스 | 없음 (stateless) | PostgreSQL (별도 컨테이너, Volume 영구 저장) |
 | 인증 | 없음 (누구나 접근) | JWT 기반 3단계 권한 |
 | Docker 배포 | 수동 (CLI) | 템플릿 카탈로그 + 마법사 UI |
 | 3D 시각화 | 프로젝트-컨테이너 2계층 | 서버-프로젝트-컨테이너 3계층 (Galaxy Cluster) |
