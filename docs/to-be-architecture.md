@@ -520,40 +520,56 @@ graph TB
 
 ## 6. Phase별 구현 범위
 
+- **개발 기간**: 3/24 ~ 4/22 (약 1개월, 22 영업일)
+- **테스트 기간**: 4/23 ~ 5/6 (2주, 10 영업일)
+- **Demo 목표**: 4/22
+
 ```mermaid
 gantt
     title DCMTool 개발 로드맵
     dateFormat YYYY-MM-DD
     axisFormat %m/%d
+    excludes weekends
 
-    section Phase 1 - 멀티서버
-    Agent 개발           :p1a, 2026-03-24, 2w
-    Agent 통신           :p1b, after p1a, 1w
-    서버 관리 UI          :p1c, after p1b, 1w
+    section Phase 1 - API 기반
+    DB + Repository      :p1a, 2026-03-24, 2d
+    API 표준화            :p1b, after p1a, 1d
+    인증/WS 스켈레톤       :p1c, after p1b, 1d
 
-    section Phase 2 - 모니터링
-    통합 대시보드          :p2a, after p1c, 1w
-    GPU / 알림            :p2b, after p2a, 2w
+    section Phase 2 - 멀티서버
+    Agent 개발           :p2a, after p1c, 4d
+    Agent 통신           :p2b, after p2a, 2d
+    서버 관리 UI / 뷰     :p2c, after p2b, 1d
 
-    section Phase 3 - Docker 관리
-    템플릿 카탈로그         :p3a, after p2b, 2w
-    Compose / 롤백        :p3b, after p3a, 1w
+    section Phase 3 - 모니터링
+    통합 대시보드          :p3a, after p2c, 2d
+    GPU / 알림 / WS 채널  :p3b, after p3a, 1d
 
-    section Phase 4 - 3D 시각화
-    Galaxy Cluster        :p4a, after p3b, 2w
-    LOD / HUD            :p4b, after p4a, 1w
+    section Phase 4 - Docker 관리
+    템플릿 카탈로그        :p4a, after p3b, 2d
+    Compose / 롤백        :p4b, after p4a, 2d
 
-    section Phase 5 - 인증
-    인증 & 권한            :p5a, after p4b, 2w
+    section Phase 5 - 3D 시각화
+    Galaxy Cluster        :p5a, after p4b, 2d
+    리소스 매핑 / LOD     :p5b, after p5a, 0d
+
+    section Phase 6 - 인증
+    인증 & 권한           :p6a, after p5b, 2d
+
+    section Demo & Testing
+    Demo                 :milestone, demo, 2026-04-22, 0d
+    테스트 및 수정         :test, 2026-04-23, 10d
 ```
 
-| Phase | 핵심 목표 | 주요 산출물 |
-|-------|----------|-----------|
-| **Phase 1** | 멀티서버 아키텍처 | Agent, Auto-register, 서버 관리 UI, 통합 뷰 |
-| **Phase 2** | 모니터링 고도화 | 통합 대시보드, GPU 모니터링, 알림 시스템, WS 통합 채널 |
-| **Phase 3** | 비전문가 Docker 관리 | 템플릿 카탈로그, Compose 관리, 업데이트/롤백 |
-| **Phase 4** | 3D 시각화 고도화 | Galaxy Cluster, 리소스 매핑, LOD, HUD |
-| **Phase 5** | 인증 & 권한 | 3단계 권한, 감사 로그 |
+| Phase | 기간 | 핵심 목표 | 주요 산출물 |
+|-------|------|----------|-----------|
+| **Phase 1** | 3/24 ~ 3/27 (4일) | API 기반 구축 | SQLite, Repository 패턴, API 표준화, WS Hub 스켈레톤 |
+| **Phase 2** | 3/30 ~ 4/7 (7일) | 멀티서버 아키텍처 | Agent, Auto-register, 서버 관리 UI, 통합 뷰 |
+| **Phase 3** | 4/8 ~ 4/10 (3일) | 모니터링 고도화 | 통합 대시보드, GPU, 알림, WS 통합 채널 |
+| **Phase 4** | 4/13 ~ 4/16 (4일) | 비전문가 Docker 관리 | 템플릿 카탈로그, Compose, 롤백 |
+| **Phase 5** | 4/17 ~ 4/20 (2일) | 3D 시각화 고도화 | Galaxy Cluster, 리소스 매핑, LOD, HUD |
+| **Phase 6** | 4/21 ~ 4/22 (2일) | 인증 & 권한 | 3단계 권한, 감사 로그 |
+| **Testing** | 4/23 ~ 5/6 (10일) | 테스트 및 수정 | 버그 수정, 성능 튜닝, 통합 테스트 |
 
 ---
 
