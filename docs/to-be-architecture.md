@@ -26,30 +26,37 @@ graph TB
     subgraph MainServer["메인 서버 (192.168.0.16)"]
         Nginx["nginx :7003"]
 
-        subgraph DockerMain["Docker"]
+        subgraph DockerMain["Docker Compose"]
             subgraph FE["Frontend 컨테이너 :3000"]
                 SvelteKit["SvelteKit SSR"]
                 Topo["3D 토폴로지"]
                 Dashboard["대시보드"]
             end
 
-            subgraph BE["Backend 컨테이너 :4000"]
-                Fastify["Fastify (Node.js)"]
-                WSHub["WebSocket Hub"]
-                AuthMW["인증 미들웨어"]
-                Repo["Repository 계층"]
-                PgDB["PostgreSQL"]
+            subgraph BE["Backend 컨테이너 :8000"]
+                Django["Django + DRF"]
+                Channels["Django Channels<br/>(WebSocket)"]
+                AuthDJ["django.contrib.auth<br/>+ JWT"]
+                AI["AI 모듈<br/>(PyTorch, pgvector)"]
+            end
+
+            subgraph PgContainer["PostgreSQL :5432"]
+                PgDB["PostgreSQL 16<br/>+ pgvector"]
+            end
+
+            subgraph RedisContainer["Redis :6379"]
+                Redis["Channel Layer<br/>(WS 메시지 브로커)"]
             end
 
             subgraph AgentMain["Agent 컨테이너"]
-                AgentM["DCM Agent"]
+                AgentM["DCM Agent<br/>(Node.js)"]
             end
         end
     end
 
     subgraph SubServer1["서브 서버 A"]
         subgraph DockerSub1["Docker"]
-            Agent1["DCM Agent"]
+            Agent1["DCM Agent<br/>(Node.js)"]
         end
         Docker1["Docker Engine"]
         System1["OS / Hardware"]
@@ -57,7 +64,7 @@ graph TB
 
     subgraph SubServer2["서브 서버 B"]
         subgraph DockerSub2["Docker"]
-            Agent2["DCM Agent"]
+            Agent2["DCM Agent<br/>(Node.js)"]
         end
         Docker2["Docker Engine"]
         System2["OS / Hardware"]
@@ -65,16 +72,18 @@ graph TB
 
     Admin & Viewer -->|HTTPS| Nginx
     Nginx -->|"/dcmtool"| SvelteKit
-    Nginx -->|"/dcmtool/api"| Fastify
-    Nginx -->|"/dcmtool/ws"| WSHub
+    Nginx -->|"/dcmtool/api"| Django
+    Nginx -->|"/dcmtool/ws"| Channels
 
-    SvelteKit -->|REST + WS| Fastify
-    Fastify --> AuthMW
-    Fastify --> Repo --> PgDB
+    SvelteKit -->|REST + WS| Django
+    Django --> AuthDJ
+    Django --> PgDB
+    Channels --> Redis
+    Django --> AI --> PgDB
 
-    AgentM <-->|WS| WSHub
-    Agent1 <-->|WS| WSHub
-    Agent2 <-->|WS| WSHub
+    AgentM <-->|WS| Channels
+    Agent1 <-->|WS| Channels
+    Agent2 <-->|WS| Channels
 
     Agent1 --> Docker1
     Agent1 --> System1
@@ -85,6 +94,8 @@ graph TB
     style DockerMain fill:#161b22,stroke:#4a5568,color:#c9d1d9
     style FE fill:#1c2333,stroke:#586474,color:#c9d1d9
     style BE fill:#1c2333,stroke:#586474,color:#c9d1d9
+    style PgContainer fill:#0d1117,stroke:#586474,color:#c9d1d9
+    style RedisContainer fill:#0d1117,stroke:#586474,color:#c9d1d9
     style AgentMain fill:#0d1117,stroke:#586474,color:#c9d1d9
     style SubServer1 fill:#0d1117,stroke:#4a5568,color:#c9d1d9
     style SubServer2 fill:#0d1117,stroke:#4a5568,color:#c9d1d9
@@ -169,7 +180,7 @@ services:
 #### 역할
 
 모든 Agent의 데이터를 수신하고, 웹 대시보드를 통해 사용자에게 보여주는 **허브** 역할입니다.
-Frontend, Backend, Agent 3개의 Docker 컨테이너로 분리되어 있으며, nginx가 앞에서 라우팅합니다.
+Frontend, Backend(Django), PostgreSQL, Redis, Agent 5개의 Docker 컨테이너로 구성되며, nginx가 앞에서 라우팅합니다.
 
 #### 컨테이너 구성
 
@@ -184,63 +195,59 @@ graph TB
                 SSR["SvelteKit SSR"]
                 ThreeJS["3D 토폴로지<br/>(three.js + 3d-force-graph)"]
                 Charts["대시보드<br/>차트 / 테이블"]
-                StaticAssets["정적 자산<br/>(CSS, JS, 이미지)"]
             end
 
-            subgraph BE["Backend 컨테이너 :4000"]
+            subgraph BE["Backend 컨테이너 :8000"]
                 direction TB
-                FastifyServer["Fastify (Node.js)"]
+                DjangoServer["Django + DRF<br/>(uvicorn ASGI)"]
 
-                subgraph API["REST API 계층"]
+                subgraph API["REST API"]
                     Routes["/api/agents<br/>/api/containers<br/>/api/templates<br/>/api/users"]
-                    AuthMiddleware["인증 미들웨어<br/>JWT 검증"]
+                    DjangoAuth["django.contrib.auth<br/>+ JWT"]
+                    AdminPanel["Django Admin<br/>(관리자 패널)"]
                 end
 
-                subgraph WS["WebSocket 계층"]
+                subgraph WS["WebSocket (Channels)"]
                     Hub["WebSocket Hub<br/>Agent 연결 관리"]
-                    Channels["채널 관리<br/>server:{id}"]
+                    ChLayer["Channel Layer<br/>server:{id} 채널"]
                 end
 
-                subgraph Data["데이터 계층"]
-                    Repo["Repository 계층<br/>(DB 추상화)"]
-                    DB["PostgreSQL<br/>(컨테이너 분리)"]
+                subgraph AIModule["AI 모듈 (내장)"]
+                    Anomaly["이상 탐지"]
+                    Predict["리소스 예측"]
+                    NLQ["자연어 질의"]
                 end
 
-                FastifyServer --> Routes
-                FastifyServer --> Hub
-                Routes --> AuthMiddleware
-                Routes --> Repo
-                Hub --> Channels
-                Hub --> Repo
-                Repo --> DB
+                DjangoServer --> Routes
+                DjangoServer --> Hub
+                Routes --> DjangoAuth
+                Hub --> ChLayer
             end
 
             subgraph PgContainer["PostgreSQL 컨테이너 :5432"]
-                PgDB2["PostgreSQL 16<br/>Volume 영구 저장"]
+                PgDB2["PostgreSQL 16<br/>+ pgvector<br/>Volume 영구 저장"]
             end
 
-            subgraph AgentLocal["Agent 컨테이너 (메인 서버용)"]
-                AgentProcess["DCM Agent<br/>(메인 서버 자체 모니터링)"]
-                AgentWS["WS Client<br/>→ Backend :4000"]
+            subgraph RedisC["Redis 컨테이너 :6379"]
+                RedisServer["Channel Layer<br/>(WS 메시지 브로커)"]
             end
 
-            subgraph AIContainer["AI Service 컨테이너 :5000 (향후)"]
-                FastAPI["FastAPI (Python)"]
-                VectorDB["pgvector 연동"]
-                MLModels["이상 탐지 / 로그 분석"]
+            subgraph AgentLocal["Agent 컨테이너"]
+                AgentProcess["DCM Agent (Node.js)<br/>메인 서버 자체 모니터링"]
             end
         end
 
         Nginx -->|"/dcmtool"| SSR
-        Nginx -->|"/dcmtool/api/*"| FastifyServer
+        Nginx -->|"/dcmtool/api/*"| DjangoServer
         Nginx -->|"/dcmtool/ws"| Hub
     end
 
     Browser["사용자 브라우저"] --> Nginx
-    SSR -->|"REST + WS"| FastifyServer
-    AgentProcess --> AgentWS --> Hub
-    Repo --> PgDB2
-    FastAPI --> PgDB2
+    SSR -->|"REST + WS"| DjangoServer
+    DjangoServer --> PgDB2
+    ChLayer --> RedisServer
+    AIModule --> PgDB2
+    AgentProcess -->|WS| Hub
 
     style MainServer fill:#0d1117,stroke:#4a5568,color:#e6edf3
     style Docker fill:#161b22,stroke:#4a5568,color:#c9d1d9
@@ -248,10 +255,10 @@ graph TB
     style BE fill:#1c2333,stroke:#586474,color:#c9d1d9
     style API fill:#161b22,stroke:#4a5568,color:#8b949e
     style WS fill:#161b22,stroke:#4a5568,color:#8b949e
-    style Data fill:#0d1117,stroke:#4a5568,color:#8b949e
+    style AIModule fill:#161b22,stroke:#3d4f5f,color:#8b949e
     style AgentLocal fill:#0d1117,stroke:#586474,color:#c9d1d9
     style PgContainer fill:#0d1117,stroke:#586474,color:#c9d1d9
-    style AIContainer fill:#0d1117,stroke:#3d4f5f,color:#6e7681,stroke-dasharray: 5 5
+    style RedisC fill:#0d1117,stroke:#586474,color:#c9d1d9
 ```
 
 #### 각 컨테이너 역할
@@ -259,18 +266,19 @@ graph TB
 | 컨테이너 | 기술 | 역할 | 포트 |
 |----------|------|------|------|
 | **Frontend** | SvelteKit (adapter-node) | SSR, 3D 토폴로지, 대시보드 UI | :3000 |
-| **Backend** | Fastify (Node.js) | REST API, WebSocket Hub, 인증 | :4000 |
-| **PostgreSQL** | PostgreSQL 16 | 데이터 영구 저장 (사용자/템플릿/설정/로그) | :5432 |
+| **Backend** | Django + DRF + Channels | REST API, WebSocket Hub, 인증, AI 모듈 | :8000 |
+| **PostgreSQL** | PostgreSQL 16 + pgvector | 데이터 영구 저장 + 벡터 검색 | :5432 |
+| **Redis** | Redis 7 | Django Channels 메시지 브로커 | :6379 |
 | **Agent** | Node.js (경량 데몬) | 메인 서버 자체의 Docker/System 데이터 수집 | - |
-| **AI Service** | FastAPI (Python) | 이상 탐지, 로그 분석, 벡터 검색 (향후) | :5000 |
 
 #### nginx 라우팅
 
 ```
 nginx (:7003)
-├── /dcmtool           → Frontend :3000  (SSR 페이지)
-├── /dcmtool/api/*     → Backend :4000   (REST API)
-└── /dcmtool/ws        → Backend :4000   (WebSocket, upgrade)
+├── /dcmtool           → Frontend :3000   (SSR 페이지)
+├── /dcmtool/api/*     → Backend :8000    (Django REST API)
+├── /dcmtool/admin     → Backend :8000    (Django Admin 패널)
+└── /dcmtool/ws        → Backend :8000    (Django Channels WebSocket)
 ```
 
 사용자는 포트 하나(7003)로 모든 기능에 접근합니다. CORS 문제 없이 같은 도메인에서 동작합니다.
@@ -284,55 +292,47 @@ nginx (:7003)
 | 프레임워크 | SvelteKit 2 + Svelte 5 (runes mode) |
 | 빌드 | adapter-node |
 | 3D | 3d-force-graph + three.js |
-| Backend 통신 | REST API 호출 + WebSocket 연결 (Backend :4000) |
+| Backend 통신 | REST API 호출 + WebSocket 연결 (Backend :8000) |
 
-**Backend 컨테이너**
+**Backend 컨테이너 (Django)**
 
 | 항목 | 내용 |
 |------|------|
-| 프레임워크 | Fastify (Node.js) |
-| WebSocket | ws 라이브러리, server:{id} 채널 |
-| DB | PostgreSQL 16 (별도 컨테이너 :5432), Prisma ORM |
-| 인증 | JWT (사용자 세션 + Agent 토큰) |
-| 패턴 | Repository 패턴으로 DB 추상화 |
+| 프레임워크 | Django 5 + Django REST Framework |
+| ASGI 서버 | uvicorn (비동기 지원) |
+| WebSocket | Django Channels + Redis (Channel Layer) |
+| DB | PostgreSQL 16 + pgvector (Django ORM) |
+| 인증 | django.contrib.auth + djangorestframework-simplejwt |
+| Admin | Django Admin 패널 (Agent/사용자/템플릿 관리) |
+| AI | 같은 프로세스에서 PyTorch, scikit-learn, pgvector 직접 사용 |
 
-**Repository 패턴**
+**Django가 제공하는 내장 기능 (직접 구현 불필요)**
 
-```
-서비스 계층 → Repository 인터페이스 → PostgreSQL 구현체 (Prisma)
-```
-
-서비스 코드는 SQL을 직접 호출하지 않고, Repository 메서드만 사용합니다.
+| 기능 | Django 내장 | 직접 구현 시 |
+|------|-----------|------------|
+| 사용자 인증 | `django.contrib.auth` | JWT 미들웨어 직접 작성 |
+| 권한 관리 | Permission, Group 모델 | 역할 체크 로직 직접 작성 |
+| Admin 페이지 | `django.contrib.admin` | 관리 UI 직접 개발 |
+| DB 마이그레이션 | `python manage.py migrate` | SQL 수동 관리 |
+| ORM | Django ORM (자동 쿼리) | SQL 직접 작성 |
+| CSRF/XSS 보호 | 내장 미들웨어 | 직접 구현 |
 
 **Agent 컨테이너 (메인 서버용)**
 
-메인 서버도 서브 서버와 동일한 Agent를 실행합니다.
+메인 서버도 서브 서버와 동일한 Agent를 실행합니다. Agent는 Node.js 유지 (dockerode가 Node 전용).
 "메인 서버는 특별 취급"이라는 예외 없이, 모든 서버가 같은 방식으로 모니터링됩니다.
 
-**AI Service 컨테이너 (향후 확장)**
+**AI 모듈 (Backend에 내장)**
 
-향후 AI 기능을 위한 Python 마이크로서비스입니다. 현재 Phase에는 포함되지 않으며, 추후 별도 Phase로 추가합니다.
-
-```mermaid
-graph LR
-    BE["Backend<br/>(Fastify)"] <-->|REST API| AI["AI Service<br/>(FastAPI)"]
-    AI -->|벡터 검색| PG["PostgreSQL<br/>+ pgvector"]
-    AI -->|모델 추론| Models["PyTorch<br/>scikit-learn"]
-
-    style BE fill:#1c2333,stroke:#4a5568,color:#c9d1d9
-    style AI fill:#1c2333,stroke:#3d4f5f,color:#c9d1d9
-    style PG fill:#0d1117,stroke:#4a5568,color:#c9d1d9
-    style Models fill:#0d1117,stroke:#3d4f5f,color:#8b949e
-```
+별도 마이크로서비스 없이 Django Backend 안에서 AI 기능을 직접 처리합니다.
+같은 프로세스에서 DB에 직접 접근하므로 데이터 전송 오버헤드가 없습니다.
 
 | 기능 | 설명 | 기술 |
 |------|------|------|
 | 로그 이상 탐지 | 평소와 다른 로그 패턴 자동 감지 | 벡터 유사도 검색 (pgvector) |
 | 리소스 예측 | CPU/Memory 사용 추이 기반 예측 | 시계열 분석 (Prophet, ARIMA) |
-| 자연어 질의 | "어제 메모리 터진 서버 어디?" | LLM 연동 (LangChain) |
+| 자연어 질의 | "어제 메모리 터진 서버 어디?" | LLM API (Claude/GPT) + Django ORM |
 | 장애 원인 분석 | 알림 발생 시 유사 과거 사례 자동 조회 | 벡터 검색 + RAG |
-
-Backend가 AI Service에 REST API로 요청하고, AI Service가 PostgreSQL의 pgvector 확장을 사용해서 벡터 검색을 수행합니다. Node.js 백엔드는 그대로 유지하면서 AI 기능만 Python으로 처리하는 구조입니다.
 
 ---
 
@@ -605,12 +605,16 @@ graph TB
         Nginx["nginx :7003"]
         subgraph DockerCompose["Docker Compose"]
             FE["Frontend :3000"]
-            BE["Backend :4000"]
+            BE["Django :8000"]
+            PG["PostgreSQL :5432"]
+            RD["Redis :6379"]
             AgentM["Agent<br/>(메인 서버 모니터링)"]
         end
         Runner["GitHub Actions<br/>Self-hosted Runner"]
         Nginx -->|"/dcmtool"| FE
         Nginx -->|"/dcmtool/api, /ws"| BE
+        BE --> PG
+        BE --> RD
         AgentM -->|WS| BE
     end
 
@@ -642,11 +646,12 @@ graph TB
 |-----------|------|------|----------|------|
 | nginx | 192.168.0.16 | 7003 | HTTP | 리버스 프록시, 기존 서비스와 공존 |
 | Frontend | Docker 내부 | 3000 | HTTP | SvelteKit SSR |
-| Backend | Docker 내부 | 4000 | HTTP + WS | Fastify + WebSocket Hub |
-| Agent (메인) | Docker 내부 | - | WS | Backend :4000에 WS 연결 |
+| Backend | Docker 내부 | 8000 | HTTP + WS | Django + Channels (uvicorn) |
+| PostgreSQL | Docker 내부 | 5432 | TCP | 데이터 영구 저장, pgvector |
+| Redis | Docker 내부 | 6379 | TCP | Django Channels 메시지 브로커 |
+| Agent (메인) | Docker 내부 | - | WS | Backend :8000에 WS 연결 |
 | Agent (서브) → nginx | 외부 | 7003 | WS | /dcmtool/ws 경로로 연결 |
 | Agent → Docker | localhost | unix socket | - | docker.sock |
-| PostgreSQL | Docker 내부 | 5432 | TCP | 별도 컨테이너, Volume 영구 저장 |
 
 ---
 
@@ -663,10 +668,10 @@ gantt
     axisFormat %m/%d
     excludes weekends
 
-    section Phase 1 - API 기반
-    DB + Repository      :p1a, 2026-03-24, 2d
-    API 표준화            :p1b, after p1a, 1d
-    인증/WS 스켈레톤       :p1c, after p1b, 1d
+    section Phase 1 - Django 기반
+    Django + PostgreSQL + Redis  :p1a, 2026-03-24, 2d
+    DRF API + ORM 모델           :p1b, after p1a, 2d
+    Channels WS + Auth           :p1c, after p1b, 2d
 
     section Phase 2 - 멀티서버
     Agent 개발           :p2a, after p1c, 4d
@@ -695,7 +700,7 @@ gantt
 
 | Phase | 기간 | 핵심 목표 | 주요 산출물 |
 |-------|------|----------|-----------|
-| **Phase 1** | 3/24 ~ 3/27 (4일) | API 기반 구축 | PostgreSQL, Repository 패턴, API 표준화, WS Hub 스켈레톤 |
+| **Phase 1** | 3/24 ~ 4/2 (6일) | Django 기반 구축 | Django + DRF + Channels, PostgreSQL, Redis, Auth |
 | **Phase 2** | 3/30 ~ 4/7 (7일) | 멀티서버 아키텍처 | Agent, Auto-register, 서버 관리 UI, 통합 뷰 |
 | **Phase 3** | 4/8 ~ 4/10 (3일) | 모니터링 고도화 | 통합 대시보드, GPU, 알림, WS 통합 채널 |
 | **Phase 4** | 4/13 ~ 4/16 (4일) | 비전문가 Docker 관리 | 템플릿 카탈로그, Compose, 롤백 |
@@ -710,7 +715,7 @@ gantt
 | 항목 | As-Is (현재) | To-Be (목표) |
 |------|-------------|-------------|
 | 서버 구조 | SvelteKit 모놀리식 (API+UI 한 컨테이너) | Frontend + Backend + Agent 3컨테이너 분리 |
-| Backend | SvelteKit API Routes | Fastify (Node.js) 독립 서버 |
+| Backend | SvelteKit API Routes | Django + DRF + Channels (Python) |
 | 모니터링 범위 | 서버 1대 | 다수 서버 (메인 서버 포함) |
 | 데이터 수집 | 중앙 서버가 직접 docker.sock 접근 | Agent가 각 서버에서 수집 후 전송 |
 | 전송 방식 | REST polling + WebSocket | WebSocket Delta Sync |
