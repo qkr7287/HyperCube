@@ -37,7 +37,14 @@ graph TB
                 Django["Django + DRF"]
                 Channels["Django Channels<br/>(WebSocket)"]
                 AuthDJ["django.contrib.auth<br/>+ JWT"]
-                AI["AI 모듈<br/>(PyTorch, pgvector)"]
+            end
+
+            subgraph CeleryC["Celery Worker 컨테이너"]
+                CeleryW["AI 분석<br/>(이상탐지, 예측, 벡터검색)"]
+            end
+
+            subgraph RedisC["Redis :6379"]
+                RedisS["메시지 큐 + 실시간 캐시"]
             end
 
             subgraph PgContainer["PostgreSQL :5432"]
@@ -74,7 +81,10 @@ graph TB
     SvelteKit -->|REST + WS| Django
     Django --> AuthDJ
     Django --> PgDB
-    Django --> AI --> PgDB
+    Django -->|작업 요청| RedisS
+    RedisS -->|작업 수신| CeleryW
+    CeleryW --> PgDB
+    Channels -->|실시간 캐시| RedisS
 
     AgentM <-->|WS| Channels
     Agent1 <-->|WS| Channels
@@ -89,6 +99,8 @@ graph TB
     style DockerMain fill:#161b22,stroke:#4a5568,color:#c9d1d9
     style FE fill:#1c2333,stroke:#586474,color:#c9d1d9
     style BE fill:#1c2333,stroke:#586474,color:#c9d1d9
+    style CeleryC fill:#1c2333,stroke:#3d4f5f,color:#c9d1d9
+    style RedisC fill:#0d1117,stroke:#586474,color:#c9d1d9
     style PgContainer fill:#0d1117,stroke:#586474,color:#c9d1d9
     style AgentMain fill:#0d1117,stroke:#586474,color:#c9d1d9
     style SubServer1 fill:#0d1117,stroke:#4a5568,color:#c9d1d9
@@ -174,7 +186,7 @@ services:
 #### 역할
 
 모든 Agent의 데이터를 수신하고, 웹 대시보드를 통해 사용자에게 보여주는 **허브** 역할입니다.
-Frontend, Backend(Django), PostgreSQL, Agent 4개의 Docker 컨테이너로 구성되며, nginx가 앞에서 라우팅합니다.
+Frontend, Backend(Django), Celery Worker, Redis, PostgreSQL, Agent 6개의 Docker 컨테이너로 구성되며, nginx가 앞에서 라우팅합니다.
 
 #### 컨테이너 구성
 
@@ -206,16 +218,22 @@ graph TB
                     ChLayer["Channel Layer<br/>server:{id} 채널"]
                 end
 
-                subgraph AIModule["AI 모듈 (내장)"]
-                    Anomaly["이상 탐지"]
-                    Predict["리소스 예측"]
-                    NLQ["자연어 질의"]
-                end
-
                 DjangoServer --> Routes
                 DjangoServer --> Hub
                 Routes --> DjangoAuth
                 Hub --> ChLayer
+            end
+
+            subgraph CeleryC["Celery Worker 컨테이너"]
+                direction TB
+                CeleryW["Celery Worker<br/>(같은 Django 코드)"]
+                Anomaly["이상 탐지"]
+                Predict["리소스 예측"]
+                NLQ["자연어 질의<br/>(LLM + RAG)"]
+            end
+
+            subgraph RedisC["Redis 컨테이너 :6379"]
+                RedisS["메시지 큐<br/>+ 실시간 데이터 캐시"]
             end
 
             subgraph PgContainer["PostgreSQL 컨테이너 :5432"]
@@ -235,7 +253,10 @@ graph TB
     Browser["사용자 브라우저"] --> Nginx
     SSR -->|"REST + WS"| DjangoServer
     DjangoServer --> PgDB2
-    AIModule --> PgDB2
+    DjangoServer -->|AI 작업 요청| RedisS
+    Hub -->|실시간 캐시| RedisS
+    RedisS -->|작업 수신| CeleryW
+    CeleryW --> PgDB2
     AgentProcess -->|WS| Hub
 
     style MainServer fill:#0d1117,stroke:#4a5568,color:#e6edf3
@@ -244,7 +265,8 @@ graph TB
     style BE fill:#1c2333,stroke:#586474,color:#c9d1d9
     style API fill:#161b22,stroke:#4a5568,color:#8b949e
     style WS fill:#161b22,stroke:#4a5568,color:#8b949e
-    style AIModule fill:#161b22,stroke:#3d4f5f,color:#8b949e
+    style CeleryC fill:#1c2333,stroke:#3d4f5f,color:#c9d1d9
+    style RedisC fill:#0d1117,stroke:#586474,color:#c9d1d9
     style AgentLocal fill:#0d1117,stroke:#586474,color:#c9d1d9
     style PgContainer fill:#0d1117,stroke:#586474,color:#c9d1d9
 ```
@@ -254,7 +276,9 @@ graph TB
 | 컨테이너 | 기술 | 역할 | 포트 |
 |----------|------|------|------|
 | **Frontend** | SvelteKit (adapter-node) | SSR, 3D 토폴로지, 대시보드 UI | :3000 |
-| **Backend** | Django + DRF + Channels | REST API, WebSocket Hub, 인증, AI 모듈 | :8000 |
+| **Backend** | Django + DRF + Channels | REST API, WebSocket Hub, 인증 | :8000 |
+| **Celery Worker** | Celery (같은 Django 코드) | AI 분석 (이상탐지, 예측, 벡터검색) | - |
+| **Redis** | Redis 7 | Celery 메시지 큐 + Agent 실시간 데이터 캐시 | :6379 |
 | **PostgreSQL** | PostgreSQL 16 + pgvector | 데이터 영구 저장 + 벡터 검색 | :5432 |
 | **Agent** | Node.js (경량 데몬) | 메인 서버 자체의 Docker/System 데이터 수집 | - |
 
@@ -287,11 +311,11 @@ nginx (:7003)
 |------|------|
 | 프레임워크 | Django 5 + Django REST Framework |
 | ASGI 서버 | uvicorn (비동기 지원) |
-| WebSocket | Django Channels (InMemory, 확장 시 Redis 추가) |
+| WebSocket | Django Channels (Redis Channel Layer) |
 | DB | PostgreSQL 16 + pgvector (Django ORM) |
 | 인증 | django.contrib.auth + djangorestframework-simplejwt |
 | Admin | Django Admin 패널 (Agent/사용자/템플릿 관리) |
-| AI | 같은 프로세스에서 PyTorch, scikit-learn, pgvector 직접 사용 |
+| AI 작업 | Celery Worker에 비동기 위임 (Redis 큐) |
 
 **Django가 제공하는 내장 기능 (직접 구현 불필요)**
 
@@ -309,10 +333,16 @@ nginx (:7003)
 메인 서버도 서브 서버와 동일한 Agent를 실행합니다. Agent는 Node.js 유지 (dockerode가 Node 전용).
 "메인 서버는 특별 취급"이라는 예외 없이, 모든 서버가 같은 방식으로 모니터링됩니다.
 
-**AI 모듈 (Backend에 내장)**
+**Celery Worker 컨테이너 (AI 분석)**
 
-별도 마이크로서비스 없이 Django Backend 안에서 AI 기능을 직접 처리합니다.
-같은 프로세스에서 DB에 직접 접근하므로 데이터 전송 오버헤드가 없습니다.
+Django와 같은 코드를 사용하지만 별도 프로세스에서 실행됩니다.
+CPU를 많이 먹는 AI 연산을 분리해서 Backend의 API/WS 응답이 느려지지 않게 합니다.
+
+```
+Django: "이 로그 이상 탐지 해줘" ──→ Redis (큐) ──→ Celery Worker 처리
+                                                      │
+                                         결과 → DB 저장 + WS로 알림
+```
 
 | 기능 | 설명 | 기술 |
 |------|------|------|
@@ -320,6 +350,14 @@ nginx (:7003)
 | 리소스 예측 | CPU/Memory 사용 추이 기반 예측 | 시계열 분석 (Prophet, ARIMA) |
 | 자연어 질의 | "어제 메모리 터진 서버 어디?" | LLM API (Claude/GPT) + Django ORM |
 | 장애 원인 분석 | 알림 발생 시 유사 과거 사례 자동 조회 | 벡터 검색 + RAG |
+
+**Redis 컨테이너**
+
+| 용도 | 설명 |
+|------|------|
+| Celery 메시지 큐 | Django → Redis → Celery Worker 작업 전달 |
+| 실시간 데이터 캐시 | Agent 데이터 최신 상태 저장 (DB 부하 감소) |
+| Channels 브로커 | Worker 확장 시 WS 메시지 전달 (향후) |
 
 ---
 
@@ -333,10 +371,14 @@ DB를 거치지 않고 Agent에서 브라우저까지 실시간 전달됩니다.
 graph LR
     Agent["Agent<br/>(서버)"] -->|"server:{id} 채널<br/>Delta Sync"| WSHub["Django Channels<br/>(WS Hub)"]
     WSHub -->|"브로드캐스트"| Browser["브라우저<br/>(대시보드)"]
+    WSHub -->|"최신 상태 캐시"| Redis["Redis"]
+    Redis -->|"5분마다"| PG["PostgreSQL<br/>(히스토리)"]
 
     style Agent fill:#0d1117,stroke:#4a5568,color:#c9d1d9
     style WSHub fill:#1c2333,stroke:#4a5568,color:#c9d1d9
     style Browser fill:#161b22,stroke:#4a5568,color:#c9d1d9
+    style Redis fill:#0d1117,stroke:#586474,color:#c9d1d9
+    style PG fill:#0d1117,stroke:#586474,color:#c9d1d9
 ```
 
 전송 데이터 (통합 메시지):
@@ -593,6 +635,8 @@ graph TB
         subgraph DockerCompose["Docker Compose"]
             FE["Frontend :3000"]
             BE["Django :8000"]
+            CW["Celery Worker"]
+            RD["Redis :6379"]
             PG["PostgreSQL :5432"]
             AgentM["Agent<br/>(메인 서버 모니터링)"]
         end
@@ -600,6 +644,9 @@ graph TB
         Nginx -->|"/dcmtool"| FE
         Nginx -->|"/dcmtool/api, /ws"| BE
         BE --> PG
+        BE --> RD
+        RD --> CW
+        CW --> PG
         AgentM -->|WS| BE
     end
 
@@ -633,6 +680,8 @@ graph TB
 | Frontend | Docker 내부 | 3000 | HTTP | SvelteKit SSR |
 | Backend | Docker 내부 | 8000 | HTTP + WS | Django + Channels (uvicorn) |
 | PostgreSQL | Docker 내부 | 5432 | TCP | 데이터 영구 저장, pgvector |
+| Celery Worker | Docker 내부 | - | - | AI 분석 (같은 Django 코드) |
+| Redis | Docker 내부 | 6379 | TCP | Celery 큐 + 실시간 데이터 캐시 |
 | Agent (메인) | Docker 내부 | - | WS | Backend :8000에 WS 연결 |
 | Agent (서브) → nginx | 외부 | 7003 | WS | /dcmtool/ws 경로로 연결 |
 | Agent → Docker | localhost | unix socket | - | docker.sock |
@@ -653,7 +702,7 @@ gantt
     excludes weekends
 
     section Phase 1 - Django 기반
-    Django + PG 세팅            :p1a, 2026-03-24, 2d
+    Django + PG + Redis 세팅    :p1a, 2026-03-24, 2d
     ORM 모델 + DRF API          :p1b, after p1a, 3d
     Channels WS + Auth + Admin  :p1c, after p1b, 2d
 
@@ -684,7 +733,7 @@ gantt
 
 | Phase | 기간 | 핵심 목표 | 주요 산출물 |
 |-------|------|----------|-----------|
-| **Phase 1** | 3/24 ~ 4/2 (7일) | Django 기반 구축 | Django + DRF + Channels, PostgreSQL, Auth, Admin |
+| **Phase 1** | 3/24 ~ 4/2 (7일) | Django 기반 구축 | Django + DRF + Channels, PostgreSQL, Redis, Celery, Auth, Admin |
 | **Phase 2** | 4/3 ~ 4/14 (8일) | 멀티서버 아키텍처 | Agent, Auto-register, 서버 관리 UI, 통합 뷰 |
 | **Phase 3** | 4/15 ~ 4/17 (3일) | 모니터링 고도화 | 통합 대시보드, GPU, 알림, WS 통합 채널 |
 | **Phase 4** | 4/20 ~ 4/23 (4일) | 비전문가 Docker 관리 | 템플릿 카탈로그, Compose, 롤백 |
@@ -703,7 +752,7 @@ gantt
 | 모니터링 범위 | 서버 1대 | 다수 서버 (메인 서버 포함) |
 | 데이터 수집 | 중앙 서버가 직접 docker.sock 접근 | Agent가 각 서버에서 수집 후 전송 |
 | 전송 방식 | REST polling + WebSocket | WebSocket Delta Sync |
-| 데이터베이스 | 없음 (stateless) | PostgreSQL (별도 컨테이너, Volume 영구 저장) |
+| 데이터베이스 | 없음 (stateless) | PostgreSQL + Redis (영구 저장 + 실시간 캐시) |
 | 인증 | 없음 (누구나 접근) | JWT 기반 3단계 권한 |
 | Docker 배포 | 수동 (CLI) | 템플릿 카탈로그 + 마법사 UI |
 | 3D 시각화 | 프로젝트-컨테이너 2계층 | 서버-프로젝트-컨테이너 3계층 (Galaxy Cluster) |
