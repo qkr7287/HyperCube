@@ -71,11 +71,13 @@ graph TB
         System2["OS / Hardware"]
     end
 
-    Admin & Viewer -->|HTTPS| Nginx
+    Admin & Viewer -->|"1. 페이지 요청"| Nginx
     Nginx -->|"/dcmtool"| SvelteKit
-    Nginx -->|"/dcmtool/api, /ws"| Django
+    SvelteKit -->|"HTML/JS/CSS 반환"| Nginx
 
-    SvelteKit -->|REST + WS| Django
+    Admin & Viewer <-->|"2. REST + WS (데이터)"| Nginx
+    Nginx <-->|"/dcmtool/api, /ws"| Django
+
     Django --> PgDB
     Django -->|실시간 캐시 + 작업 요청| RedisS
     RedisS -->|작업 수신| CeleryW
