@@ -28,9 +28,7 @@ graph TB
 
         subgraph DockerMain["Docker Compose"]
             subgraph FE["Frontend 컨테이너 :3000"]
-                SvelteKit["SvelteKit SSR"]
-                Topo["3D 토폴로지"]
-                Dashboard["대시보드"]
+                SvelteKit["SvelteKit (Node.js)<br/>대시보드 + 3D 토폴로지 + 페이지"]
             end
 
             subgraph BE["Backend 컨테이너 :8000"]
