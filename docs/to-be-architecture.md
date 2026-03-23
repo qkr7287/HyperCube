@@ -170,7 +170,7 @@ services:
       - /etc/hostname:/host/etc/hostname:ro
       - /var/run/utmp:/var/run/utmp:ro
     environment:
-      - DCM_SERVER_URL=http://central-server:3334
+      - DCM_SERVER_URL=http://central-server:8000
 ```
 
 ---
@@ -344,7 +344,7 @@ DB를 거치지 않고 Agent에서 브라우저까지 실시간 전달됩니다.
 
 ```mermaid
 graph LR
-    Agent["Agent<br/>(서버)"] -->|"server:{id} 채널<br/>Delta Sync"| WSHub["WS Hub<br/>(중앙서버)"]
+    Agent["Agent<br/>(서버)"] -->|"server:{id} 채널<br/>Delta Sync"| WSHub["Django Channels<br/>(WS Hub)"]
     WSHub -->|"브로드캐스트"| Browser["브라우저<br/>(대시보드)"]
 
     style Agent fill:#0d1117,stroke:#4a5568,color:#c9d1d9
@@ -375,8 +375,8 @@ graph LR
 
 ```mermaid
 graph LR
-    Browser["브라우저"] -->|REST API| Server["중앙서버"]
-    Server -->|Repository| DB["PostgreSQL"]
+    Browser["브라우저"] -->|REST API| Server["Django + DRF"]
+    Server -->|Django ORM| DB["PostgreSQL"]
 
     style Browser fill:#161b22,stroke:#4a5568,color:#c9d1d9
     style Server fill:#1c2333,stroke:#4a5568,color:#c9d1d9
@@ -657,9 +657,9 @@ graph TB
 
 ## 6. Phase별 구현 범위
 
-- **개발 기간**: 3/24 ~ 4/22 (약 1개월, 22 영업일)
-- **테스트 기간**: 4/23 ~ 5/6 (2주, 10 영업일)
-- **Demo 목표**: 4/22
+- **개발 기간**: 3/24 ~ 4/28 (약 5주, 26 영업일)
+- **테스트 기간**: 4/29 ~ 5/12 (2주, 10 영업일)
+- **Demo 목표**: 4/28
 
 ```mermaid
 gantt
@@ -669,14 +669,14 @@ gantt
     excludes weekends
 
     section Phase 1 - Django 기반
-    Django + PostgreSQL + Redis  :p1a, 2026-03-24, 2d
-    DRF API + ORM 모델           :p1b, after p1a, 2d
-    Channels WS + Auth           :p1c, after p1b, 2d
+    Django + PG + Redis 세팅    :p1a, 2026-03-24, 2d
+    ORM 모델 + DRF API          :p1b, after p1a, 3d
+    Channels WS + Auth + Admin  :p1c, after p1b, 2d
 
     section Phase 2 - 멀티서버
     Agent 개발           :p2a, after p1c, 4d
     Agent 통신           :p2b, after p2a, 2d
-    서버 관리 UI / 뷰     :p2c, after p2b, 1d
+    서버 관리 UI / 뷰     :p2c, after p2b, 2d
 
     section Phase 3 - 모니터링
     통합 대시보드          :p3a, after p2c, 2d
@@ -688,25 +688,25 @@ gantt
 
     section Phase 5 - 3D 시각화
     Galaxy Cluster        :p5a, after p4b, 2d
-    리소스 매핑 / LOD     :p5b, after p5a, 0d
+    리소스 매핑 / LOD     :p5b, after p5a, 1d
 
     section Phase 6 - 인증
     인증 & 권한           :p6a, after p5b, 2d
 
     section Demo & Testing
-    Demo                 :milestone, demo, 2026-04-22, 0d
-    테스트 및 수정         :test, 2026-04-23, 10d
+    Demo                 :milestone, demo, 2026-04-28, 0d
+    테스트 및 수정         :test, 2026-04-29, 10d
 ```
 
 | Phase | 기간 | 핵심 목표 | 주요 산출물 |
 |-------|------|----------|-----------|
-| **Phase 1** | 3/24 ~ 4/2 (6일) | Django 기반 구축 | Django + DRF + Channels, PostgreSQL, Redis, Auth |
-| **Phase 2** | 3/30 ~ 4/7 (7일) | 멀티서버 아키텍처 | Agent, Auto-register, 서버 관리 UI, 통합 뷰 |
-| **Phase 3** | 4/8 ~ 4/10 (3일) | 모니터링 고도화 | 통합 대시보드, GPU, 알림, WS 통합 채널 |
-| **Phase 4** | 4/13 ~ 4/16 (4일) | 비전문가 Docker 관리 | 템플릿 카탈로그, Compose, 롤백 |
-| **Phase 5** | 4/17 ~ 4/20 (2일) | 3D 시각화 고도화 | Galaxy Cluster, 리소스 매핑, LOD, HUD |
-| **Phase 6** | 4/21 ~ 4/22 (2일) | 인증 & 권한 | 3단계 권한, 감사 로그 |
-| **Testing** | 4/23 ~ 5/6 (10일) | 테스트 및 수정 | 버그 수정, 성능 튜닝, 통합 테스트 |
+| **Phase 1** | 3/24 ~ 4/2 (7일) | Django 기반 구축 | Django + DRF + Channels, PostgreSQL, Redis, Auth, Admin |
+| **Phase 2** | 4/3 ~ 4/14 (8일) | 멀티서버 아키텍처 | Agent, Auto-register, 서버 관리 UI, 통합 뷰 |
+| **Phase 3** | 4/15 ~ 4/17 (3일) | 모니터링 고도화 | 통합 대시보드, GPU, 알림, WS 통합 채널 |
+| **Phase 4** | 4/20 ~ 4/23 (4일) | 비전문가 Docker 관리 | 템플릿 카탈로그, Compose, 롤백 |
+| **Phase 5** | 4/24 ~ 4/27 (3일) | 3D 시각화 고도화 | Galaxy Cluster, 리소스 매핑, LOD, HUD |
+| **Phase 6** | 4/27 ~ 4/28 (2일) | 인증 & 권한 | Django Auth 완성, 3단계 권한, 감사 로그 |
+| **Testing** | 4/29 ~ 5/12 (10일) | 테스트 및 수정 | 버그 수정, 성능 튜닝, 통합 테스트 |
 
 ---
 
