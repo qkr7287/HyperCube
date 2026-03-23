@@ -44,10 +44,6 @@ graph TB
                 PgDB["PostgreSQL 16<br/>+ pgvector"]
             end
 
-            subgraph RedisContainer["Redis :6379"]
-                Redis["Channel Layer<br/>(WS 메시지 브로커)"]
-            end
-
             subgraph AgentMain["Agent 컨테이너"]
                 AgentM["DCM Agent<br/>(Node.js)"]
             end
@@ -78,7 +74,6 @@ graph TB
     SvelteKit -->|REST + WS| Django
     Django --> AuthDJ
     Django --> PgDB
-    Channels --> Redis
     Django --> AI --> PgDB
 
     AgentM <-->|WS| Channels
@@ -95,7 +90,6 @@ graph TB
     style FE fill:#1c2333,stroke:#586474,color:#c9d1d9
     style BE fill:#1c2333,stroke:#586474,color:#c9d1d9
     style PgContainer fill:#0d1117,stroke:#586474,color:#c9d1d9
-    style RedisContainer fill:#0d1117,stroke:#586474,color:#c9d1d9
     style AgentMain fill:#0d1117,stroke:#586474,color:#c9d1d9
     style SubServer1 fill:#0d1117,stroke:#4a5568,color:#c9d1d9
     style SubServer2 fill:#0d1117,stroke:#4a5568,color:#c9d1d9
@@ -180,7 +174,7 @@ services:
 #### 역할
 
 모든 Agent의 데이터를 수신하고, 웹 대시보드를 통해 사용자에게 보여주는 **허브** 역할입니다.
-Frontend, Backend(Django), PostgreSQL, Redis, Agent 5개의 Docker 컨테이너로 구성되며, nginx가 앞에서 라우팅합니다.
+Frontend, Backend(Django), PostgreSQL, Agent 4개의 Docker 컨테이너로 구성되며, nginx가 앞에서 라우팅합니다.
 
 #### 컨테이너 구성
 
@@ -228,10 +222,6 @@ graph TB
                 PgDB2["PostgreSQL 16<br/>+ pgvector<br/>Volume 영구 저장"]
             end
 
-            subgraph RedisC["Redis 컨테이너 :6379"]
-                RedisServer["Channel Layer<br/>(WS 메시지 브로커)"]
-            end
-
             subgraph AgentLocal["Agent 컨테이너"]
                 AgentProcess["DCM Agent (Node.js)<br/>메인 서버 자체 모니터링"]
             end
@@ -245,7 +235,6 @@ graph TB
     Browser["사용자 브라우저"] --> Nginx
     SSR -->|"REST + WS"| DjangoServer
     DjangoServer --> PgDB2
-    ChLayer --> RedisServer
     AIModule --> PgDB2
     AgentProcess -->|WS| Hub
 
@@ -258,7 +247,6 @@ graph TB
     style AIModule fill:#161b22,stroke:#3d4f5f,color:#8b949e
     style AgentLocal fill:#0d1117,stroke:#586474,color:#c9d1d9
     style PgContainer fill:#0d1117,stroke:#586474,color:#c9d1d9
-    style RedisC fill:#0d1117,stroke:#586474,color:#c9d1d9
 ```
 
 #### 각 컨테이너 역할
@@ -268,7 +256,6 @@ graph TB
 | **Frontend** | SvelteKit (adapter-node) | SSR, 3D 토폴로지, 대시보드 UI | :3000 |
 | **Backend** | Django + DRF + Channels | REST API, WebSocket Hub, 인증, AI 모듈 | :8000 |
 | **PostgreSQL** | PostgreSQL 16 + pgvector | 데이터 영구 저장 + 벡터 검색 | :5432 |
-| **Redis** | Redis 7 | Django Channels 메시지 브로커 | :6379 |
 | **Agent** | Node.js (경량 데몬) | 메인 서버 자체의 Docker/System 데이터 수집 | - |
 
 #### nginx 라우팅
@@ -300,7 +287,7 @@ nginx (:7003)
 |------|------|
 | 프레임워크 | Django 5 + Django REST Framework |
 | ASGI 서버 | uvicorn (비동기 지원) |
-| WebSocket | Django Channels + Redis (Channel Layer) |
+| WebSocket | Django Channels (InMemory, 확장 시 Redis 추가) |
 | DB | PostgreSQL 16 + pgvector (Django ORM) |
 | 인증 | django.contrib.auth + djangorestframework-simplejwt |
 | Admin | Django Admin 패널 (Agent/사용자/템플릿 관리) |
@@ -607,14 +594,12 @@ graph TB
             FE["Frontend :3000"]
             BE["Django :8000"]
             PG["PostgreSQL :5432"]
-            RD["Redis :6379"]
             AgentM["Agent<br/>(메인 서버 모니터링)"]
         end
         Runner["GitHub Actions<br/>Self-hosted Runner"]
         Nginx -->|"/dcmtool"| FE
         Nginx -->|"/dcmtool/api, /ws"| BE
         BE --> PG
-        BE --> RD
         AgentM -->|WS| BE
     end
 
@@ -648,7 +633,6 @@ graph TB
 | Frontend | Docker 내부 | 3000 | HTTP | SvelteKit SSR |
 | Backend | Docker 내부 | 8000 | HTTP + WS | Django + Channels (uvicorn) |
 | PostgreSQL | Docker 내부 | 5432 | TCP | 데이터 영구 저장, pgvector |
-| Redis | Docker 내부 | 6379 | TCP | Django Channels 메시지 브로커 |
 | Agent (메인) | Docker 내부 | - | WS | Backend :8000에 WS 연결 |
 | Agent (서브) → nginx | 외부 | 7003 | WS | /dcmtool/ws 경로로 연결 |
 | Agent → Docker | localhost | unix socket | - | docker.sock |
@@ -669,7 +653,7 @@ gantt
     excludes weekends
 
     section Phase 1 - Django 기반
-    Django + PG + Redis 세팅    :p1a, 2026-03-24, 2d
+    Django + PG 세팅            :p1a, 2026-03-24, 2d
     ORM 모델 + DRF API          :p1b, after p1a, 3d
     Channels WS + Auth + Admin  :p1c, after p1b, 2d
 
@@ -700,7 +684,7 @@ gantt
 
 | Phase | 기간 | 핵심 목표 | 주요 산출물 |
 |-------|------|----------|-----------|
-| **Phase 1** | 3/24 ~ 4/2 (7일) | Django 기반 구축 | Django + DRF + Channels, PostgreSQL, Redis, Auth, Admin |
+| **Phase 1** | 3/24 ~ 4/2 (7일) | Django 기반 구축 | Django + DRF + Channels, PostgreSQL, Auth, Admin |
 | **Phase 2** | 4/3 ~ 4/14 (8일) | 멀티서버 아키텍처 | Agent, Auto-register, 서버 관리 UI, 통합 뷰 |
 | **Phase 3** | 4/15 ~ 4/17 (3일) | 모니터링 고도화 | 통합 대시보드, GPU, 알림, WS 통합 채널 |
 | **Phase 4** | 4/20 ~ 4/23 (4일) | 비전문가 Docker 관리 | 템플릿 카탈로그, Compose, 롤백 |
