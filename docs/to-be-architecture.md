@@ -34,9 +34,7 @@ graph TB
             end
 
             subgraph BE["Backend 컨테이너 :8000"]
-                Django["Django + DRF"]
-                Channels["Django Channels<br/>(WebSocket)"]
-                AuthDJ["django.contrib.auth<br/>+ JWT"]
+                Django["Django 서버<br/>REST API + WebSocket + 인증(JWT)"]
             end
 
             subgraph CeleryC["Celery Worker 컨테이너"]
@@ -75,20 +73,17 @@ graph TB
 
     Admin & Viewer -->|HTTPS| Nginx
     Nginx -->|"/dcmtool"| SvelteKit
-    Nginx -->|"/dcmtool/api"| Django
-    Nginx -->|"/dcmtool/ws"| Channels
+    Nginx -->|"/dcmtool/api, /ws"| Django
 
     SvelteKit -->|REST + WS| Django
-    Django --> AuthDJ
     Django --> PgDB
-    Django -->|작업 요청| RedisS
+    Django -->|실시간 캐시 + 작업 요청| RedisS
     RedisS -->|작업 수신| CeleryW
     CeleryW --> PgDB
-    Channels -->|실시간 캐시| RedisS
 
-    AgentM <-->|WS| Channels
-    Agent1 <-->|WS| Channels
-    Agent2 <-->|WS| Channels
+    AgentM <-->|WS| Django
+    Agent1 <-->|WS| Django
+    Agent2 <-->|WS| Django
 
     Agent1 --> Docker1
     Agent1 --> System1
