@@ -685,9 +685,11 @@ graph TB
 
 ## 6. Phase별 구현 범위
 
-- **개발 기간**: 3/24 ~ 4/28 (약 5주, 26 영업일)
-- **테스트 기간**: 4/29 ~ 5/12 (2주, 10 영업일)
-- **Demo 목표**: 4/28
+> **WBS & Gantt 상세**: [Google Sheets](https://docs.google.com/spreadsheets/d/16Fx_Cef03RHAF6gmYK9verPP1x9UhJYZ3PRZ7wf99pU/edit?gid=1624286627#gid=1624286627)
+
+- **개발 기간**: 3/24 ~ 5/29 (약 10주, 48 영업일)
+- **테스트 기간**: 6/1 ~ 6/12 (2주, 10 영업일)
+- **Demo 목표**: TBD
 
 ```mermaid
 gantt
