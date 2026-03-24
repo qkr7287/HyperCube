@@ -685,9 +685,11 @@ graph TB
 
 ## 6. Phase별 구현 범위
 
-- **개발 기간**: 3/24 ~ 4/28 (약 5주, 26 영업일)
-- **테스트 기간**: 4/29 ~ 5/12 (2주, 10 영업일)
-- **Demo 목표**: 4/28
+> **WBS & Gantt 상세**: [Google Sheets](https://docs.google.com/spreadsheets/d/16Fx_Cef03RHAF6gmYK9verPP1x9UhJYZ3PRZ7wf99pU/edit?gid=1624286627#gid=1624286627)
+
+- **개발 기간**: 3/24 ~ 5/29 (약 10주, 48 영업일)
+- **테스트 기간**: 6/1 ~ 6/12 (2주, 10 영업일)
+- **Demo 목표**: TBD
 
 ```mermaid
 gantt
@@ -742,7 +744,7 @@ gantt
 
 | 항목 | As-Is (현재) | To-Be (목표) |
 |------|-------------|-------------|
-| 서버 구조 | SvelteKit 모놀리식 (API+UI 한 컨테이너) | Frontend + Backend + Agent 3컨테이너 분리 |
+| 서버 구조 | SvelteKit 모놀리식 (API+UI 한 컨테이너) | Frontend + Backend(Django) + Celery Worker + Redis + PostgreSQL + Agent 6컨테이너 분리 |
 | Backend | SvelteKit API Routes | Django + DRF + Channels (Python) |
 | 모니터링 범위 | 서버 1대 | 다수 서버 (메인 서버 포함) |
 | 데이터 수집 | 중앙 서버가 직접 docker.sock 접근 | Agent가 각 서버에서 수집 후 전송 |
