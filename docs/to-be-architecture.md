@@ -742,7 +742,7 @@ gantt
 
 | 항목 | As-Is (현재) | To-Be (목표) |
 |------|-------------|-------------|
-| 서버 구조 | SvelteKit 모놀리식 (API+UI 한 컨테이너) | Frontend + Backend + Agent 3컨테이너 분리 |
+| 서버 구조 | SvelteKit 모놀리식 (API+UI 한 컨테이너) | Frontend + Backend(Django) + Celery Worker + Redis + PostgreSQL + Agent 6컨테이너 분리 |
 | Backend | SvelteKit API Routes | Django + DRF + Channels (Python) |
 | 모니터링 범위 | 서버 1대 | 다수 서버 (메인 서버 포함) |
 | 데이터 수집 | 중앙 서버가 직접 docker.sock 접근 | Agent가 각 서버에서 수집 후 전송 |
