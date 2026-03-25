@@ -1,6 +1,8 @@
 services:
   dcm-frontend:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: dcm-frontend
     restart: unless-stopped
     ports:
