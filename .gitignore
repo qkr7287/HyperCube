@@ -1,5 +1,9 @@
 node_modules
 
+# Build output
+build/
+.svelte-kit/
+
 # Frontend output
 frontend/.svelte-kit
 frontend/build
@@ -8,6 +12,9 @@ frontend/build
 backend/__pycache__
 backend/*.pyc
 backend/db.sqlite3
+
+# Temp
+tmp_figma/
 
 # OS
 .DS_Store

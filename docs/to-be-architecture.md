@@ -102,6 +102,10 @@ graph TB
     style SubServer2 fill:#0d1117,stroke:#4a5568,color:#c9d1d9
 ```
 
+> **시각화 버전**
+>
+> ![DCMTool 전체 시스템 구성도](images/DCMTool%20아키텍처.png)
+
 ---
 
 ## 2. 핵심 구성 요소
