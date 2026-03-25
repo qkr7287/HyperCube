@@ -1,12 +1,20 @@
 node_modules
 
-# Output
-.output
-.vercel
-.netlify
-.wrangler
-/.svelte-kit
-/build
+# Build output
+build/
+.svelte-kit/
+
+# Frontend output
+frontend/.svelte-kit
+frontend/build
+
+# Backend output
+backend/__pycache__
+backend/*.pyc
+backend/db.sqlite3
+
+# Temp
+tmp_figma/
 
 # OS
 .DS_Store
@@ -22,3 +30,10 @@ Thumbs.db
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# IDE
+.idea/
+.vscode/
+
+# Plans (local only)
+docs/plans/
