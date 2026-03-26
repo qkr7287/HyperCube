@@ -24,9 +24,11 @@ graph TB
     end
 
     subgraph MainServer["메인 서버 (192.168.0.16)"]
-        Nginx["nginx :7003"]
-
         subgraph DockerMain["Docker Compose"]
+            subgraph NginxC["nginx 컨테이너 :7003"]
+                Nginx["nginx<br/>정적 파일 서빙 (HTML/JS/CSS)<br/>대시보드 + 3D 토폴로지 + 차트"]
+            end
+
             subgraph BE["Backend 컨테이너 :8000"]
                 Django["Django 서버<br/>REST API + WebSocket + 인증(JWT)"]
             end
@@ -47,6 +49,9 @@ graph TB
                 AgentM["DCM Agent<br/>(Node.js)"]
             end
         end
+
+        DockerM["Docker Engine"]
+        SystemM["OS / Hardware"]
     end
 
     subgraph SubServer1["서브 서버 A"]
@@ -65,28 +70,30 @@ graph TB
         System2["OS / Hardware"]
     end
 
-    Admin & Viewer -->|"1. 정적 파일 (HTML/JS/CSS)"| Nginx
+    Admin & Viewer <-->|"1. 정적 파일 (HTML/JS/CSS)"| Nginx
 
     Admin & Viewer <-->|"2. REST + WS (데이터)"| Nginx
-    Nginx <-->|"/dcmtool/api, /ws"| Django
+    Nginx <-->|"/api, /ws"| Django
 
-    Django --> PgDB
+    Django <--> PgDB
     Django -->|실시간 캐시 + 작업 요청| RedisS
-    RedisS -->|"주기적 저장 (5분)"| PgDB
-    RedisS -->|작업 수신| CeleryW
-    CeleryW <-->|"읽기(벡터검색) + 쓰기(분석결과)"| PgDB
+    RedisS -->|"캐시 데이터 + 작업 수신"| CeleryW
+    CeleryW <-->|"읽기(벡터검색) + 쓰기(히스토리/분석결과)"| PgDB
 
     AgentM <-->|WS| Django
+    AgentM <-->|"수집 + 제어"| DockerM
+    AgentM <-->|"수집"| SystemM
     Agent1 <-->|WS| Django
     Agent2 <-->|WS| Django
 
-    Agent1 --> Docker1
-    Agent1 --> System1
-    Agent2 --> Docker2
-    Agent2 --> System2
+    Agent1 <-->|"수집 + 제어"| Docker1
+    Agent1 <-->|"수집"| System1
+    Agent2 <-->|"수집 + 제어"| Docker2
+    Agent2 <-->|"수집"| System2
 
     style MainServer fill:#1c2333,stroke:#4a5568,color:#e6edf3
     style DockerMain fill:#161b22,stroke:#4a5568,color:#c9d1d9
+    style NginxC fill:#1c2333,stroke:#586474,color:#c9d1d9
     style BE fill:#1c2333,stroke:#586474,color:#c9d1d9
     style CeleryC fill:#1c2333,stroke:#3d4f5f,color:#c9d1d9
     style RedisC fill:#0d1117,stroke:#586474,color:#c9d1d9
