@@ -66,15 +66,15 @@ graph TB
     end
 
     Admin & Viewer -->|"1. 정적 파일 (HTML/JS/CSS)"| Nginx
-    Nginx -->|"nginx가 직접 서빙<br/>(SvelteKit 정적 빌드)"| Admin & Viewer
 
     Admin & Viewer <-->|"2. REST + WS (데이터)"| Nginx
     Nginx <-->|"/dcmtool/api, /ws"| Django
 
     Django --> PgDB
     Django -->|실시간 캐시 + 작업 요청| RedisS
+    RedisS -->|"주기적 저장 (5분)"| PgDB
     RedisS -->|작업 수신| CeleryW
-    CeleryW --> PgDB
+    CeleryW <-->|"읽기(벡터검색) + 쓰기(분석결과)"| PgDB
 
     AgentM <-->|WS| Django
     Agent1 <-->|WS| Django
