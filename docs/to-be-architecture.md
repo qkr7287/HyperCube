@@ -27,10 +27,6 @@ graph TB
         Nginx["nginx :7003"]
 
         subgraph DockerMain["Docker Compose"]
-            subgraph FE["Frontend 컨테이너 :3000"]
-                SvelteKit["SvelteKit (Node.js)<br/>대시보드 + 3D 토폴로지 + 페이지"]
-            end
-
             subgraph BE["Backend 컨테이너 :8000"]
                 Django["Django 서버<br/>REST API + WebSocket + 인증(JWT)"]
             end
@@ -69,9 +65,8 @@ graph TB
         System2["OS / Hardware"]
     end
 
-    Admin & Viewer -->|"1. 페이지 요청"| Nginx
-    Nginx -->|"/dcmtool"| SvelteKit
-    SvelteKit -->|"HTML/JS/CSS 반환"| Nginx
+    Admin & Viewer -->|"1. 정적 파일 (HTML/JS/CSS)"| Nginx
+    Nginx -->|"nginx가 직접 서빙<br/>(SvelteKit 정적 빌드)"| Admin & Viewer
 
     Admin & Viewer <-->|"2. REST + WS (데이터)"| Nginx
     Nginx <-->|"/dcmtool/api, /ws"| Django
@@ -92,7 +87,6 @@ graph TB
 
     style MainServer fill:#1c2333,stroke:#4a5568,color:#e6edf3
     style DockerMain fill:#161b22,stroke:#4a5568,color:#c9d1d9
-    style FE fill:#1c2333,stroke:#586474,color:#c9d1d9
     style BE fill:#1c2333,stroke:#586474,color:#c9d1d9
     style CeleryC fill:#1c2333,stroke:#3d4f5f,color:#c9d1d9
     style RedisC fill:#0d1117,stroke:#586474,color:#c9d1d9
@@ -630,9 +624,8 @@ graph TB
     end
 
     subgraph Central["중앙 서버 (192.168.0.16)"]
-        Nginx["nginx :7003"]
         subgraph DockerCompose["Docker Compose"]
-            FE["Frontend :3000"]
+            Nginx["nginx :7003<br/>정적 파일 서빙 + 리버스 프록시"]
             BE["Django :8000"]
             CW["Celery Worker"]
             RD["Redis :6379"]
@@ -640,7 +633,7 @@ graph TB
             AgentM["Agent<br/>(메인 서버 모니터링)"]
         end
         Runner["GitHub Actions<br/>Self-hosted Runner"]
-        Nginx -->|"/dcmtool"| FE
+        Nginx -->|"/dcmtool (정적 파일)"| Nginx
         Nginx -->|"/dcmtool/api, /ws"| BE
         BE --> PG
         BE --> RD
@@ -666,7 +659,7 @@ graph TB
     style Dev fill:#161b22,stroke:#4a5568,color:#c9d1d9
     style GitHub fill:#0d1117,stroke:#4a5568,color:#c9d1d9
     style Central fill:#1c2333,stroke:#4a5568,color:#c9d1d9
-    style DockerCompose fill:#161b22,stroke:#586474,color:#c9d1d9
+    style DockerCompose fill:#161b22,stroke:#4a5568,color:#c9d1d9
     style Remote1 fill:#0d1117,stroke:#4a5568,color:#c9d1d9
     style Remote2 fill:#0d1117,stroke:#4a5568,color:#c9d1d9
 ```
@@ -675,8 +668,7 @@ graph TB
 
 | 구성 요소 | 주소 | 포트 | 프로토콜 | 비고 |
 |-----------|------|------|----------|------|
-| nginx | 192.168.0.16 | 7003 | HTTP | 리버스 프록시, 기존 서비스와 공존 |
-| Frontend | Docker 내부 | 3000 | HTTP | SvelteKit SSR |
+| nginx | 192.168.0.16 | 7003 | HTTP | 정적 파일 서빙 + 리버스 프록시, 기존 서비스와 공존 |
 | Backend | Docker 내부 | 8000 | HTTP + WS | Django + Channels (uvicorn) |
 | PostgreSQL | Docker 내부 | 5432 | TCP | 데이터 영구 저장, pgvector |
 | Celery Worker | Docker 내부 | - | - | AI 분석 (같은 Django 코드) |
@@ -748,7 +740,7 @@ gantt
 
 | 항목 | As-Is (현재) | To-Be (목표) |
 |------|-------------|-------------|
-| 서버 구조 | SvelteKit 모놀리식 (API+UI 한 컨테이너) | Frontend + Backend(Django) + Celery Worker + Redis + PostgreSQL + Agent 6컨테이너 분리 |
+| 서버 구조 | SvelteKit 모놀리식 (API+UI 한 컨테이너) | nginx(정적 서빙) + Backend(Django) + Celery Worker + Redis + PostgreSQL + Agent 5컨테이너 분리 |
 | Backend | SvelteKit API Routes | Django + DRF + Channels (Python) |
 | 모니터링 범위 | 서버 1대 | 다수 서버 (메인 서버 포함) |
 | 데이터 수집 | 중앙 서버가 직접 docker.sock 접근 | Agent가 각 서버에서 수집 후 전송 |
