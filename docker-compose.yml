@@ -1,3 +1,5 @@
+name: hypercube
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
