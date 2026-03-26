@@ -8,7 +8,7 @@ RUN npm ci
 
 COPY . .
 
-ARG BASE_PATH=/dcmtool
+ARG BASE_PATH=/hypercube
 ENV BASE_PATH=${BASE_PATH}
 
 RUN npm run build

@@ -1,6 +1,6 @@
-# DCMTool To-Be 시스템 아키텍처
+# HyperCube To-Be 시스템 아키텍처
 
-> 이 문서는 DCMTool의 **목표 시스템 구조**를 정의합니다.
+> 이 문서는 HyperCube의 **목표 시스템 구조**를 정의합니다.
 > 비개발자도 전체 그림을 이해할 수 있도록 작성했으며, 각 섹션 하단에 개발자용 상세 내용을 포함합니다.
 
 ---
@@ -9,7 +9,7 @@
 
 ### 쉽게 말하면
 
-현재 DCMTool은 **서버 1대만** 모니터링합니다.
+현재 HyperCube은 **서버 1대만** 모니터링합니다.
 To-Be는 **여러 서버를 하나의 대시보드**에서 모니터링하고 관리하는 시스템입니다.
 
 각 서버에 "Agent"라는 작은 프로그램을 설치하면, Agent가 해당 서버의 상태를 수집해서 중앙 서버로 보내줍니다. 관리자는 웹 브라우저 하나로 모든 서버의 상태를 한눈에 확인하고, Docker 컨테이너를 생성/관리할 수 있습니다.
@@ -46,7 +46,7 @@ graph TB
             end
 
             subgraph AgentMain["Agent 컨테이너"]
-                AgentM["DCM Agent<br/>(Node.js)"]
+                AgentM["HC Agent<br/>(Node.js)"]
             end
         end
 
@@ -56,7 +56,7 @@ graph TB
 
     subgraph SubServer1["서브 서버 A"]
         subgraph DockerSub1["Docker"]
-            Agent1["DCM Agent<br/>(Node.js)"]
+            Agent1["HC Agent<br/>(Node.js)"]
         end
         Docker1["Docker Engine"]
         System1["OS / Hardware"]
@@ -64,7 +64,7 @@ graph TB
 
     subgraph SubServer2["서브 서버 B"]
         subgraph DockerSub2["Docker"]
-            Agent2["DCM Agent<br/>(Node.js)"]
+            Agent2["HC Agent<br/>(Node.js)"]
         end
         Docker2["Docker Engine"]
         System2["OS / Hardware"]
@@ -105,13 +105,13 @@ graph TB
 
 > **시각화 버전**
 >
-> ![DCMTool 전체 시스템 구성도](images/DCMTool%20아키텍처.png)
+> ![HyperCube 전체 시스템 구성도](images/HyperCube%20아키텍처.png)
 
 ---
 
 ## 2. 핵심 구성 요소
 
-### 2.1 DCM Agent (각 서버에 설치)
+### 2.1 HC Agent (각 서버에 설치)
 
 #### 역할
 
@@ -122,7 +122,7 @@ Agent는 각 서버에 설치되는 **경량 데이터 수집기**입니다.
 
 ```mermaid
 sequenceDiagram
-    participant A as DCM Agent
+    participant A as HC Agent
     participant C as 중앙 서버
     participant D as Docker Engine
     participant S as OS (proc/sys)
@@ -165,8 +165,8 @@ sequenceDiagram
 ```yaml
 # Agent docker-compose.yml
 services:
-  dcm-agent:
-    image: dcmtool/agent:latest
+  hc-agent:
+    image: hypercube/agent:latest
     restart: unless-stopped
     privileged: true
     pid: host
@@ -176,12 +176,12 @@ services:
       - /etc/hostname:/host/etc/hostname:ro
       - /var/run/utmp:/var/run/utmp:ro
     environment:
-      - DCM_SERVER_URL=http://central-server:8000
+      - HC_SERVER_URL=http://central-server:8000
 ```
 
 ---
 
-### 2.2 중앙 서버 (DCMTool Main)
+### 2.2 중앙 서버 (HyperCube Main)
 
 #### 역할
 
@@ -241,13 +241,13 @@ graph TB
             end
 
             subgraph AgentLocal["Agent 컨테이너"]
-                AgentProcess["DCM Agent (Node.js)<br/>메인 서버 자체 모니터링"]
+                AgentProcess["HC Agent (Node.js)<br/>메인 서버 자체 모니터링"]
             end
         end
 
-        Nginx -->|"/dcmtool"| SSR
-        Nginx -->|"/dcmtool/api/*"| DjangoServer
-        Nginx -->|"/dcmtool/ws"| Hub
+        Nginx -->|"/hypercube"| SSR
+        Nginx -->|"/hypercube/api/*"| DjangoServer
+        Nginx -->|"/hypercube/ws"| Hub
     end
 
     Browser["사용자 브라우저"] --> Nginx
@@ -286,10 +286,10 @@ graph TB
 
 ```
 nginx (:7003)
-├── /dcmtool           → Frontend :3000   (SSR 페이지)
-├── /dcmtool/api/*     → Backend :8000    (Django REST API)
-├── /dcmtool/admin     → Backend :8000    (Django Admin 패널)
-└── /dcmtool/ws        → Backend :8000    (Django Channels WebSocket)
+├── /hypercube           → Frontend :3000   (SSR 페이지)
+├── /hypercube/api/*     → Backend :8000    (Django REST API)
+├── /hypercube/admin     → Backend :8000    (Django Admin 패널)
+└── /hypercube/ws        → Backend :8000    (Django Channels WebSocket)
 ```
 
 사용자는 포트 하나(7003)로 모든 기능에 접근합니다. CORS 문제 없이 같은 도메인에서 동작합니다.
@@ -625,8 +625,8 @@ graph TB
     end
 
     subgraph GitHub["GitHub"]
-        TS["qkr7287/DCMTool_TS<br/>(개인 repo)"]
-        Team["dev-agics/DCMTool<br/>(팀 repo)"]
+        TS["qkr7287/HyperCube_TS<br/>(개인 repo)"]
+        Team["dev-agics/HyperCube<br/>(팀 repo)"]
         TS -->|auto sync| Team
     end
 
@@ -640,8 +640,8 @@ graph TB
             AgentM["Agent<br/>(메인 서버 모니터링)"]
         end
         Runner["GitHub Actions<br/>Self-hosted Runner"]
-        Nginx -->|"/dcmtool (정적 파일)"| Nginx
-        Nginx -->|"/dcmtool/api, /ws"| BE
+        Nginx -->|"/hypercube (정적 파일)"| Nginx
+        Nginx -->|"/hypercube/api, /ws"| BE
         BE --> PG
         BE --> RD
         RD --> CW
@@ -650,11 +650,11 @@ graph TB
     end
 
     subgraph Remote1["서브 서버 A"]
-        AgentA["DCM Agent"]
+        AgentA["HC Agent"]
     end
 
     subgraph Remote2["서브 서버 B"]
-        AgentB["DCM Agent"]
+        AgentB["HC Agent"]
     end
 
     DevPC -->|push| TS
@@ -681,7 +681,7 @@ graph TB
 | Celery Worker | Docker 내부 | - | - | AI 분석 (같은 Django 코드) |
 | Redis | Docker 내부 | 6379 | TCP | Celery 큐 + 실시간 데이터 캐시 |
 | Agent (메인) | Docker 내부 | - | WS | Backend :8000에 WS 연결 |
-| Agent (서브) → nginx | 외부 | 7003 | WS | /dcmtool/ws 경로로 연결 |
+| Agent (서브) → nginx | 외부 | 7003 | WS | /hypercube/ws 경로로 연결 |
 | Agent → Docker | localhost | unix socket | - | docker.sock |
 
 ---
@@ -696,7 +696,7 @@ graph TB
 
 ```mermaid
 gantt
-    title DCMTool 개발 로드맵
+    title HyperCube 개발 로드맵
     dateFormat YYYY-MM-DD
     axisFormat %m/%d
     excludes weekends

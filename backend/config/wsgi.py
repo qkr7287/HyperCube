@@ -1,4 +1,4 @@
-"""WSGI config for DCMTool backend."""
+"""WSGI config for HyperCube backend."""
 
 import os
 

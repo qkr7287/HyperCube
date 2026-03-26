@@ -1,4 +1,4 @@
-# DCMTool_TS - Docker Container Monitor
+# HyperCube - Server & Container Monitoring Platform
 
 > **IMPORTANT: main 브랜치에 직접 push하지 마세요!**
 >

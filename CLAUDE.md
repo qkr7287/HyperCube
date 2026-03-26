@@ -1,4 +1,4 @@
-# DCMTool_TS - Docker Container Monitor Tool
+# HyperCube - Server & Container Monitoring Platform
 
 ## 프로젝트 개요
 
@@ -73,7 +73,7 @@ DCMTool_TS/                          # Monorepo root
 │   │   └── dev.txt                  # debug-toolbar, ipython
 │   └── Dockerfile.dev               # python:3.12-slim, dev 의존성
 ├── nginx/
-│   ├── nginx.conf                   # prod: :7003, /dcmtool 경로
+│   ├── nginx.conf                   # prod: :7003, /hypercube 경로
 │   └── nginx.dev.conf               # dev: :3000, / 경로
 ├── docker-compose.yml               # 공통 base (postgres, redis, backend)
 ├── docker-compose.dev.yml           # 개발 override (볼륨 마운트, nginx dev)
@@ -106,10 +106,10 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.d
 docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.dev up backend --build
 
 # Django 마이그레이션
-docker compose exec dcm-backend python manage.py migrate
+docker compose exec hc-backend python manage.py migrate
 
 # Django 관리자 계정
-docker compose exec dcm-backend python manage.py createsuperuser
+docker compose exec hc-backend python manage.py createsuperuser
 ```
 
 ### 볼륨 마운트 (개발)
@@ -181,12 +181,12 @@ docker compose exec dcm-backend python manage.py createsuperuser
 ### 인프라 구조
 - **개발**: Docker Compose (nginx:3000 + backend:8000 + postgres + redis)
 - **운영**: nginx(:7003) → 정적 파일 + API/WS 프록시 → Django(:8000)
-- **접속 URL**: `http://192.168.0.16:7003/dcmtool`
+- **접속 URL**: `http://192.168.0.16:7003/hypercube`
 
 ### 배포 설정 (adapter-static + nginx)
 - `svelte.config.js`: adapter-static, `paths.base: process.env.BASE_PATH || ''`
 - `frontend/Dockerfile`: multi-stage build → nginx:alpine 서빙
-- `nginx/nginx.conf`: `/dcmtool` 정적 파일 + `/dcmtool/api` → backend 프록시
+- `nginx/nginx.conf`: `/hypercube` 정적 파일 + `/hypercube/api` → backend 프록시
 - Docker Compose override 패턴: base + dev/prod
 
 ### CI/CD 플로우 (GitHub Actions)

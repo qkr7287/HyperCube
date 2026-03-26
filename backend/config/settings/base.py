@@ -1,4 +1,4 @@
-"""Django base settings for DCMTool backend."""
+"""Django base settings for HyperCube backend."""
 
 from pathlib import Path
 
@@ -63,9 +63,9 @@ ASGI_APPLICATION = "config.asgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": config("DB_NAME", default="dcmtool"),
-        "USER": config("DB_USER", default="dcmtool"),
-        "PASSWORD": config("DB_PASSWORD", default="dcmtool"),
+        "NAME": config("DB_NAME", default="hypercube"),
+        "USER": config("DB_USER", default="hypercube"),
+        "PASSWORD": config("DB_PASSWORD", default="hypercube"),
         "HOST": config("DB_HOST", default="postgres"),
         "PORT": config("DB_PORT", default="5432"),
     }

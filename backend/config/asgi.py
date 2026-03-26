@@ -1,4 +1,4 @@
-"""ASGI config for DCMTool backend."""
+"""ASGI config for HyperCube backend."""
 
 import os
 

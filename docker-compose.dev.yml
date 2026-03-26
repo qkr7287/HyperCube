@@ -19,7 +19,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
-    container_name: dcm-nginx-dev
+    container_name: hc-nginx-dev
     volumes:
       - ./nginx/nginx.dev.conf:/etc/nginx/conf.d/default.conf
     ports:
@@ -27,4 +27,4 @@ services:
     depends_on:
       - backend
     networks:
-      - dcm-network
+      - hc-network

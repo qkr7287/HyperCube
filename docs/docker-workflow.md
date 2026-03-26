@@ -1,6 +1,6 @@
 # Docker 개발 & 배포 워크플로우
 
-> DCMTool 프로젝트의 Docker 기반 개발/배포 흐름을 정리한 문서.
+> HyperCube 프로젝트의 Docker 기반 개발/배포 흐름을 정리한 문서.
 
 ---
 
@@ -73,8 +73,8 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
-      POSTGRES_DB: dcmtool
-      POSTGRES_USER: dcmtool
+      POSTGRES_DB: hypercube
+      POSTGRES_USER: hypercube
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
       - "5432:5432"
@@ -89,7 +89,7 @@ services:
       - postgres
       - redis
     environment:
-      DATABASE_URL: postgres://dcmtool:${DB_PASSWORD}@postgres:5432/dcmtool
+      DATABASE_URL: postgres://hypercube:${DB_PASSWORD}@postgres:5432/hypercube
       REDIS_URL: redis://redis:6379/0
 
 volumes:
@@ -172,7 +172,7 @@ docker compose up --build
 
 ---
 
-## 6. DCMTool 컨테이너 구성 (To-Be)
+## 6. HyperCube 컨테이너 구성 (To-Be)
 
 ```
 ┌─────────────────────────────────────────────┐

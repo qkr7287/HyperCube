@@ -32,11 +32,11 @@
 │                                                                 │
 │   ┌──────────────────────────────────────────────┐              │
 │   │  nginx (port 7003)                           │              │
-│   │    /dcmtool → http://localhost:3334           │              │
+│   │    /hypercube → http://localhost:3334           │              │
 │   └──────────────┬───────────────────────────────┘              │
 │                  │                                               │
 │   ┌──────────────▼───────────────────────────────┐              │
-│   │  Docker: dcm-frontend (port 3334)            │              │
+│   │  Docker: hc-nginx (port 3334)            │              │
 │   │                                              │              │
 │   │  node build (adapter-node)                   │              │
 │   │    ├── UI 서빙 (SvelteKit SSR)               │              │
@@ -54,7 +54,7 @@
 │                                                                 │
 │   ┌──────────────────────────────────────────────┐              │
 │   │  Self-hosted Runner                          │              │
-│   │  /opt/actions-runner/dcmtool                 │              │
+│   │  /opt/actions-runner/hypercube                 │              │
 │   │  (systemd 서비스로 상시 실행)                  │              │
 │   └──────────────────────────────────────────────┘              │
 └─────────────────────────────────────────────────────────────────┘
@@ -66,19 +66,19 @@
 |-----------|------|------|------|
 | 개발 서버 | localhost | 3334 | npm run dev (로컬 개발용) |
 | nginx | 192.168.0.16 | 7003 | 리버스 프록시 (여러 서비스 호스팅) |
-| DCM 컨테이너 | 192.168.0.16 | 3334 | Docker 컨테이너 (운영) |
+| HyperCube 컨테이너 | 192.168.0.16 | 3334 | Docker 컨테이너 (운영) |
 | Docker Engine | 192.168.0.16 | unix socket | /var/run/docker.sock |
 
 ## Docker 컨테이너 구성
 
-### dcm-frontend
+### hc-nginx
 
 ```yaml
 # docker-compose.yml 주요 설정
 services:
-  dcm-frontend:
+  hc-nginx:
     build: .                           # 멀티스테이지 Dockerfile
-    container_name: dcm-frontend
+    container_name: hc-nginx
     ports:
       - "3334:3334"
     volumes:
