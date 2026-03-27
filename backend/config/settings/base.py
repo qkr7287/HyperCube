@@ -23,9 +23,13 @@ INSTALLED_APPS = [
     "corsheaders",
     "channels",
     # Local apps
+    "apps.users",
     "apps.agents",
     "apps.containers",
+    "apps.core",
 ]
+
+AUTH_USER_MODEL = "users.CustomUser"
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",

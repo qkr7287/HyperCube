@@ -1,0 +1,33 @@
+from django.contrib import admin
+
+from .models import AlertRule, AuditLog, Template
+
+
+@admin.register(Template)
+class TemplateAdmin(admin.ModelAdmin):
+    list_display = ("name", "category", "created_by", "is_builtin", "created_at")
+    list_filter = ("category", "is_builtin")
+    search_fields = ("name",)
+
+
+@admin.register(AlertRule)
+class AlertRuleAdmin(admin.ModelAdmin):
+    list_display = ("agent", "metric", "threshold", "action", "created_at")
+    list_filter = ("metric", "agent")
+
+
+@admin.register(AuditLog)
+class AuditLogAdmin(admin.ModelAdmin):
+    list_display = ("user", "action", "target", "timestamp")
+    list_filter = ("action",)
+    search_fields = ("action", "target")
+    readonly_fields = ("id", "user", "action", "target", "timestamp")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
