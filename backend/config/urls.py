@@ -29,6 +29,10 @@ urlpatterns = [
     path("api/", include("apps.core.urls")),
 ]
 
+# Mock API: /api/mock/ prefix로 실제 API와 충돌 방지
+if getattr(settings, "MOCK_API_ENABLED", False):
+    urlpatterns += [path("api/mock/", include("apps.mock.urls"))]
+
 if settings.DEBUG:
     import debug_toolbar
 
