@@ -26,6 +26,21 @@ class AgentSerializer(serializers.ModelSerializer):
         }
 
 
+class AgentStatusSerializer(serializers.ModelSerializer):
+    """Agent 상태/토큰 조회용 (polling 응답)"""
+
+    class Meta:
+        model = Agent
+        fields = ["id", "status", "token"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # pending/rejected 상태에서는 token 노출하지 않음
+        if instance.status != Agent.Status.APPROVED:
+            data["token"] = None
+        return data
+
+
 class AgentApproveSerializer(serializers.Serializer):
     """Agent 승인/거절 액션용"""
 

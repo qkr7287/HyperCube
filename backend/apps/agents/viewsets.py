@@ -1,6 +1,10 @@
+import secrets
+
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
@@ -10,6 +14,7 @@ from .models import Agent, ServerAssignment
 from .serializers import (
     AgentApproveSerializer,
     AgentSerializer,
+    AgentStatusSerializer,
     ServerAssignmentSerializer,
 )
 
@@ -55,9 +60,25 @@ class AgentViewSet(ModelViewSet):
     ordering_fields = ["hostname", "registered_at", "status"]
 
     def get_permissions(self):
-        if self.action in ("create", "destroy", "manage_status"):
+        if self.action in ("create", "check_status"):
+            return [AllowAny()]
+        if self.action in ("destroy", "manage_status"):
             return [IsSuperAdmin()]
         return [IsServerAdminOrAbove()]
+
+    def create(self, request, *args, **kwargs):
+        """Agent 자가 등록. hostname 중복 시 기존 Agent 반환 (idempotent)."""
+        hostname = request.data.get("hostname")
+        if hostname:
+            try:
+                existing = Agent.objects.get(hostname=hostname)
+                return Response(
+                    AgentSerializer(existing).data,
+                    status=status.HTTP_200_OK,
+                )
+            except Agent.DoesNotExist:
+                pass
+        return super().create(request, *args, **kwargs)
 
     @extend_schema(
         summary="Agent 승인/거절",
@@ -74,10 +95,22 @@ class AgentViewSet(ModelViewSet):
         if serializer.validated_data["action"] == "approve":
             agent.status = Agent.Status.APPROVED
             agent.approved_at = timezone.now()
+            agent.token = f"agent_{secrets.token_urlsafe(32)}"
         else:
             agent.status = Agent.Status.REJECTED
-        agent.save(update_fields=["status", "approved_at"])
+            agent.token = ""
+        agent.save(update_fields=["status", "approved_at", "token"])
         return Response(AgentSerializer(agent).data)
+
+    @extend_schema(
+        summary="Agent 상태/토큰 조회",
+        description="Agent가 승인 여부를 polling하는 엔드포인트. 승인 시 token 포함.",
+        responses=AgentStatusSerializer,
+    )
+    @action(detail=True, methods=["get"], url_path="status")
+    def check_status(self, request, pk=None):
+        agent = self.get_object()
+        return Response(AgentStatusSerializer(agent).data)
 
 
 @extend_schema_view(
