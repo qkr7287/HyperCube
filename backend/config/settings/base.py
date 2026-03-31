@@ -1,5 +1,6 @@
 """Django base settings for HyperCube backend."""
 
+from datetime import timedelta
 from pathlib import Path
 
 from decouple import config
@@ -22,6 +23,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "django_filters",
     "drf_spectacular",
+    "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     "channels",
     # Local apps
@@ -108,6 +110,15 @@ REST_FRAMEWORK = {
         "rest_framework.filters.OrderingFilter",
     ],
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+# Simple JWT
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "TOKEN_OBTAIN_SERIALIZER": "apps.users.token_serializers.CustomTokenObtainPairSerializer",
 }
 
 # drf-spectacular

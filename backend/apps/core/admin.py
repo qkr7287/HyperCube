@@ -8,12 +8,14 @@ class TemplateAdmin(admin.ModelAdmin):
     list_display = ("name", "category", "created_by", "is_builtin", "created_at")
     list_filter = ("category", "is_builtin")
     search_fields = ("name",)
+    readonly_fields = ("created_at",)
 
 
 @admin.register(AlertRule)
 class AlertRuleAdmin(admin.ModelAdmin):
     list_display = ("agent", "metric", "threshold", "action", "created_at")
     list_filter = ("metric", "agent")
+    readonly_fields = ("created_at",)
 
 
 @admin.register(AuditLog)
@@ -22,6 +24,7 @@ class AuditLogAdmin(admin.ModelAdmin):
     list_filter = ("action",)
     search_fields = ("action", "target")
     readonly_fields = ("id", "user", "action", "target", "timestamp")
+    date_hierarchy = "timestamp"
 
     def has_add_permission(self, request):
         return False
