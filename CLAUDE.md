@@ -44,7 +44,7 @@ To-Be: 멀티 서버 모니터링 플랫폼 (Django Backend + Agent 기반).
 ## 프로젝트 구조
 
 ```
-DCMTool_TS/                          # Monorepo root
+HyperCube/                           # Monorepo root
 ├── frontend/                        # SvelteKit (adapter-static)
 │   ├── src/
 │   │   ├── routes/
@@ -191,14 +191,14 @@ docker compose exec hc-backend python manage.py createsuperuser
 
 ### CI/CD 플로우 (GitHub Actions)
 ```
-1. DCMTool_TS dev → PR → DCMTool_TS main  (수동 승인)
-2. DCMTool_TS main → DCMTool dev           (자동, sync-to-dcmtool.yml)
+1. HyperCube dev → PR → HyperCube main  (수동 승인)
+2. HyperCube main → DCMTool dev          (자동, sync-to-dcmtool.yml)
 3. DCMTool dev → PR → DCMTool main         (수동 승인)
 4. DCMTool main 머지 → 16번 서버 배포       (자동, deploy.yml, self-hosted runner)
 ```
 
 ### Repo 정보
-- **DCMTool_TS**: `qkr7287/DCMTool_TS` (개인 작업 repo, Claude Code MCP 연결)
+- **HyperCube**: `qkr7287/HyperCube` (개인 작업 repo, Claude Code MCP 연결)
 - **DCMTool**: `dev-agics/DCMTool` (팀 공유 repo, 배포 대상)
 
 ## 참고: 이전 프로젝트
