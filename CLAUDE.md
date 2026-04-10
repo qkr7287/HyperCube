@@ -1,5 +1,54 @@
 # HyperCube - Server & Container Monitoring Platform
 
+## Current Work (2026-04-10)
+
+### 완료된 작업 (이번 세션)
+- **WBS 2.3**: Celery + Redis 캐시 + PG 메트릭 저장 (`183e4f4`)
+  - Celery worker/beat 컨테이너 추가 (30초 flush, 매일 03:00 cleanup)
+  - Consumer → Redis 캐시 (DB 1, TTL 60s) → Celery → PG bulk insert
+  - metrics 앱 (SystemMetricsHistory, ContainerMetricsHistory 모델)
+  - Delta Sync merge: Consumer에서 partial data를 기존 캐시와 병합
+  - django-unfold 다크 테마 + whitenoise static 서빙
+- **WBS 2.3.2~2.3.4**: 서버 관리 UI (`7037f0a`)
+  - `/agents` 관리 페이지: 탭 필터, 승인/거부/삭제 + ConfirmDialog
+  - `latest-metrics` API (Redis → CPU/Mem/Disk 실시간 표시)
+  - 10초 polling 실시간 알림 (NEW 배지)
+- **Mock API → 실제 Backend WebSocket 연동** (`d70f99b`)
+  - ws-store.ts 재작성: Django Channels `/ws/server/{id}/` 연결
+  - data-adapter.ts: Agent bytes → Frontend 문자열 변환
+  - 메인 대시보드에 로그인 + 서버 선택 플로우 추가
+  - Frontend Delta merge: WS partial data 덮어쓰기 방지
+
+### 현재 상태
+- **브랜치**: dev (커밋 `d70f99b`)
+- **Docker 컨테이너**: backend, celery-worker, celery-beat, postgres, redis, nginx 6개
+- **Agent**: server_16 (192.168.0.16) 승인 완료, 실시간 데이터 수신 중
+- **메인 대시보드** (`localhost:3000`): 실제 Agent 데이터로 동작 (CPU 99%, Mem 98%, Disk 78%, 컨테이너 23개)
+- **관리 페이지** (`localhost:3000/agents`): 서버 관리 동작 확인 완료
+- **Admin** (`localhost:8000/admin`): unfold 다크 테마 적용, 메트릭 히스토리 조회 가능
+
+### 다음 작업 (우선순위 순)
+1. **Agent on-demand 명령 연동** (Backend Consumer 수정)
+   - Agent가 지원하는 명령 4종: `get_logs`, `inspect`, `control`, `system_info`
+   - Agent 프로토콜: `{type: "command", requestId, command, params}` → `{type: "command_response", requestId, success, data}`
+   - Backend Consumer에서 Browser → Agent 명령 전달 + 응답 라우팅 구현
+   - Frontend 모달들 (ContainerDetail, CPU, Network, Process, Login)을 실제 데이터로 전환
+   - 현재 Mock API를 대체하는 것이 목표
+2. **WBS 2.4**: 멀티서버 뷰 (서버 카드 그리드, 헤더 드롭다운, 필터링)
+3. **Delta Sync 히스토리 개선**: PG 저장 시에도 merge 적용 (현재 0값 레코드 존재)
+
+### 결정사항
+- Celery를 Phase 2에서 미리 도입 (Phase 3 AI 분석 기반, 리팩토링 비용 절감)
+- On-demand 데이터(로그, inspect, 제어)는 Agent 명령 기능으로 구현 (Mock API 제거 예정)
+- 실시간 데이터는 Backend WebSocket, on-demand는 REST or WS command로 분리 (하이브리드 접근)
+- Redis DB 0: Channel Layer, DB 1: 메트릭 캐시 (분리)
+
+### 주의점
+- `+page.svelte`는 NON-runes 모드 (`$state()` 사용 금지, `let` 사용)
+- Agent 소스 수정은 별도 세션에서 진행 (이 세션은 Backend + Frontend만)
+- 16번 서버 SSH: `ssh -i ~/.ssh/dcmtool_sync -p 2022 root@192.168.0.16`
+- superuser: admin / admin1234 (dev DB)
+
 ## 프로젝트 개요
 
 Docker 컨테이너 모니터링 대시보드. Figma 디자인(`MM5pHeO3gfXDchAlBVfs89`)을 정확히 재현하는 것이 목표.
