@@ -1,11 +1,12 @@
 from django.contrib import admin
 from django.utils.html import format_html
+from unfold.admin import ModelAdmin
 
 from .models import Container
 
 
 @admin.register(Container)
-class ContainerAdmin(admin.ModelAdmin):
+class ContainerAdmin(ModelAdmin):
     list_display = ("name", "short_id", "image", "agent", "colored_status", "last_seen")
     list_filter = ("status", "agent")
     search_fields = ("name", "container_id", "image")

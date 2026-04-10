@@ -15,6 +15,28 @@ services:
       DEBUG: "true"
       WATCHFILES_FORCE_POLLING: "true"
 
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./backend:/app
+    command: celery -A config worker -l info --concurrency=2
+    environment:
+      DJANGO_ENV: dev
+      DEBUG: "true"
+
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./backend:/app
+    command: celery -A config beat -l info
+    environment:
+      DJANGO_ENV: dev
+      DEBUG: "true"
+
   nginx:
     build:
       context: ./frontend

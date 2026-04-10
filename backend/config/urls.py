@@ -30,6 +30,7 @@ urlpatterns = [
     path("api/", include("apps.containers.urls")),
     path("api/", include("apps.users.urls")),
     path("api/", include("apps.core.urls")),
+    path("api/", include("apps.metrics.urls")),
 ]
 
 # Mock API: /api/mock/ prefix로 실제 API와 충돌 방지

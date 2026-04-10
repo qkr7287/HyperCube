@@ -1,0 +1,81 @@
+from django_filters import rest_framework as filters
+from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework.mixins import ListModelMixin, RetrieveModelMixin
+from rest_framework.viewsets import GenericViewSet
+
+from apps.common.permissions import IsViewer
+
+from .models import ContainerMetricsHistory, SystemMetricsHistory
+from .serializers import (
+    ContainerMetricsHistoryDetailSerializer,
+    ContainerMetricsHistorySerializer,
+    SystemMetricsHistoryDetailSerializer,
+    SystemMetricsHistorySerializer,
+)
+
+
+class SystemMetricsFilter(filters.FilterSet):
+    agent = filters.UUIDFilter(field_name="agent_id")
+    from_time = filters.IsoDateTimeFilter(field_name="recorded_at", lookup_expr="gte")
+    to_time = filters.IsoDateTimeFilter(field_name="recorded_at", lookup_expr="lte")
+
+    class Meta:
+        model = SystemMetricsHistory
+        fields = ["agent", "from_time", "to_time"]
+
+
+class ContainerMetricsFilter(filters.FilterSet):
+    agent = filters.UUIDFilter(field_name="agent_id")
+    container_id = filters.CharFilter(field_name="container_id")
+    from_time = filters.IsoDateTimeFilter(field_name="recorded_at", lookup_expr="gte")
+    to_time = filters.IsoDateTimeFilter(field_name="recorded_at", lookup_expr="lte")
+
+    class Meta:
+        model = ContainerMetricsHistory
+        fields = ["agent", "container_id", "from_time", "to_time"]
+
+
+@extend_schema_view(
+    list=extend_schema(
+        summary="시스템 메트릭 이력 조회",
+        description="특정 Agent의 시스템 메트릭 시계열 데이터를 조회합니다. agent, from_time, to_time으로 필터링.",
+    ),
+    retrieve=extend_schema(
+        summary="시스템 메트릭 상세 조회",
+        description="단일 메트릭 레코드의 상세 정보 (raw_data 포함).",
+    ),
+)
+class SystemMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet):
+    queryset = SystemMetricsHistory.objects.select_related("agent").all()
+    filterset_class = SystemMetricsFilter
+    ordering_fields = ["recorded_at"]
+    ordering = ["-recorded_at"]
+    permission_classes = [IsViewer]
+
+    def get_serializer_class(self):
+        if self.action == "retrieve":
+            return SystemMetricsHistoryDetailSerializer
+        return SystemMetricsHistorySerializer
+
+
+@extend_schema_view(
+    list=extend_schema(
+        summary="컨테이너 메트릭 이력 조회",
+        description="특정 컨테이너의 메트릭 시계열 데이터를 조회합니다. agent, container_id, from_time, to_time으로 필터링.",
+    ),
+    retrieve=extend_schema(
+        summary="컨테이너 메트릭 상세 조회",
+        description="단일 메트릭 레코드의 상세 정보 (raw_data 포함).",
+    ),
+)
+class ContainerMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet):
+    queryset = ContainerMetricsHistory.objects.select_related("agent").all()
+    filterset_class = ContainerMetricsFilter
+    ordering_fields = ["recorded_at"]
+    ordering = ["-recorded_at"]
+    permission_classes = [IsViewer]
+
+    def get_serializer_class(self):
+        if self.action == "retrieve":
+            return ContainerMetricsHistoryDetailSerializer
+        return ContainerMetricsHistorySerializer

@@ -1,10 +1,11 @@
 from django.contrib import admin
+from unfold.admin import ModelAdmin
 
 from .models import AlertRule, AuditLog, Template
 
 
 @admin.register(Template)
-class TemplateAdmin(admin.ModelAdmin):
+class TemplateAdmin(ModelAdmin):
     list_display = ("name", "category", "created_by", "is_builtin", "created_at")
     list_filter = ("category", "is_builtin")
     search_fields = ("name",)
@@ -12,14 +13,14 @@ class TemplateAdmin(admin.ModelAdmin):
 
 
 @admin.register(AlertRule)
-class AlertRuleAdmin(admin.ModelAdmin):
+class AlertRuleAdmin(ModelAdmin):
     list_display = ("agent", "metric", "threshold", "action", "created_at")
     list_filter = ("metric", "agent")
     readonly_fields = ("created_at",)
 
 
 @admin.register(AuditLog)
-class AuditLogAdmin(admin.ModelAdmin):
+class AuditLogAdmin(ModelAdmin):
     list_display = ("user", "action", "target", "timestamp")
     list_filter = ("action",)
     search_fields = ("action", "target")

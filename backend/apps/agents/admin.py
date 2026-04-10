@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.utils import timezone
 from django.utils.html import format_html
+from unfold.admin import ModelAdmin
 
 from .models import Agent, ServerAssignment
 
@@ -10,7 +11,7 @@ admin.site.index_title = "Dashboard"
 
 
 @admin.register(Agent)
-class AgentAdmin(admin.ModelAdmin):
+class AgentAdmin(ModelAdmin):
     list_display = ("hostname", "ip_address", "colored_status", "registered_at", "approved_at")
     list_filter = ("status",)
     search_fields = ("hostname", "ip_address")
@@ -45,7 +46,7 @@ class AgentAdmin(admin.ModelAdmin):
 
 
 @admin.register(ServerAssignment)
-class ServerAssignmentAdmin(admin.ModelAdmin):
+class ServerAssignmentAdmin(ModelAdmin):
     list_display = ("user", "agent", "created_at")
     list_filter = ("agent",)
     autocomplete_fields = ("user", "agent")
