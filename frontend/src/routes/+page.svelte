@@ -69,6 +69,86 @@
 	let loginModalOpen = false;
 	let processModalOpen = false;
 
+	// ----- Auth + Server Selection -----
+	let accessToken = '';
+	let isLoggedIn = false;
+	let agents: any[] = [];
+	let selectedServerId = '';
+	let loginUsername = '';
+	let loginPassword = '';
+	let loginError = '';
+	let agentsLoading = false;
+
+	async function doLogin() {
+		loginError = '';
+		try {
+			const res = await fetch(`${base}/api/auth/token/`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ username: loginUsername, password: loginPassword }),
+			});
+			const json = await res.json();
+			if (!res.ok) {
+				loginError = json.error?.detail || json.detail || 'Login failed';
+				return;
+			}
+			accessToken = json.data?.access || json.access;
+			isLoggedIn = true;
+			if (browser) {
+				localStorage.setItem('hc_access_token', accessToken);
+			}
+			await loadApprovedAgents();
+		} catch {
+			loginError = 'Connection failed';
+		}
+	}
+
+	function doLogout() {
+		disconnect();
+		accessToken = '';
+		isLoggedIn = false;
+		selectedServerId = '';
+		agents = [];
+		if (browser) {
+			localStorage.removeItem('hc_access_token');
+			localStorage.removeItem('hc_selected_server');
+		}
+	}
+
+	async function loadApprovedAgents() {
+		agentsLoading = true;
+		try {
+			const res = await fetch(`${base}/api/agents/?status=approved`, {
+				headers: { 'Authorization': `Bearer ${accessToken}` },
+			});
+			if (res.status === 401) { doLogout(); return; }
+			const json = await res.json();
+			const data = json.data;
+			agents = data.results ?? data ?? [];
+			// 1개면 자동 선택
+			if (agents.length === 1) {
+				selectServer(agents[0].id);
+			} else if (browser) {
+				const saved = localStorage.getItem('hc_selected_server');
+				if (saved && agents.find((a: any) => a.id === saved)) {
+					selectServer(saved);
+				}
+			}
+		} catch {
+			agents = [];
+		} finally {
+			agentsLoading = false;
+		}
+	}
+
+	function selectServer(serverId: string) {
+		selectedServerId = serverId;
+		if (browser) {
+			localStorage.setItem('hc_selected_server', serverId);
+		}
+		connect(selectedServerId, accessToken);
+	}
+
 	function openContainerDetail(container: Container) {
 		selectedContainer = container;
 		const rawProject = container.labels?.['com.docker.compose.project'] || 'default';
@@ -907,26 +987,21 @@
 	}
 
 	onMount(async () => {
-		// Initial data fetch (REST fallback for first paint)
-		await fetchData();
-		await fetchSystemInfoData();
-		await initGraph();
-
-		if (graphContainer) {
-			graphContainer.addEventListener('pointerleave', () => {
-				const controls = graph?.controls();
-				if (controls) controls.enabled = true;
-			});
+		// Restore session from localStorage
+		if (browser) {
+			const savedToken = localStorage.getItem('hc_access_token');
+			if (savedToken) {
+				accessToken = savedToken;
+				isLoggedIn = true;
+				await loadApprovedAgents();
+			}
 		}
 
-		// Connect WebSocket and subscribe to stores
-		connect();
-
+		// 1. Store subscriptions 먼저 설정 (WS/REST 어디서든 데이터 오면 바로 반영)
 		unsubSystem = systemStore.subscribe((data) => {
 			if (data) {
 				systemInfo = data;
 				wsDataReceived = true;
-				// WS is working, stop REST fallback
 				if (fallbackInterval) { clearInterval(fallbackInterval); fallbackInterval = null; }
 			}
 		});
@@ -950,9 +1025,26 @@
 			}
 		});
 
-		// REST fallback: if WS doesn't deliver within 3s, poll via REST
+		// 2. WebSocket 연결 (서버 선택된 경우, store subscribe 이후에 연결)
+		if (selectedServerId && accessToken) {
+			connect(selectedServerId, accessToken);
+		}
+
+		// 3. Graph 초기화 (WS 데이터가 올 때까지 빈 그래프)
+		await initGraph();
+
+		if (graphContainer) {
+			graphContainer.addEventListener('pointerleave', () => {
+				const controls = graph?.controls();
+				if (controls) controls.enabled = true;
+			});
+		}
+
+		// 4. REST fallback: WS가 3초 내에 데이터를 안 보내면 Mock API로 폴링
 		setTimeout(() => {
 			if (!wsDataReceived) {
+				fetchData();
+				fetchSystemInfoData();
 				fallbackInterval = setInterval(async () => {
 					await fetchData();
 					await fetchSystemInfoData();
@@ -986,6 +1078,53 @@
 	<title>AGICS Container Monitor</title>
 </svelte:head>
 
+{#if !isLoggedIn}
+<div class="auth-page">
+	<div class="auth-card">
+		<h1 class="auth-title">HyperCube</h1>
+		<p class="auth-subtitle">Container Monitoring Platform</p>
+		<form onsubmit={(e) => { e.preventDefault(); doLogin(); }}>
+			<div class="auth-field">
+				<label for="login-user">Username</label>
+				<input id="login-user" type="text" bind:value={loginUsername} placeholder="admin" />
+			</div>
+			<div class="auth-field">
+				<label for="login-pass">Password</label>
+				<input id="login-pass" type="password" bind:value={loginPassword} />
+			</div>
+			{#if loginError}
+				<p class="auth-error">{loginError}</p>
+			{/if}
+			<button class="auth-btn" type="submit">Login</button>
+		</form>
+	</div>
+</div>
+{:else if !selectedServerId}
+<div class="auth-page">
+	<div class="server-select-card">
+		<h2 class="auth-title">Select Server</h2>
+		<p class="auth-subtitle">Monitor a connected server</p>
+		{#if agentsLoading}
+			<p class="auth-subtitle">Loading servers...</p>
+		{:else if agents.length === 0}
+			<p class="auth-error">No approved servers found. Go to <a href="{base}/agents">/agents</a> to approve an Agent.</p>
+		{:else}
+			<div class="server-list">
+				{#each agents as agent (agent.id)}
+					<button class="server-item" onclick={() => selectServer(agent.id)}>
+						<span class="server-hostname">{agent.hostname}</span>
+						<span class="server-ip">{agent.ip_address}</span>
+						<span class="server-badge">
+							{agent.container_count ?? 0} containers
+						</span>
+					</button>
+				{/each}
+			</div>
+		{/if}
+		<button class="auth-btn-outline" onclick={doLogout}>Logout</button>
+	</div>
+</div>
+{:else}
 <div class="layout">
 	<!-- Left Sidebar: Server Info -->
 	<LeftSidebar
@@ -1074,6 +1213,7 @@
 	open={processModalOpen}
 	onClose={() => { processModalOpen = false; }}
 />
+{/if}
 
 <style>
 	.layout {
@@ -1141,5 +1281,157 @@
 	.graph-container {
 		width: 100%;
 		height: 100%;
+	}
+
+	/* Auth & Server Selection */
+	.auth-page {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 100vh;
+		width: 100vw;
+		background: var(--bg-base);
+	}
+
+	.auth-card, .server-select-card {
+		background: var(--bg-card);
+		border: 1px solid var(--border);
+		border-radius: 12px;
+		padding: 40px;
+		width: 100%;
+		max-width: 420px;
+	}
+
+	.server-select-card {
+		max-width: 500px;
+	}
+
+	.auth-title {
+		font-size: 22px;
+		font-weight: 700;
+		color: var(--accent);
+		margin-bottom: 4px;
+	}
+
+	.auth-subtitle {
+		font-size: 13px;
+		color: var(--text-secondary);
+		margin-bottom: 28px;
+	}
+
+	.auth-field {
+		margin-bottom: 16px;
+	}
+
+	.auth-field label {
+		display: block;
+		font-size: 13px;
+		color: var(--text-secondary);
+		margin-bottom: 6px;
+	}
+
+	.auth-field input {
+		width: 100%;
+		padding: 10px 14px;
+		background: var(--bg-base);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		color: var(--text-primary);
+		font-size: 14px;
+		outline: none;
+		box-sizing: border-box;
+	}
+
+	.auth-field input:focus {
+		border-color: var(--accent);
+	}
+
+	.auth-error {
+		color: var(--error);
+		font-size: 13px;
+		margin-bottom: 12px;
+	}
+
+	.auth-error a {
+		color: var(--accent);
+	}
+
+	.auth-btn {
+		width: 100%;
+		padding: 11px;
+		margin-top: 8px;
+		background: var(--accent);
+		color: var(--bg-base);
+		border: none;
+		border-radius: 8px;
+		font-size: 14px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.auth-btn:hover { opacity: 0.9; }
+
+	.auth-btn-outline {
+		width: 100%;
+		padding: 10px;
+		margin-top: 16px;
+		background: transparent;
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		color: var(--text-secondary);
+		font-size: 13px;
+		cursor: pointer;
+	}
+
+	.auth-btn-outline:hover {
+		border-color: var(--accent);
+		color: var(--accent);
+	}
+
+	.server-list {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		margin-bottom: 8px;
+	}
+
+	.server-item {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 14px 18px;
+		background: var(--bg-base);
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		cursor: pointer;
+		transition: all 0.15s;
+		text-align: left;
+		width: 100%;
+	}
+
+	.server-item:hover {
+		border-color: var(--accent);
+		background: rgba(48, 213, 200, 0.05);
+	}
+
+	.server-hostname {
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--accent);
+	}
+
+	.server-ip {
+		font-size: 12px;
+		color: var(--text-secondary);
+		font-family: monospace;
+	}
+
+	.server-badge {
+		margin-left: auto;
+		font-size: 11px;
+		color: var(--text-muted);
+		background: var(--bg-tab);
+		padding: 3px 10px;
+		border-radius: 9999px;
 	}
 </style>

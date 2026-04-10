@@ -133,12 +133,8 @@ class AgentViewSet(ModelViewSet):
             return Response({"cpu": None, "memory": None, "disk": None, "timestamp": None})
 
         body = payload.get("data") or {}
-        return Response({
-            "cpu": body.get("cpu"),
-            "memory": body.get("memory"),
-            "disk": body.get("disk"),
-            "timestamp": payload.get("timestamp"),
-        })
+        body["timestamp"] = payload.get("timestamp")
+        return Response(body)
 
 
 @extend_schema_view(
