@@ -27,6 +27,15 @@
 - **관리 페이지** (`localhost:3000/agents`): 서버 관리 동작 확인 완료
 - **Admin** (`localhost:8000/admin`): unfold 다크 테마 적용, 메트릭 히스토리 조회 가능
 
+### 세션 시작 시 해야 할 것
+1. Docker Desktop 실행 대기 후 개발 스택 기동:
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.dev up -d
+   ```
+2. 6개 컨테이너 확인: hc-backend(:8000), hc-nginx-dev(:3000), hc-postgres(:5432), hc-redis(:6379), hc-celery-worker, hc-celery-beat
+3. Agent(16번 서버)가 자동으로 재연결됨 (30초 backoff 후 WS 연결)
+4. `localhost:3000` 접속 → 로그인(admin/admin1234) → server_16 선택 → 대시보드 확인
+
 ### 다음 작업 (우선순위 순)
 1. **Agent on-demand 명령 연동** (Backend Consumer 수정)
    - Agent가 지원하는 명령 4종: `get_logs`, `inspect`, `control`, `system_info`
