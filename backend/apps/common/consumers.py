@@ -86,28 +86,29 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
     # ------------------------------------------------------------------
 
     async def _cache_to_redis(self, msg_type, data):
-        """수신 데이터를 Redis에 SET. flush_metrics_to_db task가 주기적으로 읽음."""
+        """수신 데이터를 Redis에 merge 저장. Delta Sync로 부분 데이터만 올 수 있으므로
+        기존 캐시와 병합하여 항상 전체 상태를 유지한다."""
         from apps.common.redis_client import get_redis_client
 
         try:
             r = get_redis_client()
-            payload = json.dumps(data)
-            pipe = r.pipeline(transaction=False)
 
             if msg_type == "system_metrics":
-                pipe.set(f"server:{self.server_id}:system", payload, ex=REDIS_CACHE_TTL)
+                key = f"server:{self.server_id}:system"
+                merged = _merge_cached(r, key, data)
+                r.set(key, json.dumps(merged), ex=REDIS_CACHE_TTL)
             elif msg_type == "containers":
-                pipe.set(f"server:{self.server_id}:containers", payload, ex=REDIS_CACHE_TTL)
+                key = f"server:{self.server_id}:containers"
+                r.set(key, json.dumps(data), ex=REDIS_CACHE_TTL)
             elif msg_type == "container_metrics":
                 container_id = data.get("data", {}).get("containerId", "unknown")
-                pipe.set(
-                    f"server:{self.server_id}:container:{container_id}:metrics",
-                    payload,
-                    ex=REDIS_CACHE_TTL,
-                )
+                key = f"server:{self.server_id}:container:{container_id}:metrics"
+                merged = _merge_cached(r, key, data)
+                r.set(key, json.dumps(merged), ex=REDIS_CACHE_TTL)
             else:
                 return
 
+            pipe = r.pipeline(transaction=False)
             pipe.sadd(ACTIVE_IDS_KEY, self.server_id)
             pipe.expire(ACTIVE_IDS_KEY, ACTIVE_IDS_TTL)
             pipe.execute()
@@ -163,3 +164,31 @@ def _normalize_status(state: str) -> str:
     valid = {"running", "stopped", "paused", "exited", "created", "restarting", "dead"}
     state = (state or "").lower()
     return state if state in valid else "created"
+
+
+def _merge_cached(r, key: str, new_data: dict) -> dict:
+    """Redis에 저장된 기존 데이터와 새 delta 데이터를 병합.
+
+    Delta Sync에서 변경된 필드만 오기 때문에, 기존 캐시의 data 부분에
+    새 data를 shallow merge하여 항상 전체 상태를 유지한다.
+    """
+    existing_raw = r.get(key)
+    if not existing_raw:
+        return new_data
+
+    try:
+        existing = json.loads(existing_raw)
+    except (json.JSONDecodeError, TypeError):
+        return new_data
+
+    # timestamp는 항상 새 값으로
+    existing["timestamp"] = new_data.get("timestamp", existing.get("timestamp"))
+    existing["server_id"] = new_data.get("server_id", existing.get("server_id"))
+
+    # data 부분을 shallow merge (새 키가 있으면 덮어쓰기, 없으면 기존 유지)
+    old_body = existing.get("data") or {}
+    new_body = new_data.get("data") or {}
+    old_body.update(new_body)
+    existing["data"] = old_body
+
+    return existing

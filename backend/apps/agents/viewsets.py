@@ -1,3 +1,4 @@
+import json
 import secrets
 
 from django.utils import timezone
@@ -111,6 +112,33 @@ class AgentViewSet(ModelViewSet):
     def check_status(self, request, pk=None):
         agent = self.get_object()
         return Response(AgentStatusSerializer(agent).data)
+
+    @extend_schema(
+        summary="Agent 최신 메트릭 조회",
+        description="Redis 캐시에서 Agent의 최신 시스템 메트릭(CPU/Memory/Disk)을 반환합니다. Agent 오프라인 시 null.",
+    )
+    @action(detail=True, methods=["get"], url_path="latest-metrics")
+    def latest_metrics(self, request, pk=None):
+        agent = self.get_object()
+        from apps.common.redis_client import get_redis_client
+
+        r = get_redis_client()
+        raw = r.get(f"server:{agent.id}:system")
+        if not raw:
+            return Response({"cpu": None, "memory": None, "disk": None, "timestamp": None})
+
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return Response({"cpu": None, "memory": None, "disk": None, "timestamp": None})
+
+        body = payload.get("data") or {}
+        return Response({
+            "cpu": body.get("cpu"),
+            "memory": body.get("memory"),
+            "disk": body.get("disk"),
+            "timestamp": payload.get("timestamp"),
+        })
 
 
 @extend_schema_view(
