@@ -1130,6 +1130,9 @@
 	<LeftSidebar
 		{systemInfo}
 		totalContainers={containers.length}
+		{agents}
+		{selectedServerId}
+		onSwitchServer={selectServer}
 		onOpenCpu={() => { cpuModalOpen = true; }}
 		onOpenMemory={() => { memoryModalOpen = true; }}
 		onOpenDisk={() => { diskModalOpen = true; }}

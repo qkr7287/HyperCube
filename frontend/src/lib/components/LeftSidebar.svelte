@@ -20,9 +20,18 @@
 		processes?: { total?: number; running?: number };
 	}
 
+	interface AgentOption {
+		id: string;
+		hostname: string;
+		ip_address: string;
+	}
+
 	let {
 		systemInfo = null,
 		totalContainers = 0,
+		agents = [],
+		selectedServerId = '',
+		onSwitchServer = (_id: string) => {},
 		onOpenCpu = () => {},
 		onOpenMemory = () => {},
 		onOpenDisk = () => {},
@@ -32,6 +41,9 @@
 	}: {
 		systemInfo: SystemInfo | null;
 		totalContainers: number;
+		agents?: AgentOption[];
+		selectedServerId?: string;
+		onSwitchServer?: (id: string) => void;
 		onOpenCpu: () => void;
 		onOpenMemory: () => void;
 		onOpenDisk: () => void;
@@ -39,6 +51,31 @@
 		onOpenLogin: () => void;
 		onOpenProcess: () => void;
 	} = $props();
+
+	let switcherOpen = $state(false);
+	let currentAgent = $derived(agents.find((a) => a.id === selectedServerId) ?? null);
+	let otherAgents = $derived(agents.filter((a) => a.id !== selectedServerId));
+
+	function toggleSwitcher(e: MouseEvent) {
+		e.stopPropagation();
+		switcherOpen = !switcherOpen;
+	}
+
+	function switchTo(id: string) {
+		switcherOpen = false;
+		if (id !== selectedServerId) onSwitchServer(id);
+	}
+
+	function handleDocClick(e: MouseEvent) {
+		if (!switcherOpen) return;
+		const target = e.target as HTMLElement;
+		if (!target.closest('.server-switcher')) switcherOpen = false;
+	}
+
+	$effect(() => {
+		document.addEventListener('click', handleDocClick);
+		return () => document.removeEventListener('click', handleDocClick);
+	});
 
 	function getHealthPercent(info: SystemInfo): number {
 		const cpuHealth = Math.max(0, 100 - info.cpu.usage);
@@ -52,8 +89,30 @@
 	<div class="server-section">
 		<div class="section-header">
 			<span class="heading">서버 정보</span>
-			{#if systemInfo}
-				<span class="ip-badge">192.168.0.16</span>
+			{#if currentAgent}
+				<div class="server-switcher">
+					<button
+						class="ip-badge"
+						class:clickable={agents.length > 1}
+						onclick={toggleSwitcher}
+						title={agents.length > 1 ? '다른 서버로 전환' : currentAgent.ip_address}
+					>
+						{currentAgent.ip_address}
+						{#if agents.length > 1}
+							<svg class="chevron" class:open={switcherOpen} width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+						{/if}
+					</button>
+					{#if switcherOpen && otherAgents.length > 0}
+						<div class="switcher-menu">
+							{#each otherAgents as a (a.id)}
+								<button class="switcher-item" onclick={() => switchTo(a.id)}>
+									<span class="switcher-hostname">{a.hostname}</span>
+									<span class="switcher-ip">{a.ip_address}</span>
+								</button>
+							{/each}
+						</div>
+					{/if}
+				</div>
 			{/if}
 		</div>
 
@@ -175,12 +234,87 @@
 		color: var(--text-secondary);
 	}
 
+	.server-switcher {
+		position: relative;
+	}
+
 	.ip-badge {
 		background: var(--tag-bg);
 		color: var(--text-primary);
 		padding: 2px 8px;
 		border-radius: var(--radius-sm);
 		font-size: 10px;
+		border: none;
+		cursor: default;
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		font-family: inherit;
+	}
+
+	.ip-badge.clickable {
+		cursor: pointer;
+		transition: background 0.15s, border-color 0.15s;
+		border: 1px solid transparent;
+	}
+
+	.ip-badge.clickable:hover {
+		background: var(--bg-card);
+		border-color: var(--accent);
+	}
+
+	.chevron {
+		transition: transform 0.15s;
+		color: var(--text-secondary);
+	}
+
+	.chevron.open {
+		transform: rotate(180deg);
+	}
+
+	.switcher-menu {
+		position: absolute;
+		top: calc(100% + 6px);
+		right: 0;
+		min-width: 180px;
+		background: var(--bg-card);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+		padding: 6px;
+		z-index: 50;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.switcher-item {
+		background: none;
+		border: none;
+		color: var(--text-primary);
+		text-align: left;
+		padding: 8px 10px;
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		font-family: inherit;
+	}
+
+	.switcher-item:hover {
+		background: var(--bg-tab);
+	}
+
+	.switcher-hostname {
+		font-size: 12px;
+		font-weight: 600;
+	}
+
+	.switcher-ip {
+		font-size: 10px;
+		color: var(--text-secondary);
+		font-family: monospace;
 	}
 
 	.info-list {
