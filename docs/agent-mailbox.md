@@ -1,15 +1,71 @@
-# HyperCube ↔ Agent Handoff
+# Agent Mailbox
 
-HyperCube(Backend/Frontend) 측에서 `qkr7287/HyperCube-agent` 측으로
-전달하는 작업 요청을 모아두는 단일 채널 문서.
+HyperCube(Backend/Frontend) ↔ `qkr7287/HyperCube-agent` 양쪽 팀이
+공유하는 단일 우편함. 모든 작업 요청 / 회신을 이 한 문서에서만
+주고받는다. 슬랙·이메일 등 외부 메신저는 사용해도 좋지만, 본문은
+반드시 이 mailbox에 남기고 외부에는 URL만 첨부한다.
 
-## 사용 규칙
+URL: <https://github.com/qkr7287/HyperCube/blob/dev/docs/agent-mailbox.md>
 
-- 새 요청은 **상단(가장 위)** 에 추가. 이전 요청은 아래로 밀기.
-- 각 요청은 `## YYYY-MM-DD — 제목` 헤더로 시작.
-- 처리 완료된 요청은 헤더 옆에 `(완료 — Agent 커밋 hash)` 표기.
-- 미해결 요청은 헤더 옆에 `(대기)` 표기.
-- HyperCube 측 커밋이 함께 묶인 경우 본문에 명시.
+## 우편함 규칙
+
+### 작성
+
+- **새 요청은 최상단**. 위에서 아래로 시간 역순.
+- 각 요청 헤더: `## YYYY-MM-DD — 제목 (상태)`
+- 상태 라벨:
+  - `(대기)` — HyperCube가 보냈고 Agent가 아직 손 안 댐
+  - `(처리 중)` — Agent가 작업 시작
+  - `(완료 — agent <hash>)` — Agent가 완료. 가능하면 hypercube 측 대응 commit hash도 함께 표기
+- 누가 보낸 요청인지 명확히 구분되는 경우는 본문 첫 줄에
+  `From: HyperCube` / `From: Agent` 로 명시 (대부분 HyperCube → Agent
+  방향이라 생략 가능)
+
+### 회신
+
+- Agent 측이 작업을 마치면 같은 요청 블록 하단에
+  `### 회신 (Agent, YYYY-MM-DD)` 섹션을 덧붙이고 상태 라벨을 갱신
+- 추가 질문/이슈가 있으면 같은 블록 안에서 짧게 주고받기. 새 요청
+  수준의 분량이 되면 별도 헤더로 분리
+
+### 종료된 항목
+
+- 완료 항목은 그대로 보존 (히스토리). 삭제 금지
+- 너무 길어지면 분기 시점에 `docs/agent-mailbox-archive-YYYYHN.md`로
+  분할 (지금은 분할 불필요)
+
+## 다른 세션에 전달하는 방법
+
+Agent 작업이 필요할 때는 **이 mailbox 자체**를 매개로 전달한다.
+긴 prompt를 매번 복붙하지 않고 URL + 한 줄 안내만 보내면 충분.
+
+### 1. mailbox URL 복사
+
+```
+https://github.com/qkr7287/HyperCube/blob/dev/docs/agent-mailbox.md
+```
+
+### 2. Agent 세션에 보낼 메시지 템플릿
+
+```
+HyperCube mailbox 최상단 (대기) 항목을 처리해줘.
+
+URL: https://github.com/qkr7287/HyperCube/blob/dev/docs/agent-mailbox.md
+
+처리 시:
+1. 본문 요구사항대로 코드 수정 + 커밋
+2. 같은 mailbox 파일을 PR로 수정해서 (대기) → (완료 — <agent commit hash>) 로 갱신
+3. 같은 블록 하단에 `### 회신 (Agent, YYYY-MM-DD)` 섹션 추가:
+   - 어떤 커밋으로 처리했는지
+   - 검증 결과 (어떤 시나리오 통과/실패)
+   - 추가로 필요한 정보가 있으면 질문
+```
+
+### 3. Agent 회신을 받은 뒤 HyperCube 측에서
+
+- mailbox 갱신본을 dev 브랜치에 pull → 회신 확인
+- 필요하면 후속 commit (Frontend/Backend 적용) 해시도 같은 블록에 추가
+- 다음 작업이 있으면 새 요청을 mailbox 최상단에 추가
 
 ---
 
@@ -129,7 +185,7 @@ status=approved 반환하므로 두어도 안전하지만, 단순화 차원에�
 
 ---
 
-## 2026-04-14 — Agent 환경/소스 개선 (완료 — Agent 커밋 `1a1f59f`)
+## 2026-04-14 — Agent 환경/소스 개선 (완료 — agent `1a1f59f`)
 
 ### 처리된 4건
 
@@ -165,7 +221,7 @@ services:
 
 ---
 
-## 2026-04-13 — 명령 라우팅 프로토콜 도입 (완료 — Agent 커밋 `16bb0b9`)
+## 2026-04-13 — 명령 라우팅 프로토콜 도입 (완료 — agent `16bb0b9`)
 
 ### 처리된 항목
 
