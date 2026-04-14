@@ -9,7 +9,8 @@ from apps.common import command_router
 
 logger = logging.getLogger(__name__)
 
-REDIS_CACHE_TTL = 60  # seconds
+REDIS_CACHE_TTL = 60  # seconds (주기적 데이터: system_metrics, container_metrics)
+CONTAINERS_CACHE_TTL = 600  # seconds (스냅샷성 데이터: 변경 드물어 오래 유지)
 ACTIVE_IDS_KEY = "server:active_ids"
 ACTIVE_IDS_TTL = 120  # seconds
 
@@ -45,6 +46,11 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
             "server_id": self.server_id,
             "client_type": client_type,
         }))
+
+        # Browser 재접속 시 초기 스냅샷: Redis 캐시된 최신 상태를 즉시 송신
+        # (Agent는 Delta Sync라 재전송 안 함. 이후 Delta가 자연스럽게 덮어씀)
+        if not self.is_agent:
+            await self._replay_from_redis()
 
     async def disconnect(self, close_code):
         if hasattr(self, "group_name"):
@@ -173,7 +179,7 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
                 r.set(key, json.dumps(merged), ex=REDIS_CACHE_TTL)
             elif msg_type == "containers":
                 key = f"server:{self.server_id}:containers"
-                r.set(key, json.dumps(data), ex=REDIS_CACHE_TTL)
+                r.set(key, json.dumps(data), ex=CONTAINERS_CACHE_TTL)
             elif msg_type == "container_metrics":
                 container_id = data.get("data", {}).get("containerId", "unknown")
                 key = f"server:{self.server_id}:container:{container_id}:metrics"
@@ -188,6 +194,36 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
             pipe.execute()
         except Exception:
             logger.exception("[ws] Redis cache write failed for %s", self.server_id)
+
+    async def _replay_from_redis(self):
+        """Redis 캐시에서 최신 스냅샷을 읽어 현재 WS로 송신.
+
+        Browser 재접속 시 초기 데이터를 복원한다. Agent는 Delta Sync라
+        변경분만 주기적으로 보내므로 Browser가 빈 상태로 기다리게 되는
+        문제를 방지.
+        """
+        from apps.common.redis_client import get_redis_client
+
+        try:
+            r = get_redis_client()
+            # 순서: system_metrics → containers → container_metrics
+            # (container_metrics는 컨테이너 목록이 먼저 있어야 의미 있음)
+            for key in (
+                f"server:{self.server_id}:system",
+                f"server:{self.server_id}:containers",
+            ):
+                raw = r.get(key)
+                if raw:
+                    await self.send(text_data=raw)
+
+            # container_metrics: 여러 컨테이너가 개별 키에 저장됨
+            pattern = f"server:{self.server_id}:container:*:metrics"
+            for key in r.scan_iter(match=pattern, count=100):
+                raw = r.get(key)
+                if raw:
+                    await self.send(text_data=raw)
+        except Exception:
+            logger.exception("[ws] Redis replay failed for %s", self.server_id)
 
     # ------------------------------------------------------------------
     # Container 모델 갱신
