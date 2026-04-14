@@ -142,10 +142,25 @@
 	}
 
 	function selectServer(serverId: string) {
+		if (serverId === selectedServerId) return;
 		selectedServerId = serverId;
 		if (browser) {
 			localStorage.setItem('hc_selected_server', serverId);
 		}
+		// 서버 전환 시 로컬 뷰 상태 초기화.
+		// systemStore/containersStore는 ws-store.disconnect()에서 null/[]로 리셋되지만,
+		// 이 페이지의 store 구독은 빈 값일 때 반영을 건너뛰도록 가드가 있어
+		// 이전 서버 데이터가 UI에 남는다. 수동으로 리셋.
+		systemInfo = null;
+		containers = [];
+		projects = [];
+		selectedContainer = null;
+		cpuModalOpen = false;
+		memoryModalOpen = false;
+		diskModalOpen = false;
+		networkModalOpen = false;
+		loginModalOpen = false;
+		processModalOpen = false;
 		connect(selectedServerId, accessToken);
 	}
 
