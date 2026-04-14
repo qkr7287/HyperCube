@@ -234,8 +234,12 @@ export function adaptProcessDetail(d: any): any {
 			name: p.name,
 			command: p.command,
 			cpu: p.cpu ?? 0,
+			// Agent는 mem을 RSS MB 단위로 보냄. 모달이 MB로 직접 표시.
+			memoryMB: p.mem ?? p.memory ?? 0,
+			// 호환 유지: 기존 `memory` 필드도 MB로 노출 (모달 업데이트 시 제거 가능)
 			memory: p.mem ?? p.memory ?? 0,
-			state: p.state,
+			// Agent는 state에 "running/sleeping/stopped/zombie" 등 전체 단어 사용
+			status: p.state ?? p.status ?? '',
 			user: p.user,
 		})),
 	};
@@ -246,14 +250,15 @@ export function adaptLoginDetail(d: any): any {
 	const users = d.users ?? [];
 	return {
 		totalUsers: users.length,
-		activeUsers: users.filter((u: any) => u.active !== false).length,
+		// Agent protocol doesn't flag active/inactive — treat all utmp entries as active.
+		activeUsers: users.length,
 		uptime: d.uptime ?? 0,
 		users: users.map((u: any) => ({
 			user: u.user ?? u.name ?? u.username,
 			terminal: u.terminal ?? u.tty,
-			host: u.host ?? u.ip,
-			loginTime: u.loginTime ?? u.time ?? u.date,
-			active: u.active !== false,
+			host: u.ip ?? u.host,
+			loginTime: [u.date, u.time].filter(Boolean).join(' ') || u.loginTime || '',
+			active: true,
 		})),
 	};
 }

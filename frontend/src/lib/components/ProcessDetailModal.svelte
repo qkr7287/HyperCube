@@ -13,19 +13,34 @@
 	let loading = $state(true);
 	let data: any = $state(null);
 
+	let maxMem = $derived(
+		(data?.processes ?? []).reduce(
+			(m: number, p: any) => Math.max(m, p.memory ?? 0),
+			0,
+		)
+	);
+
+	function formatMem(mb: number): string {
+		if (!mb || mb <= 0) return '0 MB';
+		if (mb < 1024) return `${mb.toFixed(1)} MB`;
+		return `${(mb / 1024).toFixed(2)} GB`;
+	}
+
 	function getStatusLabel(status: string): string {
+		// Agent가 전체 단어로 state를 보냄 (running/sleeping/stopped/zombie ...)
 		const map: Record<string, string> = {
-			'R': '실행중', 'S': '대기', 'D': '대기(I/O)',
-			'Z': '좀비', 'T': '정지', 'I': '유휴',
+			running: '실행중', R: '실행중',
+			sleeping: '대기', S: '대기', D: '대기(I/O)', I: '유휴',
+			stopped: '정지', T: '정지',
+			zombie: '좀비', Z: '좀비',
 		};
 		return map[status] || status;
 	}
 
 	function getStatusClass(status: string): string {
-		if (status === 'R') return 'running';
-		if (status === 'S' || status === 'D' || status === 'I') return 'sleeping';
-		if (status === 'Z') return 'zombie';
-		if (status === 'T') return 'stopped';
+		if (status === 'running' || status === 'R') return 'running';
+		if (status === 'zombie' || status === 'Z') return 'zombie';
+		if (status === 'stopped' || status === 'T') return 'stopped';
 		return 'sleeping';
 	}
 
@@ -139,9 +154,9 @@
 									<td>
 										<div class="bar-cell">
 											<div class="bar-track">
-												<div class="bar-fill mem" style="width: {Math.min(proc.memory, 100)}%"></div>
+												<div class="bar-fill mem" style="width: {maxMem > 0 ? Math.min((proc.memory / maxMem) * 100, 100) : 0}%"></div>
 											</div>
-											<span class="bar-value">{proc.memory.toFixed(1)}%</span>
+											<span class="bar-value">{formatMem(proc.memory)}</span>
 										</div>
 									</td>
 									<td>

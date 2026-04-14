@@ -80,6 +80,10 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
             return
 
         # --- Agent path ---
+        # Agent가 살아있는 동안 레지스트리를 주기적으로 refresh (TTL 300s).
+        # connect() 1회 등록만으로는 5분 후 만료되어 명령 라우팅이 깨진다.
+        command_router.register_agent(self.server_id, self.channel_name)
+
         if msg_type == "command_response":
             await self._route_command_response(data)
             return
