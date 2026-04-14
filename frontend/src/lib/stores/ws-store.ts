@@ -29,6 +29,57 @@ const RECONNECT_BASE = 3000;
 const RECONNECT_MAX = 30000;
 let reconnectAttempts = 0;
 
+// ----- Command (on-demand) -----
+
+interface PendingCommand {
+	resolve: (data: any) => void;
+	reject: (err: Error) => void;
+	timer: ReturnType<typeof setTimeout>;
+}
+
+const pendingCommands = new Map<string, PendingCommand>();
+const COMMAND_TIMEOUT_MS = 15000;
+
+function makeRequestId(): string {
+	if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+		return crypto.randomUUID();
+	}
+	return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+/**
+ * Agent에 on-demand 명령을 보내고 응답을 기다린다.
+ * Backend Consumer가 WS로 Agent에 포워딩 → Agent 응답을 다시 라우팅.
+ */
+export function sendCommand(command: string, params: any = {}, timeoutMs = COMMAND_TIMEOUT_MS): Promise<any> {
+	if (!ws || ws.readyState !== WebSocket.OPEN) {
+		return Promise.reject(new Error('WebSocket not connected'));
+	}
+	const requestId = makeRequestId();
+	return new Promise((resolve, reject) => {
+		const timer = setTimeout(() => {
+			pendingCommands.delete(requestId);
+			reject(new Error(`Command '${command}' timed out after ${timeoutMs}ms`));
+		}, timeoutMs);
+		pendingCommands.set(requestId, { resolve, reject, timer });
+		try {
+			ws!.send(JSON.stringify({ type: 'command', requestId, command, params }));
+		} catch (err) {
+			clearTimeout(timer);
+			pendingCommands.delete(requestId);
+			reject(err instanceof Error ? err : new Error(String(err)));
+		}
+	});
+}
+
+function rejectAllPending(reason: string) {
+	for (const [, p] of pendingCommands) {
+		clearTimeout(p.timer);
+		p.reject(new Error(reason));
+	}
+	pendingCommands.clear();
+}
+
 // ----- Connection -----
 
 function getWsUrl(serverId: string, token: string): string {
@@ -95,6 +146,7 @@ export function disconnect() {
 	systemStore.set(null);
 	containersStore.set([]);
 	containerMetricsStore.set(new Map());
+	rejectAllPending('WebSocket disconnected');
 }
 
 // ----- Message Handling -----
@@ -122,6 +174,16 @@ function handleMessage(event: MessageEvent) {
 						next.set(containerId, msg.data);
 						return next;
 					});
+				}
+				break;
+			}
+			case 'command_response': {
+				const pending = msg.requestId ? pendingCommands.get(msg.requestId) : undefined;
+				if (pending) {
+					clearTimeout(pending.timer);
+					pendingCommands.delete(msg.requestId);
+					if (msg.success) pending.resolve(msg.data);
+					else pending.reject(new Error(msg.error || 'Command failed'));
 				}
 				break;
 			}

@@ -5,6 +5,8 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth.models import AnonymousUser
 
+from apps.common import command_router
+
 logger = logging.getLogger(__name__)
 
 REDIS_CACHE_TTL = 60  # seconds
@@ -33,6 +35,9 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
 
+        if self.is_agent:
+            command_router.register_agent(self.server_id, self.channel_name)
+
         client_type = "agent" if self.is_agent else "browser"
         await self.send(text_data=json.dumps({
             "type": "connection",
@@ -44,25 +49,36 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
     async def disconnect(self, close_code):
         if hasattr(self, "group_name"):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
+        if getattr(self, "is_agent", False):
+            command_router.unregister_agent(self.server_id, self.channel_name)
 
     async def receive(self, text_data=None, bytes_data=None):
-        """Agent만 데이터 전송 가능. Browser는 수신만."""
+        """Agent: 데이터 송신 + command_response. Browser: command 발행만."""
         if text_data is None:
             return
-        if not self.is_agent:
-            await self.send(text_data=json.dumps({
-                "error": "Only agents can send data",
-            }))
-            return
-
         try:
             data = json.loads(text_data)
         except json.JSONDecodeError:
             await self.send(text_data=json.dumps({"error": "Invalid JSON"}))
             return
 
-        data["server_id"] = self.server_id
         msg_type = data.get("type", "unknown")
+
+        if not self.is_agent:
+            if msg_type == "command":
+                await self._handle_browser_command(data)
+                return
+            await self.send(text_data=json.dumps({
+                "error": "Only agents can send data",
+            }))
+            return
+
+        # --- Agent path ---
+        if msg_type == "command_response":
+            await self._route_command_response(data)
+            return
+
+        data["server_id"] = self.server_id
 
         # 1. Redis 캐시 (최신 상태)
         await self._cache_to_redis(msg_type, data)
@@ -80,6 +96,64 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
     async def server_message(self, event):
         """그룹 메시지를 WebSocket으로 전달."""
         await self.send(text_data=json.dumps(event["data"]))
+
+    async def ws_send(self, event):
+        """임의의 payload를 현재 WS로 그대로 전달 (직접 라우팅용)."""
+        await self.send(text_data=json.dumps(event["payload"]))
+
+    # ------------------------------------------------------------------
+    # Command routing
+    # ------------------------------------------------------------------
+
+    async def _handle_browser_command(self, data: dict):
+        """Browser가 보낸 command를 해당 server의 Agent 채널로 포워딩."""
+        request_id = data.get("requestId")
+        if not request_id:
+            await self.send(text_data=json.dumps({
+                "type": "command_response",
+                "success": False,
+                "error": "missing_request_id",
+            }))
+            return
+
+        agent_channel = command_router.get_agent_channel(self.server_id)
+        if not agent_channel:
+            await self.send(text_data=json.dumps({
+                "type": "command_response",
+                "requestId": request_id,
+                "success": False,
+                "error": "agent_offline",
+            }))
+            return
+
+        command_router.record_pending(request_id, self.channel_name, self.server_id)
+
+        # Agent에게 원본 메시지 그대로 전달 (Agent는 requestId로 매칭)
+        await self.channel_layer.send(agent_channel, {
+            "type": "ws.send",
+            "payload": data,
+        })
+
+    async def _route_command_response(self, data: dict):
+        """Agent가 보낸 command_response를 요청 Browser로 라우팅."""
+        request_id = data.get("requestId")
+        if not request_id:
+            logger.warning("[ws] command_response missing requestId")
+            return
+
+        pending = command_router.pop_pending(request_id)
+        if not pending:
+            # 타임아웃/중복 응답 — 조용히 폐기
+            return
+
+        browser_channel = pending.get("browser")
+        if not browser_channel:
+            return
+
+        await self.channel_layer.send(browser_channel, {
+            "type": "ws.send",
+            "payload": data,
+        })
 
     # ------------------------------------------------------------------
     # Redis 캐시
