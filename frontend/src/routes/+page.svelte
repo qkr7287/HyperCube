@@ -175,34 +175,6 @@
 		selectedContainer = null;
 	}
 
-	// Mock data for demo (used when API is not available)
-	const mockContainers: Container[] = [
-		{ id: '1', shortId: 'abc1', names: ['/agdreamlog-api-api-1'], image: 'node:20', state: 'running', status: 'Up 2 days', labels: { 'com.docker.compose.project': 'agdreamlog-api' } },
-		{ id: '2', shortId: 'abc2', names: ['/agdreamlog-api-db-1'], image: 'postgres:15', state: 'running', status: 'Up 2 days', labels: { 'com.docker.compose.project': 'agdreamlog-api' } },
-		{ id: '3', shortId: 'abc3', names: ['/agdreamlog-api-redis-1'], image: 'redis:7', state: 'running', status: 'Up 2 days', labels: { 'com.docker.compose.project': 'agdreamlog-api' } },
-		{ id: '4', shortId: 'abc4', names: ['/agdreamlog-api-worker-1'], image: 'node:20', state: 'running', status: 'Up 2 days', labels: { 'com.docker.compose.project': 'agdreamlog-api' } },
-		{ id: '5', shortId: 'abc5', names: ['/agdreamlog-api-beat-1'], image: 'node:20', state: 'running', status: 'Up 1 day', labels: { 'com.docker.compose.project': 'agdreamlog-api' } },
-		{ id: '6', shortId: 'abc6', names: ['/agdreamlog-api-minio-1'], image: 'minio/minio', state: 'running', status: 'Up 2 days', labels: { 'com.docker.compose.project': 'agdreamlog-api' } },
-		{ id: '7', shortId: 'def1', names: ['/agdevblog_frontend'], image: 'node:20', state: 'running', status: 'Up 5 days', labels: { 'com.docker.compose.project': 'agdevblog' } },
-		{ id: '8', shortId: 'def2', names: ['/agdevblog_backend'], image: 'python:3.11', state: 'running', status: 'Up 5 days', labels: { 'com.docker.compose.project': 'agdevblog' } },
-		{ id: '9', shortId: 'def3', names: ['/agdevblog_postgres'], image: 'postgres:15', state: 'running', status: 'Up 5 days', labels: { 'com.docker.compose.project': 'agdevblog' } },
-		{ id: '10', shortId: 'def4', names: ['/agdevblog_minio'], image: 'minio/minio', state: 'running', status: 'Up 5 days', labels: { 'com.docker.compose.project': 'agdevblog' } },
-		{ id: '11', shortId: 'ghi1', names: ['/agsafecat-backend-backend-1'], image: 'python:3.11', state: 'running', status: 'Up 3 days', labels: { 'com.docker.compose.project': 'agsafecat-backend' } },
-		{ id: '12', shortId: 'ghi2', names: ['/agsafecat-backend-celery-1'], image: 'python:3.11', state: 'running', status: 'Up 3 days', labels: { 'com.docker.compose.project': 'agsafecat-backend' } },
-		{ id: '13', shortId: 'ghi3', names: ['/agsafecat-backend-db-1'], image: 'postgres:15', state: 'exited', status: 'Exited (0)', labels: { 'com.docker.compose.project': 'agsafecat-backend' } },
-		{ id: '14', shortId: 'jkl1', names: ['/ai_translate_frontend'], image: 'node:20', state: 'running', status: 'Up 1 day', labels: { 'com.docker.compose.project': 'aitranslateplatform' } },
-		{ id: '15', shortId: 'jkl2', names: ['/ai_translate_backend'], image: 'python:3.11', state: 'running', status: 'Up 1 day', labels: { 'com.docker.compose.project': 'aitranslateplatform' } },
-		{ id: '16', shortId: 'jkl3', names: ['/ai_translate_db'], image: 'postgres:15', state: 'running', status: 'Up 1 day', labels: { 'com.docker.compose.project': 'aitranslateplatform' } },
-		{ id: '17', shortId: 'mno1', names: ['/3d-widget-web-host-full-three-1'], image: 'node:20', state: 'running', status: 'Up 12 hours', labels: { 'com.docker.compose.project': '3d-widget-web-host' } },
-		{ id: '18', shortId: 'mno2', names: ['/3d-widget-web-host-full-babylon-1'], image: 'node:20', state: 'running', status: 'Up 12 hours', labels: { 'com.docker.compose.project': '3d-widget-web-host' } },
-		{ id: '19', shortId: 'mno3', names: ['/3d-widget-web-host-webhost-only-three-1'], image: 'node:20', state: 'running', status: 'Up 12 hours', labels: { 'com.docker.compose.project': '3d-widget-web-host' } },
-		{ id: '20', shortId: 'mno4', names: ['/3d-widget-web-host-webhost-only-babylon-1'], image: 'node:20', state: 'running', status: 'Up 12 hours', labels: { 'com.docker.compose.project': '3d-widget-web-host' } },
-		{ id: '21', shortId: 'pqr1', names: ['/coatervision-web-1'], image: 'node:20', state: 'running', status: 'Up 7 days', labels: { 'com.docker.compose.project': 'coatervision' } },
-		{ id: '22', shortId: 'pqr2', names: ['/coatervision-api-1'], image: 'python:3.11', state: 'running', status: 'Up 7 days', labels: { 'com.docker.compose.project': 'coatervision' } },
-		{ id: '23', shortId: 'stu1', names: ['/release-notes-frontend-1'], image: 'node:20', state: 'running', status: 'Up 4 days', labels: { 'com.docker.compose.project': 'release-notes' } },
-		{ id: '24', shortId: 'stu2', names: ['/release-notes-backend-1'], image: 'python:3.11', state: 'exited', status: 'Exited (1)', labels: { 'com.docker.compose.project': 'release-notes' } },
-		{ id: '25', shortId: 'stu3', names: ['/release-notes-db-1'], image: 'postgres:15', state: 'running', status: 'Up 4 days', labels: { 'com.docker.compose.project': 'release-notes' } },
-	];
 
 	function extractProjectPrefix(name: string): string {
 		const parts = name.split(/[-_]/);
@@ -845,56 +817,6 @@
 
 	let graphInitialized = false;
 
-	async function fetchData() {
-		try {
-			const response = await fetch(`${base}/api/containers`);
-			const result = await response.json();
-			if (result.success) {
-				containers = result.data;
-				groupContainers(containers);
-				lastUpdate = new Date();
-				if (graph && graphInitialized) {
-					const currentNodes = graph.graphData().nodes;
-					currentNodes.forEach((node: any) => {
-						const updated = containers.find((c: Container) => c.id === node.id);
-						if (updated) {
-							node.state = updated.state;
-							node.val = updated.state === 'running' ? 8 : 4;
-						}
-					});
-					graph.nodeThreeObject(graph.nodeThreeObject());
-				}
-				return;
-			}
-		} catch (e) {
-			// API not available, use mock data
-		}
-		containers = mockContainers;
-		groupContainers(containers);
-		lastUpdate = new Date();
-	}
-
-	async function fetchSystemInfoData() {
-		try {
-			const response = await fetch(`${base}/api/system`);
-			const result = await response.json();
-			if (result.success) {
-				systemInfo = result.data;
-				return;
-			}
-		} catch (e) {
-			// Use mock
-		}
-		systemInfo = {
-			hostname: 'agicsai-desktop',
-			os: 'Ubuntu 22.04.3 LTS',
-			cpu: { cores: 16, model: 'AMD Ryzen 9 5950X', usage: 23.5 },
-			memory: { total: '64.0 GB', used: '28.3 GB', free: '35.7 GB', usage: 44.2 },
-			disk: { total: '1.0 TB', used: '456 GB', free: '544 GB', usage: 45.6 },
-			docker: { version: '24.0.7', containers: 25, images: 42 },
-		};
-	}
-
 	// Toolbar actions
 	async function handleScreenshot() {
 		try {
@@ -1055,17 +977,8 @@
 			});
 		}
 
-		// 4. REST fallback: WS가 3초 내에 데이터를 안 보내면 Mock API로 폴링
-		setTimeout(() => {
-			if (!wsDataReceived) {
-				fetchData();
-				fetchSystemInfoData();
-				fallbackInterval = setInterval(async () => {
-					await fetchData();
-					await fetchSystemInfoData();
-				}, 10000);
-			}
-		}, 3000);
+		// Mock REST fallback 제거됨. Backend WebSocket이 유일한 실시간 데이터 경로.
+		// Agent 오프라인 시에는 systemInfo=null / containers=[] 상태 유지.
 	});
 
 	onDestroy(() => {
@@ -1196,7 +1109,6 @@
 <ContainerDetailModal
 	container={selectedContainer}
 	onClose={closeContainerDetail}
-	onStateChange={fetchData}
 />
 
 <CpuDetailModal

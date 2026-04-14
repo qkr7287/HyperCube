@@ -183,7 +183,15 @@
 				</div>
 			</div>
 		{:else}
-			<div class="loading">Loading...</div>
+			<div class="loading">
+				<div class="loading-title">Agent 연결 대기 중</div>
+				<div class="loading-sub">
+					선택한 서버의 Agent에서 아직 데이터가 도착하지 않았습니다.
+					{#if agents.length > 1}
+						<br />다른 서버로 전환하려면 상단 IP 배지를 눌러주세요.
+					{/if}
+				</div>
+			</div>
 		{/if}
 	</div>
 
@@ -430,6 +438,19 @@
 		color: var(--text-secondary);
 		font-size: 12px;
 		text-align: center;
-		padding: 20px;
+		padding: 24px 16px;
+	}
+
+	.loading-title {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--text-primary);
+		margin-bottom: 8px;
+	}
+
+	.loading-sub {
+		font-size: 11px;
+		line-height: 1.5;
+		color: var(--text-secondary);
 	}
 </style>
