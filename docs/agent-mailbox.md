@@ -1,71 +1,77 @@
-# Agent Mailbox
+# Agent Mailbox (HyperCube → Agent)
 
-HyperCube(Backend/Frontend) ↔ `qkr7287/HyperCube-agent` 양쪽 팀이
-공유하는 단일 우편함. 모든 작업 요청 / 회신을 이 한 문서에서만
-주고받는다. 슬랙·이메일 등 외부 메신저는 사용해도 좋지만, 본문은
-반드시 이 mailbox에 남기고 외부에는 URL만 첨부한다.
+HyperCube(Backend/Frontend)가 `qkr7287/HyperCube-agent`로 보내는
+**outbox**. 이 파일에는 HyperCube 측이 Agent 측에 요청하거나
+공지하는 항목만 들어간다. 반대 방향(Agent → HyperCube)은 Agent
+repo에 별도 mailbox가 있다.
 
-URL: <https://github.com/qkr7287/HyperCube/blob/dev/docs/agent-mailbox.md>
+| 방향 | 위치 | 작성자 |
+|---|---|---|
+| HyperCube → Agent | `qkr7287/HyperCube/docs/agent-mailbox.md` (이 파일) | HyperCube |
+| Agent → HyperCube | `qkr7287/HyperCube-agent/docs/hypercube-mailbox.md` | Agent |
+
+원칙: **각 측은 자기 repo의 mailbox에만 쓴다**. 상대방은 읽기만.
+cross-repo PR로 회신 끼워넣지 않는다.
+
+URL (이 mailbox):
+<https://github.com/qkr7287/HyperCube/blob/dev/docs/agent-mailbox.md>
 
 ## 우편함 규칙
 
-### 작성
+### 작성 (HyperCube가 새 요청 보낼 때)
 
-- **새 요청은 최상단**. 위에서 아래로 시간 역순.
-- 각 요청 헤더: `## YYYY-MM-DD — 제목 (상태)`
+- **새 항목은 최상단**. 위에서 아래로 시간 역순
+- 헤더 형식: `## YYYY-MM-DD — 제목 (상태)`
 - 상태 라벨:
-  - `(대기)` — HyperCube가 보냈고 Agent가 아직 손 안 댐
-  - `(처리 중)` — Agent가 작업 시작
-  - `(완료 — agent <hash>)` — Agent가 완료. 가능하면 hypercube 측 대응 commit hash도 함께 표기
-- 누가 보낸 요청인지 명확히 구분되는 경우는 본문 첫 줄에
-  `From: HyperCube` / `From: Agent` 로 명시 (대부분 HyperCube → Agent
-  방향이라 생략 가능)
+  - `(대기)` — 보냈고 Agent가 아직 손 안 댐
+  - `(처리 중)` — Agent 측 mailbox에 처리 시작 회신이 옴
+  - `(완료 — agent <hash>)` — Agent 측에서 완료 회신. 가능하면
+    HyperCube 측 후속 commit hash도 함께 (예: `완료 — agent 1a1f59f / hypercube c26c5d9`)
+- Agent 측 mailbox의 회신을 확인하면 이 파일의 상태 라벨을 갱신
 
-### 회신
+### Agent 측 회신은 어디에?
 
-- Agent 측이 작업을 마치면 같은 요청 블록 하단에
-  `### 회신 (Agent, YYYY-MM-DD)` 섹션을 덧붙이고 상태 라벨을 갱신
-- 추가 질문/이슈가 있으면 같은 블록 안에서 짧게 주고받기. 새 요청
-  수준의 분량이 되면 별도 헤더로 분리
+- 회신은 **Agent repo의 mailbox**(`hypercube-mailbox.md`)에 새 항목으로 작성
+- 헤더에 원본 식별: `## YYYY-MM-DD — Re: 2026-04-14 자동 승인 흐름 전환 (완료 — <hash>)`
+- HyperCube가 Agent mailbox를 읽고 이 파일의 상태 라벨을 갱신
 
 ### 종료된 항목
 
-- 완료 항목은 그대로 보존 (히스토리). 삭제 금지
-- 너무 길어지면 분기 시점에 `docs/agent-mailbox-archive-YYYYHN.md`로
-  분할 (지금은 분할 불필요)
+- 완료 항목은 보존 (히스토리). 삭제 금지
+- 파일이 길어지면 `docs/agent-mailbox-archive-YYYYHN.md`로 분할
 
 ## 다른 세션에 전달하는 방법
 
-Agent 작업이 필요할 때는 **이 mailbox 자체**를 매개로 전달한다.
-긴 prompt를 매번 복붙하지 않고 URL + 한 줄 안내만 보내면 충분.
+Agent 작업이 필요할 때는 mailbox URL + 짧은 안내만 보낸다.
 
-### 1. mailbox URL 복사
+### Agent 세션에 보낼 메시지 템플릿
 
 ```
+HyperCube → Agent mailbox 최상단 (대기) 항목을 처리해줘.
+
+이 mailbox (HyperCube가 Agent에게 보내는 outbox):
 https://github.com/qkr7287/HyperCube/blob/dev/docs/agent-mailbox.md
-```
 
-### 2. Agent 세션에 보낼 메시지 템플릿
-
-```
-HyperCube mailbox 최상단 (대기) 항목을 처리해줘.
-
-URL: https://github.com/qkr7287/HyperCube/blob/dev/docs/agent-mailbox.md
+너의 회신은 Agent repo의 hypercube-mailbox에 적어줘:
+qkr7287/HyperCube-agent/docs/hypercube-mailbox.md
+(없으면 새로 만들어줘. 양쪽 repo가 각자 outbox를 갖는 구조)
 
 처리 시:
-1. 본문 요구사항대로 코드 수정 + 커밋
-2. 같은 mailbox 파일을 PR로 수정해서 (대기) → (완료 — <agent commit hash>) 로 갱신
-3. 같은 블록 하단에 `### 회신 (Agent, YYYY-MM-DD)` 섹션 추가:
-   - 어떤 커밋으로 처리했는지
+1. 본문 요구사항대로 Agent 측 코드 수정 + 커밋
+2. Agent repo의 hypercube-mailbox.md 최상단에 새 항목 추가:
+     ## YYYY-MM-DD — Re: <원본 제목> (완료 — <agent commit hash>)
+3. 회신 본문에 다음 포함:
+   - 처리 커밋 hash
    - 검증 결과 (어떤 시나리오 통과/실패)
-   - 추가로 필요한 정보가 있으면 질문
+   - 추가 정보 요청이나 후속 이슈
 ```
 
-### 3. Agent 회신을 받은 뒤 HyperCube 측에서
+### HyperCube가 Agent 회신을 받은 뒤
 
-- mailbox 갱신본을 dev 브랜치에 pull → 회신 확인
-- 필요하면 후속 commit (Frontend/Backend 적용) 해시도 같은 블록에 추가
-- 다음 작업이 있으면 새 요청을 mailbox 최상단에 추가
+- Agent repo의 `hypercube-mailbox.md` 확인
+- 이 파일에서 해당 항목 상태 라벨 갱신:
+  `(대기)` → `(완료 — agent <hash>)` (필요시 후속 hypercube hash 추가)
+- 필요한 후속 작업 (Frontend/Backend 적용) 진행
 
 ---
 
