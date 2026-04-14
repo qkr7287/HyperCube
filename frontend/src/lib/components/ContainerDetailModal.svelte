@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy, untrack } from 'svelte';
-	import { base } from '$app/paths';
+	import { sendCommand, containerMetricsStore } from '$lib/stores/ws-store';
+	import { adaptContainerInspect } from '$lib/utils/data-adapter';
 	import { Chart, LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend } from 'chart.js';
 
 	Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend);
@@ -42,7 +43,6 @@
 	let metricsData: any = $state(null);
 	let cpuHistory: number[] = $state([]);
 	let memoryHistory: number[] = $state([]);
-	let metricsInterval: ReturnType<typeof setInterval> | null = null;
 
 	// Logs data - raw string array like old project
 	let logs: string[] = $state([]);
@@ -222,57 +222,40 @@
 	async function fetchDetails() {
 		if (!container) return;
 		try {
-			const res = await fetch(`${base}/api/containers/${container.id}`);
-			const data = await res.json();
-			if (data.success) {
-				details = data.data;
-				containerState = details?.inspect?.State?.Status || container.state;
-				containerStatus = details?.inspect?.State?.Status || container.status;
-			} else {
-				errorMsg = data.error || 'Failed to fetch details';
-			}
-		} catch (e) {
-			errorMsg = '컨테이너 정보를 가져오는데 실패했습니다.';
-			console.error('Failed to fetch details:', e);
+			const raw = await sendCommand('inspect', { containerId: container.id });
+			details = adaptContainerInspect(raw);
+			containerState = details?.inspect?.State?.Status || container.state;
+			containerStatus = details?.inspect?.State?.Status || container.status;
+		} catch (e: any) {
+			errorMsg = e?.message || '컨테이너 정보를 가져오는데 실패했습니다.';
+			console.error('[ContainerDetailModal] inspect failed:', e);
 		}
 	}
 
-	async function fetchMetrics() {
-		if (!container) return;
-		const state = containerState || container?.state;
-		if (state !== 'running') return;
-		try {
-			const res = await fetch(`${base}/api/containers/${container.id}/metrics`);
-			const data = await res.json();
-			if (data.success) {
-				metricsData = data.data;
-				const cpuVal = metricsData.cpu?.usage || 0;
-				const memVal = (metricsData.memory?.usage || 0) / 1048576;
-				const now = formatTime(new Date());
-				cpuHistory = [...cpuHistory.slice(-(MAX_HISTORY - 1)), cpuVal];
-				memoryHistory = [...memoryHistory.slice(-(MAX_HISTORY - 1)), memVal];
-				timeLabels = [...timeLabels.slice(-(MAX_HISTORY - 1)), now];
-				pushChartData(cpuChart, cpuHistory, timeLabels, '%');
-				pushChartData(memChart, memoryHistory, timeLabels, 'MB');
-			}
-		} catch (e) {
-			console.error('Failed to fetch metrics:', e);
-		}
+	// container_metrics 스트리밍 구독: Agent가 주기적으로 보내는 메트릭을 그대로 사용.
+	// 별도 REST 폴링 불필요.
+	function consumeMetrics(m: any) {
+		if (!m) return;
+		metricsData = m;
+		const cpuVal = m.cpu?.usage || 0;
+		const memVal = (m.memory?.usage || 0) / 1048576;
+		const now = formatTime(new Date());
+		cpuHistory = [...cpuHistory.slice(-(MAX_HISTORY - 1)), cpuVal];
+		memoryHistory = [...memoryHistory.slice(-(MAX_HISTORY - 1)), memVal];
+		timeLabels = [...timeLabels.slice(-(MAX_HISTORY - 1)), now];
+		pushChartData(cpuChart, cpuHistory, timeLabels, '%');
+		pushChartData(memChart, memoryHistory, timeLabels, 'MB');
 	}
 
 	async function fetchLogs() {
 		if (!container) return;
 		try {
-			const res = await fetch(`${base}/api/containers/${container.id}/logs?tail=100`);
-			const data = await res.json();
-			if (data.success && data.data?.logs) {
-				logs = data.data.logs;
-			} else {
-				logs = ['로그를 불러올 수 없습니다: ' + (data.error || '')];
-			}
-		} catch (e) {
-			console.error('Failed to fetch logs:', e);
-			logs = ['로그를 불러오는 중 오류가 발생했습니다.'];
+			const data = await sendCommand('get_logs', { containerId: container.id, tail: 100 });
+			const lines = data?.lines ?? data?.logs ?? [];
+			logs = Array.isArray(lines) ? lines : [];
+		} catch (e: any) {
+			console.error('[ContainerDetailModal] get_logs failed:', e);
+			logs = ['로그를 불러오는 중 오류가 발생했습니다: ' + (e?.message || '')];
 		}
 		if (autoScroll && logContainer) {
 			setTimeout(() => { if (logContainer) logContainer.scrollTop = logContainer.scrollHeight; }, 50);
@@ -314,20 +297,12 @@
 		if (!container || controlLoading) return;
 		controlLoading = action;
 		try {
-			const res = await fetch(`${base}/api/containers/${container.id}/control`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action }),
-			});
-			const data = await res.json();
-			if (data.success) {
-				await fetchDetails();
-				onStateChange();
-			} else {
-				errorMsg = data.error || 'Control action failed';
-			}
-		} catch (e) {
-			console.error('Control action failed:', e);
+			await sendCommand('control', { containerId: container.id, action });
+			await fetchDetails();
+			onStateChange();
+		} catch (e: any) {
+			errorMsg = e?.message || 'Control action failed';
+			console.error('[ContainerDetailModal] control failed:', e);
 		} finally {
 			controlLoading = '';
 		}
@@ -383,9 +358,16 @@
 		loadingInfo = false;
 		loadingLogs = false;
 
-		// Start metrics after details are loaded
-		await fetchMetrics();
+		// 초기 메트릭: 이미 store에 최신 값이 있으면 한 번 소비.
+		// 이후 값은 metrics store 구독으로 자동 수신됨.
+		if (container && metricsCache) {
+			const cached = metricsCache.get(container.id);
+			if (cached) consumeMetrics(cached);
+		}
 	}
+
+	let metricsCache: Map<string, any> | null = null;
+	let unsubMetrics: (() => void) | null = null;
 
 	$effect(() => {
 		const current = container;
@@ -407,14 +389,9 @@
 
 				loadData();
 
-				// Clear previous intervals
-				if (metricsInterval) clearInterval(metricsInterval);
 				if (logsInterval) clearInterval(logsInterval);
-				metricsInterval = setInterval(fetchMetrics, 5000);
 			} else {
-				if (metricsInterval) clearInterval(metricsInterval);
 				if (logsInterval) clearInterval(logsInterval);
-				metricsInterval = null;
 				logsInterval = null;
 			}
 		});
@@ -438,11 +415,18 @@
 
 	onMount(() => {
 		document.addEventListener('keydown', handleKeydown);
+		unsubMetrics = containerMetricsStore.subscribe((map) => {
+			metricsCache = map;
+			if (container) {
+				const m = map.get(container.id);
+				if (m) consumeMetrics(m);
+			}
+		});
 	});
 
 	onDestroy(() => {
-		if (metricsInterval) clearInterval(metricsInterval);
 		if (logsInterval) clearInterval(logsInterval);
+		if (unsubMetrics) { unsubMetrics(); unsubMetrics = null; }
 		destroyCharts();
 		document.removeEventListener('keydown', handleKeydown);
 	});

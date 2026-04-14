@@ -245,6 +245,56 @@ export function adaptProcessDetail(d: any): any {
 	};
 }
 
+/**
+ * Agent `inspect` 응답(camelCase) → 기존 Mock Docker inspect 스키마(PascalCase)로 변환.
+ * 모달이 details.inspect.{Id,Created,State.Status,Config.Cmd,...} 형태로 읽고 있어서
+ * 형태를 유지한 채 값만 교체.
+ */
+export function adaptContainerInspect(d: any): any {
+	if (!d) return null;
+	const state = d.state ?? {};
+	const config = d.config ?? {};
+	const netSettings = d.networkSettings ?? {};
+
+	return {
+		inspect: {
+			Id: d.id,
+			Name: d.name ? `/${String(d.name).replace(/^\//, '')}` : undefined,
+			Created: d.created,
+			Image: d.image,
+			RestartCount: d.restartCount,
+			State: {
+				Status: state.status,
+				Running: state.running,
+				Paused: state.paused,
+				Restarting: state.restarting,
+				OOMKilled: state.oomKilled,
+				Dead: state.dead,
+				Pid: state.pid,
+				ExitCode: state.exitCode,
+				StartedAt: state.startedAt,
+				FinishedAt: state.finishedAt,
+				Health: state.health,
+			},
+			Config: {
+				Hostname: config.hostname,
+				Env: config.env ?? [],
+				Cmd: config.cmd ?? [],
+				Entrypoint: config.entrypoint ?? [],
+				Labels: config.labels ?? {},
+				WorkingDir: config.workingDir ?? '',
+			},
+			NetworkSettings: {
+				Ports: netSettings.ports ?? {},
+				Networks: netSettings.networks ?? {},
+			},
+			Mounts: d.mounts ?? [],
+		},
+		// stats는 더 이상 inspect 응답에 포함 안 됨. 모달은 containerMetricsStore에서 실시간 값 사용.
+		stats: null,
+	};
+}
+
 export function adaptLoginDetail(d: any): any {
 	if (!d) return null;
 	const users = d.users ?? [];
