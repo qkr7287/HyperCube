@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { base } from '$app/paths';
 	import { untrack } from 'svelte';
-	import { cpuDetailStore, wsConnected, subscribe as wsSubscribe, unsubscribe as wsUnsubscribe } from '$lib/stores/ws-store';
+	import { sendCommand } from '$lib/stores/ws-store';
+	import { adaptCpuDetail } from '$lib/utils/data-adapter';
 
 	let {
 		open = false,
@@ -15,8 +15,7 @@
 
 	let loading = $state(true);
 	let data: any = $state(null);
-	let unsubStore: (() => void) | null = null;
-	let fallbackInterval: ReturnType<typeof setInterval> | null = null;
+	let pollInterval: ReturnType<typeof setInterval> | null = null;
 
 	function getHeatColor(usage: number): string {
 		if (usage < 15) return '#0d4f3c';
@@ -36,27 +35,25 @@
 		return '0 0 16px rgba(220,38,38,0.5)';
 	}
 
-	async function fetchDataRest() {
+	async function fetchData() {
 		try {
-			const res = await fetch(`${base}/api/system/cpu`);
-			const result = await res.json();
-			if (result.success) {
-				data = result.data;
-				loading = false;
-			}
+			const raw = await sendCommand('system_info', { subCommand: 'cpu_detail' });
+			data = adaptCpuDetail(raw);
+			loading = false;
 		} catch (e) {
-			console.error('Failed to fetch CPU data:', e);
+			console.error('[CpuDetailModal] sendCommand failed:', e);
+			loading = false;
 		}
 	}
 
-	function startFallbackPolling() {
-		stopFallbackPolling();
-		fetchDataRest();
-		fallbackInterval = setInterval(fetchDataRest, 3000);
+	function startPolling() {
+		stopPolling();
+		fetchData();
+		pollInterval = setInterval(fetchData, 3000);
 	}
 
-	function stopFallbackPolling() {
-		if (fallbackInterval) { clearInterval(fallbackInterval); fallbackInterval = null; }
+	function stopPolling() {
+		if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -68,25 +65,10 @@
 		untrack(() => {
 			if (isOpen) {
 				loading = true;
-				// Subscribe to cpu-detail WebSocket channel
-				wsSubscribe('cpu-detail');
-				unsubStore = cpuDetailStore.subscribe((storeData) => {
-					if (storeData) {
-						data = storeData;
-						loading = false;
-						// WS is delivering data, stop REST fallback
-						stopFallbackPolling();
-					}
-				});
-				// REST fallback: if WS doesn't deliver within 2s, start polling
-				setTimeout(() => {
-					if (loading) startFallbackPolling();
-				}, 2000);
+				startPolling();
 				document.addEventListener('keydown', handleKeydown);
 			} else {
-				wsUnsubscribe('cpu-detail');
-				if (unsubStore) { unsubStore(); unsubStore = null; }
-				stopFallbackPolling();
+				stopPolling();
 				document.removeEventListener('keydown', handleKeydown);
 			}
 		});

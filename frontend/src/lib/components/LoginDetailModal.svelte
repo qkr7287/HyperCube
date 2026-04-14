@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { base } from '$app/paths';
+	import { sendCommand } from '$lib/stores/ws-store';
+	import { adaptLoginDetail } from '$lib/utils/data-adapter';
 
 	let {
 		open = false,
@@ -27,11 +28,10 @@
 	async function fetchData() {
 		loading = true;
 		try {
-			const res = await fetch(`${base}/api/system/logins`);
-			const result = await res.json();
-			if (result.success) data = result.data;
+			const raw = await sendCommand('system_info', { subCommand: 'users' });
+			data = adaptLoginDetail(raw);
 		} catch (e) {
-			console.error('Failed to fetch login data:', e);
+			console.error('[LoginDetailModal] sendCommand failed:', e);
 		}
 		loading = false;
 	}

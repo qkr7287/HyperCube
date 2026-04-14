@@ -168,3 +168,92 @@ export function transformContainers(msg: any): ContainerInfo[] {
 		created: c.created,
 	}));
 }
+
+// ----- On-demand system_info adapters -----
+// Agent 응답 shape를 각 모달이 기대하는 형식으로 정규화.
+// Agent가 제공하지 않는 필드는 기본값(0/빈 배열)으로 채운다 — 모달이 `?? 0`로
+// 처리하도록 되어있어 누락 필드는 자연스럽게 표시 안 됨.
+
+export function adaptCpuDetail(d: any): any {
+	if (!d) return null;
+	return {
+		overall: d.usage ?? d.overall ?? 0,
+		cores: d.cores ?? 0,
+		model: d.model ?? '',
+		speed: d.speed ?? 0,
+		loadAvg: d.loadAvg ?? { avg1: 0, avg5: 0, avg15: 0 },
+		perCore: (d.perCore ?? []).map((c: any) => ({
+			core: c.core,
+			usage: c.load ?? c.usage ?? 0,
+		})),
+		temperature: d.temperature,
+	};
+}
+
+export function adaptNetworkDetail(d: any): any {
+	if (!d) return null;
+	const stats = d.stats ?? {};
+	return {
+		connections: d.connections ?? 0,
+		stats: {
+			rx_bytes: stats.rx_bytes ?? stats.rxBytes ?? 0,
+			tx_bytes: stats.tx_bytes ?? stats.txBytes ?? 0,
+			rx_packets: stats.rx_packets ?? stats.rxPackets ?? 0,
+			tx_packets: stats.tx_packets ?? stats.txPackets ?? 0,
+			rx_errors: stats.rx_errors ?? stats.rxErrors ?? 0,
+			tx_errors: stats.tx_errors ?? stats.txErrors ?? 0,
+		},
+		interfaces: (d.interfaces ?? []).map((i: any) => ({
+			iface: i.iface ?? i.name,
+			mac: i.mac,
+			addresses: [
+				i.ip4 ? { address: i.ip4, family: 'IPv4' } : null,
+				i.ip6 ? { address: i.ip6, family: 'IPv6' } : null,
+			].filter(Boolean),
+			speed: i.speed,
+			mtu: i.mtu,
+			up: i.up ?? (i.operstate === 'up'),
+		})),
+	};
+}
+
+export function adaptProcessDetail(d: any): any {
+	if (!d) return null;
+	const list = d.list ?? d.processes ?? [];
+	const total = d.total ?? 0;
+	const running = d.running ?? 0;
+	const blocked = d.blocked ?? 0;
+	return {
+		totalProcesses: total,
+		runningProcesses: running,
+		// Agent가 sleeping/zombie를 구분해 주지 않으면 파생: total - running - blocked
+		sleepingProcesses: d.sleeping ?? Math.max(0, total - running - blocked),
+		zombieProcesses: d.zombie ?? 0,
+		processes: list.map((p: any) => ({
+			pid: p.pid,
+			name: p.name,
+			command: p.command,
+			cpu: p.cpu ?? 0,
+			memory: p.mem ?? p.memory ?? 0,
+			state: p.state,
+			user: p.user,
+		})),
+	};
+}
+
+export function adaptLoginDetail(d: any): any {
+	if (!d) return null;
+	const users = d.users ?? [];
+	return {
+		totalUsers: users.length,
+		activeUsers: users.filter((u: any) => u.active !== false).length,
+		uptime: d.uptime ?? 0,
+		users: users.map((u: any) => ({
+			user: u.user ?? u.name ?? u.username,
+			terminal: u.terminal ?? u.tty,
+			host: u.host ?? u.ip,
+			loginTime: u.loginTime ?? u.time ?? u.date,
+			active: u.active !== false,
+		})),
+	};
+}

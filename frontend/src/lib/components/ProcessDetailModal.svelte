@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { base } from '$app/paths';
+	import { sendCommand } from '$lib/stores/ws-store';
+	import { adaptProcessDetail } from '$lib/utils/data-adapter';
 
 	let {
 		open = false,
@@ -31,11 +32,10 @@
 	async function fetchData() {
 		loading = true;
 		try {
-			const res = await fetch(`${base}/api/system/processes`);
-			const result = await res.json();
-			if (result.success) data = result.data;
+			const raw = await sendCommand('system_info', { subCommand: 'processes' });
+			data = adaptProcessDetail(raw);
 		} catch (e) {
-			console.error('Failed to fetch process data:', e);
+			console.error('[ProcessDetailModal] sendCommand failed:', e);
 		}
 		loading = false;
 	}
