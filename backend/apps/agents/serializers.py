@@ -20,31 +20,17 @@ class AgentSerializer(serializers.ModelSerializer):
             "approved_at",
             "container_count",
         ]
-        read_only_fields = ["id", "status", "registered_at", "approved_at"]
-        extra_kwargs = {
-            "token": {"write_only": True},
-        }
+        # token은 register 응답에서 Agent가 즉시 사용해야 하므로 노출.
+        # 클라이언트가 set 못 하게 read_only 처리.
+        read_only_fields = ["id", "status", "token", "registered_at", "approved_at"]
 
 
 class AgentStatusSerializer(serializers.ModelSerializer):
-    """Agent 상태/토큰 조회용 (polling 응답)"""
+    """Agent 상태/토큰 조회용. 자동 승인 정책 이후 항상 approved + token 반환."""
 
     class Meta:
         model = Agent
         fields = ["id", "status", "token"]
-
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-        # pending/rejected 상태에서는 token 노출하지 않음
-        if instance.status != Agent.Status.APPROVED:
-            data["token"] = None
-        return data
-
-
-class AgentApproveSerializer(serializers.Serializer):
-    """Agent 승인/거절 액션용"""
-
-    action = serializers.ChoiceField(choices=["approve", "reject"])
 
 
 class ServerAssignmentSerializer(serializers.ModelSerializer):

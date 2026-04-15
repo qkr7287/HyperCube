@@ -13,11 +13,14 @@ from apps.common.permissions import IsServerAdminOrAbove, IsSuperAdmin
 
 from .models import Agent, ServerAssignment
 from .serializers import (
-    AgentApproveSerializer,
     AgentSerializer,
     AgentStatusSerializer,
     ServerAssignmentSerializer,
 )
+
+
+def _issue_token() -> str:
+    return f"agent_{secrets.token_urlsafe(32)}"
 
 
 @extend_schema_view(
@@ -30,8 +33,11 @@ from .serializers import (
         description="특정 Agent의 상세 정보를 조회합니다. 컨테이너 수 포함.",
     ),
     create=extend_schema(
-        summary="Agent 등록",
-        description="새 Agent를 등록합니다. 등록 후 status는 pending 상태이며, 관리자 승인이 필요합니다.",
+        summary="Agent 등록 (자동 승인)",
+        description=(
+            "새 Agent를 등록합니다. 자동으로 승인되며 응답에 token이 즉시 포함됩니다. "
+            "hostname 중복 시 기존 Agent를 그대로 반환합니다 (idempotent, 기존 token 유지)."
+        ),
     ),
     update=extend_schema(
         summary="Agent 정보 수정",
@@ -63,49 +69,50 @@ class AgentViewSet(ModelViewSet):
     def get_permissions(self):
         if self.action in ("create", "check_status"):
             return [AllowAny()]
-        if self.action in ("destroy", "manage_status"):
+        if self.action == "destroy":
             return [IsSuperAdmin()]
         return [IsServerAdminOrAbove()]
 
     def create(self, request, *args, **kwargs):
-        """Agent 자가 등록. hostname 중복 시 기존 Agent 반환 (idempotent)."""
+        """Agent 자가 등록 + 자동 승인.
+
+        - hostname 중복 시 기존 Agent를 그대로 반환 (idempotent, 기존 token 유지)
+        - 신규 등록 시 status=approved, token 즉시 발급, approved_at 기록
+        """
         hostname = request.data.get("hostname")
         if hostname:
-            try:
-                existing = Agent.objects.get(hostname=hostname)
+            existing = Agent.objects.filter(hostname=hostname).first()
+            if existing:
+                # 과거에 pending/rejected였던 항목도 이번 등록을 계기로 자동 승인.
+                if existing.status != Agent.Status.APPROVED or not existing.token:
+                    existing.status = Agent.Status.APPROVED
+                    existing.approved_at = existing.approved_at or timezone.now()
+                    if not existing.token:
+                        existing.token = _issue_token()
+                    existing.save(update_fields=["status", "approved_at", "token"])
                 return Response(
                     AgentSerializer(existing).data,
                     status=status.HTTP_200_OK,
                 )
-            except Agent.DoesNotExist:
-                pass
-        return super().create(request, *args, **kwargs)
 
-    @extend_schema(
-        summary="Agent 승인/거절",
-        description='Agent의 상태를 변경합니다. action: "approve" (승인) 또는 "reject" (거절).',
-        request=AgentApproveSerializer,
-        responses=AgentSerializer,
-    )
-    @action(detail=True, methods=["post"], url_path="manage-status")
-    def manage_status(self, request, pk=None):
-        agent = self.get_object()
-        serializer = AgentApproveSerializer(data=request.data)
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
-        if serializer.validated_data["action"] == "approve":
-            agent.status = Agent.Status.APPROVED
-            agent.approved_at = timezone.now()
-            agent.token = f"agent_{secrets.token_urlsafe(32)}"
-        else:
-            agent.status = Agent.Status.REJECTED
-            agent.token = ""
-        agent.save(update_fields=["status", "approved_at", "token"])
-        return Response(AgentSerializer(agent).data)
+        agent = serializer.save(
+            status=Agent.Status.APPROVED,
+            token=_issue_token(),
+            approved_at=timezone.now(),
+        )
+        return Response(
+            AgentSerializer(agent).data,
+            status=status.HTTP_201_CREATED,
+        )
 
     @extend_schema(
         summary="Agent 상태/토큰 조회",
-        description="Agent가 승인 여부를 polling하는 엔드포인트. 승인 시 token 포함.",
+        description=(
+            "Agent의 현재 상태와 token을 반환합니다. 자동 승인 정책 이후 항상 "
+            "approved + token이 함께 반환됩니다 (호환성 유지용)."
+        ),
         responses=AgentStatusSerializer,
     )
     @action(detail=True, methods=["get"], url_path="status")

@@ -16,7 +16,7 @@ class Agent(models.Model):
     status = models.CharField(
         max_length=10,
         choices=Status.choices,
-        default=Status.PENDING,
+        default=Status.APPROVED,
     )
     token = models.CharField(max_length=500, blank=True, default="")
     registered_at = models.DateTimeField(auto_now_add=True)
