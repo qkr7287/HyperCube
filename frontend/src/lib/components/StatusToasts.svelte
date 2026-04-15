@@ -4,11 +4,12 @@
 
 	const TOAST_TTL_MS = 8000;
 
-	type ToastView = AgentStatusEvent & { dismissAt: number };
+	let nextLocalId = 1;
+	type ToastView = AgentStatusEvent & { localId: number };
 	let visible: ToastView[] = $state([]);
 
 	let lastEventCount = 0;
-	let timers = new Map<string, ReturnType<typeof setTimeout>>();
+	let timers = new Map<number, ReturnType<typeof setTimeout>>();
 
 	const unsub = statusEvents.subscribe((events) => {
 		// 새로 추가된 이벤트만 toast로 띄움 (page mount 시 이전 history는 무시)
@@ -20,21 +21,19 @@
 	});
 
 	function addToast(evt: AgentStatusEvent) {
-		const key = `${evt.server_id}-${evt.receivedAt}`;
-		const view: ToastView = { ...evt, dismissAt: evt.receivedAt + TOAST_TTL_MS };
+		const localId = nextLocalId++;
+		const view: ToastView = { ...evt, localId };
 		visible = [view, ...visible].slice(0, 5);
-		const t = setTimeout(() => dismiss(key), TOAST_TTL_MS);
-		timers.set(key, t);
+		const t = setTimeout(() => dismiss(localId), TOAST_TTL_MS);
+		timers.set(localId, t);
 	}
 
-	function dismiss(key: string) {
-		const [server_id, receivedAtStr] = key.split('-');
-		const receivedAt = Number(receivedAtStr);
-		visible = visible.filter((v) => !(v.server_id === server_id && v.receivedAt === receivedAt));
-		const t = timers.get(key);
+	function dismiss(localId: number) {
+		visible = visible.filter((v) => v.localId !== localId);
+		const t = timers.get(localId);
 		if (t) {
 			clearTimeout(t);
-			timers.delete(key);
+			timers.delete(localId);
 		}
 	}
 
@@ -69,7 +68,7 @@
 </script>
 
 <div class="toast-container">
-	{#each visible as toast (toast.server_id + '-' + toast.receivedAt)}
+	{#each visible as toast (toast.localId)}
 		<div class="toast" class:offline={toast.status === 'offline'} class:online={toast.status === 'online'}>
 			<div class="toast-header">
 				<span class="toast-icon">{toast.status === 'online' ? '🟢' : '🔴'}</span>
@@ -77,7 +76,7 @@
 					{toast.hostname}
 					{toast.status === 'online' ? '재연결' : '연결 끊김'}
 				</span>
-				<button class="toast-close" onclick={() => dismiss(toast.server_id + '-' + toast.receivedAt)} aria-label="Close">×</button>
+				<button class="toast-close" onclick={() => dismiss(toast.localId)} aria-label="Close">×</button>
 			</div>
 			<div class="toast-body">
 				{#if toast.status === 'offline'}
