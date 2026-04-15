@@ -75,6 +75,211 @@ qkr7287/HyperCube-agent/docs/hypercube-mailbox.md
 
 ---
 
+## 2026-04-15 — 컨테이너 lifecycle 명령 + progress 이벤트 (대기)
+
+### 배경
+
+HyperCube에 사용자(end-user) 페이지를 새로 도입합니다. 사용자가
+"컨테이너 생성/삭제 요청 → admin 승인 → Backend가 해당 Agent에
+실제 docker 작업 명령" 흐름이 됩니다. Agent 측에 4종 신규 명령과
+1종 신규 비동기 이벤트가 필요합니다.
+
+기존 4종 명령(`system_info`, `inspect`, `get_logs`, `control`)은
+변경 없습니다.
+
+### 추가 명령 4종
+
+기존 `command` / `command_response` envelope 그대로 사용.
+
+#### 1. `create_container` (단일 컨테이너 생성)
+
+**params**
+```json
+{
+  "image": "postgres:15",
+  "name": "my-pg",                 // 컨테이너 이름. 중복 시 에러
+  "env": { "POSTGRES_PASSWORD": "..." },
+  "ports": [
+    { "host": 15432, "container": 5432, "protocol": "tcp" }
+  ],
+  "volumes": [
+    { "host": "/var/data/pg", "container": "/var/lib/postgresql/data", "mode": "rw" }
+  ],
+  "restart_policy": "unless-stopped",   // 선택. 기본 unless-stopped
+  "pull_if_missing": true               // 선택. 기본 true
+}
+```
+
+**success.data**
+```json
+{
+  "containerId": "abc123def456...",   // 64-char or 12-char short — 기존 inspect/get_logs와 동일 형식
+  "name": "my-pg",
+  "image": "postgres:15",
+  "state": "running"
+}
+```
+
+**errors** — `"image is required"`, `"name is required"`,
+`"name already exists: <n>"`, `"image pull failed: <reason>"`,
+`"create failed: <reason>"`, `"start failed: <reason>"`,
+Dockerode 원본 에러 등.
+
+#### 2. `compose_up` (여러 컨테이너를 docker-compose로 한 번에 생성)
+
+**params**
+```json
+{
+  "projectName": "my-stack",       // docker-compose -p
+  "composeYaml": "<여러 줄 yaml 문자열>",
+  "env": { "TAG": "v1.2", "DB_PASSWORD": "..." },   // 선택. compose 변수 치환용
+  "pull_if_missing": true
+}
+```
+
+**success.data**
+```json
+{
+  "projectName": "my-stack",
+  "containers": [
+    { "containerId": "abc...", "name": "my-stack-web-1", "image": "nginx:1.27", "state": "running" },
+    { "containerId": "def...", "name": "my-stack-db-1",  "image": "postgres:15", "state": "running" }
+  ]
+}
+```
+
+**errors** — `"projectName is required"`, `"composeYaml is required"`,
+`"yaml parse failed: <reason>"`, `"compose up failed: <reason>"` 등.
+
+구현 노트: `docker compose -p <projectName> -f <tmpfile> up -d` 또는
+dockerode-compose 라이브러리. 둘 다 OK. 사용자 측은 결과 schema만 보장되면 됨.
+
+#### 3. `delete_container` (단일 삭제)
+
+**params**
+```json
+{
+  "containerId": "abc123",
+  "force": true,        // 선택. 기본 false. running 컨테이너도 강제 삭제
+  "removeVolumes": false // 선택. 기본 false
+}
+```
+
+**success.data**
+```json
+{ "containerId": "abc123", "removed": true }
+```
+
+**errors** — `"containerId is required"`, `"container not found"`,
+`"running container, set force=true to remove"` 등.
+
+#### 4. `compose_down` (compose 그룹 통째 삭제)
+
+**params**
+```json
+{
+  "projectName": "my-stack",
+  "removeVolumes": false,
+  "removeImages": false   // 선택. 기본 false
+}
+```
+
+**success.data**
+```json
+{ "projectName": "my-stack", "removedContainerIds": ["abc...", "def..."] }
+```
+
+**errors** — `"projectName is required"`, `"compose down failed: <reason>"`.
+
+---
+
+### 신규 비동기 이벤트: `command_progress`
+
+긴 작업(특히 image pull, compose up)의 진행 상황을 사용자가 보게 하기
+위해 **`create_container`/`compose_up` 두 명령에 한해** 중간 progress
+이벤트를 보냅니다. **`delete_container`/`compose_down`은 일반적으로
+빠르므로 progress 불필요** — 마지막 `command_response`만 보내면 됨.
+
+#### 메시지 형식 (Agent → Backend)
+
+```json
+{
+  "type": "command_progress",
+  "requestId": "<원본 command의 requestId 그대로>",
+  "step": "pulling_image" | "creating" | "starting" | "running_check",
+  "percent": 30,                     // 0~100. 정확히 모르면 null 가능
+  "message": "Pulling layer 3/5: 12.3 MB / 40.0 MB",
+  "context": { "image": "postgres:15", "containerName": "my-pg" }   // 선택. UI 표시용 추가 정보
+}
+```
+
+#### 발사 권장 시점
+
+| 명령 | step 시퀀스 |
+|---|---|
+| `create_container` | pulling_image (image pull 중 N%) → creating (도커 create) → starting (start) → running_check (헬스 체크 시) → final command_response |
+| `compose_up` | 각 서비스마다 pulling_image → creating → starting (또는 컨테이너별로 step 발사) → final command_response |
+
+**중요**: 마지막에는 반드시 일반 `command_response` 1건 (성공/실패 결정)
+보내야 함. progress event만으로 종료 X. requestId로 묶임.
+
+#### 라우팅 (Backend 측 처리, 참고만)
+
+Backend는 `command_progress`를 수신하면:
+1. `cmd_pending:{requestId}` Redis 키에서 요청자(Browser) channel 조회
+2. 해당 Browser로 직접 forward (기존 command_response 라우팅과 동일)
+3. ContainerRequest DB row의 progress_message/percent 갱신 (UI 새로고침 시에도 보임)
+4. global channel에도 broadcast (사용자 페이지가 자기 요청 progress 받음)
+
+이 routing은 Backend 책임. Agent는 `command_progress` 보내기만 하면 됨.
+
+---
+
+### 검증 시나리오
+
+1. **단순 create**: postgres:15, env에 POSTGRES_PASSWORD 포함
+   - progress events 4~5건 (pulling 진행률 + create + start)
+   - 최종 command_response success, containerId 반환
+   - `inspect`로 해당 containerId 조회 시 정상 응답
+
+2. **이름 중복 create**: 같은 name으로 두 번 → 두 번째 호출이
+   `name already exists` 에러. progress event 0건, 즉시 실패 응답.
+
+3. **compose up**: 2~3 서비스 yaml
+   - 각 서비스마다 pulling/create/start progress
+   - 최종 containers[] 반환
+   - 모든 컨테이너 `inspect`로 검증 가능
+
+4. **delete (running 컨테이너, force=false)**: 에러
+   - `delete_container` with force=true → 정상 삭제
+   - 삭제 후 `inspect` → "container not found"
+
+5. **compose down**: removedContainerIds 리스트 반환, 각 id `inspect` → not found
+
+6. **image pull 실패**: 존재하지 않는 image (예: `notexist:latest`)
+   - progress event 1건 정도 → command_response success=false, error 메시지
+
+### 우선순위
+
+| # | 작업 | 우선순위 |
+|---|------|----------|
+| 1 | create_container + delete_container (progress 포함) | P0 |
+| 2 | compose_up + compose_down (progress 포함) | P1 |
+| 3 | command_progress 발사 정밀화 (정확한 percent) | P2 |
+
+### 호환성
+
+- 기존 4종 명령 변경 없음
+- 기존 `command_response` envelope 변경 없음
+- `command_progress`는 새 type. Backend가 모르면 무시되므로 Agent가 먼저 배포돼도 안전
+
+### 참고
+
+- HyperCube 측 진행 상황: DB 모델/Backend API/Admin UI/User UI 작업 동시 진행 중
+- 회신 시 검증 결과 + 처리 커밋 hash를 hypercube-mailbox.md에 부탁드립니다.
+
+---
+
 ## 2026-04-14 — 자동 승인 흐름 전환 (완료 — agent `beded33` / hypercube `837b23e`)
 
 회신 확인: <https://github.com/qkr7287/HyperCube-agent/blob/main/docs/hypercube-mailbox.md>
