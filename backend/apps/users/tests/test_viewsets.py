@@ -6,8 +6,8 @@ from .factories import create_user
 
 class UserViewSetTest(APITestCase):
     def setUp(self):
-        self.admin = create_user(role="super_admin", username="admin")
-        self.viewer = create_user(role="viewer", username="viewer")
+        self.admin = create_user(role="admin", username="admin")
+        self.viewer = create_user(role="user", username="viewer")
 
     def test_list_users_as_admin(self):
         self.client.force_authenticate(user=self.admin)

@@ -6,8 +6,8 @@ from .factories import create_container, create_user
 
 class ContainerViewSetTest(APITestCase):
     def setUp(self):
-        self.admin = create_user(role="server_admin", username="sadmin")
-        self.viewer = create_user(role="viewer", username="viewer")
+        self.admin = create_user(role="admin", username="sadmin")
+        self.viewer = create_user(role="user", username="viewer")
         self.container = create_container()
 
     def test_list_containers(self):

@@ -6,9 +6,9 @@ from .factories import create_agent, create_user
 
 class AgentViewSetTest(APITestCase):
     def setUp(self):
-        self.admin = create_user(role="super_admin", username="admin")
-        self.server_admin = create_user(role="server_admin", username="sadmin")
-        self.viewer = create_user(role="viewer", username="viewer")
+        self.admin = create_user(role="admin", username="admin")
+        self.server_admin = create_user(role="admin", username="sadmin")
+        self.viewer = create_user(role="user", username="viewer")
         self.agent = create_agent()
 
     def test_list_agents_as_server_admin(self):

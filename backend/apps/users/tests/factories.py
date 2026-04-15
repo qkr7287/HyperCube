@@ -1,7 +1,7 @@
 from apps.users.models import CustomUser
 
 
-def create_user(role="viewer", **kwargs):
+def create_user(role="user", **kwargs):
     defaults = {
         "username": f"testuser_{role}",
         "password": "testpass123",

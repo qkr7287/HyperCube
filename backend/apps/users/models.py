@@ -4,14 +4,13 @@ from django.db import models
 
 class CustomUser(AbstractUser):
     class Role(models.TextChoices):
-        SUPER_ADMIN = "super_admin", "Super Admin"
-        SERVER_ADMIN = "server_admin", "Server Admin"
-        VIEWER = "viewer", "Viewer"
+        ADMIN = "admin", "Admin"
+        USER = "user", "User"
 
     role = models.CharField(
         max_length=20,
         choices=Role.choices,
-        default=Role.VIEWER,
+        default=Role.USER,
     )
 
     class Meta:
