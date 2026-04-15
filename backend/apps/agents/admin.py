@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 from unfold.admin import ModelAdmin
 
-from .models import Agent, ServerAssignment
+from .models import Agent
 
 admin.site.site_header = "HyperCube Admin"
 admin.site.site_title = "HyperCube"
@@ -31,8 +31,3 @@ class AgentAdmin(ModelAdmin):
         )
 
 
-@admin.register(ServerAssignment)
-class ServerAssignmentAdmin(ModelAdmin):
-    list_display = ("user", "agent", "created_at")
-    list_filter = ("agent",)
-    autocomplete_fields = ("user", "agent")

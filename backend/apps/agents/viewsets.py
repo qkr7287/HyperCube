@@ -15,11 +15,10 @@ ACTIVE_GRACE_SECONDS = 5 * 60
 
 from apps.common.permissions import IsServerAdminOrAbove, IsSuperAdmin
 
-from .models import Agent, ServerAssignment
+from .models import Agent
 from .serializers import (
     AgentSerializer,
     AgentStatusSerializer,
-    ServerAssignmentSerializer,
 )
 
 
@@ -159,29 +158,3 @@ class AgentViewSet(ModelViewSet):
         return Response(body)
 
 
-@extend_schema_view(
-    list=extend_schema(
-        summary="서버 할당 목록",
-        description="사용자-Agent 간 할당 관계를 조회합니다.",
-    ),
-    create=extend_schema(
-        summary="서버 할당 생성",
-        description="사용자에게 Agent(서버) 접근 권한을 할당합니다.",
-    ),
-    destroy=extend_schema(
-        summary="서버 할당 해제",
-        description="사용자의 Agent 접근 권한을 해제합니다.",
-    ),
-)
-class ServerAssignmentViewSet(ModelViewSet):
-    """
-    서버 할당 관리 API.
-
-    사용자별로 접근 가능한 서버(Agent)를 관리합니다.
-    SuperAdmin만 할당/해제할 수 있습니다.
-    """
-
-    queryset = ServerAssignment.objects.select_related("user", "agent").all()
-    serializer_class = ServerAssignmentSerializer
-    filterset_fields = ["user", "agent"]
-    permission_classes = [IsSuperAdmin]

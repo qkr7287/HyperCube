@@ -1,9 +1,8 @@
 from rest_framework.routers import DefaultRouter
 
-from .viewsets import AgentViewSet, ServerAssignmentViewSet
+from .viewsets import AgentViewSet
 
 router = DefaultRouter()
 router.register("agents", AgentViewSet)
-router.register("server-assignments", ServerAssignmentViewSet)
 
 urlpatterns = router.urls

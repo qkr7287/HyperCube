@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.utils import timezone
 from rest_framework import serializers
 
-from .models import Agent, ServerAssignment
+from .models import Agent
 
 # 메인 UI active 판정 grace (Backend tasks.py와 일치 시켜야 함)
 _ACTIVE_GRACE_SECONDS = 5 * 60
@@ -56,18 +56,3 @@ class AgentStatusSerializer(serializers.ModelSerializer):
         fields = ["id", "status", "token"]
 
 
-class ServerAssignmentSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(source="user.username", read_only=True)
-    agent_hostname = serializers.CharField(source="agent.hostname", read_only=True)
-
-    class Meta:
-        model = ServerAssignment
-        fields = [
-            "id",
-            "user",
-            "agent",
-            "username",
-            "agent_hostname",
-            "created_at",
-        ]
-        read_only_fields = ["created_at"]

@@ -36,7 +36,6 @@ INSTALLED_APPS = [
     "apps.users",
     "apps.agents",
     "apps.containers",
-    "apps.core",
     "apps.metrics",
 ]
 
