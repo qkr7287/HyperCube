@@ -587,59 +587,80 @@ graph TB
 | 4 | Image prefix | 이미지 이름 앞부분 기준 |
 | 5 | 컨테이너명 prefix | 이름 앞부분 기준 (fallback) |
 
-### 3.3 비전문가용 Docker 관리
+### 3.3 비전문가용 Docker 관리 (요청-승인 흐름)
 
 #### 쉽게 말하면
 
-Docker를 모르는 사람도 "**템플릿 고르고 → 설정 입력하고 → 서버 선택하고 → 배포**" 4단계로 컨테이너를 만들 수 있습니다.
+Docker를 모르는 사람도 **템플릿을 골라 요청만 하면**, 관리자가 승인한 뒤
+Agent가 알아서 컨테이너를 만들어 줍니다. 사용자는 직접 docker 명령을
+치지 않습니다.
 
-#### 배포 흐름
+#### 사용자 측 5단계
 
 ```mermaid
 graph LR
-    A["1. 템플릿 선택<br/>(웹서버, DB 등)"] --> B["2. 설정 입력<br/>(포트, 볼륨 등)"]
-    B --> C["3. 서버 선택<br/>(리소스 여유 표시)"]
-    C --> D["4. 배포 실행<br/>(진행률 표시)"]
+    A["1. 템플릿 선택<br/>(웹서버, DB 등)"] --> B["2. 옵션 선택<br/>(이미지 변형, env, 포트)"]
+    B --> C["3. 서버 선택<br/>(active Agent 중)"]
+    C --> D["4. 요청 제출<br/>(status: pending)"]
+    D --> E["5. 관리자 승인 후<br/>진행률 실시간 표시"]
 
     style A fill:#1c2333,stroke:#4a5568,color:#c9d1d9
     style B fill:#1c2333,stroke:#4a5568,color:#c9d1d9
     style C fill:#1c2333,stroke:#4a5568,color:#c9d1d9
     style D fill:#1c2333,stroke:#4a5568,color:#c9d1d9
+    style E fill:#1c2333,stroke:#4a5568,color:#c9d1d9
 ```
+
+상세한 모델/시퀀스/Agent 명령은 **§2.6 컨테이너 lifecycle** 참조.
 
 | 기능 | 설명 |
 |------|------|
-| 템플릿 카탈로그 | 카테고리별 내장 템플릿 (웹서버, DB, 개발도구 등) |
-| 커스텀 템플릿 | Super Admin이 추가/수정/삭제 가능 |
-| 서버 리소스 표시 | 배포할 서버 선택 시 CPU/Mem 여유량 확인 가능 |
-| Compose 지원 | 복합 서비스는 내부적으로 Compose 활용, 고급 사용자는 직접 편집 |
-| 업데이트 | 이미지 최신 버전 확인 + 원클릭 업데이트 |
-| 롤백 | 이전 이미지로 되돌리기 (히스토리 관리) |
+| 템플릿 카탈로그 | admin이 등록한 템플릿(simple/compose 둘 다). 모든 사용자에게 공개 |
+| 템플릿 작성/수정 | admin only. 사용자는 사용만 |
+| 입력 폼 자동 생성 | 템플릿의 `image_options` / `env_schema` / `port_schema`로 폼이 동적으로 그려짐 |
+| 서버 선택 | 사용자가 active Agent 중 하나 선택 (제한 없음, 격리 안 함) |
+| 진행률 표시 | image pull / create / start 단계별 progress (Agent → `command_progress` 이벤트) |
+| 삭제 | 사용자가 자기 컨테이너 삭제도 **요청** → admin 승인 → Agent 실행. 직접 삭제 불가 |
+| Compose 지원 | admin이 compose YAML 통째로 등록. 사용자는 그룹 단위로 요청/삭제 |
+| 향후 (Phase 4+) | 업데이트(image 최신 태그) / 롤백 / 사용량 알림 |
 
 ### 3.4 인증 & 권한
 
-#### 권한 구조
+#### 권한 구조 (2단계로 단순화)
 
 ```mermaid
 graph TB
-    SA["Super Admin<br/>전체 시스템 관리"]
-    SrvA["Server Admin<br/>할당된 서버만 관리"]
-    V["Viewer<br/>읽기만 가능"]
+    A["admin<br/>운영자"]
+    U["user<br/>컨테이너 사용자"]
 
-    SA -->|서버 할당| SrvA
-    SA -->|계정 생성| V
-    SA -->|Agent 승인| Agent["Agent 등록 승인"]
+    A -->|승인/반려| Req["사용자 컨테이너 요청"]
+    A -->|작성/수정| T["템플릿"]
+    A -->|모니터링| Srv["전체 서버"]
+    A -->|진단| Dev["/dev (Redis 캐시)"]
 
-    style SA fill:#1c2333,stroke:#4a5568,color:#e6edf3
-    style SrvA fill:#161b22,stroke:#4a5568,color:#c9d1d9
-    style V fill:#0d1117,stroke:#4a5568,color:#8b949e
+    U -->|제출| Req
+    U -->|모니터링| Own["자기 컨테이너만"]
+
+    style A fill:#1c2333,stroke:#4a5568,color:#e6edf3
+    style U fill:#161b22,stroke:#4a5568,color:#c9d1d9
 ```
 
 | 역할 | 할 수 있는 것 | 할 수 없는 것 |
 |------|-------------|-------------|
-| **Super Admin** | 모든 서버 관리, 사용자 관리, Agent 승인, 시스템 설정, 커스텀 템플릿 관리 | - |
-| **Server Admin** | 할당받은 서버의 컨테이너 관리, 배포, 모니터링 | 다른 서버 접근, 사용자 관리, 시스템 설정 |
-| **Viewer** | 모든 서버 모니터링 (읽기 전용) | 컨테이너 제어, 배포, 설정 변경 |
+| **admin** | 전체 서버/컨테이너 모니터링, 컨테이너 요청 승인/반려, 템플릿 CRUD, /dev 진단 페이지, 사용자 계정 관리 (Django admin) | - |
+| **user** | 컨테이너 생성/삭제 요청 제출, 자기 컨테이너 모니터링/상세, 자기 요청 진행률 확인 | 다른 사용자 컨테이너, 서버 직접 제어, 템플릿 작성, /dev 진입 |
+
+#### 회원가입과 외부 연동
+
+- 회원가입 폼 없음. **운영자가 Django admin 또는 시드 스크립트로 직접 계정 생성**
+- 향후 SSO/OAuth 등 외부 플랫폼 연동 시, 같은 admin/user 2단계 role로 매핑
+- 기본 시드 계정: `admin` (admin), `agics` (admin), `agics1` (user)
+
+#### Agent 인증 (참고)
+
+사용자 계정과 별개로 Agent 자체 인증이 있음 (token 기반). Agent는
+자동 등록되어 즉시 token을 발급받고 WS로 데이터 송신을 시작.
+관리자 수동 승인 단계 없음. 자세한 내용 §2.1, §2.2 참조.
 
 ---
 
@@ -663,59 +684,98 @@ graph TB
 ```mermaid
 erDiagram
     agents {
-        string id PK
-        string hostname
+        uuid id PK
+        string hostname UK
         string ip_address
-        string status "pending / approved / rejected"
-        string token "JWT agent token"
+        string status "approved / archived (legacy: pending/rejected)"
+        string token "Agent WS auth"
         datetime registered_at
         datetime approved_at
+        datetime last_seen_at
+        datetime archived_at
     }
 
     users {
-        string id PK
-        string username
+        int id PK
+        string username UK
         string password_hash
-        string role "super_admin / server_admin / viewer"
+        string role "admin / user"
         datetime created_at
     }
 
-    server_assignments {
-        string user_id FK
-        string agent_id FK
+    container_templates {
+        uuid id PK
+        string name UK
+        string description
+        string kind "simple / compose"
+        string image "simple only"
+        json image_options "[{label, image}]"
+        json env_schema "[{key, required, type, default, description}]"
+        json port_schema "[{internal, host_default, description}]"
+        json default_volumes
+        text compose_yaml "compose only"
+        int created_by FK
+        datetime created_at
+        datetime updated_at
     }
 
-    templates {
-        string id PK
+    container_requests {
+        uuid id PK
+        int requester FK
+        string action "create / delete"
+        string status "pending/approved/deploying/deployed/failed/rejected"
+        uuid template FK "create only"
+        uuid target_agent FK "create only"
+        string custom_name
+        string selected_image
+        json custom_env
+        json custom_ports
+        uuid target_container FK "delete only"
+        int reviewer FK
+        datetime reviewed_at
+        text review_note
+        text progress_message
+        int progress_percent
+        text deployment_log
+        datetime created_at
+        datetime updated_at
+    }
+
+    containers {
+        string container_id PK
+        uuid agent FK
         string name
-        string category
-        string config_json "image, ports, volumes, env 등"
-        string created_by FK
-        boolean is_builtin
+        string image
+        string status
+        datetime last_seen
+        int requester FK "신규 — null이면 익명/외부 발견"
+        uuid created_via_request FK "신규 — compose 그룹 식별"
     }
 
-    alert_rules {
-        string id PK
-        string agent_id FK "null이면 전역"
-        string metric "cpu / memory / disk"
-        float threshold
-        string action "notify"
-    }
-
-    audit_logs {
-        string id PK
-        string user_id FK
-        string action "container.stop / template.create 등"
-        string target
-        datetime timestamp
-    }
-
-    users ||--o{ server_assignments : "has"
-    agents ||--o{ server_assignments : "assigned to"
-    users ||--o{ templates : "created"
-    agents ||--o{ alert_rules : "has"
-    users ||--o{ audit_logs : "performed"
+    users ||--o{ container_templates : "creates"
+    users ||--o{ container_requests : "submits"
+    users ||--o{ container_requests : "reviews"
+    container_templates ||--o{ container_requests : "instantiated by"
+    agents ||--o{ container_requests : "deploys to"
+    container_requests ||--o{ containers : "creates"
+    users ||--o{ containers : "owns"
+    agents ||--o{ containers : "hosts"
 ```
+
+#### 기존 테이블 변경/제거
+
+- `agents.status` 열거: 자동 승인 정책 이후 `approved` 또는 `archived`만
+  실질적으로 사용. `pending`/`rejected`는 마이그레이션으로 정리됨.
+- `users.role` 열거: `super_admin`/`server_admin`/`viewer` → `admin`/`user`로 단순화 (마이그레이션).
+- `server_assignments` 테이블 **제거**: 사용자-서버 권한 분리는 admin
+  승인 단계가 대신함.
+- `containers` 테이블: `requester`, `created_via_request` 컬럼 추가.
+
+#### 향후 (Phase 4+)
+
+- `alert_rules` (CPU/Mem 임계치 + 알림)
+- `audit_logs` (who/when/what 감사)
+- `metric_history` (이미 `metrics_systemmetricshistory` / `metrics_containermetricshistory`로 존재, AI 분석에 활용)
 
 ---
 
