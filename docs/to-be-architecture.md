@@ -10,17 +10,22 @@
 ### 쉽게 말하면
 
 현재 HyperCube은 **서버 1대만** 모니터링합니다.
-To-Be는 **여러 서버를 하나의 대시보드**에서 모니터링하고 관리하는 시스템입니다.
+To-Be는 **여러 서버를 하나의 대시보드**에서 모니터링하고, 사용자가 직접 컨테이너를 요청해서 받을 수 있는 시스템입니다.
 
-각 서버에 "Agent"라는 작은 프로그램을 설치하면, Agent가 해당 서버의 상태를 수집해서 중앙 서버로 보내줍니다. 관리자는 웹 브라우저 하나로 모든 서버의 상태를 한눈에 확인하고, Docker 컨테이너를 생성/관리할 수 있습니다.
+각 서버에 "Agent"라는 작은 프로그램을 설치하면, Agent가 해당 서버의 상태를 수집해서 중앙 서버로 보내줍니다. 사용자는 웹에서 템플릿을 골라 컨테이너를 요청하고, 관리자가 승인하면 Agent가 실제 컨테이너를 생성합니다. 화면은 역할에 따라 셋으로 나뉩니다:
+
+- **관리자 페이지**: 모든 서버/컨테이너 모니터링 + 사용자 요청 승인/반려
+- **사용자 페이지**: 컨테이너 생성/삭제 요청 + 자기 컨테이너 모니터링
+- **개발자 페이지**: 시스템 내부 상태(Redis 캐시, 명령 라우팅 등) 진단
 
 ### 전체 시스템 구성도
 
 ```mermaid
 graph TB
     subgraph 사용자["사용자 (브라우저)"]
-        Admin["관리자"]
-        Viewer["열람자"]
+        Admin["관리자<br/>(전체 서버 모니터링 +<br/>요청 승인/반려)"]
+        UserBrowser["사용자<br/>(컨테이너 요청 +<br/>자기 컨테이너 모니터링)"]
+        Dev["개발자(나)<br/>(Redis 캐시 진단)"]
     end
 
     subgraph MainServer["메인 서버 (192.168.0.16)"]
@@ -70,9 +75,9 @@ graph TB
         System2["OS / Hardware"]
     end
 
-    Admin & Viewer <-->|"1. 정적 파일 (HTML/JS/CSS)"| Nginx
+    Admin & UserBrowser & Dev <-->|"1. 정적 파일 (HTML/JS/CSS)"| Nginx
 
-    Admin & Viewer <-->|"2. REST + WS (데이터)"| Nginx
+    Admin & UserBrowser & Dev <-->|"2. REST + WS (데이터)"| Nginx
     Nginx <-->|"/api, /ws"| Django
 
     Django <--> PgDB
@@ -414,6 +419,106 @@ graph LR
 
 ---
 
+## 2.5 사용자 / 관리자 / 개발자 페이지 분리
+
+웹 화면은 로그인 사용자 role에 따라 자동 분기됩니다.
+
+| 페이지 | URL | 사용자 | 책임 |
+|---|---|---|---|
+| **관리자 페이지** | `/` (admin role 진입 시) | role=admin | 전체 서버/컨테이너 모니터링 + 사용자 컨테이너 요청 승인/반려 + 템플릿 관리 |
+| **사용자 페이지** | `/` (user role 진입 시) | role=user | 컨테이너 생성/삭제 요청 + 자기 컨테이너만 모니터링 |
+| **개발자 페이지** | `/dev` | admin only | Redis 캐시 / Agent 레지스트리 / pending 명령 등 시스템 내부 진단 |
+
+#### 권한 모델
+
+```
+admin
+  ├─ 메인 페이지 (전체 서버 모니터링)
+  ├─ 승인 페이지 (요청 큐)
+  ├─ 템플릿 관리
+  └─ 개발자 페이지 (/dev)
+
+user
+  ├─ 사용자 페이지 (자기 컨테이너 모니터링)
+  └─ 요청 폼 (컨테이너 생성/삭제 요청)
+```
+
+회원가입은 없음. 운영자가 Django admin 또는 시드 스크립트로 계정 생성.
+다른 플랫폼(예: SSO, OAuth) 연동은 추후 도입 시 동일한 role 체계로 매핑.
+
+---
+
+## 2.6 컨테이너 lifecycle (요청 → 승인 → 배포 → 삭제)
+
+사용자가 직접 docker 명령을 치지 않습니다. 모든 컨테이너 생성/삭제는
+**요청 → 관리자 승인 → Agent 명령 → 결과 회신**의 비동기 흐름을 따릅니다.
+
+```mermaid
+sequenceDiagram
+    participant U as 사용자
+    participant B as Backend
+    participant A as 관리자
+    participant Ag as Agent (대상 서버)
+
+    Note over U,Ag: 1. 생성 요청
+    U->>B: POST /api/requests/ (template + target_agent + 입력값)
+    B-->>U: status=pending
+
+    Note over U,Ag: 2. 관리자 승인
+    A->>B: POST /api/requests/{id}/approve
+    B->>B: status=approved → deploying
+
+    Note over U,Ag: 3. Agent 실행
+    B->>Ag: command create_container (또는 compose_up)
+    loop image pull / create / start
+        Ag-->>B: command_progress {step, percent, message}
+        B-->>U: WS event (request_progress)
+        B->>B: ContainerRequest.progress 갱신
+    end
+    Ag-->>B: command_response (success + containerId[s])
+    B->>B: status=deployed, Container row 생성
+    B-->>U: WS event (request_status_change)
+
+    Note over U,Ag: 4. 삭제 요청 (대칭)
+    U->>B: POST /api/requests/ (action=delete, target_container)
+    A->>B: 승인 → Backend → Agent delete_container/compose_down
+    Ag-->>B: command_response
+    B->>B: Container row 삭제 (cascade)
+```
+
+#### 핵심 모델
+
+- **`ContainerTemplate`** — admin이 등록. 단일 image (kind=simple) 또는
+  docker-compose 전체 (kind=compose). `image_options` / `env_schema` /
+  `port_schema`로 사용자 입력 폼이 자동 생성됨.
+- **`ContainerRequest`** — 사용자 제출. action(create/delete) +
+  status(pending/approved/deploying/deployed/failed/rejected) +
+  progress_message/percent.
+- **`Container`** (기존) — `requester` + `created_via_request` 추가로
+  "누가 요청해서 만든 컨테이너인지" 추적.
+
+#### Agent 신규 명령
+
+`docs/agent-protocol.md` 참조. 4종 추가:
+
+| command | 용도 |
+|---|---|
+| `create_container` | 단일 컨테이너 생성 (image, env, ports, volumes, name) |
+| `compose_up` | docker-compose YAML로 서비스 그룹 생성 |
+| `delete_container` | 단일 컨테이너 삭제 |
+| `compose_down` | compose 그룹 통째 삭제 |
+
+긴 작업(image pull 등)에는 `command_progress` 비동기 이벤트로 진행률 보고.
+
+#### 진행 상황 표시
+
+- Backend는 `ContainerRequest.progress_message` / `progress_percent`를
+  기존 `/ws/global/` 채널로 broadcast (`request_progress` 이벤트).
+- 사용자 페이지가 자기 요청 progress bar로 시각화.
+- 새로고침해도 DB에 마지막 progress가 남아있어 동일 상태 복원.
+
+---
+
 ## 3. 주요 기능
 
 ### 3.1 멀티서버 모니터링
@@ -733,13 +838,17 @@ gantt
 
 | Phase | 기간 | 핵심 목표 | 주요 산출물 |
 |-------|------|----------|-----------|
-| **Phase 1** | 3/24 ~ 4/2 (7일) | Django 기반 구축 | Django + DRF + Channels, PostgreSQL, Redis, Celery, Auth, Admin |
-| **Phase 2** | 4/3 ~ 4/14 (8일) | 멀티서버 아키텍처 | Agent, Auto-register, 서버 관리 UI, 통합 뷰 |
-| **Phase 3** | 4/15 ~ 4/17 (3일) | 모니터링 고도화 | 통합 대시보드, GPU, 알림, WS 통합 채널 |
-| **Phase 4** | 4/20 ~ 4/23 (4일) | 비전문가 Docker 관리 | 템플릿 카탈로그, Compose, 롤백 |
-| **Phase 5** | 4/24 ~ 4/27 (3일) | 3D 시각화 고도화 | Galaxy Cluster, 리소스 매핑, LOD, HUD |
-| **Phase 6** | 4/27 ~ 4/28 (2일) | 인증 & 권한 | Django Auth 완성, 3단계 권한, 감사 로그 |
-| **Testing** | 4/29 ~ 5/12 (10일) | 테스트 및 수정 | 버그 수정, 성능 튜닝, 통합 테스트 |
+| **Phase 1** ✅ | 3/24 ~ 4/2 | Django 기반 구축 | Django + DRF + Channels, PostgreSQL, Redis, Celery, Auth, Admin |
+| **Phase 2** ✅ | 4/3 ~ 4/14 | 멀티서버 + 실시간 통합 | Agent 자동 등록, on-demand 명령 라우팅, 시스템 모달 4종 + 컨테이너 상세 모달 실데이터, 서버 전환 |
+| **Phase 2.5** ✅ | 4/14 ~ 4/15 | Agent lifecycle / 알림 | last_seen + active grace + dormant archive + offline/online toast |
+| **Phase 3 (재정의)** 🔵 | 4/15 ~ | 사용자/관리자/개발자 페이지 분리 + 컨테이너 lifecycle | Template / Request 모델, 승인 워크플로, Agent create/delete 명령, 사용자 페이지, 개발자 페이지 (/dev) |
+| **Phase 4** | TBD | 모니터링 고도화 | GPU 메트릭, 알림 임계치, 멀티서버 그리드 뷰 |
+| **Phase 5** | TBD | 3D 시각화 고도화 | Galaxy Cluster, 리소스 매핑, LOD, HUD |
+| **Phase 6** | TBD | AI 분석 (Celery + pgvector) | 이상 탐지, 리소스 예측, 자연어 질의 |
+| **Phase 7** | TBD | 외부 인증 연동 | SSO/OAuth → role 매핑, 감사 로그 |
+| **Testing** | 각 Phase 종료 시 | 버그/성능/통합 | 자동화 테스트 + 회귀 검증 |
+
+> 본 표는 docs 동기화 용도. 정본 일정은 [Google Sheets WBS](https://docs.google.com/spreadsheets/d/16Fx_Cef03RHAF6gmYK9verPP1x9UhJYZ3PRZ7wf99pU/edit?gid=1624286627#gid=1624286627)를 따른다.
 
 ---
 
@@ -751,10 +860,15 @@ gantt
 | Backend | SvelteKit API Routes | Django + DRF + Channels (Python) |
 | 모니터링 범위 | 서버 1대 | 다수 서버 (메인 서버 포함) |
 | 데이터 수집 | 중앙 서버가 직접 docker.sock 접근 | Agent가 각 서버에서 수집 후 전송 |
-| 전송 방식 | REST polling + WebSocket | WebSocket Delta Sync |
+| 전송 방식 | REST polling + WebSocket | WebSocket Delta Sync + 글로벌 이벤트 채널 |
 | 데이터베이스 | 없음 (stateless) | PostgreSQL + Redis (영구 저장 + 실시간 캐시) |
-| 인증 | 없음 (누구나 접근) | JWT 기반 3단계 권한 |
-| Docker 배포 | 수동 (CLI) | 템플릿 카탈로그 + 마법사 UI |
+| 인증 | 없음 (누구나 접근) | JWT 기반 2단계 role (admin / user) |
+| 사용자 화면 | 단일 화면 | 역할별 분리 (관리자 페이지 / 사용자 페이지 / 개발자 페이지) |
+| Docker 배포 | 수동 (CLI 또는 Agent 직접 발견) | 사용자 요청 → 관리자 승인 → Agent가 create_container/compose_up 실행 |
+| Docker 삭제 | 수동 | 사용자 요청 → 관리자 승인 → Agent가 delete_container/compose_down 실행 |
+| 컨테이너 소유 | 익명 (Agent가 발견한 모든 것 admin이 봄) | 요청자(`requester` FK)와 요청(`created_via_request` FK) 추적, 사용자는 자기 것만 표시 |
+| Agent 등록 | 수동 승인 단계 필요 | 자동 승인 (token 즉시 발급) |
+| Agent 좀비 청소 | 수동 | 5분 grace → UI에서 사라짐, 7일 → archived, 37일 → hard delete |
 | 3D 시각화 | 프로젝트-컨테이너 2계층 | 서버-프로젝트-컨테이너 3계층 (Galaxy Cluster) |
-| 알림 | 없음 | 임계치 기반 알림 시스템 |
+| 알림 | 없음 | Toast + 헤더 배지 (현재: agent online/offline, 향후: 임계치 기반 확장) |
 | 감사 | 없음 | 전체 작업 감사 로그 |
