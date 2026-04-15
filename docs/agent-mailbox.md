@@ -75,7 +75,10 @@ qkr7287/HyperCube-agent/docs/hypercube-mailbox.md
 
 ---
 
-## 2026-04-14 — 자동 승인 흐름 전환 (대기)
+## 2026-04-14 — 자동 승인 흐름 전환 (완료 — agent `beded33` / hypercube `837b23e`)
+
+회신 확인: <https://github.com/qkr7287/HyperCube-agent/blob/main/docs/hypercube-mailbox.md>
+신규 hostname `local-windows`가 자동 승인되어 WS 연결 중 (registry에 등록됨).
 
 ### 변경 요약
 
