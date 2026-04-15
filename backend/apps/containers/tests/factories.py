@@ -1,5 +1,5 @@
 from apps.agents.models import Agent
-from apps.containers.models import Container
+from apps.containers.models import Container, ContainerRequest, ContainerTemplate
 from apps.users.models import CustomUser
 
 
@@ -35,3 +35,27 @@ def create_container(agent=None, **kwargs):
     }
     defaults.update(kwargs)
     return Container.objects.create(**defaults)
+
+
+def create_template(created_by, **kwargs):
+    defaults = {
+        "name": "Test Nginx",
+        "kind": ContainerTemplate.Kind.SIMPLE,
+        "image": "nginx:latest",
+        "description": "test template",
+    }
+    defaults.update(kwargs)
+    return ContainerTemplate.objects.create(created_by=created_by, **defaults)
+
+
+def create_request(requester, template=None, target_agent=None, **kwargs):
+    defaults = {
+        "action": ContainerRequest.Action.CREATE,
+        "status": ContainerRequest.Status.PENDING,
+    }
+    if template is not None:
+        defaults["template"] = template
+    if target_agent is not None:
+        defaults["target_agent"] = target_agent
+    defaults.update(kwargs)
+    return ContainerRequest.objects.create(requester=requester, **defaults)

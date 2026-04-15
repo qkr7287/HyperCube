@@ -17,6 +17,9 @@ class ContainerSerializerTest(TestCase):
             "agent_hostname",
             "status",
             "last_seen",
+            "requester",
+            "requester_username",
+            "created_via_request",
         }
         self.assertEqual(set(serializer.data.keys()), expected)
 
