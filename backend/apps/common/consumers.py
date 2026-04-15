@@ -3,11 +3,14 @@ import logging
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
+from channels.layers import get_channel_layer
 from django.contrib.auth.models import AnonymousUser
 
-from apps.common import command_router
+from apps.common import agent_presence, command_router
 
 logger = logging.getLogger(__name__)
+
+GLOBAL_GROUP = "global_events"
 
 REDIS_CACHE_TTL = 60  # seconds (주기적 데이터: system_metrics, container_metrics)
 CONTAINERS_CACHE_TTL = 600  # seconds (스냅샷성 데이터: 변경 드물어 오래 유지)
@@ -38,6 +41,7 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
 
         if self.is_agent:
             command_router.register_agent(self.server_id, self.channel_name)
+            await self._touch_presence(force=True)
 
         client_type = "agent" if self.is_agent else "browser"
         await self.send(text_data=json.dumps({
@@ -83,6 +87,7 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
         # Agent가 살아있는 동안 레지스트리를 주기적으로 refresh (TTL 300s).
         # connect() 1회 등록만으로는 5분 후 만료되어 명령 라우팅이 깨진다.
         command_router.register_agent(self.server_id, self.channel_name)
+        await self._touch_presence()
 
         if msg_type == "command_response":
             await self._route_command_response(data)
@@ -106,6 +111,74 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
     async def server_message(self, event):
         """그룹 메시지를 WebSocket으로 전달."""
         await self.send(text_data=json.dumps(event["data"]))
+
+    # ------------------------------------------------------------------
+    # Presence (last_seen_at + global agent_status_change events)
+    # ------------------------------------------------------------------
+
+    async def _touch_presence(self, force: bool = False):
+        """Agent 메시지 수신 시 last_seen_at 갱신 (60초 rate-limit) +
+        새로 active로 전환된 경우 global 채널로 online 이벤트 broadcast.
+
+        force=True면 rate-limit 무시 (connect 직후).
+        """
+        if not (force or agent_presence.should_update_last_seen(self.server_id)):
+            return
+
+        agent = await self._update_last_seen()
+        if not agent:
+            return
+
+        was_already_active = not agent_presence.mark_notified_active(self.server_id)
+        if was_already_active:
+            return
+
+        # transition: offline → online
+        await self.channel_layer.group_send(
+            GLOBAL_GROUP,
+            {
+                "type": "global.event",
+                "payload": {
+                    "type": "agent_status_change",
+                    "status": "online",
+                    "server_id": self.server_id,
+                    "hostname": agent["hostname"],
+                    "last_seen_at": agent["last_seen_at"],
+                    "previous_offline_seconds": agent["previous_offline_seconds"],
+                },
+            },
+        )
+
+    @database_sync_to_async
+    def _update_last_seen(self) -> dict | None:
+        from django.utils import timezone
+
+        from apps.agents.models import Agent
+
+        try:
+            agent = Agent.objects.get(id=self.server_id)
+        except Agent.DoesNotExist:
+            return None
+
+        now = timezone.now()
+        prev = agent.last_seen_at
+        offline_secs = int((now - prev).total_seconds()) if prev else None
+
+        update_fields = ["last_seen_at"]
+        agent.last_seen_at = now
+
+        # archived 상태에서 데이터가 다시 들어오면 자동 복귀
+        if agent.status == Agent.Status.ARCHIVED:
+            agent.status = Agent.Status.APPROVED
+            agent.archived_at = None
+            update_fields += ["status", "archived_at"]
+
+        agent.save(update_fields=update_fields)
+        return {
+            "hostname": agent.hostname,
+            "last_seen_at": now.isoformat(),
+            "previous_offline_seconds": offline_secs,
+        }
 
     async def ws_send(self, event):
         """임의의 payload를 현재 WS로 그대로 전달 (직접 라우팅용)."""
@@ -306,3 +379,39 @@ def _merge_cached(r, key: str, new_data: dict) -> dict:
     existing["data"] = old_body
 
     return existing
+
+
+class GlobalEventsConsumer(AsyncWebsocketConsumer):
+    """전역 cross-cutting 이벤트 채널.
+
+    로그인한 모든 Browser가 하나의 group(global_events)에 join하고,
+    Backend가 broadcast하는 시스템 이벤트(agent_status_change 등)를
+    수신한다. Agent는 접속하지 않는다.
+    """
+
+    async def connect(self):
+        user = self.scope.get("user", AnonymousUser())
+        if isinstance(user, AnonymousUser) or not user.is_authenticated:
+            await self.close(code=4001)
+            return
+        if self.scope.get("is_agent"):
+            await self.close(code=4003)
+            return
+
+        await self.channel_layer.group_add(GLOBAL_GROUP, self.channel_name)
+        await self.accept()
+        await self.send(text_data=json.dumps({
+            "type": "connection",
+            "channel": "global",
+            "message": "Connected to global events channel.",
+        }))
+
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard(GLOBAL_GROUP, self.channel_name)
+
+    async def receive(self, text_data=None, bytes_data=None):
+        # 클라이언트는 send 권한 없음. 무시.
+        return
+
+    async def global_event(self, event):
+        await self.send(text_data=json.dumps(event["payload"]))

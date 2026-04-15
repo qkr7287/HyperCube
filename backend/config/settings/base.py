@@ -176,6 +176,18 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.metrics.tasks.cleanup_old_metrics",
         "schedule": crontab(hour=3, minute=0),
     },
+    "detect-offline-agents": {
+        "task": "apps.agents.tasks.detect_offline_agents",
+        "schedule": 30.0,
+    },
+    "archive-dormant-agents": {
+        "task": "apps.agents.tasks.archive_dormant_agents",
+        "schedule": crontab(hour=3, minute=30),
+    },
+    "delete-archived-agents": {
+        "task": "apps.agents.tasks.delete_archived_agents",
+        "schedule": crontab(hour=4, minute=0),
+    },
 }
 
 # Redis cache (직접 접근, Channel Layer와 분리: DB 1)

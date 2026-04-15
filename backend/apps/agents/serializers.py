@@ -1,12 +1,19 @@
+from datetime import timedelta
+
+from django.utils import timezone
 from rest_framework import serializers
 
 from .models import Agent, ServerAssignment
+
+# 메인 UI active 판정 grace (Backend tasks.py와 일치 시켜야 함)
+_ACTIVE_GRACE_SECONDS = 5 * 60
 
 
 class AgentSerializer(serializers.ModelSerializer):
     container_count = serializers.IntegerField(
         source="containers.count", read_only=True
     )
+    is_active = serializers.SerializerMethodField()
 
     class Meta:
         model = Agent
@@ -18,11 +25,27 @@ class AgentSerializer(serializers.ModelSerializer):
             "token",
             "registered_at",
             "approved_at",
+            "last_seen_at",
+            "archived_at",
+            "is_active",
             "container_count",
         ]
         # token은 register 응답에서 Agent가 즉시 사용해야 하므로 노출.
         # 클라이언트가 set 못 하게 read_only 처리.
-        read_only_fields = ["id", "status", "token", "registered_at", "approved_at"]
+        read_only_fields = [
+            "id",
+            "status",
+            "token",
+            "registered_at",
+            "approved_at",
+            "last_seen_at",
+            "archived_at",
+        ]
+
+    def get_is_active(self, obj: Agent) -> bool:
+        if obj.last_seen_at is None:
+            return False
+        return obj.last_seen_at >= timezone.now() - timedelta(seconds=_ACTIVE_GRACE_SECONDS)
 
 
 class AgentStatusSerializer(serializers.ModelSerializer):

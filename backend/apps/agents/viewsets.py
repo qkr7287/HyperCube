@@ -1,5 +1,6 @@
 import json
 import secrets
+from datetime import timedelta
 
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_view
@@ -8,6 +9,9 @@ from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
+
+# 메인 UI active 판정 grace (serializers.py / tasks.py와 일치)
+ACTIVE_GRACE_SECONDS = 5 * 60
 
 from apps.common.permissions import IsServerAdminOrAbove, IsSuperAdmin
 
@@ -64,7 +68,18 @@ class AgentViewSet(ModelViewSet):
     serializer_class = AgentSerializer
     filterset_fields = ["status"]
     search_fields = ["hostname", "ip_address"]
-    ordering_fields = ["hostname", "registered_at", "status"]
+    ordering_fields = ["hostname", "registered_at", "status", "last_seen_at"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # ?active=true → last_seen_at 5분 이내인 것만 (메인 UI 기본 필터)
+        active_param = self.request.query_params.get("active")
+        if active_param and active_param.lower() in ("1", "true", "yes"):
+            cutoff = timezone.now() - timedelta(seconds=ACTIVE_GRACE_SECONDS)
+            qs = qs.filter(last_seen_at__gte=cutoff).exclude(
+                status=Agent.Status.ARCHIVED
+            )
+        return qs
 
     def get_permissions(self):
         if self.action in ("create", "check_status"):

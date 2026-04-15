@@ -3,7 +3,10 @@
 	import { browser } from '$app/environment';
 	import { base } from '$app/paths';
 	import { systemStore, containersStore, connect, disconnect } from '$lib/stores/ws-store';
+	import { connectGlobal, disconnectGlobal, seedActiveAgents } from '$lib/stores/global-events';
 	import LeftSidebar from '$lib/components/LeftSidebar.svelte';
+	import StatusToasts from '$lib/components/StatusToasts.svelte';
+	import AgentStatusBadge from '$lib/components/AgentStatusBadge.svelte';
 	import RightSidebar from '$lib/components/RightSidebar.svelte';
 	import TopologyToolbar from '$lib/components/TopologyToolbar.svelte';
 	import RackUtilization from '$lib/components/RackUtilization.svelte';
@@ -97,6 +100,7 @@
 			if (browser) {
 				localStorage.setItem('hc_access_token', accessToken);
 			}
+			connectGlobal(accessToken);
 			await loadApprovedAgents();
 		} catch {
 			loginError = 'Connection failed';
@@ -105,6 +109,7 @@
 
 	function doLogout() {
 		disconnect();
+		disconnectGlobal();
 		accessToken = '';
 		isLoggedIn = false;
 		selectedServerId = '';
@@ -118,13 +123,18 @@
 	async function loadApprovedAgents() {
 		agentsLoading = true;
 		try {
-			const res = await fetch(`${base}/api/agents/?status=approved`, {
+			// 메인 화면에는 활성 Agent만 (5분 grace 내 last_seen_at).
+			// 아카이브된/장기 dormant 항목은 /dev 페이지에서만 노출.
+			const res = await fetch(`${base}/api/agents/?status=approved&active=true`, {
 				headers: { 'Authorization': `Bearer ${accessToken}` },
 			});
 			if (res.status === 401) { doLogout(); return; }
 			const json = await res.json();
 			const data = json.data;
 			agents = data.results ?? data ?? [];
+			// 글로벌 active set seed (이후 ws 이벤트로 동적 갱신됨)
+			seedActiveAgents(agents.map((a: any) => a.id));
+
 			// 1개면 자동 선택
 			if (agents.length === 1) {
 				selectServer(agents[0].id);
@@ -930,6 +940,7 @@
 			if (savedToken) {
 				accessToken = savedToken;
 				isLoggedIn = true;
+				connectGlobal(accessToken);
 				await loadApprovedAgents();
 			}
 		}
@@ -1028,6 +1039,10 @@
 	</div>
 </div>
 {:else if !selectedServerId}
+<StatusToasts />
+<div class="select-header">
+	<AgentStatusBadge totalKnown={agents.length} />
+</div>
 <div class="auth-page">
 	<div class="server-select-card">
 		<h2 class="auth-title">Select Server</h2>
@@ -1053,6 +1068,7 @@
 	</div>
 </div>
 {:else}
+<StatusToasts />
 <div class="layout">
 	<!-- Left Sidebar: Server Info -->
 	<LeftSidebar
@@ -1073,9 +1089,12 @@
 	<main class="topology-area">
 		<div class="topology-header">
 			<span class="topology-title">SYSTEM TOPOLOGY</span>
-			<div class="live-indicator">
-				<span class="live-dot"></span>
-				<span class="live-text">LIVE RENDER</span>
+			<div class="header-right">
+				<AgentStatusBadge totalKnown={agents.length} />
+				<div class="live-indicator">
+					<span class="live-dot"></span>
+					<span class="live-text">LIVE RENDER</span>
+				</div>
 			</div>
 		</div>
 
@@ -1174,6 +1193,19 @@
 		font-weight: 700;
 		color: var(--text-secondary);
 		letter-spacing: -0.01em;
+	}
+
+	.header-right {
+		display: flex;
+		align-items: center;
+		gap: 16px;
+	}
+
+	.select-header {
+		position: fixed;
+		top: 16px;
+		right: 24px;
+		z-index: 50;
 	}
 
 	.live-indicator {
