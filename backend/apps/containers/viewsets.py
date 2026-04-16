@@ -1,3 +1,7 @@
+import logging
+
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import status
@@ -6,7 +10,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
+from apps.common import command_router
 from apps.common.permissions import IsAdmin
+
+logger = logging.getLogger(__name__)
 
 from .models import Container, ContainerRequest, ContainerTemplate
 from .serializers import (
@@ -152,10 +159,85 @@ class ContainerRequestViewSet(ModelViewSet):
         req_obj.review_note = serializer.validated_data.get("note", "")
         req_obj.save(update_fields=["status", "reviewer", "reviewed_at", "review_note", "updated_at"])
 
-        # TODO: Agent wiring — Phase 3.2.4에서 여기서 Agent에 create_container / delete_container 발송
-        # 발송 성공 시 status=deploying으로 전환, 결과에 따라 deployed/failed.
+        # Agent에 명령 발송 (비동기 — sendCommand는 WS 기반이므로 여기서는
+        # channel_layer를 통해 Agent에 직접 전송한다. requestId = ContainerRequest.id
+        # 이므로 command_response/progress가 오면 Consumer가 DB를 갱신한다.)
+        self._dispatch_to_agent(req_obj)
 
         return Response(self.get_serializer(req_obj).data)
+
+    def _dispatch_to_agent(self, req_obj):
+        """승인된 요청을 Agent WS 채널로 발송.
+
+        requestId = ContainerRequest.id 를 사용하므로,
+        Agent의 command_response/command_progress가 돌아오면
+        MonitoringConsumer가 같은 requestId로 DB를 갱신한다.
+        """
+        agent_channel = command_router.get_agent_channel(str(req_obj.target_agent_id))
+        if not agent_channel:
+            req_obj.status = ContainerRequest.Status.FAILED
+            req_obj.progress_message = "Agent 오프라인 — 명령 발송 불가"
+            req_obj.save(update_fields=["status", "progress_message", "updated_at"])
+            return
+
+        # pending map에 기록 (Consumer가 응답 라우팅할 때 사용)
+        # browser_channel은 없지만(REST 호출이므로) — DB 갱신만으로 충분
+        command_router.record_pending(str(req_obj.id), "__api__", str(req_obj.target_agent_id))
+
+        if req_obj.action == "create":
+            tpl = req_obj.template
+            if tpl and tpl.kind == "compose":
+                payload = {
+                    "type": "command",
+                    "requestId": str(req_obj.id),
+                    "command": "compose_up",
+                    "params": {
+                        "projectName": req_obj.custom_name or f"hc-{str(req_obj.id)[:8]}",
+                        "composeYaml": tpl.compose_yaml,
+                        "env": req_obj.custom_env or {},
+                    },
+                }
+            else:
+                ports = []
+                for p in (req_obj.custom_ports or []):
+                    if isinstance(p, dict):
+                        ports.append(p)
+                payload = {
+                    "type": "command",
+                    "requestId": str(req_obj.id),
+                    "command": "create_container",
+                    "params": {
+                        "image": req_obj.selected_image or (tpl.image if tpl else ""),
+                        "name": req_obj.custom_name or f"hc-{str(req_obj.id)[:8]}",
+                        "env": req_obj.custom_env or {},
+                        "ports": ports,
+                        "volumes": list(tpl.default_volumes) if tpl else [],
+                    },
+                }
+        elif req_obj.action == "delete":
+            cid = req_obj.target_container_id or ""
+            payload = {
+                "type": "command",
+                "requestId": str(req_obj.id),
+                "command": "delete_container",
+                "params": {"containerId": cid, "force": True},
+            }
+        else:
+            return
+
+        try:
+            layer = get_channel_layer()
+            async_to_sync(layer.send)(agent_channel, {
+                "type": "ws.send",
+                "payload": payload,
+            })
+            logger.info("[dispatch] Sent %s to agent %s (req %s)",
+                        payload["command"], req_obj.target_agent_id, req_obj.id)
+        except Exception:
+            logger.exception("[dispatch] Failed to send to agent")
+            req_obj.status = ContainerRequest.Status.FAILED
+            req_obj.progress_message = "Agent 명령 발송 실패"
+            req_obj.save(update_fields=["status", "progress_message", "updated_at"])
 
     @extend_schema(
         summary="요청 반려 (admin only)",

@@ -91,6 +91,11 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
 
         if msg_type == "command_response":
             await self._route_command_response(data)
+            await self._update_request_from_response(data)
+            return
+
+        if msg_type == "command_progress":
+            await self._route_command_progress(data)
             return
 
         data["server_id"] = self.server_id
@@ -238,6 +243,132 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
             "payload": data,
         })
 
+    async def _route_command_progress(self, data: dict):
+        """Agent의 command_progress를 요청 Browser로 포워딩 + DB 갱신 + global broadcast."""
+        request_id = data.get("requestId")
+        if not request_id:
+            return
+
+        # pending map에서 browser channel 조회 (pop 하지 않음 — progress는 여러 번 옴)
+        pending = command_router.pop_pending(request_id)
+        if pending:
+            # 다시 저장 (pop했으므로)
+            command_router.record_pending(request_id, pending["browser"], pending["server_id"])
+            browser_channel = pending.get("browser")
+            if browser_channel:
+                await self.channel_layer.send(browser_channel, {
+                    "type": "ws.send",
+                    "payload": data,
+                })
+
+        # DB 갱신: ContainerRequest.progress_message / progress_percent
+        await self._update_request_progress(data)
+
+        # global broadcast (user 페이지가 자기 요청 progress 받음)
+        await self.channel_layer.group_send(
+            GLOBAL_GROUP,
+            {"type": "global.event", "payload": data},
+        )
+
+    @database_sync_to_async
+    def _update_request_progress(self, data: dict):
+        """command_progress → ContainerRequest DB 갱신."""
+        from apps.containers.models import ContainerRequest
+
+        request_id = data.get("requestId")
+        if not request_id:
+            return
+        try:
+            req = ContainerRequest.objects.get(id=request_id)
+        except (ContainerRequest.DoesNotExist, Exception):
+            return
+
+        req.progress_message = data.get("message", "")
+        req.progress_percent = data.get("percent")
+        fields = ["progress_message", "progress_percent", "updated_at"]
+
+        if req.status == "approved":
+            req.status = "deploying"
+            fields.append("status")
+
+        req.save(update_fields=fields)
+
+    @database_sync_to_async
+    def _update_request_from_response(self, data: dict):
+        """command_response (최종 결과) → ContainerRequest + Container DB 갱신."""
+        from apps.containers.models import Container, ContainerRequest
+
+        request_id = data.get("requestId")
+        if not request_id:
+            return
+        try:
+            req = ContainerRequest.objects.get(id=request_id)
+        except (ContainerRequest.DoesNotExist, Exception):
+            return
+
+        success = data.get("success", False)
+        resp_data = data.get("data", {})
+
+        if success:
+            req.status = "deployed"
+            req.progress_percent = 100
+            req.progress_message = "완료"
+
+            # Container row 생성 (create 요청인 경우)
+            # Agent의 container sync는 12자 short ID를 사용하므로 동일 기준으로 정규화
+            if req.action == "create":
+                container_id = _short_cid(resp_data.get("containerId", ""))
+                containers = resp_data.get("containers", [])
+
+                if container_id:
+                    obj, _ = Container.objects.update_or_create(
+                        container_id=container_id,
+                        defaults={
+                            "name": resp_data.get("name", req.custom_name),
+                            "image": resp_data.get("image", req.selected_image),
+                            "agent": req.target_agent,
+                            "status": resp_data.get("state", "running"),
+                            "requester": req.requester,
+                            "created_via_request": req,
+                        },
+                    )
+                    req.target_container = obj
+                # compose: 여러 컨테이너 — 첫 번째를 target_container로 링크
+                first_obj = None
+                for c in containers:
+                    cid = _short_cid(c.get("containerId", ""))
+                    if cid:
+                        obj, _ = Container.objects.update_or_create(
+                            container_id=cid,
+                            defaults={
+                                "name": c.get("name", ""),
+                                "image": c.get("image", ""),
+                                "agent": req.target_agent,
+                                "status": c.get("state", "running"),
+                                "requester": req.requester,
+                                "created_via_request": req,
+                            },
+                        )
+                        if first_obj is None:
+                            first_obj = obj
+                if first_obj is not None and not req.target_container:
+                    req.target_container = first_obj
+
+            # delete 요청: Container row 삭제
+            elif req.action == "delete" and req.target_container:
+                req.target_container.delete()
+                req.target_container = None
+
+        else:
+            req.status = "failed"
+            req.progress_message = data.get("error", "unknown error")
+
+        req.deployment_log += f"\n--- command_response ---\n{json.dumps(data, ensure_ascii=False, indent=2)}"
+        req.save(update_fields=[
+            "status", "progress_percent", "progress_message",
+            "target_container", "deployment_log", "updated_at",
+        ])
+
     # ------------------------------------------------------------------
     # Redis 캐시
     # ------------------------------------------------------------------
@@ -351,6 +482,12 @@ def _normalize_status(state: str) -> str:
     valid = {"running", "stopped", "paused", "exited", "created", "restarting", "dead"}
     state = (state or "").lower()
     return state if state in valid else "created"
+
+
+def _short_cid(cid: str) -> str:
+    """Docker container ID를 12자 short form으로 정규화. Agent container sync가 12자를
+    사용하므로 command_response의 full ID(64자)도 동일 기준으로 맞춘다."""
+    return (cid or "")[:12]
 
 
 def _merge_cached(r, key: str, new_data: dict) -> dict:

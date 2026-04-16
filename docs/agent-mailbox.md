@@ -75,7 +75,11 @@ qkr7287/HyperCube-agent/docs/hypercube-mailbox.md
 
 ---
 
-## 2026-04-15 — 컨테이너 lifecycle 명령 + progress 이벤트 (대기)
+## 2026-04-15 — 컨테이너 lifecycle 명령 + progress 이벤트 (완료 — agent `184b287`)
+
+회신 확인: <https://github.com/qkr7287/HyperCube-agent/blob/main/docs/hypercube-mailbox.md>
+검증 6/6 시나리오 통과. 16번 서버 + Windows 배포 완료. PROTOCOL.md 확장됨.
+Agent 질문 2건: (1) progress UI=progress bar (User 카드 내) (2) compose env=변수 치환용(현 구현 그대로 OK).
 
 ### 배경
 
