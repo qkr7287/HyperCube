@@ -7,6 +7,7 @@
 	import LeftSidebar from '$lib/components/LeftSidebar.svelte';
 	import StatusToasts from '$lib/components/StatusToasts.svelte';
 	import AgentStatusBadge from '$lib/components/AgentStatusBadge.svelte';
+	import AdminHeader from '$lib/components/AdminHeader.svelte';
 	import RightSidebar from '$lib/components/RightSidebar.svelte';
 	import TopologyToolbar from '$lib/components/TopologyToolbar.svelte';
 	import RackUtilization from '$lib/components/RackUtilization.svelte';
@@ -78,6 +79,15 @@
 	let agents: any[] = [];
 	let selectedServerId = '';
 	let loginUsername = '';
+	let currentUsername = '';
+
+	function decodeUsername(token: string): string {
+		try {
+			return JSON.parse(atob(token.split('.')[1])).username ?? '';
+		} catch {
+			return '';
+		}
+	}
 	let loginPassword = '';
 	let loginError = '';
 	let agentsLoading = false;
@@ -97,6 +107,7 @@
 			}
 			accessToken = json.data?.access || json.access;
 			isLoggedIn = true;
+			currentUsername = decodeUsername(accessToken);
 			if (browser) {
 				localStorage.setItem('hc_access_token', accessToken);
 			}
@@ -940,6 +951,7 @@
 			if (savedToken) {
 				accessToken = savedToken;
 				isLoggedIn = true;
+				currentUsername = decodeUsername(accessToken);
 				connectGlobal(accessToken);
 				await loadApprovedAgents();
 			}
@@ -1050,7 +1062,7 @@
 		{#if agentsLoading}
 			<p class="auth-subtitle">Loading servers...</p>
 		{:else if agents.length === 0}
-			<p class="auth-error">No approved servers found. Go to <a href="{base}/agents">/agents</a> to approve an Agent.</p>
+			<p class="auth-subtitle">연결된 서버가 아직 없습니다. 서버에서 Agent를 실행하면 자동으로 등록됩니다.</p>
 		{:else}
 			<div class="server-list">
 				{#each agents as agent (agent.id)}
@@ -1069,6 +1081,8 @@
 </div>
 {:else}
 <StatusToasts />
+<div class="admin-shell">
+<AdminHeader totalAgents={agents.length} username={currentUsername} onLogout={doLogout} />
 <div class="layout">
 	<!-- Left Sidebar: Server Info -->
 	<LeftSidebar
@@ -1089,12 +1103,9 @@
 	<main class="topology-area">
 		<div class="topology-header">
 			<span class="topology-title">SYSTEM TOPOLOGY</span>
-			<div class="header-right">
-				<AgentStatusBadge totalKnown={agents.length} />
-				<div class="live-indicator">
-					<span class="live-dot"></span>
-					<span class="live-text">LIVE RENDER</span>
-				</div>
+			<div class="live-indicator">
+				<span class="live-dot"></span>
+				<span class="live-text">LIVE RENDER</span>
 			</div>
 		</div>
 
@@ -1162,13 +1173,23 @@
 	open={processModalOpen}
 	onClose={() => { processModalOpen = false; }}
 />
+</div>
 {/if}
 
 <style>
-	.layout {
+	.admin-shell {
 		display: flex;
+		flex-direction: column;
 		height: 100vh;
 		width: 100vw;
+		background: var(--bg-base);
+	}
+
+	.layout {
+		display: flex;
+		flex: 1;
+		min-height: 0;
+		width: 100%;
 		background: var(--bg-base);
 	}
 

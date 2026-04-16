@@ -24,6 +24,10 @@ export const activeAgentIds = writable<Set<string>>(new Set());
 export const statusEvents = writable<AgentStatusEvent[]>([]);
 export const globalConnected = writable(false);
 
+// pending 컨테이너 요청 개수 (admin 헤더 배지).
+// Backend에서 request_status_change / request_created 이벤트를 푸시하면 증감.
+export const pendingRequestCount = writable<number>(0);
+
 const MAX_EVENTS = 20;
 
 let ws: WebSocket | null = null;
@@ -94,25 +98,41 @@ export function seedActiveAgents(ids: string[]) {
 }
 
 function handleEvent(msg: any) {
-	if (msg?.type !== 'agent_status_change') return;
-	const evt: AgentStatusEvent = {
-		type: 'agent_status_change',
-		status: msg.status,
-		server_id: String(msg.server_id),
-		hostname: String(msg.hostname ?? ''),
-		last_seen_at: String(msg.last_seen_at ?? ''),
-		previous_offline_seconds: msg.previous_offline_seconds ?? null,
-		receivedAt: Date.now(),
-	};
+	if (msg?.type === 'agent_status_change') {
+		const evt: AgentStatusEvent = {
+			type: 'agent_status_change',
+			status: msg.status,
+			server_id: String(msg.server_id),
+			hostname: String(msg.hostname ?? ''),
+			last_seen_at: String(msg.last_seen_at ?? ''),
+			previous_offline_seconds: msg.previous_offline_seconds ?? null,
+			receivedAt: Date.now(),
+		};
 
-	activeAgentIds.update((set) => {
-		const next = new Set(set);
-		if (evt.status === 'online') next.add(evt.server_id);
-		else next.delete(evt.server_id);
-		return next;
-	});
+		activeAgentIds.update((set) => {
+			const next = new Set(set);
+			if (evt.status === 'online') next.add(evt.server_id);
+			else next.delete(evt.server_id);
+			return next;
+		});
 
-	statusEvents.update((list) => [evt, ...list].slice(0, MAX_EVENTS));
+		statusEvents.update((list) => [evt, ...list].slice(0, MAX_EVENTS));
+		return;
+	}
+
+	if (msg?.type === 'request_created') {
+		pendingRequestCount.update((n) => n + 1);
+		return;
+	}
+
+	if (msg?.type === 'request_status_change') {
+		// 승인/반려/배포완료 등으로 pending 에서 빠지면 감소.
+		// Backend가 new_status를 같이 보내면 더 정확하지만, 일단 최소 구현.
+		if (msg.previous_status === 'pending' && msg.new_status !== 'pending') {
+			pendingRequestCount.update((n) => Math.max(0, n - 1));
+		}
+		return;
+	}
 }
 
 function scheduleReconnect() {
