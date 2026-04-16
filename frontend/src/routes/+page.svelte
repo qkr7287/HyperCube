@@ -1163,18 +1163,17 @@
 		onOpenProcess={() => { processModalOpen = true; }}
 	/>
 
-	<!-- Center: 3D Topology -->
+	<!-- Center: 3D Topology (텍스트 라벨이 3D 캔버스 위에 오버레이) -->
 	<main class="topology-area">
-		<div class="topology-header">
-			<span class="topology-title">SYSTEM TOPOLOGY</span>
-			<div class="live-indicator">
+		<div class="graph-wrapper">
+			<div class="graph-container" bind:this={graphContainer}></div>
+			<div class="topology-overlay topology-overlay-title">
+				<span class="topology-title">SYSTEM TOPOLOGY</span>
+			</div>
+			<div class="topology-overlay topology-overlay-live">
 				<span class="live-dot"></span>
 				<span class="live-text">LIVE RENDER</span>
 			</div>
-		</div>
-
-		<div class="graph-wrapper">
-			<div class="graph-container" bind:this={graphContainer}></div>
 			<RackUtilization {systemInfo} />
 			<TopologyToolbar
 				onScreenshot={handleScreenshot}
@@ -1266,19 +1265,24 @@
 		background: var(--bg-base);
 	}
 
-	.topology-header {
+	.topology-overlay {
+		position: absolute;
+		top: 24px;
 		display: flex;
-		justify-content: space-between;
 		align-items: center;
-		padding: 24px;
-		flex-shrink: 0;
+		gap: 6px;
+		pointer-events: none;
+		z-index: 5;
 	}
+	.topology-overlay-title { left: 24px; }
+	.topology-overlay-live { right: 24px; }
 
 	.topology-title {
 		font-size: 13px;
 		font-weight: 700;
 		color: var(--text-secondary);
 		letter-spacing: -0.01em;
+		text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
 	}
 
 	.header-right {
@@ -1313,6 +1317,7 @@
 		font-weight: 700;
 		color: var(--accent);
 		letter-spacing: -0.01em;
+		text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
 	}
 
 	@keyframes pulse {
