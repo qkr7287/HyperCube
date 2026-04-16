@@ -16,7 +16,8 @@ def health_check(request):
 
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
+    # Django admin은 프론트엔드 /admin/* 라우트와 충돌하지 않도록 /django-admin/ 으로 분리
+    path("django-admin/", admin.site.urls),
     path("api/health/", health_check, name="health-check"),
     # API docs (Swagger UI)
     path("api/schema/", SpectacularAPIView.as_view(permission_classes=[AllowAny]), name="schema"),
