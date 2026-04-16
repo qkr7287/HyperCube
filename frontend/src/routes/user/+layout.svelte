@@ -6,6 +6,7 @@
 	import { page } from '$app/stores';
 	import { connectGlobal, disconnectGlobal } from '$lib/stores/global-events';
 	import StatusToasts from '$lib/components/StatusToasts.svelte';
+	import logoHypercube from '$lib/assets/logo_hypercube.png';
 
 	let { children } = $props();
 	let ready = $state(false);
@@ -42,7 +43,7 @@
 	<header class="user-header">
 		<span class="brand" onclick={() => goto(`${base}/user`)} role="button" tabindex="0"
 			onkeydown={(e) => e.key === 'Enter' && goto(`${base}/user`)}>
-			HyperCube
+			<img class="brand-logo" src={logoHypercube} alt="HyperCube" />
 		</span>
 		<nav class="nav">
 			<a href="{base}/user" class="nav-link" class:active={currentPath === '/user' || currentPath === '/user/'}>내 요청</a>
@@ -69,6 +70,12 @@
 	}
 	.brand {
 		font-size: 16px; font-weight: 800; color: var(--accent); cursor: pointer; user-select: none;
+		display: inline-flex; align-items: center;
+	}
+	.brand-logo {
+		display: block;
+		height: 22px;
+		width: auto;
 	}
 	.nav { display: flex; gap: 4px; }
 	.nav-link {

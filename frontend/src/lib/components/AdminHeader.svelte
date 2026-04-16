@@ -6,6 +6,7 @@
 	import { browser } from '$app/environment';
 	import { pendingRequestCount } from '$lib/stores/global-events';
 	import AgentStatusBadge from '$lib/components/AgentStatusBadge.svelte';
+	import logoHypercube from '$lib/assets/logo_hypercube.png';
 
 	let {
 		totalAgents = 0,
@@ -71,7 +72,7 @@
 <header class="admin-header">
 	<div class="brand" onclick={() => goto(`${base}/`)} role="button" tabindex="0"
 		onkeydown={(e) => e.key === 'Enter' && goto(`${base}/`)}>
-		<span class="brand-text">HyperCube</span>
+		<img class="brand-logo" src={logoHypercube} alt="HyperCube" />
 	</div>
 
 	<nav class="nav">
@@ -125,6 +126,11 @@
 		font-weight: 800;
 		color: var(--accent);
 		letter-spacing: 0.02em;
+	}
+	.brand-logo {
+		display: block;
+		height: 22px;
+		width: auto;
 	}
 
 	.nav {

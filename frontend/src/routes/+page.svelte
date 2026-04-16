@@ -19,6 +19,7 @@
 	import CpuDetailModal from '$lib/components/CpuDetailModal.svelte';
 	import MemoryDetailModal from '$lib/components/MemoryDetailModal.svelte';
 	import DiskDetailModal from '$lib/components/DiskDetailModal.svelte';
+	import logoHypercube from '$lib/assets/logo_hypercube.png';
 
 	interface Container {
 		id: string;
@@ -1096,7 +1097,7 @@
 {#if !isLoggedIn}
 <div class="auth-page">
 	<div class="auth-card">
-		<h1 class="auth-title">HyperCube</h1>
+		<img class="auth-logo" src={logoHypercube} alt="HyperCube" />
 		<p class="auth-subtitle">Container Monitoring Platform</p>
 		<form onsubmit={(e) => { e.preventDefault(); doLogin(); }}>
 			<div class="auth-field">
@@ -1364,6 +1365,12 @@
 		font-weight: 700;
 		color: var(--accent);
 		margin-bottom: 4px;
+	}
+	.auth-logo {
+		display: block;
+		height: 40px;
+		width: auto;
+		margin-bottom: 8px;
 	}
 
 	.auth-subtitle {
