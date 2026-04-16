@@ -154,7 +154,6 @@
 		agentsLoading = true;
 		try {
 			// 메인 화면에는 활성 Agent만 (5분 grace 내 last_seen_at).
-			// 아카이브된/장기 dormant 항목은 /dev 페이지에서만 노출.
 			const res = await fetch(`${base}/api/agents/?status=approved&active=true`, {
 				headers: { 'Authorization': `Bearer ${accessToken}` },
 			});

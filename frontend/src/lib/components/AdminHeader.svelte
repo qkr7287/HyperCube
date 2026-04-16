@@ -50,7 +50,6 @@
 		{ href: `${base}/`, label: '메인', match: '/' },
 		{ href: `${base}/admin/requests`, label: '승인', match: '/admin/requests', badge: () => pending },
 		{ href: `${base}/admin/templates`, label: '템플릿', match: '/admin/templates' },
-		{ href: `${base}/dev`, label: '개발자', match: '/dev' },
 	];
 
 	let menuOpen = $state(false);
