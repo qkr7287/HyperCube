@@ -120,9 +120,14 @@
 			if (browser) {
 				localStorage.setItem('hc_access_token', accessToken);
 			}
-			// user role은 사용자 페이지로 자동 이동
-			if (decodeRole(accessToken) === 'user') {
+			// role별 자동 이동: user → /user, admin → /admin/requests
+			const role = decodeRole(accessToken);
+			if (role === 'user') {
 				goto(`${base}/user`);
+				return;
+			}
+			if (role === 'admin') {
+				goto(`${base}/admin/requests`);
 				return;
 			}
 			connectGlobal(accessToken);

@@ -107,9 +107,10 @@
 						class="ip-badge"
 						class:clickable={agents.length > 1}
 						onclick={toggleSwitcher}
-						title={agents.length > 1 ? '다른 서버로 전환' : currentAgent.ip_address}
+						title={agents.length > 1 ? '다른 서버로 전환' : `${currentAgent.hostname} (${currentAgent.ip_address})`}
 					>
-						{currentAgent.ip_address}
+						<span class="badge-hostname">{currentAgent.hostname}</span>
+						<span class="badge-ip">{currentAgent.ip_address}</span>
 						{#if agents.length > 1}
 							<svg class="chevron" class:open={switcherOpen} width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
 						{/if}
@@ -268,8 +269,16 @@
 		cursor: default;
 		display: inline-flex;
 		align-items: center;
-		gap: 4px;
+		gap: 6px;
 		font-family: inherit;
+	}
+	.badge-hostname {
+		font-weight: 700;
+		color: var(--text-primary);
+	}
+	.badge-ip {
+		color: var(--text-muted);
+		font-variant-numeric: tabular-nums;
 	}
 
 	.ip-badge.clickable {
