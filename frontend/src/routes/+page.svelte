@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import { browser } from '$app/environment';
 	import { base } from '$app/paths';
 	import { goto } from '$app/navigation';
@@ -178,6 +178,7 @@
 
 	function selectServer(serverId: string) {
 		if (serverId === selectedServerId) return;
+		disconnect();
 		selectedServerId = serverId;
 		if (browser) {
 			localStorage.setItem('hc_selected_server', serverId);
@@ -196,6 +197,9 @@
 		networkModalOpen = false;
 		loginModalOpen = false;
 		processModalOpen = false;
+		selectedProject = null;
+		cameraTransitioning = false;
+		refreshGraphData(true);
 		connect(selectedServerId, accessToken);
 	}
 
@@ -309,6 +313,50 @@
 		});
 
 		return { nodes, links };
+	}
+
+	function refreshGraphData(resetCamera = false) {
+		if (!graph) return;
+
+		const data = buildGraphData();
+		graph.graphData(data);
+
+		if (selectedProject && !projects.some((project) => project.name === selectedProject)) {
+			selectedProject = null;
+		}
+
+		if (resetCamera || !selectedProject) {
+			graph.cameraPosition(
+				{ x: 0, y: 0, z: 500 },
+				{ x: 0, y: 0, z: 0 },
+				0
+			);
+			gatherNodesToCenter();
+		}
+
+		graph.d3ReheatSimulation?.();
+		markHullDirty();
+		handleResize();
+	}
+
+	async function ensureGraphReady() {
+		if (!browser || !selectedServerId) return;
+		await tick();
+		if (!graphContainer) return;
+
+		if (!graph || !graphInitialized) {
+			await initGraph();
+		}
+
+		if (!graphContainer.dataset.graphLeaveBound) {
+			graphContainer.addEventListener('pointerleave', () => {
+				const controls = graph?.controls();
+				if (controls) controls.enabled = true;
+			});
+			graphContainer.dataset.graphLeaveBound = 'true';
+		}
+
+		refreshGraphData();
 	}
 
 	async function initGraph() {
@@ -986,21 +1034,11 @@
 		});
 
 		unsubContainers = containersStore.subscribe((data) => {
-			if (data && data.length > 0) {
-				containers = data;
-				groupContainers(containers);
-				lastUpdate = new Date();
-				if (graph && graphInitialized) {
-					const currentNodes = graph.graphData().nodes;
-					currentNodes.forEach((node: any) => {
-						const updated = containers.find((c: Container) => c.id === node.id);
-						if (updated) {
-							node.state = updated.state;
-							node.val = updated.state === 'running' ? 8 : 4;
-						}
-					});
-					graph.nodeThreeObject(graph.nodeThreeObject());
-				}
+			containers = data ?? [];
+			groupContainers(containers);
+			lastUpdate = new Date();
+			if (graph && graphInitialized) {
+				refreshGraphData();
 			}
 		});
 
@@ -1009,14 +1047,17 @@
 			connect(selectedServerId, accessToken);
 		}
 
-		// 3. Graph 초기화 (WS 데이터가 올 때까지 빈 그래프)
-		await initGraph();
+		// 3. Graph 초기화는 실제 컨테이너 DOM이 붙은 뒤에 진행
+		await ensureGraphReady();
 
 		if (graphContainer) {
-			graphContainer.addEventListener('pointerleave', () => {
-				const controls = graph?.controls();
-				if (controls) controls.enabled = true;
-			});
+			if (!graphContainer.dataset.graphLeaveBound) {
+				graphContainer.addEventListener('pointerleave', () => {
+					const controls = graph?.controls();
+					if (controls) controls.enabled = true;
+				});
+				graphContainer.dataset.graphLeaveBound = 'true';
+			}
 		}
 
 		// Mock REST fallback 제거됨. Backend WebSocket이 유일한 실시간 데이터 경로.
@@ -1033,6 +1074,10 @@
 		disconnect();
 		if (graph) graph._destructor?.();
 	});
+
+	$: if (browser && selectedServerId) {
+		void ensureGraphReady();
+	}
 
 	function handleResize() {
 		if (graph && graphContainer) {
