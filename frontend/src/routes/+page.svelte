@@ -120,16 +120,12 @@
 			if (browser) {
 				localStorage.setItem('hc_access_token', accessToken);
 			}
-			// role별 자동 이동: user → /user, admin → /admin/requests
-			const role = decodeRole(accessToken);
-			if (role === 'user') {
+			// role별 자동 이동: user → /user, admin → 메인 (/)
+			if (decodeRole(accessToken) === 'user') {
 				goto(`${base}/user`);
 				return;
 			}
-			if (role === 'admin') {
-				goto(`${base}/admin/requests`);
-				return;
-			}
+			// admin은 현재 페이지(메인 / )에 그대로 머무름
 			connectGlobal(accessToken);
 			await loadApprovedAgents();
 		} catch {
