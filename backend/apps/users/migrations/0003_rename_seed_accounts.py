@@ -23,7 +23,7 @@ def rename_seeded_accounts(apps, schema_editor):
     # admin 비밀번호 갱신 (계정 자체는 유지)
     admin = User.objects.filter(username="admin").first()
     if admin:
-        admin.password = make_password("agucs12!@")
+        admin.password = make_password("agics12!@")
         admin.role = "admin"
         admin.is_staff = True
         admin.is_superuser = True
