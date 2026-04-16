@@ -122,41 +122,17 @@ qkr7287/HyperCube-agent/docs/hypercube-mailbox.md
 
 ---
 
-## 2026-04-16 — container_metrics 주기 full snapshot 추가 요청 (대기)
+## 2026-04-16 — container_metrics 주기 full snapshot 추가 요청 (완료 — agent `293f84f`)
 
-### 배경
+회신 확인: <https://github.com/qkr7287/HyperCube-agent/blob/main/docs/hypercube-mailbox.md>
+Agent `293f84f`: `CONTAINER_METRICS_FULL_SNAPSHOT_INTERVAL_MS=60_000`,
+delta와 병행 유지, 재접속 시 즉시 full snapshot. mailbox `b92fd0b`.
 
-`container_metrics`는 Delta Sync 방식이라 값이 변한 컨테이너만 전송됩니다.
-idle 컨테이너(예: 갓 생성된 redis, 유입 없는 nginx)는 CPU/Mem이 거의
-고정이라 Delta가 발사되지 않고, Backend Redis 캐시 TTL(60s)가 지나면
-캐시에서 사라져 UI에 메트릭이 표시되지 않습니다.
-
-16번 서버는 활발한 컨테이너 90개가 있어서 이 버그가 드러나지 않았고,
-로컬 PC에 신규로 `test-container`(redis 유휴) 만들자 재현되었습니다.
-
-### 요청
-
-`containers` 리스트가 쓰는 `CONTAINERS_FULL_SNAPSHOT_INTERVAL_MS`와
-동일한 패턴으로, **모든 running 컨테이너의 metrics를 일정 주기로
-full snapshot 전송**해 주세요. Delta와 병행 유지.
-
-- 권장 주기: 30~60초 (`containers`와 동일하거나 약간 길게)
-- 전송 시 `type: "container_metrics"`, 기존 포맷 그대로. 개별 컨테이너
-  단위로 여러 메시지 (기존 Delta와 같은 구조)
-- Agent 쪽 상수명 예: `CONTAINER_METRICS_FULL_SNAPSHOT_INTERVAL_MS`
-
-### Backend 측 대응 불필요
-
-Redis 캐시 merge 로직이 이미 있어 full snapshot이 오면 자연스럽게
-TTL 갱신 + 최신값 유지됩니다. Agent 쪽 변경만 있으면 됩니다.
-
-### 테스트 시나리오
-
-1. Agent 재시작 후 idle 컨테이너 1개만 있는 상태
-2. 60초 이상 대기
-3. Backend Redis(`server:<agent_id>:container:<cid>:metrics`) 키가
-   계속 유지되는지 확인
-4. Frontend UI에서 해당 컨테이너 메트릭이 끊김 없이 표시되는지 확인
+HyperCube 측 추가 조치 (TTL 갱신 갭 방지):
+- Agent snapshot 주기(60s)와 Backend Redis TTL(60s)이 동일해서 1~2초
+  gap 관찰됨. `CONTAINER_METRICS_CACHE_TTL=150s`로 분리해 해결 예정.
+  (별도 constant로 `REDIS_CACHE_TTL`과 분리, `_cache_to_redis`의
+  container_metrics 분기에만 적용).
 
 ---
 

@@ -12,7 +12,10 @@ logger = logging.getLogger(__name__)
 
 GLOBAL_GROUP = "global_events"
 
-REDIS_CACHE_TTL = 60  # seconds (주기적 데이터: system_metrics, container_metrics)
+REDIS_CACHE_TTL = 60  # seconds (system_metrics: Agent가 ~5s 간격 delta로 자주 갱신)
+# container_metrics TTL은 Agent의 full snapshot interval(60s)보다 여유있게 커야
+# Delta 없이 idle 컨테이너도 캐시 공백이 안 생긴다 (agent 293f84f).
+CONTAINER_METRICS_CACHE_TTL = 150  # seconds
 CONTAINERS_CACHE_TTL = 600  # seconds (스냅샷성 데이터: 변경 드물어 오래 유지)
 ACTIVE_IDS_KEY = "server:active_ids"
 ACTIVE_IDS_TTL = 120  # seconds
@@ -392,7 +395,7 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
                 container_id = data.get("data", {}).get("containerId", "unknown")
                 key = f"server:{self.server_id}:container:{container_id}:metrics"
                 merged = _merge_cached(r, key, data)
-                r.set(key, json.dumps(merged), ex=REDIS_CACHE_TTL)
+                r.set(key, json.dumps(merged), ex=CONTAINER_METRICS_CACHE_TTL)
             else:
                 return
 

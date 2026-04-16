@@ -23,6 +23,10 @@
 	let loading = $state(false);
 	let newModalOpen = $state(false);
 
+	const ACTIVE_STATUSES = new Set(['pending', 'approved', 'deploying']);
+	const POLL_INTERVAL_MS = 2000;
+	let pollTimer: ReturnType<typeof setInterval> | null = null;
+
 	function token(): string | null {
 		if (!browser) return null;
 		return localStorage.getItem('hc_access_token');
@@ -42,9 +46,25 @@
 			}
 		} catch { /* ignore */ }
 		loading = false;
+		syncPolling();
 	}
 
-	onMount(load);
+	function syncPolling() {
+		const hasActive = requests.some((r) => ACTIVE_STATUSES.has(r.status));
+		if (hasActive && !pollTimer) {
+			pollTimer = setInterval(load, POLL_INTERVAL_MS);
+		} else if (!hasActive && pollTimer) {
+			clearInterval(pollTimer);
+			pollTimer = null;
+		}
+	}
+
+	onMount(() => {
+		load();
+		return () => {
+			if (pollTimer) clearInterval(pollTimer);
+		};
+	});
 
 	function statusColor(s?: string): string {
 		return ({ pending: '#f59e0b', approved: '#3b82f6', deploying: '#8b5cf6', deployed: '#22c55e', failed: '#ef4444', rejected: '#6b7280' } as any)[s ?? ''] ?? '#6b7280';
