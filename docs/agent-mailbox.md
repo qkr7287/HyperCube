@@ -35,12 +35,57 @@ URL (이 mailbox):
 - 헤더에 원본 식별: `## YYYY-MM-DD — Re: 2026-04-14 자동 승인 흐름 전환 (완료 — <hash>)`
 - HyperCube가 Agent mailbox를 읽고 이 파일의 상태 라벨을 갱신
 
-### 종료된 항목 (축약 + archive)
+### 종료된 항목
 
-- 완료 확인 후에는 **본문을 1~2줄 요약으로 축약**. 상세는 commit/PR에
-  남아있으니 여기선 제목·날짜·commit hash·한 줄 결과만 유지
-- 축약된 완료 항목은 파일 하단 `## Archive` 섹션으로 이동
-- 파일이 100줄을 넘으면 `docs/agent-mailbox-archive-YYYYHN.md`로 분할
+- 완료 항목은 보존 (히스토리). 삭제 금지. 상세는 아래 **압축 정책**에
+  따라 순차적으로 요약
+- 상세가 필요한 경우는 `git show <commit>` 또는 GitHub commit 페이지로
+  복원 (원본은 git history에 영구 보존)
+- 파일이 지나치게 길어지면 `docs/agent-mailbox-archive-YYYYHN.md`로 분할
+
+## 압축 정책 (하이브리드)
+
+mailbox가 무한정 길어지지 않도록 완료된 요청은 시간이 지나면 한 줄로
+압축한다. Agent 측 `hypercube-mailbox.md`도 동일 정책(bfb5acf).
+
+### 규칙
+
+1. **최근 5개 항목은 full detail 유지** — 검증 결과, 시나리오, 질문/답변 등
+2. 그 이전 완료 항목은 한 줄 요약으로 rewrite
+   - 헤더(`## YYYY-MM-DD — 제목 (상태)`)는 유지
+   - 본문은 `> <핵심 한 줄>. 상세: git show <hash>` 만 남긴다
+   - hypercube 측 후속 commit이 있으면 함께 기재
+     (예: `git show <agent hash> / hypercube <hash>`)
+3. 원본 상세는 **git history에 영구 보존** — 언제든 복원 가능
+4. **트리거**: 새 항목 추가로 총 6개가 되면, 같은 커밋에서 **가장 오래된
+   full entry 1개**를 위 형식으로 압축
+5. **예외**: 미완료/진행 중 항목(`(대기)`, `(처리 중)`)은 나이 무관
+   full detail 유지
+
+### 압축 예시
+
+**Before**
+
+```markdown
+## 2026-04-13 — 명령 라우팅 프로토콜 도입 (완료 — agent `16bb0b9`)
+
+### 처리된 항목
+- 4종 명령 (system_info, inspect, get_logs, control) 응답 schema 확정
+- docs/PROTOCOL.md 작성 (HyperCube에 docs/agent-protocol.md로 미러링)
+
+### HyperCube 측 대응
+- cf6c2c4 Agent on-demand command routing over WebSocket
+- a11490d Redis cache snapshot replay on Browser reconnect
+```
+
+**After**
+
+```markdown
+## 2026-04-13 — 명령 라우팅 프로토콜 도입 (완료 — agent `16bb0b9`)
+
+> 4종 on-demand 명령 프로토콜 확정 + PROTOCOL.md 작성.
+> HyperCube 대응: cf6c2c4, a11490d. 상세: git show 16bb0b9
+```
 
 ## 다른 세션에 전달하는 방법
 
@@ -115,11 +160,379 @@ TTL 갱신 + 최신값 유지됩니다. Agent 쪽 변경만 있으면 됩니다.
 
 ---
 
-## Archive (완료 항목 축약)
+## 2026-04-15 — 컨테이너 lifecycle 명령 + progress 이벤트 (완료 — agent `184b287` / hypercube `bf983fa`)
 
-완료된 요청은 한 줄로 요약. 상세는 commit 메시지와 PR을 참조.
+회신 확인: <https://github.com/qkr7287/HyperCube-agent/blob/main/docs/hypercube-mailbox.md>
+검증 6/6 시나리오 통과. 16번 서버 + Windows 배포 완료. PROTOCOL.md 확장됨.
+Agent 질문 2건: (1) progress UI=progress bar (User 카드 내) (2) compose env=변수 치환용(현 구현 그대로 OK).
+Backend 결선 `bf983fa`: approve→dispatch, command_progress/response 처리, container_id 12자 정규화 + target_container FK 링크. E2E 검증 server_16/local 모두 통과.
 
-- **2026-04-15** — 컨테이너 lifecycle 명령 4종(`create_container`, `compose_up`, `delete_container`, `update_container`) + `command_progress` 이벤트 추가. agent `184b287` / hypercube `bf983fa`. E2E 통과 (server_16 + local).
-- **2026-04-14** — Agent 자가 등록 + 자동 승인 흐름 전환. agent `beded33` / hypercube `837b23e`.
-- **2026-04-14** — Agent 환경/소스 개선 (utmp parser, network netns, streaming processes/logins, periodic snapshot). agent `1a1f59f`.
-- **2026-04-13** — 명령 라우팅 프로토콜 도입 (4종 명령 응답 schema 확정, `docs/PROTOCOL.md`). agent `16bb0b9` / hypercube `cf6c2c4` + `a11490d`.
+### 배경
+
+HyperCube에 사용자(end-user) 페이지를 새로 도입합니다. 사용자가
+"컨테이너 생성/삭제 요청 → admin 승인 → Backend가 해당 Agent에
+실제 docker 작업 명령" 흐름이 됩니다. Agent 측에 4종 신규 명령과
+1종 신규 비동기 이벤트가 필요합니다.
+
+기존 4종 명령(`system_info`, `inspect`, `get_logs`, `control`)은
+변경 없습니다.
+
+### 추가 명령 4종
+
+기존 `command` / `command_response` envelope 그대로 사용.
+
+#### 1. `create_container` (단일 컨테이너 생성)
+
+**params**
+```json
+{
+  "image": "postgres:15",
+  "name": "my-pg",                 // 컨테이너 이름. 중복 시 에러
+  "env": { "POSTGRES_PASSWORD": "..." },
+  "ports": [
+    { "host": 15432, "container": 5432, "protocol": "tcp" }
+  ],
+  "volumes": [
+    { "host": "/var/data/pg", "container": "/var/lib/postgresql/data", "mode": "rw" }
+  ],
+  "restart_policy": "unless-stopped",   // 선택. 기본 unless-stopped
+  "pull_if_missing": true               // 선택. 기본 true
+}
+```
+
+**success.data**
+```json
+{
+  "containerId": "abc123def456...",   // 64-char or 12-char short — 기존 inspect/get_logs와 동일 형식
+  "name": "my-pg",
+  "image": "postgres:15",
+  "state": "running"
+}
+```
+
+**errors** — `"image is required"`, `"name is required"`,
+`"name already exists: <n>"`, `"image pull failed: <reason>"`,
+`"create failed: <reason>"`, `"start failed: <reason>"`,
+Dockerode 원본 에러 등.
+
+#### 2. `compose_up` (여러 컨테이너를 docker-compose로 한 번에 생성)
+
+**params**
+```json
+{
+  "projectName": "my-stack",       // docker-compose -p
+  "composeYaml": "<여러 줄 yaml 문자열>",
+  "env": { "TAG": "v1.2", "DB_PASSWORD": "..." },   // 선택. compose 변수 치환용
+  "pull_if_missing": true
+}
+```
+
+**success.data**
+```json
+{
+  "projectName": "my-stack",
+  "containers": [
+    { "containerId": "abc...", "name": "my-stack-web-1", "image": "nginx:1.27", "state": "running" },
+    { "containerId": "def...", "name": "my-stack-db-1",  "image": "postgres:15", "state": "running" }
+  ]
+}
+```
+
+**errors** — `"projectName is required"`, `"composeYaml is required"`,
+`"yaml parse failed: <reason>"`, `"compose up failed: <reason>"` 등.
+
+구현 노트: `docker compose -p <projectName> -f <tmpfile> up -d` 또는
+dockerode-compose 라이브러리. 둘 다 OK. 사용자 측은 결과 schema만 보장되면 됨.
+
+#### 3. `delete_container` (단일 삭제)
+
+**params**
+```json
+{
+  "containerId": "abc123",
+  "force": true,        // 선택. 기본 false. running 컨테이너도 강제 삭제
+  "removeVolumes": false // 선택. 기본 false
+}
+```
+
+**success.data**
+```json
+{ "containerId": "abc123", "removed": true }
+```
+
+**errors** — `"containerId is required"`, `"container not found"`,
+`"running container, set force=true to remove"` 등.
+
+#### 4. `compose_down` (compose 그룹 통째 삭제)
+
+**params**
+```json
+{
+  "projectName": "my-stack",
+  "removeVolumes": false,
+  "removeImages": false   // 선택. 기본 false
+}
+```
+
+**success.data**
+```json
+{ "projectName": "my-stack", "removedContainerIds": ["abc...", "def..."] }
+```
+
+**errors** — `"projectName is required"`, `"compose down failed: <reason>"`.
+
+---
+
+### 신규 비동기 이벤트: `command_progress`
+
+긴 작업(특히 image pull, compose up)의 진행 상황을 사용자가 보게 하기
+위해 **`create_container`/`compose_up` 두 명령에 한해** 중간 progress
+이벤트를 보냅니다. **`delete_container`/`compose_down`은 일반적으로
+빠르므로 progress 불필요** — 마지막 `command_response`만 보내면 됨.
+
+#### 메시지 형식 (Agent → Backend)
+
+```json
+{
+  "type": "command_progress",
+  "requestId": "<원본 command의 requestId 그대로>",
+  "step": "pulling_image" | "creating" | "starting" | "running_check",
+  "percent": 30,                     // 0~100. 정확히 모르면 null 가능
+  "message": "Pulling layer 3/5: 12.3 MB / 40.0 MB",
+  "context": { "image": "postgres:15", "containerName": "my-pg" }   // 선택. UI 표시용 추가 정보
+}
+```
+
+#### 발사 권장 시점
+
+| 명령 | step 시퀀스 |
+|---|---|
+| `create_container` | pulling_image (image pull 중 N%) → creating (도커 create) → starting (start) → running_check (헬스 체크 시) → final command_response |
+| `compose_up` | 각 서비스마다 pulling_image → creating → starting (또는 컨테이너별로 step 발사) → final command_response |
+
+**중요**: 마지막에는 반드시 일반 `command_response` 1건 (성공/실패 결정)
+보내야 함. progress event만으로 종료 X. requestId로 묶임.
+
+#### 라우팅 (Backend 측 처리, 참고만)
+
+Backend는 `command_progress`를 수신하면:
+1. `cmd_pending:{requestId}` Redis 키에서 요청자(Browser) channel 조회
+2. 해당 Browser로 직접 forward (기존 command_response 라우팅과 동일)
+3. ContainerRequest DB row의 progress_message/percent 갱신 (UI 새로고침 시에도 보임)
+4. global channel에도 broadcast (사용자 페이지가 자기 요청 progress 받음)
+
+이 routing은 Backend 책임. Agent는 `command_progress` 보내기만 하면 됨.
+
+---
+
+### 검증 시나리오
+
+1. **단순 create**: postgres:15, env에 POSTGRES_PASSWORD 포함
+   - progress events 4~5건 (pulling 진행률 + create + start)
+   - 최종 command_response success, containerId 반환
+   - `inspect`로 해당 containerId 조회 시 정상 응답
+
+2. **이름 중복 create**: 같은 name으로 두 번 → 두 번째 호출이
+   `name already exists` 에러. progress event 0건, 즉시 실패 응답.
+
+3. **compose up**: 2~3 서비스 yaml
+   - 각 서비스마다 pulling/create/start progress
+   - 최종 containers[] 반환
+   - 모든 컨테이너 `inspect`로 검증 가능
+
+4. **delete (running 컨테이너, force=false)**: 에러
+   - `delete_container` with force=true → 정상 삭제
+   - 삭제 후 `inspect` → "container not found"
+
+5. **compose down**: removedContainerIds 리스트 반환, 각 id `inspect` → not found
+
+6. **image pull 실패**: 존재하지 않는 image (예: `notexist:latest`)
+   - progress event 1건 정도 → command_response success=false, error 메시지
+
+### 우선순위
+
+| # | 작업 | 우선순위 |
+|---|------|----------|
+| 1 | create_container + delete_container (progress 포함) | P0 |
+| 2 | compose_up + compose_down (progress 포함) | P1 |
+| 3 | command_progress 발사 정밀화 (정확한 percent) | P2 |
+
+### 호환성
+
+- 기존 4종 명령 변경 없음
+- 기존 `command_response` envelope 변경 없음
+- `command_progress`는 새 type. Backend가 모르면 무시되므로 Agent가 먼저 배포돼도 안전
+
+### 참고
+
+- HyperCube 측 진행 상황: DB 모델/Backend API/Admin UI/User UI 작업 동시 진행 중
+- 회신 시 검증 결과 + 처리 커밋 hash를 hypercube-mailbox.md에 부탁드립니다.
+
+---
+
+## 2026-04-14 — 자동 승인 흐름 전환 (완료 — agent `beded33` / hypercube `837b23e`)
+
+회신 확인: <https://github.com/qkr7287/HyperCube-agent/blob/main/docs/hypercube-mailbox.md>
+신규 hostname `local-windows`가 자동 승인되어 WS 연결 중 (registry에 등록됨).
+
+### 변경 요약
+
+HyperCube에서 운영자 수동 승인 단계를 제거하고 모든 Agent
+등록을 즉시 자동 승인합니다.
+
+- **유지**: token 기반 식별 + WS 인증 (보안 모델 동일)
+- **제거**: 수동 승인 단계 (관리자가 approve 버튼 누르는 흐름)
+- **결과**: Agent의 등록 → 가동 시간이 0초 (이전엔 운영자 승인 대기)
+
+### Backend 신규 동작 (HyperCube 측 처리)
+
+#### POST /api/agents/ (register)
+
+응답에 즉시 token 포함, status는 `"approved"`로 반환.
+
+요청 (변경 없음):
+```json
+{
+  "hostname": "server_16",
+  "ip_address": "192.168.0.16",
+  "metadata": {}
+}
+```
+
+응답 (변경 후):
+```json
+{
+  "id": "uuid-...",
+  "hostname": "server_16",
+  "ip_address": "192.168.0.16",
+  "status": "approved",
+  "token": "agent_<secret>",
+  "registered_at": "2026-04-14T...",
+  "approved_at": "2026-04-14T..."
+}
+```
+
+idempotency: hostname 중복 시 기존 Agent 그대로 반환 (기존 token
+유지) — 변경 없음.
+
+#### GET /api/agents/{id}/status
+
+유지하지만 항상 status=approved 반환.
+Agent 측이 polling을 완전히 제거하면 호출 안 됨.
+
+#### POST /api/agents/{id}/manage-status
+
+제거됩니다. 호출 시 404.
+
+### Agent 측 변경
+
+#### 필수: polling 루프 제거
+
+기존 흐름:
+```
+1. POST /api/agents/  → status=pending, token=""
+2. while status != approved:
+     wait 5s; GET /api/agents/{id}/status
+3. status==approved → token 수령 → WS 연결
+```
+
+새 흐름:
+```
+1. POST /api/agents/  → status=approved + token 즉시 수령
+2. WS 연결 시작
+```
+
+→ 등록과 동시에 token 사용 가능. 폴링 단계 통째로 삭제.
+
+#### 권장: 호환 처리 유지
+
+이미 .env에 token 있으면 register 호출 없이 바로 WS 시도 →
+401일 때만 register 재호출. 현재 동작과 동일하면 그대로 유지.
+
+#### 선택: dead code 정리
+
+`check_status` polling 모듈 제거. Backend는 호출 받아도 200 OK +
+status=approved 반환하므로 두어도 안전하지만, 단순화 차원에서
+제거 추천.
+
+### 검증 시나리오
+
+1. **신규 등록**: 깨끗한 호스트
+   - POST /api/agents/ 1회 호출 → 응답에 token 즉시 포함 확인
+   - 즉시 WS 연결 → Backend 로그에서 [accepted] 확인
+   - 등록부터 데이터 송신까지 거의 0초
+
+2. **재시작**: 기존 token으로 재실행
+   - .env의 token 그대로 사용 → register 호출 없이 WS 즉시 연결
+
+3. **token 손실 복구**: .env에서 token 지우고 재실행
+   - register 재호출 → 동일 hostname이라 idempotent하게 기존
+     Agent + 기존 token 반환 → WS 연결
+
+4. **manage-status 호출**: 외부에서 호출해도 404 응답 확인
+   (Agent가 호출하지 않으므로 영향 없음)
+
+### 우선순위
+
+| # | 작업 | 우선순위 | 비고 |
+|---|------|----------|------|
+| 1 | polling 루프 제거 + register 응답의 token 즉시 사용 | P1 | Agent 시작 지연 단축 |
+| 2 | check_status 호출 dead code 정리 | P2 | 선택 |
+
+### 일정/호환성
+
+- HyperCube Backend 변경: 본 세션에서 진행 (수동 승인 API 제거,
+  register가 자동 승인 + token 발급)
+- Agent 측 변경 시점: 자유. Agent가 polling을 유지해도 즉시
+  approved 응답 받아 정상 동작 (1회만 polling하고 끝)
+- 즉, **Backend 배포가 먼저 나가도 기존 Agent에 영향 없음**
+
+---
+
+## 2026-04-14 — Agent 환경/소스 개선 (완료 — agent `1a1f59f`)
+
+### 처리된 4건
+
+1. utmp 파서 자체 구현 → users 정상 반환 (agics-ai, root 등)
+2. /host/proc/1/net/dev 사용 → 호스트 net stats 정확 (rx 676 GB)
+3. system_metrics streaming에 processes/logins 포함 → 좌측 패널 즉시 갱신
+4. containers 60초 주기 스냅샷 → 재접속 시 즉시 full snapshot
+
+### 함께 나간 docker-compose 변경
+
+```yaml
+services:
+  agent:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    privileged: true
+    pid: host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc:/host/proc:ro
+      - /var/run/utmp:/var/run/utmp:ro
+      - /etc/hostname:/host/etc/hostname:ro
+    group_add:
+      - "${DOCKER_GID:-999}"
+```
+
+### HyperCube 측 대응
+
+- `c26c5d9` Agent registry TTL refresh + adapter 정렬
+- `6fdac9c` Frontend system 모달 4종을 sendCommand로 이관
+- `fb07c58` ContainerDetailModal 이관 (inspect/get_logs/control)
+
+---
+
+## 2026-04-13 — 명령 라우팅 프로토콜 도입 (완료 — agent `16bb0b9`)
+
+### 처리된 항목
+
+- 4종 명령 (`system_info`, `inspect`, `get_logs`, `control`) 응답 schema 확정
+- `docs/PROTOCOL.md` 작성 (HyperCube에 `docs/agent-protocol.md`로 미러링)
+
+### HyperCube 측 대응
+
+- `cf6c2c4` Agent on-demand command routing over WebSocket
+- `a11490d` Redis cache snapshot replay on Browser reconnect
