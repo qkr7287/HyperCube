@@ -96,24 +96,6 @@
 							<span class="stat-value">{data.totalProcesses ?? 0} <small>개</small></span>
 						</div>
 					</div>
-					<div class="stat-card" title="지금 이 순간 CPU 코어를 점유하고 명령을 실행 중인 프로세스 (R)">
-						<div class="stat-icon run">
-							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-						</div>
-						<div class="stat-info">
-							<span class="stat-label">실행중 <small class="hint">CPU 점유</small></span>
-							<span class="stat-value">{data.runningProcesses ?? 0} <small>개</small></span>
-						</div>
-					</div>
-					<div class="stat-card" title="살아있지만 I/O·이벤트를 기다리는 프로세스 (S). 일반 idle 상태로 대부분이 여기 속함">
-						<div class="stat-icon sleep">
-							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
-						</div>
-						<div class="stat-info">
-							<span class="stat-label">대기중 <small class="hint">sleeping</small></span>
-							<span class="stat-value">{data.sleepingProcesses ?? 0} <small>개</small></span>
-						</div>
-					</div>
 					{#if (data.zombieProcesses ?? 0) > 0}
 						<div class="stat-card warn" title="종료됐으나 부모가 회수(reap)하지 않은 좀비 프로세스. 0보다 크면 부모 프로세스 점검 필요">
 							<div class="stat-icon zombie">
@@ -127,7 +109,7 @@
 					{/if}
 				</div>
 
-				<div class="section-label">실행중인 프로세스 (상위 {data.processes?.length ?? 0}개)</div>
+				<div class="section-label">프로세스 목록 <small class="hint">CPU 사용률 상위 {data.processes?.length ?? 0}개</small></div>
 				<div class="table-wrapper">
 					<table>
 						<thead>

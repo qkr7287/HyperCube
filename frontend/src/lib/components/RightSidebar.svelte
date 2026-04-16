@@ -39,7 +39,6 @@
 
 	let runningCount = $derived(containers.filter(c => c.state === 'running').length);
 	let stoppedCount = $derived(containers.filter(c => c.state === 'exited').length);
-	let waitingCount = $derived(containers.length - runningCount - stoppedCount);
 
 
 
@@ -161,7 +160,6 @@
 		<!-- Stat Cards -->
 		<div class="stats-row">
 			<StatCard count={runningCount} label="실행중" type="running" />
-			<StatCard count={waitingCount} label="대기중" type="waiting" />
 			<StatCard count={stoppedCount} label="정지중" type="stopped" />
 		</div>
 
@@ -187,10 +185,6 @@
 			<div class="list-stat-card">
 				<span class="list-stat-label-en muted">Running</span>
 				<span class="list-stat-value running">실행중: {runningCount}</span>
-			</div>
-			<div class="list-stat-card">
-				<span class="list-stat-label-en muted">Waiting</span>
-				<span class="list-stat-value waiting">대기중: {waitingCount}</span>
 			</div>
 			<div class="list-stat-card">
 				<span class="list-stat-label-en muted">Stopped</span>
