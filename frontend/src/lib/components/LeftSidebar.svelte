@@ -99,34 +99,27 @@
 
 <aside class="sidebar">
 	<div class="server-section">
-		<div class="section-header">
-			<span class="heading">서버 정보</span>
-			{#if currentAgent}
-				<div class="server-switcher">
-					<button
-						class="ip-badge"
-						class:clickable={agents.length > 1}
-						onclick={toggleSwitcher}
-						title={agents.length > 1 ? '다른 서버로 전환' : `${currentAgent.hostname} (${currentAgent.ip_address})`}
-					>
-						<span class="badge-stack">
-							<span class="badge-hostname">{currentAgent.hostname}</span>
-							<span class="badge-ip">{currentAgent.ip_address}</span>
-						</span>
-						{#if agents.length > 1}
-							<svg class="chevron" class:open={switcherOpen} width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-						{/if}
-					</button>
-					{#if switcherOpen && otherAgents.length > 0}
-						<div class="switcher-menu">
-							{#each otherAgents as a (a.id)}
-								<button class="switcher-item" onclick={() => switchTo(a.id)}>
-									<span class="switcher-hostname">{a.hostname}</span>
-									<span class="switcher-ip">{a.ip_address}</span>
-								</button>
-							{/each}
-						</div>
-					{/if}
+		<div class="server-switcher">
+			<button
+				class="section-header"
+				class:clickable={agents.length > 1}
+				onclick={toggleSwitcher}
+				disabled={agents.length <= 1}
+				title={agents.length > 1 ? '다른 서버로 전환' : '서버 정보'}
+			>
+				<span class="heading">서버 정보</span>
+				{#if agents.length > 1}
+					<svg class="chevron" class:open={switcherOpen} width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+				{/if}
+			</button>
+			{#if switcherOpen && otherAgents.length > 0}
+				<div class="switcher-menu">
+					{#each otherAgents as a (a.id)}
+						<button class="switcher-item" onclick={() => switchTo(a.id)}>
+							<span class="switcher-hostname">{a.hostname}</span>
+							<span class="switcher-ip">{a.ip_address}</span>
+						</button>
+					{/each}
 				</div>
 			{/if}
 		</div>
@@ -140,6 +133,16 @@
 					</div>
 					<span class="value">{systemInfo.hostname}</span>
 				</div>
+
+				{#if currentAgent}
+					<div class="info-row">
+						<div class="info-label-group">
+							<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+							<span class="label">IP</span>
+						</div>
+						<span class="value">{currentAgent.ip_address}</span>
+					</div>
+				{/if}
 
 				<div class="info-row">
 					<div class="info-label-group">
@@ -244,67 +247,41 @@
 		overflow-y: auto;
 	}
 
+	.server-switcher {
+		position: relative;
+		margin-bottom: 24px;
+	}
+
 	.section-header {
 		display: flex;
-		justify-content: space-between;
 		align-items: center;
-		margin-bottom: 24px;
+		gap: 6px;
+		width: 100%;
+		background: none;
+		border: none;
+		padding: 0;
+		font-family: inherit;
+		cursor: default;
+	}
+	.section-header[disabled] { cursor: default; }
+	.section-header.clickable {
+		cursor: pointer;
+		transition: color 0.15s;
+	}
+	.section-header.clickable:hover .heading,
+	.section-header.clickable:hover .chevron {
+		color: var(--accent);
 	}
 
 	.heading {
 		font-size: 13px;
 		font-weight: 700;
 		color: var(--text-secondary);
-	}
-
-	.server-switcher {
-		position: relative;
-	}
-
-	.ip-badge {
-		background: var(--tag-bg);
-		color: var(--text-primary);
-		padding: 6px 10px;
-		border-radius: var(--radius-sm);
-		border: none;
-		cursor: default;
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		font-family: inherit;
-		line-height: 1.15;
-	}
-	.badge-stack {
-		display: inline-flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 2px;
-	}
-	.badge-hostname {
-		font-weight: 700;
-		font-size: 12px;
-		color: var(--text-primary);
-		letter-spacing: 0.01em;
-	}
-	.badge-ip {
-		font-size: 10px;
-		color: var(--text-muted);
-		font-variant-numeric: tabular-nums;
-	}
-
-	.ip-badge.clickable {
-		cursor: pointer;
-		transition: background 0.15s, border-color 0.15s;
-		border: 1px solid transparent;
-	}
-
-	.ip-badge.clickable:hover {
-		background: var(--bg-card);
-		border-color: var(--accent);
+		transition: color 0.15s;
 	}
 
 	.chevron {
-		transition: transform 0.15s;
+		transition: transform 0.15s, color 0.15s;
 		color: var(--text-secondary);
 	}
 
@@ -315,8 +292,8 @@
 	.switcher-menu {
 		position: absolute;
 		top: calc(100% + 6px);
+		left: 0;
 		right: 0;
-		min-width: 180px;
 		background: var(--bg-card);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-md);
