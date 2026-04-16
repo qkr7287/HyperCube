@@ -96,33 +96,35 @@
 							<span class="stat-value">{data.totalProcesses ?? 0} <small>개</small></span>
 						</div>
 					</div>
-					<div class="stat-card">
+					<div class="stat-card" title="지금 이 순간 CPU 코어를 점유하고 명령을 실행 중인 프로세스 (R)">
 						<div class="stat-icon run">
 							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
 						</div>
 						<div class="stat-info">
-							<span class="stat-label">실행중</span>
+							<span class="stat-label">실행중 <small class="hint">CPU 점유</small></span>
 							<span class="stat-value">{data.runningProcesses ?? 0} <small>개</small></span>
 						</div>
 					</div>
-					<div class="stat-card">
+					<div class="stat-card" title="살아있지만 I/O·이벤트를 기다리는 프로세스 (S). 일반 idle 상태로 대부분이 여기 속함">
 						<div class="stat-icon sleep">
 							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
 						</div>
 						<div class="stat-info">
-							<span class="stat-label">대기중</span>
+							<span class="stat-label">대기중 <small class="hint">sleeping</small></span>
 							<span class="stat-value">{data.sleepingProcesses ?? 0} <small>개</small></span>
 						</div>
 					</div>
-					<div class="stat-card">
-						<div class="stat-icon zombie">
-							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+					{#if (data.zombieProcesses ?? 0) > 0}
+						<div class="stat-card warn" title="종료됐으나 부모가 회수(reap)하지 않은 좀비 프로세스. 0보다 크면 부모 프로세스 점검 필요">
+							<div class="stat-icon zombie">
+								<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+							</div>
+							<div class="stat-info">
+								<span class="stat-label">좀비</span>
+								<span class="stat-value">{data.zombieProcesses} <small>개</small></span>
+							</div>
 						</div>
-						<div class="stat-info">
-							<span class="stat-label">정지중</span>
-							<span class="stat-value">{data.zombieProcesses ?? 0} <small>개</small></span>
-						</div>
-					</div>
+					{/if}
 				</div>
 
 				<div class="section-label">실행중인 프로세스 (상위 {data.processes?.length ?? 0}개)</div>
@@ -201,11 +203,16 @@
 	.section-label { font-size: 14px; font-weight: 700; color: #64748b; }
 
 	.stats-row {
-		display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+		display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;
 	}
 	.stat-card {
 		background: #121720; border-radius: 10px; padding: 16px;
 		display: flex; align-items: center; gap: 12px;
+		border: 1px solid transparent;
+	}
+	.stat-card.warn {
+		border-color: rgba(239,68,68,0.4);
+		background: rgba(239,68,68,0.05);
 	}
 	.stat-icon {
 		width: 40px; height: 40px; border-radius: 50%;
@@ -216,7 +223,8 @@
 	.stat-icon.sleep { background: rgba(245,158,11,0.15); color: #f59e0b; }
 	.stat-icon.zombie { background: rgba(239,68,68,0.15); color: #ef4444; }
 	.stat-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-	.stat-label { font-size: 12px; color: #64748b; white-space: nowrap; }
+	.stat-label { font-size: 12px; color: #64748b; white-space: nowrap; display: inline-flex; align-items: baseline; gap: 4px; }
+	.hint { font-size: 10px; color: #475569; font-weight: 400; }
 	.stat-value { font-size: 15px; font-weight: 700; color: #cbd5e1; white-space: nowrap; }
 	.stat-value small { font-size: 12px; font-weight: 400; color: #64748b; }
 
