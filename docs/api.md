@@ -1,158 +1,110 @@
-# API 명세
+# API Overview
 
-## 컨테이너
+This document is a high-level guide to the backend API shape that exists in the current Django stack.
+For exact request and response details, the generated schema and serializers are the source of truth.
 
-### GET /api/containers
+## Entry Points
 
-전체 컨테이너 목록을 반환합니다.
+Core paths defined in [backend/config/urls.py](/C:/Users/agics/Desktop/workspace/01.%20git/HyperCube/backend/config/urls.py:1):
 
-**응답 예시:**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": "a1b2c3d4e5f6...",
-      "shortId": "a1b2c3d4e5f6",
-      "names": ["/my-container"],
-      "image": "nginx:latest",
-      "state": "running",
-      "status": "Up 3 hours",
-      "ports": [...],
-      "labels": { "com.docker.compose.project": "myproject" }
-    }
-  ]
-}
-```
+- `/api/health/`
+- `/api/schema/`
+- `/api/docs/`
+- `/api/auth/token/`
+- `/api/auth/token/refresh/`
+- `/api/auth/logout/`
 
-### GET /api/containers/[id]
+App routes are mounted under `/api/` from:
 
-특정 컨테이너의 상세 정보를 반환합니다 (Docker inspect + stats).
+- `apps.agents.urls`
+- `apps.containers.urls`
+- `apps.users.urls`
+- `apps.metrics.urls`
 
-**응답 예시:**
-```json
-{
-  "success": true,
-  "data": {
-    "inspect": {
-      "Config": {
-        "Cmd": ["nginx", "-g", "daemon off;"],
-        "WorkingDir": "/app",
-        "Env": ["NODE_ENV=production"]
-      },
-      "State": {
-        "Status": "running",
-        "StartedAt": "2026-03-16T00:00:00Z"
-      }
-    },
-    "stats": {
-      "memory_stats": { "usage": 69087232 }
-    }
-  }
-}
-```
+## Authentication
 
-### GET /api/containers/[id]/metrics
+The current backend uses JWT authentication through SimpleJWT.
 
-컨테이너의 리소스 사용량을 반환합니다.
+Typical flow:
 
-**응답 예시:**
-```json
-{
-  "success": true,
-  "data": {
-    "cpu": { "usage": 0.08, "cores": 4 },
-    "memory": {
-      "usage": 69087232,
-      "limit": 8350298112,
-      "percent": 0.83
-    },
-    "network": { "rx": 2516582, "tx": 838860 },
-    "disk": { "read": 12698, "write": 4194304 }
-  }
-}
-```
+1. `POST /api/auth/token/`
+2. receive access and refresh tokens
+3. send `Authorization: Bearer <access-token>`
+4. refresh through `/api/auth/token/refresh/` when needed
 
-**단위:**
-- `memory.usage`, `memory.limit`: bytes (MB 변환: / 1048576)
-- `network.rx`, `network.tx`: bytes
-- `disk.read`, `disk.write`: bytes
+## Agents
 
-### GET /api/containers/[id]/logs?tail=100
+Primary responsibilities:
 
-컨테이너 로그를 반환합니다.
+- register and identify agents
+- list active or historical agents
+- expose current status
+- expose latest cached metrics
 
-**Query Parameters:**
-- `tail` (optional): 반환할 로그 줄 수 (기본값: 100)
+Representative endpoints:
 
-**응답 예시:**
-```json
-{
-  "success": true,
-  "data": {
-    "logs": ["2026-03-16 log line 1", "2026-03-16 log line 2"],
-    "containerId": "a1b2c3d4e5f6"
-  }
-}
-```
+- `GET /api/agents/`
+- `POST /api/agents/`
+- `GET /api/agents/{id}/status/`
+- `GET /api/agents/{id}/latest-metrics/`
 
-### POST /api/containers/[id]/control
+Implementation reference:
 
-컨테이너를 제어합니다.
+- [backend/apps/agents/viewsets.py](/C:/Users/agics/Desktop/workspace/01.%20git/HyperCube/backend/apps/agents/viewsets.py:1)
 
-**Request Body:**
-```json
-{ "action": "stop" }
-```
+## Containers
 
-**지원 액션:** `start`, `stop`, `restart`, `pause`, `unpause`, `kill`, `remove`
+Primary responsibilities:
 
-**응답 예시:**
-```json
-{
-  "success": true,
-  "message": "Container stopped successfully"
-}
-```
+- inspect containers recorded by the backend
+- manage templates
+- submit create/delete requests
+- approve or reject requests as admin
 
-## 시스템
+Representative endpoint groups:
 
-### GET /api/system
+- `/api/containers/`
+- `/api/templates/`
+- `/api/requests/`
 
-호스트 시스템 정보를 반환합니다 (CPU, Memory, Disk, Uptime 등).
+Implementation reference:
 
-### GET /api/system/network
+- [backend/apps/containers/viewsets.py](/C:/Users/agics/Desktop/workspace/01.%20git/HyperCube/backend/apps/containers/viewsets.py:1)
 
-네트워크 연결 정보를 반환합니다 (활성 연결, 리스닝 포트 등).
+## Users
 
-### GET /api/system/logins
+The backend uses a custom user model and role-based permission checks.
 
-현재 로그인한 사용자 정보를 반환합니다.
+Implementation reference:
 
-### GET /api/system/processes
+- [backend/apps/users/models.py](/C:/Users/agics/Desktop/workspace/01.%20git/HyperCube/backend/apps/users/models.py:1)
+- [backend/apps/common/permissions.py](/C:/Users/agics/Desktop/workspace/01.%20git/HyperCube/backend/apps/common/permissions.py:1)
 
-실행 중인 프로세스 목록을 반환합니다.
+## Metrics
 
-## 서버
+Metrics data is split between:
 
-### GET /api/server/ip
+- live state and cache paths
+- persisted history tables
+- periodic Celery maintenance and cleanup
 
-서버의 IP 주소 정보를 반환합니다.
+Implementation reference:
 
-## 에러 응답
+- [backend/apps/metrics/viewsets.py](/C:/Users/agics/Desktop/workspace/01.%20git/HyperCube/backend/apps/metrics/viewsets.py:1)
+- [backend/apps/metrics/tasks.py](/C:/Users/agics/Desktop/workspace/01.%20git/HyperCube/backend/apps/metrics/tasks.py:1)
 
-모든 API는 에러 시 다음 형식으로 응답합니다:
+## WebSocket Layer
 
-```json
-{
-  "success": false,
-  "error": "에러 메시지"
-}
-```
+The monitoring path is not REST-only.
+Live updates depend on Django Channels and the frontend WebSocket store.
 
-| HTTP 상태 코드 | 설명 |
-|---------------|------|
-| 200 | 성공 |
-| 400 | 잘못된 요청 (유효하지 않은 action 등) |
-| 404 | 컨테이너를 찾을 수 없음 |
-| 500 | 서버 내부 오류 (Docker API 연결 실패 등) |
+Relevant references:
+
+- [backend/config/routing.py](/C:/Users/agics/Desktop/workspace/01.%20git/HyperCube/backend/config/routing.py:1)
+- [backend/apps/common/consumers.py](/C:/Users/agics/Desktop/workspace/01.%20git/HyperCube/backend/apps/common/consumers.py:1)
+- [frontend/src/lib/stores/ws-store.ts](/C:/Users/agics/Desktop/workspace/01.%20git/HyperCube/frontend/src/lib/stores/ws-store.ts:1)
+
+## Recommendation
+
+For day-to-day backend work, use the generated schema UI at `/api/docs/` as the quickest inspection surface.
+This file is meant to explain the API shape, not duplicate every serializer field manually.

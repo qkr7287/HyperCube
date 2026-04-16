@@ -17,6 +17,7 @@ backend/db.sqlite3
 backend/staticfiles/
 backend/mediafiles/
 backend/.venv/
+backend/celerybeat-schedule
 
 # Temp
 tmp_figma/
