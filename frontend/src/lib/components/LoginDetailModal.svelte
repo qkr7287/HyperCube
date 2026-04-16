@@ -5,9 +5,11 @@
 	let {
 		open = false,
 		onClose = () => {},
+		uptimeSeconds = 0,
 	}: {
 		open: boolean;
 		onClose: () => void;
+		uptimeSeconds?: number;
 	} = $props();
 
 	let loading = $state(true);
@@ -92,7 +94,7 @@
 						</div>
 						<div class="stat-info">
 							<span class="stat-label">시스템 가동시간</span>
-							<span class="stat-value">{formatUptime(data.uptime)}</span>
+							<span class="stat-value">{formatUptime(data.uptime || uptimeSeconds)}</span>
 						</div>
 					</div>
 				</div>

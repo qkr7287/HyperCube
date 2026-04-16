@@ -11,6 +11,7 @@
 	interface SystemInfo {
 		hostname: string;
 		os: string;
+		uptime?: number;
 		cpu: { cores: number; model: string; usage: number };
 		memory: { total: string; used: string; free: string; usage: number };
 		disk: { total: string; used: string; free: string; usage: number };
@@ -82,6 +83,17 @@
 		const memHealth = Math.max(0, 100 - info.memory.usage);
 		const diskHealth = Math.max(0, 100 - info.disk.usage);
 		return Math.round((cpuHealth + memHealth + diskHealth) / 3);
+	}
+
+	function formatUptime(seconds: number | undefined): string {
+		const s = Math.floor(seconds ?? 0);
+		if (s <= 0) return '—';
+		const days = Math.floor(s / 86400);
+		const hours = Math.floor((s % 86400) / 3600);
+		const mins = Math.floor((s % 3600) / 60);
+		if (days > 0) return `${days}d ${hours}h`;
+		if (hours > 0) return `${hours}h ${mins}m`;
+		return `${mins}m`;
 	}
 </script>
 
@@ -210,7 +222,7 @@
 			</div>
 			<div class="health-footer">
 				<span class="health-percent">{getHealthPercent(systemInfo)}% Stable</span>
-				<span class="health-uptime">Uptime: 14d</span>
+				<span class="health-uptime">Uptime: {formatUptime(systemInfo.uptime)}</span>
 			</div>
 		</div>
 	{/if}

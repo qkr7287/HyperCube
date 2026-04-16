@@ -1186,6 +1186,7 @@
 <LoginDetailModal
 	open={loginModalOpen}
 	onClose={() => { loginModalOpen = false; }}
+	uptimeSeconds={systemInfo?.uptime ?? 0}
 />
 
 <ProcessDetailModal

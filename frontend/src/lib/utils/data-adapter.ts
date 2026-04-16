@@ -22,6 +22,7 @@ export function formatBytes(bytes: number | undefined | null): string {
 export interface SystemInfo {
 	hostname: string;
 	os: string;
+	uptime: number;  // seconds
 	cpu: { cores: number; model: string; usage: number };
 	memory: { total: string; used: string; free: string; usage: number };
 	disk: { total: string; used: string; free: string; usage: number };
@@ -53,6 +54,7 @@ export function transformSystemMetrics(msg: any): SystemInfo {
 	return {
 		hostname: d.hostname ?? '',
 		os: d.os ?? '',
+		uptime: typeof d.uptime === 'number' ? d.uptime : 0,
 		cpu: {
 			cores: cpu.cores ?? 0,
 			model: cpu.model ?? '',
@@ -99,6 +101,7 @@ export function mergeSystemInfo(prev: SystemInfo, incoming: SystemInfo): SystemI
 	return {
 		hostname: incoming.hostname || prev.hostname,
 		os: incoming.os || prev.os,
+		uptime: incoming.uptime || prev.uptime,
 		cpu: {
 			cores: incoming.cpu.cores || prev.cpu.cores,
 			model: incoming.cpu.model || prev.cpu.model,
