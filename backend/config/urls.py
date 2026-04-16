@@ -8,6 +8,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.views import TokenRefreshView
 
+from apps.common.dev_views import RedisSnapshotView
 from apps.users.token_views import CustomTokenObtainPairView, LogoutView
 
 
@@ -31,6 +32,8 @@ urlpatterns = [
     path("api/", include("apps.containers.urls")),
     path("api/", include("apps.users.urls")),
     path("api/", include("apps.metrics.urls")),
+    # Dev diagnostic (admin only)
+    path("api/dev/redis-snapshot/", RedisSnapshotView.as_view(), name="redis-snapshot"),
 ]
 
 if settings.DEBUG:

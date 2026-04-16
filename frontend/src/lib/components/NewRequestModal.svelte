@@ -108,7 +108,8 @@
 			});
 			if (!res.ok) {
 				const j = await res.json().catch(() => ({}));
-				throw new Error(j?.detail || j?.error || `HTTP ${res.status}`);
+				const d = j?.detail || j?.error;
+				throw new Error(typeof d === 'string' ? d : JSON.stringify(d ?? `HTTP ${res.status}`));
 			}
 			onSubmitted();
 			onClose();

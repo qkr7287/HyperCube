@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
 	import { base } from '$app/paths';
+	import { goto } from '$app/navigation';
 	import { systemStore, containersStore, connect, disconnect } from '$lib/stores/ws-store';
 	import { connectGlobal, disconnectGlobal, seedActiveAgents } from '$lib/stores/global-events';
 	import LeftSidebar from '$lib/components/LeftSidebar.svelte';
@@ -88,6 +89,14 @@
 			return '';
 		}
 	}
+
+	function decodeRole(token: string): string {
+		try {
+			return JSON.parse(atob(token.split('.')[1])).role ?? '';
+		} catch {
+			return '';
+		}
+	}
 	let loginPassword = '';
 	let loginError = '';
 	let agentsLoading = false;
@@ -110,6 +119,11 @@
 			currentUsername = decodeUsername(accessToken);
 			if (browser) {
 				localStorage.setItem('hc_access_token', accessToken);
+			}
+			// user role은 사용자 페이지로 자동 이동
+			if (decodeRole(accessToken) === 'user') {
+				goto(`${base}/user`);
+				return;
 			}
 			connectGlobal(accessToken);
 			await loadApprovedAgents();
@@ -949,6 +963,11 @@
 		if (browser) {
 			const savedToken = localStorage.getItem('hc_access_token');
 			if (savedToken) {
+				// user role은 사용자 페이지로 즉시 리다이렉트
+				if (decodeRole(savedToken) === 'user') {
+					goto(`${base}/user`);
+					return;
+				}
 				accessToken = savedToken;
 				isLoggedIn = true;
 				currentUsername = decodeUsername(accessToken);

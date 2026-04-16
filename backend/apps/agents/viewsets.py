@@ -83,6 +83,10 @@ class AgentViewSet(ModelViewSet):
     def get_permissions(self):
         if self.action in ("create", "check_status"):
             return [AllowAny()]
+        if self.action in ("list", "retrieve", "latest_metrics"):
+            # 사용자도 서버 목록 조회 가능 (요청 폼에서 대상 서버 선택 필요)
+            from rest_framework.permissions import IsAuthenticated
+            return [IsAuthenticated()]
         if self.action == "destroy":
             return [IsSuperAdmin()]
         return [IsServerAdminOrAbove()]
