@@ -99,29 +99,8 @@
 
 <aside class="sidebar">
 	<div class="server-section">
-		<div class="server-switcher">
-			<button
-				class="section-header"
-				class:clickable={agents.length > 1}
-				onclick={toggleSwitcher}
-				disabled={agents.length <= 1}
-				title={agents.length > 1 ? '다른 서버로 전환' : '서버 정보'}
-			>
-				<span class="heading">서버 정보</span>
-				{#if agents.length > 1}
-					<svg class="chevron" class:open={switcherOpen} width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-				{/if}
-			</button>
-			{#if switcherOpen && otherAgents.length > 0}
-				<div class="switcher-menu">
-					{#each otherAgents as a (a.id)}
-						<button class="switcher-item" onclick={() => switchTo(a.id)}>
-							<span class="switcher-hostname">{a.hostname}</span>
-							<span class="switcher-ip">{a.ip_address}</span>
-						</button>
-					{/each}
-				</div>
-			{/if}
+		<div class="section-header">
+			<span class="heading">서버 정보</span>
 		</div>
 
 		{#if systemInfo}
@@ -131,7 +110,30 @@
 						<img src={iconHostname} alt="" class="icon" />
 						<span class="label">Hostname</span>
 					</div>
-					<span class="value">{systemInfo.hostname}</span>
+					<div class="server-switcher">
+						<button
+							class="hostname-trigger"
+							class:clickable={agents.length > 1}
+							onclick={toggleSwitcher}
+							disabled={agents.length <= 1}
+							title={agents.length > 1 ? '다른 서버로 전환' : systemInfo.hostname}
+						>
+							<span class="value">{systemInfo.hostname}</span>
+							{#if agents.length > 1}
+								<svg class="chevron" class:open={switcherOpen} width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+							{/if}
+						</button>
+						{#if switcherOpen && otherAgents.length > 0}
+							<div class="switcher-menu">
+								{#each otherAgents as a (a.id)}
+									<button class="switcher-item" onclick={() => switchTo(a.id)}>
+										<span class="switcher-hostname">{a.hostname}</span>
+										<span class="switcher-ip">{a.ip_address}</span>
+									</button>
+								{/each}
+							</div>
+						{/if}
+					</div>
 				</div>
 
 				{#if currentAgent}
@@ -247,44 +249,45 @@
 		overflow-y: auto;
 	}
 
-	.server-switcher {
-		position: relative;
-		margin-bottom: 24px;
-	}
-
 	.section-header {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		width: 100%;
-		background: none;
-		border: none;
-		padding: 0;
-		font-family: inherit;
-		cursor: default;
-	}
-	.section-header[disabled] { cursor: default; }
-	.section-header.clickable {
-		cursor: pointer;
-		transition: color 0.15s;
-	}
-	.section-header.clickable:hover .heading,
-	.section-header.clickable:hover .chevron {
-		color: var(--accent);
+		margin-bottom: 24px;
 	}
 
 	.heading {
 		font-size: 13px;
 		font-weight: 700;
 		color: var(--text-secondary);
+	}
+
+	.server-switcher {
+		position: relative;
+	}
+
+	.hostname-trigger {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		background: none;
+		border: none;
+		padding: 0;
+		font-family: inherit;
+		cursor: default;
+		color: var(--text-primary);
+	}
+	.hostname-trigger[disabled] { cursor: default; }
+	.hostname-trigger.clickable {
+		cursor: pointer;
 		transition: color 0.15s;
+	}
+	.hostname-trigger.clickable:hover .value,
+	.hostname-trigger.clickable:hover .chevron {
+		color: var(--accent);
 	}
 
 	.chevron {
 		transition: transform 0.15s, color 0.15s;
 		color: var(--text-secondary);
 	}
-
 	.chevron.open {
 		transform: rotate(180deg);
 	}
@@ -292,8 +295,8 @@
 	.switcher-menu {
 		position: absolute;
 		top: calc(100% + 6px);
-		left: 0;
 		right: 0;
+		min-width: 180px;
 		background: var(--bg-card);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-md);
