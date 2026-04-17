@@ -12,6 +12,7 @@
 	import RightSidebar from '$lib/components/RightSidebar.svelte';
 	import RackUtilization from '$lib/components/RackUtilization.svelte';
 	import TopologyCanvas from '$lib/components/TopologyCanvas.svelte';
+	import TopologyToolbar from '$lib/components/TopologyToolbar.svelte';
 	import ContainerDetailModal from '$lib/components/ContainerDetailModal.svelte';
 	import NetworkDetailModal from '$lib/components/NetworkDetailModal.svelte';
 	import LoginDetailModal from '$lib/components/LoginDetailModal.svelte';
@@ -106,7 +107,37 @@
 		focusContainer?: (id: string) => void;
 		focusHub?: (id: string, type: 'stack' | 'network' | 'volume') => void;
 		setHubVisibility?: (type: 'stack' | 'network' | 'volume', visible: boolean) => void;
+		setAutoRotate?: (enabled: boolean) => void;
 	} | null = null;
+
+	// Toolbar state (Phase 5 — restored)
+	let autoRotating = false;
+	function handleToolbarReset() {
+		topologyCanvas?.resetFocus?.();
+		autoRotating = false;
+		topologyCanvas?.setAutoRotate?.(false);
+	}
+	function handleToolbarRotate() {
+		autoRotating = !autoRotating;
+		topologyCanvas?.setAutoRotate?.(autoRotating);
+	}
+	async function handleToolbarScreenshot() {
+		try {
+			const html2canvas = (await import('html2canvas')).default;
+			const canvas = await html2canvas(document.body, {
+				backgroundColor: '#0d1117',
+				scale: 2,
+				useCORS: true,
+				logging: false,
+			});
+			const link = document.createElement('a');
+			link.download = `hypercube-${Date.now()}.png`;
+			link.href = canvas.toDataURL('image/png');
+			link.click();
+		} catch {
+			// html2canvas can choke on tainted canvases; ignore silently.
+		}
+	}
 
 	// Hub visibility toggles (req #5). Defaults: stack ON, others OFF.
 	let showStackHub = true;
@@ -424,6 +455,12 @@
 				<span class="live-text">LIVE RENDER</span>
 			</div>
 			<RackUtilization {systemInfo} />
+			<TopologyToolbar
+				onScreenshot={handleToolbarScreenshot}
+				onRotate={handleToolbarRotate}
+				onReset={handleToolbarReset}
+				isRotating={autoRotating}
+			/>
 		</div>
 	</main>
 

@@ -442,6 +442,16 @@ export class Topology {
 		}, SCATTER_PIN_DELAY_MS);
 	}
 
+	// ---- Auto-rotate (Phase 5) ----
+
+	setAutoRotate(enabled: boolean, speed: number = 1.2): void {
+		if (!this.scene) return;
+		// OrbitControls has built-in autoRotate; we just flip the flag
+		// and ensure damping continues to drive the camera each tick.
+		this.scene.controls.autoRotate = enabled;
+		this.scene.controls.autoRotateSpeed = speed;
+	}
+
 	// ---- Visibility API (Phase 3) ----
 
 	setHubVisibility(type: HubType, visible: boolean): void {

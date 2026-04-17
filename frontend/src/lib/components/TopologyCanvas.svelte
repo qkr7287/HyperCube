@@ -68,6 +68,9 @@
 	export function setHubVisibility(type: 'stack' | 'network' | 'volume', visible: boolean): void {
 		topology?.setHubVisibility(type, visible);
 	}
+	export function setAutoRotate(enabled: boolean): void {
+		topology?.setAutoRotate(enabled);
+	}
 </script>
 
 <div class="topology-canvas" bind:this={host}></div>
