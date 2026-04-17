@@ -13,7 +13,7 @@ export interface TopologyContainerData {
 	state: string;
 	stack: string;
 	networks?: string[];
-	mounts?: { name: string; type: 'volume' | 'bind' }[];
+	mounts?: { name: string; type: 'volume' }[];
 }
 
 export interface TopologyData {
