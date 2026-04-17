@@ -122,6 +122,108 @@ qkr7287/HyperCube-agent/docs/hypercube-mailbox.md
 
 ---
 
+## 2026-04-17 — containers 메시지에 `networks` / `mounts` 필드 추가 (대기)
+
+Frontend 3D topology가 **네트워크 허브**와 **볼륨 허브**를 추가로
+렌더할 수 있도록, `containers` WS 메시지의 각 container 객체에
+optional 필드 두 개를 추가해주세요. 상세 스펙은 HyperCube repo의
+`docs/agent-schema-v2.md` 에 있고 아래는 핵심 요약입니다.
+
+### 변경 전 (v1, 현재)
+
+```json
+{
+  "id": "b9e8962d9acd",
+  "name": "hypercube-agent-agent-1",
+  "image": "hypercube-agent-agent",
+  "state": "running",
+  "status": "Up About an hour",
+  "ports": [],
+  "created": 1776397672,
+  "labels": { "...": "..." }
+}
+```
+
+### 변경 후 (v2)
+
+```json
+{
+  "id": "b9e8962d9acd",
+  "name": "hypercube-agent-agent-1",
+  "image": "hypercube-agent-agent",
+  "state": "running",
+  "status": "Up About an hour",
+  "ports": [],
+  "created": 1776397672,
+  "labels": { "...": "..." },
+
+  "networks": ["hypercube-agent_default"],
+  "mounts": [
+    { "name": "hypercube-agent_data", "type": "volume" }
+  ]
+}
+```
+
+### 필드 규격
+
+**`networks: string[]`** (optional)
+- `docker inspect` 결과의 `NetworkSettings.Networks` 객체의 **키**만
+  배열로.
+- 기본 네트워크 `bridge` / `host` / `none` 은 Agent 측에서 제외.
+  (모든 컨테이너가 기본으로 하나씩 물려 있어 허브로 만들면 노이즈.)
+
+**`mounts: { name: string; type: 'volume' }[]`** (optional)
+- `Mounts[]` 배열에서 `Type === "volume"` 인 것만.
+- bind mount는 제외 (stack 허브와 거의 중복).
+- 각 원소: `{ name: Mounts[i].Name, type: 'volume' }`.
+
+### 호환성
+
+두 필드 모두 **optional** 입니다. 필드가 없으면 Frontend는 Network /
+Volume 허브를 만들지 않고 Stack 허브만 렌더하는 graceful degradation
+상태로 동작합니다. 즉 Agent 배포와 Frontend 배포 순서 제약 없음
+(Frontend 수신 로직은 이미 `7e4d556` 에 들어가 있음).
+
+### 검증 시나리오
+
+1. **필드 제공 확인** — Agent 배포 후 Backend Redis에서 확인:
+   ```bash
+   docker exec hc-redis redis-cli -n 1 GET "server:<id>:containers" \
+     | python -c "import json,sys; print(json.load(sys.stdin)['data']['containers'][0].keys())"
+   ```
+   각 container 객체 키에 `networks`, `mounts` 포함.
+
+2. **기본 네트워크 필터** — `docker run --rm alpine` 같은 단순 컨테이너의
+   `networks` 배열이 빈 배열 (또는 필드 자체 생략) 이어야 함.
+
+3. **volume-only mounts** — bind mount만 가진 컨테이너의 `mounts` 배열이
+   비어 있어야 함. named volume 사용 시 해당 name만.
+
+4. **Frontend 시각 검증** — Agent 배포 후 3D 화면 좌측 상단 토글의
+   Network / Volume 체크박스 켜면:
+   - 2+ 컨테이너가 공유하는 custom 네트워크에 대해 torus 허브 + 짧은 점선
+   - 2+ 컨테이너가 공유하는 named volume에 대해 octahedron 허브 + 긴 대시선
+   - 단일 컨테이너만 쓰는 네트워크/볼륨은 허브 X (노이즈 방지용
+     `MIN_HUB_MEMBERS = 2`).
+
+### HyperCube 측 준비 상태
+
+- Phase 3 커밋 `7e4d556` 에서 `networks` / `mounts` 파싱 + 허브 렌더
+  + 토글 UI 완료.
+- Agent 배포 즉시 HyperCube 재빌드 없이 자동으로 허브가 표시됨.
+- `docs/topology-rewrite.md` 의 Phase 3 섹션도 참고.
+
+### 우선순위
+
+| # | 작업 | 우선순위 | 비고 |
+|---|------|----------|------|
+| 1 | `networks` 필드 추가 (bridge/host/none 제외) | P1 | 시각 효과가 가장 명확 |
+| 2 | `mounts` 필드 추가 (type=volume only) | P2 | 공유 named volume 드문 환경에선 효과 제한적 |
+
+회신 시 검증 결과 + 처리 커밋 hash를 `hypercube-mailbox.md` 에 부탁드립니다.
+
+---
+
 ## 2026-04-16 — container_metrics 주기 full snapshot 추가 요청 (완료 — agent `293f84f`)
 
 회신 확인: <https://github.com/qkr7287/HyperCube-agent/blob/main/docs/hypercube-mailbox.md>
@@ -503,12 +605,5 @@ services:
 
 ## 2026-04-13 — 명령 라우팅 프로토콜 도입 (완료 — agent `16bb0b9`)
 
-### 처리된 항목
-
-- 4종 명령 (`system_info`, `inspect`, `get_logs`, `control`) 응답 schema 확정
-- `docs/PROTOCOL.md` 작성 (HyperCube에 `docs/agent-protocol.md`로 미러링)
-
-### HyperCube 측 대응
-
-- `cf6c2c4` Agent on-demand command routing over WebSocket
-- `a11490d` Redis cache snapshot replay on Browser reconnect
+> 4종 on-demand 명령(system_info/inspect/get_logs/control) 프로토콜 확정 + PROTOCOL.md 작성.
+> HyperCube 대응: cf6c2c4, a11490d. 상세: git show 16bb0b9
