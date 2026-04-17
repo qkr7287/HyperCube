@@ -1,17 +1,26 @@
 import * as THREE from 'three';
-// @ts-ignore — addon typing is handled at runtime
+// @ts-ignore — three.js addon typings are resolved at runtime
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+// @ts-ignore
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+// @ts-ignore
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+// @ts-ignore
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 /**
- * Owns three.js Scene / Camera / Renderer / OrbitControls for the
- * topology. Handles container sizing, background, and controlled
- * disposal so nothing leaks on server switch or unmount.
+ * Owns three.js Scene / Camera / Renderer / OrbitControls + an
+ * EffectComposer with a bloom pass so emissive hubs glow without
+ * every entity needing its own sprite halo. Handles container
+ * sizing and controlled disposal so nothing leaks on server switch
+ * or unmount.
  */
 export class SceneManager {
 	readonly scene: THREE.Scene;
 	readonly camera: THREE.PerspectiveCamera;
 	readonly renderer: THREE.WebGLRenderer;
 	readonly controls: OrbitControls;
+	private readonly composer: EffectComposer;
 
 	private readonly host: HTMLElement;
 	private readonly resizeObserver: ResizeObserver;
@@ -33,6 +42,16 @@ export class SceneManager {
 		this.controls.enableDamping = true;
 		this.controls.dampingFactor = 0.08;
 
+		this.composer = new EffectComposer(this.renderer);
+		this.composer.addPass(new RenderPass(this.scene, this.camera));
+		const bloomPass = new UnrealBloomPass(
+			new THREE.Vector2(host.clientWidth || 1, host.clientHeight || 1),
+			0.75, // strength
+			0.35, // radius
+			0.82 // threshold — keeps dim nebula/background out of the bloom
+		);
+		this.composer.addPass(bloomPass);
+
 		this.applySize();
 		this.resizeObserver = new ResizeObserver(() => this.applySize());
 		this.resizeObserver.observe(host);
@@ -42,18 +61,20 @@ export class SceneManager {
 		const w = this.host.clientWidth || 1;
 		const h = this.host.clientHeight || 1;
 		this.renderer.setSize(w, h, false);
+		this.composer.setSize(w, h);
 		this.camera.aspect = w / h;
 		this.camera.updateProjectionMatrix();
 	}
 
 	render(): void {
 		this.controls.update();
-		this.renderer.render(this.scene, this.camera);
+		this.composer.render();
 	}
 
 	dispose(): void {
 		this.resizeObserver.disconnect();
 		this.controls.dispose();
+		this.composer.dispose?.();
 		// Force the WebGL context to release before the renderer and canvas
 		// go away. Without this, repeated server switches can leave GPU
 		// contexts alive until GC and eventually exhaust the browser's
