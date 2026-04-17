@@ -65,6 +65,8 @@
 	let fallbackInterval: ReturnType<typeof setInterval> | null = null;
 	let wsDataReceived = false;
 	let cameraTransitioning = false;
+	let projectFocusTimeout: ReturnType<typeof setTimeout> | null = null;
+	let projectSettleTimeout: ReturnType<typeof setTimeout> | null = null;
 	let starfieldGroup: any = null;
 	let starfieldRotationId: number | null = null;
 	let viewMode = 'group';
@@ -102,6 +104,27 @@
 	let loginPassword = '';
 	let loginError = '';
 	let agentsLoading = false;
+
+	function clearProjectFocusTimers() {
+		if (projectFocusTimeout) {
+			clearTimeout(projectFocusTimeout);
+			projectFocusTimeout = null;
+		}
+		if (projectSettleTimeout) {
+			clearTimeout(projectSettleTimeout);
+			projectSettleTimeout = null;
+		}
+	}
+
+	function resetGraphViewState() {
+		clearProjectFocusTimers();
+		selectedProject = null;
+		cameraTransitioning = false;
+		removeHull();
+		if (!graph) return;
+		graph.d3Force?.('scatter', null);
+		graph.d3Force?.('cluster', null);
+	}
 
 	async function doLogin() {
 		loginError = '';
@@ -199,8 +222,7 @@
 		networkModalOpen = false;
 		loginModalOpen = false;
 		processModalOpen = false;
-		selectedProject = null;
-		cameraTransitioning = false;
+		resetGraphViewState();
 		refreshGraphData(true);
 		connect(selectedServerId, accessToken);
 	}
@@ -297,11 +319,13 @@
 		const data = buildGraphData();
 		graph.graphData(data);
 
-		if (selectedProject && !projects.some((project) => project.name === selectedProject)) {
+		const focusedGone = !!selectedProject && !projects.some((project) => project.name === selectedProject);
+		if (focusedGone) {
 			selectedProject = null;
 		}
 
-		if (resetCamera || !selectedProject) {
+		if (resetCamera || focusedGone) {
+			removeHull();
 			graph.cameraPosition(
 				{ x: 0, y: 0, z: 500 },
 				{ x: 0, y: 0, z: 0 },
@@ -698,6 +722,13 @@
 		const THREE = cachedTHREE;
 		const ConvexGeometry = cachedConvexGeometry;
 		if (!THREE || !ConvexGeometry) return;
+		const activeProjects = new Set(projects.map((project) => project.name));
+
+		Array.from(hullMeshes.keys()).forEach((projectName) => {
+			if (!activeProjects.has(projectName)) {
+				removeHull(projectName);
+			}
+		});
 
 		projects.forEach(project => {
 			const projectNodes = graph.graphData().nodes.filter(
@@ -781,6 +812,7 @@
 	async function updateGraphForProject(projectName: string | null) {
 		if (!graph) return;
 
+		clearProjectFocusTimers();
 		selectedProject = projectName;
 
 		if (projectName) {
@@ -816,7 +848,9 @@
 				graph.d3ReheatSimulation();
 			});
 
-			setTimeout(() => {
+			projectFocusTimeout = setTimeout(() => {
+				projectFocusTimeout = null;
+				if (!graph || selectedProject !== projectName) return;
 				const projectNodes = graph.graphData().nodes.filter((n: any) => n.project === projectName);
 				if (projectNodes.length === 0) return;
 
@@ -842,7 +876,12 @@
 					800
 				);
 
-				setTimeout(() => { cameraTransitioning = false; }, 1600);
+				projectSettleTimeout = setTimeout(() => {
+					projectSettleTimeout = null;
+					if (selectedProject === projectName) {
+						cameraTransitioning = false;
+					}
+				}, 1600);
 				markHullDirty();
 			}, 1000);
 		} else {
@@ -853,7 +892,9 @@
 	function gatherNodesToCenter() {
 		if (!graph) return;
 
+		clearProjectFocusTimers();
 		selectedProject = null;
+		cameraTransitioning = false;
 
 		graph.graphData().nodes.forEach((n: any) => {
 			n.fx = undefined;
@@ -1043,6 +1084,7 @@
 	onDestroy(() => {
 		stopHullUpdates();
 		stopAutoRotate();
+		clearProjectFocusTimers();
 		if (starfieldRotationId) cancelAnimationFrame(starfieldRotationId);
 		if (unsubSystem) unsubSystem();
 		if (unsubContainers) unsubContainers();

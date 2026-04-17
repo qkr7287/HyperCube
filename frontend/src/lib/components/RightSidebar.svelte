@@ -1,5 +1,6 @@
 <script lang="ts">
 	import ProjectCard from './ProjectCard.svelte';
+	import { resolveGroup } from '$lib/utils/container-grouping';
 
 	interface Container {
 		id: string;
@@ -13,6 +14,7 @@
 
 	interface Project {
 		name: string;
+		source?: string;
 		containers: Container[];
 		color: string;
 		stats: { total: number; running: number; stopped: number; paused: number };
@@ -41,6 +43,15 @@
 
 
 
+	// Group view: filter project cards by group name
+	let groupSearchQuery = $state('');
+
+	let filteredProjects = $derived.by(() => {
+		const q = groupSearchQuery.trim().toLowerCase();
+		if (!q) return projects;
+		return projects.filter((p) => p.name.toLowerCase().includes(q));
+	});
+
 	// List view state
 	let searchQuery = $state('');
 	let sortColumn = $state<string>('state');
@@ -60,7 +71,7 @@
 	}
 
 	function getContainerProject(container: Container): string {
-		return container.labels?.['com.docker.compose.project'] || 'default';
+		return resolveGroup(container).name;
 	}
 
 	function getLastActivity(container: Container): string {
@@ -173,15 +184,37 @@
 			</div>
 		</div>
 
+		<!-- Group Search -->
+		<div class="search-bar group-search">
+			<svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+			</svg>
+			<input
+				type="text"
+				class="search-input"
+				placeholder="그룹명 검색..."
+				bind:value={groupSearchQuery}
+			/>
+			{#if groupSearchQuery}
+				<button class="search-clear" onclick={() => groupSearchQuery = ''}>
+					<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+						<path d="M18 6L6 18M6 6l12 12"/>
+					</svg>
+				</button>
+			{/if}
+		</div>
+
 		<!-- Project List -->
 		<div class="project-list">
-			{#each projects as project}
+			{#each filteredProjects as project}
 				<ProjectCard
 					{project}
 					selected={selectedProject === project.name}
 					onclick={() => onSelectProject(selectedProject === project.name ? null : project.name)}
 					onContainerClick={onSelectContainer}
 				/>
+			{:else}
+				<div class="group-empty">검색 결과가 없습니다</div>
 			{/each}
 		</div>
 
@@ -652,6 +685,17 @@
 
 	.search-clear:hover {
 		color: var(--text-primary);
+	}
+
+	.group-search {
+		margin: 0 0 12px 0;
+	}
+
+	.group-empty {
+		text-align: center;
+		color: var(--text-muted);
+		font-size: 12px;
+		padding: 24px 8px;
 	}
 
 	/* Show All Footer (Figma style) */
