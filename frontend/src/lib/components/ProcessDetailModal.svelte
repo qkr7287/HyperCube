@@ -85,26 +85,36 @@
 			{#if loading}
 				<div class="loading-state">프로세스 정보를 불러오는 중...</div>
 			{:else if data}
-				<div class="section-label">프로세스 통계</div>
+				{@const procs = data.processes ?? []}
+				{@const topCpu = procs.length ? procs.reduce((a: any, b: any) => (b.cpu > a.cpu ? b : a)) : null}
+				{@const topMem = procs.length ? procs.reduce((a: any, b: any) => (b.memoryMB > a.memoryMB ? b : a)) : null}
 				<div class="stats-row">
-					<div class="stat-card">
-						<div class="stat-icon total">
-							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
-						</div>
-						<div class="stat-info">
-							<span class="stat-label">총 프로세스</span>
-							<span class="stat-value">{data.totalProcesses ?? 0} <small>개</small></span>
-						</div>
+					<div class="stat-pill">
+						<span class="pill-label">총 프로세스</span>
+						<span class="pill-value">{data.totalProcesses ?? 0}<small>개</small></span>
 					</div>
+					{#if topCpu}
+						<div class="stat-pill" title={topCpu.command || topCpu.name}>
+							<span class="pill-label">Top CPU</span>
+							<span class="pill-value">
+								<span class="pill-name">{topCpu.name}</span>
+								<small class="pill-metric">{(topCpu.cpu ?? 0).toFixed(1)}%</small>
+							</span>
+						</div>
+					{/if}
+					{#if topMem}
+						<div class="stat-pill" title={topMem.command || topMem.name}>
+							<span class="pill-label">Top Memory</span>
+							<span class="pill-value">
+								<span class="pill-name">{topMem.name}</span>
+								<small class="pill-metric">{formatMem(topMem.memoryMB ?? 0)}</small>
+							</span>
+						</div>
+					{/if}
 					{#if (data.zombieProcesses ?? 0) > 0}
-						<div class="stat-card warn" title="종료됐으나 부모가 회수(reap)하지 않은 좀비 프로세스. 0보다 크면 부모 프로세스 점검 필요">
-							<div class="stat-icon zombie">
-								<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-							</div>
-							<div class="stat-info">
-								<span class="stat-label">좀비</span>
-								<span class="stat-value">{data.zombieProcesses} <small>개</small></span>
-							</div>
+						<div class="stat-pill warn" title="종료됐으나 부모가 회수(reap)하지 않은 좀비 프로세스">
+							<span class="pill-label">좀비</span>
+							<span class="pill-value">{data.zombieProcesses}<small>개</small></span>
 						</div>
 					{/if}
 				</div>
@@ -185,30 +195,33 @@
 	.section-label { font-size: 14px; font-weight: 700; color: #64748b; }
 
 	.stats-row {
-		display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;
+		display: flex; flex-wrap: wrap; gap: 8px;
 	}
-	.stat-card {
-		background: #121720; border-radius: 10px; padding: 16px;
-		display: flex; align-items: center; gap: 12px;
-		border: 1px solid transparent;
+	.stat-pill {
+		background: #121720; border-radius: 8px; padding: 8px 14px;
+		display: inline-flex; align-items: center; gap: 10px;
+		border: 1px solid transparent; min-width: 0;
 	}
-	.stat-card.warn {
+	.stat-pill.warn {
 		border-color: rgba(239,68,68,0.4);
 		background: rgba(239,68,68,0.05);
 	}
-	.stat-icon {
-		width: 40px; height: 40px; border-radius: 50%;
-		display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+	.pill-label {
+		font-size: 11px; color: #64748b; font-weight: 600;
+		text-transform: uppercase; letter-spacing: 0.04em;
+		white-space: nowrap;
 	}
-	.stat-icon.total { background: rgba(48,213,200,0.15); color: #30d5c8; }
-	.stat-icon.run { background: rgba(34,197,94,0.15); color: #22c55e; }
-	.stat-icon.sleep { background: rgba(245,158,11,0.15); color: #f59e0b; }
-	.stat-icon.zombie { background: rgba(239,68,68,0.15); color: #ef4444; }
-	.stat-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-	.stat-label { font-size: 12px; color: #64748b; white-space: nowrap; display: inline-flex; align-items: baseline; gap: 4px; }
+	.pill-value {
+		font-size: 14px; font-weight: 700; color: #cbd5e1;
+		display: inline-flex; align-items: baseline; gap: 6px;
+		min-width: 0;
+	}
+	.pill-value small { font-size: 11px; font-weight: 400; color: #64748b; }
+	.pill-name {
+		max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+	}
+	.pill-metric { font-size: 11px; color: #30d5c8; font-weight: 600; }
 	.hint { font-size: 10px; color: #475569; font-weight: 400; }
-	.stat-value { font-size: 15px; font-weight: 700; color: #cbd5e1; white-space: nowrap; }
-	.stat-value small { font-size: 12px; font-weight: 400; color: #64748b; }
 
 	.table-wrapper { overflow-x: auto; }
 	table { width: 100%; border-collapse: collapse; }

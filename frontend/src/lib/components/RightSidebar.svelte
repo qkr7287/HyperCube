@@ -1,5 +1,4 @@
 <script lang="ts">
-	import StatCard from './StatCard.svelte';
 	import ProjectCard from './ProjectCard.svelte';
 
 	interface Container {
@@ -157,10 +156,21 @@
 	</div>
 
 	{#if viewMode === 'group'}
-		<!-- Stat Cards -->
-		<div class="stats-row">
-			<StatCard count={runningCount} label="실행중" type="running" />
-			<StatCard count={stoppedCount} label="정지중" type="stopped" />
+		<!-- Container Health Summary -->
+		{@const total = containers.length}
+		{@const runPercent = total > 0 ? Math.round((runningCount / total) * 100) : 0}
+		<div class="health-summary">
+			<div class="health-top">
+				<span class="health-fraction">{runningCount} <small>/ {total}</small></span>
+				<span class="health-percent">{runPercent}% running</span>
+			</div>
+			<div class="health-bar">
+				<div class="health-bar-fill" style="width: {runPercent}%"></div>
+			</div>
+			<div class="health-legend">
+				<span class="legend-item running"><span class="dot"></span>실행중 {runningCount}</span>
+				<span class="legend-item stopped"><span class="dot"></span>정지중 {stoppedCount}</span>
+			</div>
 		</div>
 
 		<!-- Project List -->
@@ -345,6 +355,68 @@
 		padding-bottom: 40px;
 		flex-shrink: 0;
 	}
+
+	.health-summary {
+		background: var(--bg-card);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		padding: 14px 16px;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		flex-shrink: 0;
+		margin-bottom: 16px;
+	}
+	.health-top {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+	}
+	.health-fraction {
+		font-size: 20px;
+		font-weight: 700;
+		color: var(--text-primary);
+	}
+	.health-fraction small {
+		font-size: 13px;
+		color: var(--text-muted);
+		font-weight: 500;
+	}
+	.health-percent {
+		font-size: 11px;
+		font-weight: 700;
+		color: var(--accent);
+		letter-spacing: 0.02em;
+	}
+	.health-bar {
+		height: 6px;
+		background: var(--bg-base);
+		border-radius: 3px;
+		overflow: hidden;
+	}
+	.health-bar-fill {
+		height: 100%;
+		background: linear-gradient(90deg, #22c55e, var(--accent));
+		transition: width 0.3s ease;
+	}
+	.health-legend {
+		display: flex;
+		justify-content: space-between;
+		font-size: 11px;
+		color: var(--text-secondary);
+	}
+	.legend-item {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+	}
+	.legend-item .dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+	}
+	.legend-item.running .dot { background: #22c55e; }
+	.legend-item.stopped .dot { background: var(--error); }
 
 	.project-list {
 		display: flex;
