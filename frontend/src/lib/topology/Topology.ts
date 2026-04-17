@@ -3,11 +3,9 @@ import { Disposer } from './core/Disposer';
 import { RenderLoop } from './core/RenderLoop';
 import { SceneManager } from './core/SceneManager';
 import { ContainerNode } from './entities/ContainerNode';
-import type { Entity } from './entities/Entity';
 import { Hub } from './entities/Hub';
 import { StackHub } from './hubs/StackHub';
 import { CameraAnimator } from './interaction/CameraAnimator';
-import { InputController } from './interaction/InputController';
 import { Raycaster } from './interaction/Raycaster';
 import { ForceLayout, type LayoutEntityRef, type LayoutLink } from './layout/ForceLayout';
 import { NodePinner } from './layout/NodePinner';
@@ -48,13 +46,18 @@ function stackColorFor(stackName: string, sortedNames: readonly string[]): numbe
 // freeze their position (req #10).
 const SCATTER_PIN_DELAY_MS = 1500;
 
+// When a focus is active and the user dollies the camera far enough
+// back that the focused region no longer fills the viewport, treat
+// that zoom-out as an implicit reset (req #9).
+const INITIAL_CAMERA_Z = 500;
+const ZOOM_OUT_RESET_THRESHOLD = INITIAL_CAMERA_Z * 1.4;
+
 export class Topology {
 	private scene: SceneManager | null = null;
 	private loop: RenderLoop | null = null;
 	private layout: ForceLayout | null = null;
 	private animator: CameraAnimator | null = null;
 	private raycaster: Raycaster | null = null;
-	private input: InputController | null = null;
 	private readonly pinner = new NodePinner();
 	private readonly disposer = new Disposer();
 
@@ -66,6 +69,7 @@ export class Topology {
 	private callbacks: TopologyCallbacks = {};
 	private detachTick: (() => void) | null = null;
 	private detachClick: (() => void) | null = null;
+	private detachControlsChange: (() => void) | null = null;
 	private scatterPinTimer: ReturnType<typeof setTimeout> | null = null;
 	private activeFocusId: string | null = null;
 
@@ -89,8 +93,6 @@ export class Topology {
 		this.loop = new RenderLoop();
 		this.animator = new CameraAnimator(scene.camera, scene.controls);
 		this.raycaster = new Raycaster();
-		this.input = new InputController();
-		this.input.attach(() => this.resetFocus());
 
 		this.update(data);
 
@@ -106,6 +108,19 @@ export class Topology {
 		const onClick = (e: MouseEvent) => this.handlePointerClick(e);
 		host.addEventListener('click', onClick);
 		this.detachClick = () => host.removeEventListener('click', onClick);
+
+		// Req #9: zooming out past a threshold while focused should
+		// restore the initial clustered state.
+		const controls = scene.controls;
+		const onControlsChange = () => this.handleControlsChange();
+		controls.addEventListener('change', onControlsChange);
+		this.detachControlsChange = () => controls.removeEventListener('change', onControlsChange);
+	}
+
+	private handleControlsChange(): void {
+		if (!this.activeFocusId || !this.scene) return;
+		const dist = this.scene.camera.position.distanceTo(this.scene.controls.target);
+		if (dist > ZOOM_OUT_RESET_THRESHOLD) this.resetFocus();
 	}
 
 	update(data: TopologyData): void {
@@ -198,6 +213,15 @@ export class Topology {
 			if (this.layout.hasNode(id)) this.layout.pin(id);
 			else this.pinner.unpin(id);
 		}
+
+		// Codex P1: if the focused entity was pruned by this update, the
+		// old focus forces would still point at a ghost. Clear focus so
+		// the scene can re-cluster instead of scattering around nothing.
+		if (this.activeFocusId) {
+			const stillExists =
+				this.containers.has(this.activeFocusId) || this.hubs.has(this.activeFocusId);
+			if (!stillExists) this.resetFocus();
+		}
 	}
 
 	private pruneStale<T>(
@@ -281,6 +305,11 @@ export class Topology {
 		this.pinner.clear();
 		this.layout.unpinAll();
 		this.layout.clearFocus();
+		// Full-alpha reheat so scattered nodes get pulled back to the
+		// center force instead of lingering at their old positions —
+		// restores the "everything clustered at origin" initial feel
+		// (req #9, user-reported).
+		this.layout.reheat(1.0);
 		this.animator?.resetCamera();
 	}
 
@@ -330,11 +359,14 @@ export class Topology {
 			this.detachClick();
 			this.detachClick = null;
 		}
+		if (this.detachControlsChange) {
+			this.detachControlsChange();
+			this.detachControlsChange = null;
+		}
 		if (this.detachTick) {
 			this.detachTick();
 			this.detachTick = null;
 		}
-		this.input?.detach();
 		this.animator?.cancel();
 		this.loop?.stop();
 		this.layout?.stop();
@@ -369,7 +401,6 @@ export class Topology {
 		this.layout = null;
 		this.animator = null;
 		this.raycaster = null;
-		this.input = null;
 		this.host = null;
 		this.activeFocusId = null;
 	}

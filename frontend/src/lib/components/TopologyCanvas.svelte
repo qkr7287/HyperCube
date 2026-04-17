@@ -36,6 +36,18 @@
 		if (!mounted || !topology) return;
 		topology.update({ containers });
 	});
+
+	// External API — let the page (or future TopologyToolbar) trigger
+	// focus / reset without exposing the Topology instance itself.
+	export function resetFocus(): void {
+		topology?.resetFocus();
+	}
+	export function focusContainer(id: string): void {
+		topology?.focusContainer(id);
+	}
+	export function focusHub(id: string, type: 'stack' | 'network' | 'volume'): void {
+		topology?.focusHub(id, type);
+	}
 </script>
 
 <div class="topology-canvas" bind:this={host}></div>

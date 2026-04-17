@@ -94,6 +94,32 @@
 		stack: resolveGroup(c).name,
 	}));
 
+	// TopologyCanvas exposes resetFocus/focusContainer/focusHub as
+	// component methods. Bind so ESC and Phase 4 sidebar wiring can
+	// drive the 3D scene without exposing the Topology facade.
+	let topologyCanvas: { resetFocus?: () => void; focusContainer?: (id: string) => void; focusHub?: (id: string, type: 'stack' | 'network' | 'volume') => void } | null = null;
+
+	function anyModalOpen(): boolean {
+		return cpuModalOpen || memoryModalOpen || diskModalOpen
+			|| networkModalOpen || loginModalOpen || processModalOpen
+			|| selectedContainer !== null;
+	}
+
+	function handleGlobalKeydown(e: KeyboardEvent) {
+		if (e.key !== 'Escape') return;
+		// Codex P2: modals own ESC. Topology only claims it when no
+		// overlay is active and the event didn't originate inside a
+		// text field.
+		const target = e.target as HTMLElement | null;
+		const inField = target && (
+			target.tagName === 'INPUT' ||
+			target.tagName === 'TEXTAREA' ||
+			target.isContentEditable
+		);
+		if (inField || anyModalOpen()) return;
+		topologyCanvas?.resetFocus?.();
+	}
+
 	function decodeUsername(token: string): string {
 		try {
 			return JSON.parse(atob(token.split('.')[1])).username ?? '';
@@ -268,6 +294,8 @@
 	<title>AGICS Container Monitor</title>
 </svelte:head>
 
+<svelte:window on:keydown={handleGlobalKeydown} />
+
 {#if !isLoggedIn}
 <div class="auth-page">
 	<div class="auth-card">
@@ -342,7 +370,7 @@
 	<main class="topology-area">
 		<div class="graph-wrapper">
 			{#key selectedServerId}
-				<TopologyCanvas containers={topologyContainers} />
+				<TopologyCanvas containers={topologyContainers} bind:this={topologyCanvas} />
 			{/key}
 			<div class="topology-overlay topology-overlay-title">
 				<span class="topology-title">SYSTEM TOPOLOGY</span>
