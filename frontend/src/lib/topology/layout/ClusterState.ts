@@ -1,9 +1,9 @@
 /**
- * Initial state — everything clustered near origin.
- * Acts as the "home" configuration the scene returns to on reset.
- * Phase 1.
+ * Initial state marker — the layout's default parameters already
+ * cluster everything toward the origin; ClusterState exists so that
+ * Phase 2 can add sibling states (FocusState) without reshuffling
+ * the facade.
  */
-
 export class ClusterState {
-	// Phase 1 implementation
+	readonly kind = 'cluster' as const;
 }
