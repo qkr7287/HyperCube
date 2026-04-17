@@ -140,12 +140,11 @@
 	}
 
 	// Hub visibility toggles (req #5). Defaults: stack ON, others OFF.
+	// Values are passed into TopologyCanvas as props so visibility is
+	// re-applied when the scene is remounted (e.g. after resetFocus).
 	let showStackHub = true;
 	let showNetworkHub = false;
 	let showVolumeHub = false;
-	$: topologyCanvas?.setHubVisibility?.('stack', showStackHub);
-	$: topologyCanvas?.setHubVisibility?.('network', showNetworkHub);
-	$: topologyCanvas?.setHubVisibility?.('volume', showVolumeHub);
 
 	function anyModalOpen(): boolean {
 		return cpuModalOpen || memoryModalOpen || diskModalOpen
@@ -428,7 +427,13 @@
 	<main class="topology-area">
 		<div class="graph-wrapper">
 			{#key selectedServerId}
-				<TopologyCanvas containers={topologyContainers} bind:this={topologyCanvas} />
+				<TopologyCanvas
+					containers={topologyContainers}
+					showStack={showStackHub}
+					showNetwork={showNetworkHub}
+					showVolume={showVolumeHub}
+					bind:this={topologyCanvas}
+				/>
 			{/key}
 			<div class="topology-overlay topology-overlay-title">
 				<span class="topology-title">SYSTEM TOPOLOGY</span>

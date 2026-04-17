@@ -6,9 +6,19 @@
 		containers: TopologyContainerData[];
 		onContainerClick?: (id: string) => void;
 		onHubClick?: (hubId: string, hubType: 'stack' | 'network' | 'volume') => void;
+		showStack?: boolean;
+		showNetwork?: boolean;
+		showVolume?: boolean;
 	}
 
-	let { containers, onContainerClick, onHubClick }: Props = $props();
+	let {
+		containers,
+		onContainerClick,
+		onHubClick,
+		showStack = true,
+		showNetwork = false,
+		showVolume = false,
+	}: Props = $props();
 
 	let host: HTMLDivElement | undefined = $state();
 	let topology: Topology | null = null;
@@ -52,6 +62,17 @@
 	$effect(() => {
 		if (!mounted || !topology) return;
 		topology.update({ containers });
+	});
+
+	// Re-apply visibility whenever the topology instance is (re)created
+	// — e.g. after resetFocus() which remounts the scene — or when the
+	// parent's toggle values change. Without this, ESC would snap back
+	// to the default (stack only) regardless of what the user picked.
+	$effect(() => {
+		if (!mounted || !topology) return;
+		topology.setHubVisibility('stack', showStack);
+		topology.setHubVisibility('network', showNetwork);
+		topology.setHubVisibility('volume', showVolume);
 	});
 
 	// External API — let the page (or future TopologyToolbar) trigger
