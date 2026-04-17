@@ -14,22 +14,39 @@
 	let topology: Topology | null = null;
 	let mounted = $state(false);
 
-	onMount(async () => {
-		await tick();
-		if (!host) return;
+	function buildCallbacks(): TopologyCallbacks {
 		const cb: TopologyCallbacks = {};
 		if (onContainerClick) cb.onContainerClick = onContainerClick;
 		if (onHubClick) cb.onHubClick = onHubClick;
+		return cb;
+	}
+
+	function disposeTopology(): void {
+		if (!topology) return;
+		topology.dispose();
+		topology = null;
+	}
+
+	function mountTopology(): void {
+		if (!host) return;
 		topology = new Topology();
-		topology.mount(host, { containers }, cb);
+		topology.mount(host, { containers }, buildCallbacks());
 		mounted = true;
+	}
+
+	function reloadTopology(): void {
+		disposeTopology();
+		mountTopology();
+	}
+
+	onMount(async () => {
+		await tick();
+		if (!host) return;
+		mountTopology();
 	});
 
 	onDestroy(() => {
-		if (topology) {
-			topology.dispose();
-			topology = null;
-		}
+		disposeTopology();
 	});
 
 	$effect(() => {
@@ -40,7 +57,7 @@
 	// External API — let the page (or future TopologyToolbar) trigger
 	// focus / reset without exposing the Topology instance itself.
 	export function resetFocus(): void {
-		topology?.resetFocus();
+		reloadTopology();
 	}
 	export function focusContainer(id: string): void {
 		topology?.focusContainer(id);

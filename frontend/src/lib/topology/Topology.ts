@@ -46,16 +46,6 @@ function stackColorFor(stackName: string, sortedNames: readonly string[]): numbe
 // freeze their position (req #10).
 const SCATTER_PIN_DELAY_MS = 1500;
 
-// Camera tween duration (must match CameraAnimator.fitSphere default
-// so related-node freeze ends exactly when the camera lands).
-const CAMERA_TWEEN_MS = 900;
-
-// When a focus is active and the user dollies the camera far enough
-// back that the focused region no longer fills the viewport, treat
-// that zoom-out as an implicit reset (req #9).
-const INITIAL_CAMERA_Z = 500;
-const ZOOM_OUT_RESET_THRESHOLD = INITIAL_CAMERA_Z * 1.4;
-
 export class Topology {
 	private scene: SceneManager | null = null;
 	private loop: RenderLoop | null = null;
@@ -73,7 +63,6 @@ export class Topology {
 	private callbacks: TopologyCallbacks = {};
 	private detachTick: (() => void) | null = null;
 	private detachClick: (() => void) | null = null;
-	private detachControlsChange: (() => void) | null = null;
 	private scatterPinTimer: ReturnType<typeof setTimeout> | null = null;
 	private activeFocusId: string | null = null;
 
@@ -112,19 +101,6 @@ export class Topology {
 		const onClick = (e: MouseEvent) => this.handlePointerClick(e);
 		host.addEventListener('click', onClick);
 		this.detachClick = () => host.removeEventListener('click', onClick);
-
-		// Req #9: zooming out past a threshold while focused should
-		// restore the initial clustered state.
-		const controls = scene.controls;
-		const onControlsChange = () => this.handleControlsChange();
-		controls.addEventListener('change', onControlsChange);
-		this.detachControlsChange = () => controls.removeEventListener('change', onControlsChange);
-	}
-
-	private handleControlsChange(): void {
-		if (!this.activeFocusId || !this.scene) return;
-		const dist = this.scene.camera.position.distanceTo(this.scene.controls.target);
-		if (dist > ZOOM_OUT_RESET_THRESHOLD) this.resetFocus();
 	}
 
 	update(data: TopologyData): void {
@@ -330,30 +306,23 @@ export class Topology {
 			}
 		}
 
-		// Freeze related nodes at their current positions for the camera
-		// tween so the target the animator lerps toward isn't drifting
-		// while the sim continues. Without this freeze, the user sees
-		// the scene settle next to the hub instead of on it.
+		// Freeze related nodes at their click-time position and keep
+		// them frozen — unpinning after the tween (as earlier revisions
+		// did) lets link/collide/center forces nudge the target away,
+		// which leaves the camera aimed at empty space. Track them in
+		// the pinner so req #10's "don't move scattered nodes" rule
+		// treats them uniformly and resetFocus() unpins everything.
 		for (const id of related) {
-			if (this.layout.hasNode(id)) this.layout.pin(id);
+			if (this.layout.hasNode(id)) {
+				this.layout.pin(id);
+				this.pinner.pin(id);
+			}
 		}
 
 		this.layout.setFocus(related, { x: center.x, y: center.y, z: center.z });
 
 		if (this.scatterPinTimer) clearTimeout(this.scatterPinTimer);
 		const capturedFocusId = focusId;
-
-		// After the camera lands, release the related freeze so the
-		// gather force can pull them into the focus cluster.
-		setTimeout(() => {
-			if (this.activeFocusId !== capturedFocusId) return;
-			if (!this.layout) return;
-			for (const id of related) {
-				// Don't unpin ids that were already permanently scattered.
-				if (this.pinner.isPinned(id)) continue;
-				this.layout.unpin(id);
-			}
-		}, CAMERA_TWEEN_MS);
 
 		this.scatterPinTimer = setTimeout(() => {
 			this.scatterPinTimer = null;
@@ -383,10 +352,6 @@ export class Topology {
 		if (this.detachClick) {
 			this.detachClick();
 			this.detachClick = null;
-		}
-		if (this.detachControlsChange) {
-			this.detachControlsChange();
-			this.detachControlsChange = null;
 		}
 		if (this.detachTick) {
 			this.detachTick();

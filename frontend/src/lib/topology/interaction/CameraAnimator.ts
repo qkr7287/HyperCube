@@ -16,6 +16,7 @@ export class CameraAnimator {
 	private readonly group = new Group();
 	private readonly initialPosition: THREE.Vector3;
 	private readonly initialTarget: THREE.Vector3;
+	private active = false;
 
 	constructor(camera: THREE.PerspectiveCamera, controls: { target: THREE.Vector3 }) {
 		this.camera = camera;
@@ -28,8 +29,13 @@ export class CameraAnimator {
 		this.group.update();
 	}
 
+	isActive(): boolean {
+		return this.active;
+	}
+
 	tweenTo(targetPos: THREE.Vector3, lookAt: THREE.Vector3, duration = 900): void {
 		this.group.removeAll();
+		this.active = true;
 		const startPos = this.camera.position.clone();
 		const startTarget = this.controls.target.clone();
 		new Tween({ t: 0 }, this.group)
@@ -38,6 +44,9 @@ export class CameraAnimator {
 			.onUpdate(({ t }) => {
 				this.camera.position.lerpVectors(startPos, targetPos, t);
 				this.controls.target.lerpVectors(startTarget, lookAt, t);
+			})
+			.onComplete(() => {
+				this.active = false;
 			})
 			.start();
 	}
@@ -62,5 +71,6 @@ export class CameraAnimator {
 
 	cancel(): void {
 		this.group.removeAll();
+		this.active = false;
 	}
 }
