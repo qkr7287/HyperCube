@@ -40,6 +40,13 @@
 	function mountTopology(): void {
 		if (!host) return;
 		topology = new Topology();
+		// Apply the current visibility props before mount so the first
+		// update() inside mount() already honours them. Without this,
+		// resetFocus() would always bring the scene up with the facade's
+		// default (stack only) regardless of the checkbox state.
+		topology.setHubVisibility('stack', showStack);
+		topology.setHubVisibility('network', showNetwork);
+		topology.setHubVisibility('volume', showVolume);
 		topology.mount(host, { containers }, buildCallbacks());
 		mounted = true;
 	}
