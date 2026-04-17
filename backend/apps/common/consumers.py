@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 
@@ -43,7 +44,12 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
         await self.accept()
 
         if self.is_agent:
-            command_router.register_agent(self.server_id, self.channel_name)
+            try:
+                command_router.register_agent(self.server_id, self.channel_name)
+            except Exception:
+                logger.exception("[ws] Redis agent registration failed — rejecting WS")
+                await self.close(code=1011)
+                return
             await self._touch_presence(force=True)
 
         client_type = "agent" if self.is_agent else "browser"
@@ -54,12 +60,18 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
             "client_type": client_type,
         }))
 
+        # Agent에 주기적 heartbeat 전송 (좀비 WS 세션 감지용)
+        if self.is_agent:
+            self._heartbeat_task = asyncio.ensure_future(self._send_heartbeat_loop())
+
         # Browser 재접속 시 초기 스냅샷: Redis 캐시된 최신 상태를 즉시 송신
         # (Agent는 Delta Sync라 재전송 안 함. 이후 Delta가 자연스럽게 덮어씀)
         if not self.is_agent:
             await self._replay_from_redis()
 
     async def disconnect(self, close_code):
+        if hasattr(self, "_heartbeat_task"):
+            self._heartbeat_task.cancel()
         if hasattr(self, "group_name"):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
         if getattr(self, "is_agent", False):
@@ -405,6 +417,18 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
             pipe.execute()
         except Exception:
             logger.exception("[ws] Redis cache write failed for %s", self.server_id)
+
+    HEARTBEAT_INTERVAL = 15  # seconds
+
+    async def _send_heartbeat_loop(self):
+        """Agent WS에 주기적 heartbeat 전송. Agent가 수신 침묵을 감지해 좀비
+        세션 탈출(재접속)할 수 있게 한다. WS 끊기면 자연히 종료."""
+        try:
+            while True:
+                await asyncio.sleep(self.HEARTBEAT_INTERVAL)
+                await self.send(text_data=json.dumps({"type": "heartbeat"}))
+        except Exception:
+            pass  # WS closed or cancelled — loop ends
 
     async def _replay_from_redis(self):
         """Redis 캐시에서 최신 스냅샷을 읽어 현재 WS로 송신.
