@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Disposer } from './core/Disposer';
+import { loadContainerTemplate } from './core/MeshFactory';
 import { RenderLoop } from './core/RenderLoop';
 import { SceneManager } from './core/SceneManager';
 import { Starfield } from './core/Starfield';
@@ -103,6 +104,13 @@ export class Topology {
 	private detachClick: (() => void) | null = null;
 	private scatterPinTimer: ReturnType<typeof setTimeout> | null = null;
 	private activeFocusId: string | null = null;
+	private containerTemplate: THREE.Object3D | null = null;
+	private modelBaseUrl: string = '';
+	private lastData: TopologyData | null = null;
+
+	setModelBaseUrl(baseUrl: string): void {
+		this.modelBaseUrl = baseUrl;
+	}
 
 	mount(host: HTMLElement, data: TopologyData, cb?: TopologyCallbacks): void {
 		if (this.scene) throw new Error('Topology.mount: already mounted');
@@ -142,10 +150,37 @@ export class Topology {
 		const onClick = (e: MouseEvent) => this.handlePointerClick(e);
 		host.addEventListener('click', onClick);
 		this.detachClick = () => host.removeEventListener('click', onClick);
+
+		// Kick off GLB load in the background. Scene already rendered
+		// with the fallback cylinder; once the template arrives we
+		// rebuild container nodes so they switch to the GLB mesh.
+		this.loadContainerTemplateAsync();
+	}
+
+	private async loadContainerTemplateAsync(): Promise<void> {
+		try {
+			const template = await loadContainerTemplate(this.modelBaseUrl);
+			if (!template || !this.scene) return;
+			this.containerTemplate = template;
+			this.rebuildContainersFromTemplate();
+		} catch {
+			/* silent fallback */
+		}
+	}
+
+	private rebuildContainersFromTemplate(): void {
+		if (!this.scene || !this.containerTemplate || !this.lastData) return;
+		for (const node of this.containers.values()) {
+			this.scene.scene.remove(node.object);
+			node.dispose();
+		}
+		this.containers.clear();
+		this.update(this.lastData);
 	}
 
 	update(data: TopologyData): void {
 		if (!this.scene || !this.layout) return;
+		this.lastData = data;
 
 		const seenHubs = new Set<string>();
 		const seenContainers = new Set<string>();
@@ -159,7 +194,10 @@ export class Topology {
 			if (existing) {
 				existing.update({ id: c.id, name: c.name, state: c.state, stack });
 			} else {
-				const node = new ContainerNode({ id: c.id, name: c.name, state: c.state, stack });
+				const node = new ContainerNode(
+					{ id: c.id, name: c.name, state: c.state, stack },
+					this.containerTemplate
+				);
 				this.containers.set(c.id, node);
 				this.scene.scene.add(node.object);
 			}

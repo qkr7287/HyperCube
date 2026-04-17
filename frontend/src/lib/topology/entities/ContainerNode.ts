@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { Entity } from './Entity';
 
-const CONTAINER_GEOMETRY = new THREE.CylinderGeometry(8, 8, 12, 6);
-CONTAINER_GEOMETRY.rotateX(Math.PI / 2);
+const FALLBACK_GEOMETRY = new THREE.CylinderGeometry(8, 8, 12, 6);
+FALLBACK_GEOMETRY.rotateX(Math.PI / 2);
 
 const STATE_COLOR: Record<string, number> = {
 	running: 0x30d5c8,
@@ -22,6 +22,13 @@ export interface ContainerNodeData {
 	stack: string;
 }
 
+/**
+ * A container node is rendered from a GLB template if one is
+ * available, otherwise from the cached fallback cylinder. When a
+ * template is supplied we deep-clone it; three.js' clone() reuses
+ * the geometry by reference, so only per-instance materials get
+ * disposed — the template geometry stays alive for the next clone.
+ */
 export class ContainerNode extends Entity {
 	readonly kind = 'container' as const;
 	readonly id: string;
@@ -29,20 +36,46 @@ export class ContainerNode extends Entity {
 	state: string;
 	stack: string;
 
-	constructor(data: ContainerNodeData) {
+	private readonly materials: THREE.MeshStandardMaterial[];
+
+	constructor(data: ContainerNodeData, template: THREE.Object3D | null = null) {
 		const color = colorFor(data.state);
-		const material = new THREE.MeshStandardMaterial({
-			color,
-			emissive: color,
-			emissiveIntensity: 0.25,
-			roughness: 0.35,
-			metalness: 0.1,
-		});
-		super(new THREE.Mesh(CONTAINER_GEOMETRY, material));
+		let object: THREE.Object3D;
+		const materials: THREE.MeshStandardMaterial[] = [];
+
+		if (template) {
+			object = template.clone(true);
+			object.traverse((child) => {
+				const mesh = child as THREE.Mesh;
+				if (!mesh.isMesh) return;
+				const mat = new THREE.MeshStandardMaterial({
+					color,
+					emissive: color,
+					emissiveIntensity: 0.3,
+					roughness: 0.4,
+					metalness: 0.15,
+				});
+				mesh.material = mat;
+				materials.push(mat);
+			});
+		} else {
+			const mat = new THREE.MeshStandardMaterial({
+				color,
+				emissive: color,
+				emissiveIntensity: 0.25,
+				roughness: 0.35,
+				metalness: 0.1,
+			});
+			object = new THREE.Mesh(FALLBACK_GEOMETRY, mat);
+			materials.push(mat);
+		}
+
+		super(object);
 		this.id = data.id;
 		this.name = data.name;
 		this.state = data.state;
 		this.stack = data.stack;
+		this.materials = materials;
 	}
 
 	update(data: ContainerNodeData): void {
@@ -50,16 +83,17 @@ export class ContainerNode extends Entity {
 		this.stack = data.stack;
 		if (data.state !== this.state) {
 			this.state = data.state;
-			const mat = (this.object as THREE.Mesh).material as THREE.MeshStandardMaterial;
 			const color = colorFor(this.state);
-			mat.color.setHex(color);
-			mat.emissive.setHex(color);
+			for (const mat of this.materials) {
+				mat.color.setHex(color);
+				mat.emissive.setHex(color);
+			}
 		}
 	}
 
 	dispose(): void {
-		const mesh = this.object as THREE.Mesh;
-		(mesh.material as THREE.Material).dispose();
-		// shared geometry is module-level and never disposed per-instance
+		// Geometry is shared (fallback module-level or GLB template),
+		// so only per-instance materials are disposed here.
+		for (const mat of this.materials) mat.dispose();
 	}
 }

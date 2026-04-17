@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount, tick } from 'svelte';
+	import { base } from '$app/paths';
 	import { Topology, type TopologyCallbacks, type TopologyContainerData } from '$lib/topology/Topology';
 
 	interface Props {
@@ -40,6 +41,9 @@
 	function mountTopology(): void {
 		if (!host) return;
 		topology = new Topology();
+		// Model base URL (honours SvelteKit's BASE_PATH) — Topology
+		// uses it to locate /models/container.glb and friends.
+		topology.setModelBaseUrl(base);
 		// Apply the current visibility props before mount so the first
 		// update() inside mount() already honours them. Without this,
 		// resetFocus() would always bring the scene up with the facade's
