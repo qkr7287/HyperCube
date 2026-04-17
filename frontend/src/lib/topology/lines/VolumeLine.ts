@@ -1,8 +1,20 @@
-/**
- * Dashed line, volume color palette.
- * Phase 3.
- */
+import * as THREE from 'three';
+import { Connection } from './Connection';
 
-export class VolumeLine {
-	// Phase 3 implementation
+/**
+ * Long-dash line for volume hub links. Distinct from solid stack
+ * line and short-dash network line.
+ */
+export class VolumeLine extends Connection {
+	constructor(color: number) {
+		super(
+			new THREE.LineDashedMaterial({
+				color,
+				transparent: true,
+				opacity: 0.5,
+				dashSize: 8,
+				gapSize: 4,
+			})
+		);
+	}
 }

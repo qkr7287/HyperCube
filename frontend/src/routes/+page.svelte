@@ -97,7 +97,20 @@
 	// TopologyCanvas exposes resetFocus/focusContainer/focusHub as
 	// component methods. Bind so ESC and Phase 4 sidebar wiring can
 	// drive the 3D scene without exposing the Topology facade.
-	let topologyCanvas: { resetFocus?: () => void; focusContainer?: (id: string) => void; focusHub?: (id: string, type: 'stack' | 'network' | 'volume') => void } | null = null;
+	let topologyCanvas: {
+		resetFocus?: () => void;
+		focusContainer?: (id: string) => void;
+		focusHub?: (id: string, type: 'stack' | 'network' | 'volume') => void;
+		setHubVisibility?: (type: 'stack' | 'network' | 'volume', visible: boolean) => void;
+	} | null = null;
+
+	// Hub visibility toggles (req #5). Defaults: stack ON, others OFF.
+	let showStackHub = true;
+	let showNetworkHub = false;
+	let showVolumeHub = false;
+	$: topologyCanvas?.setHubVisibility?.('stack', showStackHub);
+	$: topologyCanvas?.setHubVisibility?.('network', showNetworkHub);
+	$: topologyCanvas?.setHubVisibility?.('volume', showVolumeHub);
 
 	function anyModalOpen(): boolean {
 		return cpuModalOpen || memoryModalOpen || diskModalOpen
@@ -375,6 +388,23 @@
 			<div class="topology-overlay topology-overlay-title">
 				<span class="topology-title">SYSTEM TOPOLOGY</span>
 			</div>
+			<div class="topology-overlay topology-overlay-toggles">
+				<label class="hub-toggle hub-toggle-stack">
+					<input type="checkbox" bind:checked={showStackHub} />
+					<span class="dot"></span>
+					<span class="label">Stack</span>
+				</label>
+				<label class="hub-toggle hub-toggle-network">
+					<input type="checkbox" bind:checked={showNetworkHub} />
+					<span class="dot"></span>
+					<span class="label">Network</span>
+				</label>
+				<label class="hub-toggle hub-toggle-volume">
+					<input type="checkbox" bind:checked={showVolumeHub} />
+					<span class="dot"></span>
+					<span class="label">Volume</span>
+				</label>
+			</div>
 			<div class="topology-overlay topology-overlay-live">
 				<span class="live-dot"></span>
 				<span class="live-text">LIVE RENDER</span>
@@ -472,6 +502,71 @@
 	}
 	.topology-overlay-title { left: 24px; }
 	.topology-overlay-live { right: 24px; }
+
+	.topology-overlay-toggles {
+		top: 56px;
+		left: 24px;
+		flex-direction: column;
+		gap: 8px;
+		padding: 10px 12px;
+		background: rgba(13, 17, 23, 0.55);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		backdrop-filter: blur(6px);
+		pointer-events: auto;
+	}
+
+	.hub-toggle {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--text-secondary);
+		cursor: pointer;
+		user-select: none;
+	}
+
+	.hub-toggle input[type='checkbox'] {
+		appearance: none;
+		width: 14px;
+		height: 14px;
+		border: 1.5px solid var(--border);
+		border-radius: 3px;
+		background: transparent;
+		cursor: pointer;
+		position: relative;
+	}
+
+	.hub-toggle input[type='checkbox']:checked {
+		background: var(--accent);
+		border-color: var(--accent);
+	}
+
+	.hub-toggle input[type='checkbox']:checked::after {
+		content: '';
+		position: absolute;
+		left: 3px;
+		top: 0px;
+		width: 4px;
+		height: 8px;
+		border: solid var(--bg-base);
+		border-width: 0 2px 2px 0;
+		transform: rotate(45deg);
+	}
+
+	.hub-toggle .dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+	}
+	.hub-toggle-stack .dot { background: #30d5c8; }
+	.hub-toggle-network .dot { background: #22d3ee; box-shadow: 0 0 4px #22d3ee; }
+	.hub-toggle-volume .dot { background: #fb923c; box-shadow: 0 0 4px #fb923c; }
+
+	.hub-toggle .label {
+		color: var(--text-primary);
+	}
 
 	.topology-title {
 		font-size: 13px;

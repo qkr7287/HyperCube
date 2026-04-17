@@ -65,6 +65,9 @@
 	export function focusHub(id: string, type: 'stack' | 'network' | 'volume'): void {
 		topology?.focusHub(id, type);
 	}
+	export function setHubVisibility(type: 'stack' | 'network' | 'volume', visible: boolean): void {
+		topology?.setHubVisibility(type, visible);
+	}
 </script>
 
 <div class="topology-canvas" bind:this={host}></div>

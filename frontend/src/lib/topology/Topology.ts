@@ -4,12 +4,17 @@ import { RenderLoop } from './core/RenderLoop';
 import { SceneManager } from './core/SceneManager';
 import { ContainerNode } from './entities/ContainerNode';
 import { Hub } from './entities/Hub';
+import { NetworkHub, networkColorFor } from './hubs/NetworkHub';
 import { StackHub } from './hubs/StackHub';
+import { VolumeHub, volumeColorFor } from './hubs/VolumeHub';
 import { CameraAnimator } from './interaction/CameraAnimator';
 import { Raycaster } from './interaction/Raycaster';
 import { ForceLayout, type LayoutEntityRef, type LayoutLink } from './layout/ForceLayout';
 import { NodePinner } from './layout/NodePinner';
+import type { Connection } from './lines/Connection';
+import { NetworkLine } from './lines/NetworkLine';
 import { StackLine } from './lines/StackLine';
+import { VolumeLine } from './lines/VolumeLine';
 
 export interface TopologyContainerData {
 	id: string;
@@ -24,9 +29,11 @@ export interface TopologyData {
 	containers: TopologyContainerData[];
 }
 
+export type HubType = 'stack' | 'network' | 'volume';
+
 export interface TopologyCallbacks {
 	onContainerClick?: (id: string) => void;
-	onHubClick?: (hubId: string, hubType: 'stack' | 'network' | 'volume') => void;
+	onHubClick?: (hubId: string, hubType: HubType) => void;
 }
 
 // Stack palette — stable mapping across renders, indexed by sorted name.
@@ -46,6 +53,26 @@ function stackColorFor(stackName: string, sortedNames: readonly string[]): numbe
 // freeze their position (req #10).
 const SCATTER_PIN_DELAY_MS = 1500;
 
+// Minimum members for a network / volume hub to be drawn. A hub that
+// points at a single container adds noise without carrying any
+// "shared resource" meaning.
+const MIN_HUB_MEMBERS = 2;
+
+type LineKind = 'stack' | 'network' | 'volume';
+
+function parseLineId(lineId: string): { kind: LineKind; hubId: string; nodeId: string } | null {
+	// lineId = `${kind}:${hubId}->${nodeId}` where hubId already contains
+	// the kind prefix, e.g. "stack:foo->abc" or "network:bar->abc".
+	const arrowIdx = lineId.indexOf('->');
+	if (arrowIdx < 0) return null;
+	const hubId = lineId.slice(0, arrowIdx);
+	const nodeId = lineId.slice(arrowIdx + 2);
+	const colon = hubId.indexOf(':');
+	if (colon < 0) return null;
+	const kind = hubId.slice(0, colon) as LineKind;
+	return { kind, hubId, nodeId };
+}
+
 export class Topology {
 	private scene: SceneManager | null = null;
 	private loop: RenderLoop | null = null;
@@ -57,7 +84,16 @@ export class Topology {
 
 	private readonly containers: Map<string, ContainerNode> = new Map();
 	private readonly hubs: Map<string, Hub> = new Map();
-	private readonly lines: Map<string, StackLine> = new Map();
+	private readonly lines: Map<string, Connection> = new Map();
+
+	// Visibility for each hub type. Lines of the same kind follow the
+	// hub visibility — a network hub hidden with its lines still
+	// hidden is the only sensible behaviour.
+	private readonly hubVisibility: Record<HubType, boolean> = {
+		stack: true,
+		network: false,
+		volume: false,
+	};
 
 	private host: HTMLElement | null = null;
 	private callbacks: TopologyCallbacks = {};
@@ -106,37 +142,14 @@ export class Topology {
 	update(data: TopologyData): void {
 		if (!this.scene || !this.layout) return;
 
-		const sortedStacks = Array.from(
-			new Set(data.containers.map((c) => c.stack || 'Unmanaged'))
-		).sort();
-
 		const seenHubs = new Set<string>();
 		const seenContainers = new Set<string>();
 		const seenLines = new Set<string>();
 
-		// --- hubs ---
-		for (const stack of sortedStacks) {
-			const hubId = `stack:${stack}`;
-			seenHubs.add(hubId);
-			const color = stackColorFor(stack, sortedStacks);
-			const existing = this.hubs.get(hubId);
-			if (existing && existing instanceof StackHub) {
-				existing.update({ name: stack, color });
-				existing.clearMembers();
-			} else {
-				const hub = new StackHub({ name: stack, color });
-				this.hubs.set(hubId, hub);
-				this.scene.scene.add(hub.object);
-			}
-		}
-
-		// --- containers ---
+		// --- containers first so hubs can reference their ids ---
 		for (const c of data.containers) {
 			const stack = c.stack || 'Unmanaged';
 			seenContainers.add(c.id);
-			const hubId = `stack:${stack}`;
-			this.hubs.get(hubId)?.addMember(c.id);
-
 			const existing = this.containers.get(c.id);
 			if (existing) {
 				existing.update({ id: c.id, name: c.name, state: c.state, stack });
@@ -147,18 +160,117 @@ export class Topology {
 			}
 		}
 
-		// --- lines ---
+		// --- stack hubs (always computed; visibility toggled later) ---
+		const sortedStacks = Array.from(
+			new Set(data.containers.map((c) => c.stack || 'Unmanaged'))
+		).sort();
+		for (const stack of sortedStacks) {
+			const hubId = `stack:${stack}`;
+			seenHubs.add(hubId);
+			const color = stackColorFor(stack, sortedStacks);
+			const existing = this.hubs.get(hubId);
+			if (existing instanceof StackHub) {
+				existing.update({ name: stack, color });
+				existing.clearMembers();
+			} else {
+				const hub = new StackHub({ name: stack, color });
+				this.hubs.set(hubId, hub);
+				this.scene.scene.add(hub.object);
+			}
+		}
+		// Stack membership
 		for (const c of data.containers) {
 			const stack = c.stack || 'Unmanaged';
-			const hubId = `stack:${stack}`;
-			const lineId = `${hubId}->${c.id}`;
+			this.hubs.get(`stack:${stack}`)?.addMember(c.id);
+			const lineId = `stack:${stack}->${c.id}`;
 			seenLines.add(lineId);
 			if (!this.lines.has(lineId)) {
-				const hub = this.hubs.get(hubId);
-				if (!(hub instanceof StackHub)) continue;
-				const line = new StackLine(hub.color);
-				this.lines.set(lineId, line);
-				this.scene.scene.add(line.object);
+				const hub = this.hubs.get(`stack:${stack}`);
+				if (hub instanceof StackHub) {
+					const line = new StackLine(hub.color);
+					this.lines.set(lineId, line);
+					this.scene.scene.add(line.object);
+				}
+			}
+		}
+
+		// --- network hubs (from optional containers[].networks) ---
+		const networkMembers = new Map<string, string[]>();
+		for (const c of data.containers) {
+			for (const net of c.networks ?? []) {
+				if (!net) continue;
+				const arr = networkMembers.get(net);
+				if (arr) arr.push(c.id);
+				else networkMembers.set(net, [c.id]);
+			}
+		}
+		const activeNetworks = Array.from(networkMembers.entries())
+			.filter(([, members]) => members.length >= MIN_HUB_MEMBERS)
+			.map(([name]) => name)
+			.sort();
+		for (const net of activeNetworks) {
+			const hubId = `network:${net}`;
+			seenHubs.add(hubId);
+			const color = networkColorFor(net, activeNetworks);
+			const existing = this.hubs.get(hubId);
+			if (existing instanceof NetworkHub) {
+				existing.update({ name: net, color });
+				existing.clearMembers();
+			} else {
+				const hub = new NetworkHub({ name: net, color });
+				this.hubs.set(hubId, hub);
+				this.scene.scene.add(hub.object);
+			}
+			for (const memberId of networkMembers.get(net) ?? []) {
+				this.hubs.get(hubId)?.addMember(memberId);
+				const lineId = `${hubId}->${memberId}`;
+				seenLines.add(lineId);
+				if (!this.lines.has(lineId)) {
+					const hub = this.hubs.get(hubId) as NetworkHub;
+					const line = new NetworkLine(hub.color);
+					this.lines.set(lineId, line);
+					this.scene.scene.add(line.object);
+				}
+			}
+		}
+
+		// --- volume hubs (named volumes shared by 2+ containers) ---
+		const volumeMembers = new Map<string, string[]>();
+		for (const c of data.containers) {
+			for (const m of c.mounts ?? []) {
+				if (!m || m.type !== 'volume' || !m.name) continue;
+				const arr = volumeMembers.get(m.name);
+				if (arr) arr.push(c.id);
+				else volumeMembers.set(m.name, [c.id]);
+			}
+		}
+		const activeVolumes = Array.from(volumeMembers.entries())
+			.filter(([, members]) => members.length >= MIN_HUB_MEMBERS)
+			.map(([name]) => name)
+			.sort();
+		for (const vol of activeVolumes) {
+			const hubId = `volume:${vol}`;
+			seenHubs.add(hubId);
+			const color = volumeColorFor(vol, activeVolumes);
+			const existing = this.hubs.get(hubId);
+			if (existing instanceof VolumeHub) {
+				existing.update({ name: vol, color });
+				existing.clearMembers();
+			} else {
+				const hub = new VolumeHub({ name: vol, color });
+				this.hubs.set(hubId, hub);
+				this.scene.scene.add(hub.object);
+			}
+			for (const memberId of volumeMembers.get(vol) ?? []) {
+				this.hubs.get(hubId)?.addMember(memberId);
+				const lineId = `${hubId}->${memberId}`;
+				seenLines.add(lineId);
+				if (!this.lines.has(lineId)) {
+					const hub = this.hubs.get(hubId) as VolumeHub;
+					const line = new VolumeLine(hub.color);
+					this.lines.set(lineId, line);
+					this.scene.scene.add(line.object);
+				}
 			}
 		}
 
@@ -176,19 +288,26 @@ export class Topology {
 			l.dispose();
 		});
 
+		// --- apply current visibility toggles (some hubs are new) ---
+		this.applyVisibility();
+
 		// --- feed layout ---
+		const visibleHubs = Array.from(this.hubs.values()).filter((h) => this.hubVisibility[h.hubType]);
 		const entities: LayoutEntityRef[] = [
-			...Array.from(this.hubs.values()).map((h) => ({ id: h.id, position: h.position })),
+			...visibleHubs.map((h) => ({ id: h.id, position: h.position })),
 			...Array.from(this.containers.values()).map((n) => ({ id: n.id, position: n.position })),
 		];
-		const links: LayoutLink[] = data.containers.map((c) => ({
-			source: `stack:${c.stack || 'Unmanaged'}`,
-			target: c.id,
-		}));
+		const links: LayoutLink[] = [];
+		for (const hub of visibleHubs) {
+			for (const memberId of hub.memberIds) {
+				if (this.containers.has(memberId)) {
+					links.push({ source: hub.id, target: memberId });
+				}
+			}
+		}
 		this.layout.setData(entities, links);
 
-		// Re-pin anything the pinner still remembers (node objects are
-		// recreated across server switches, but pin ids may persist).
+		// Re-pin anything the pinner still remembers.
 		for (const id of this.pinner.snapshot()) {
 			if (this.layout.hasNode(id)) this.layout.pin(id);
 			else this.pinner.unpin(id);
@@ -223,12 +342,10 @@ export class Topology {
 
 	private syncLinePositions(): void {
 		for (const [lineId, line] of this.lines) {
-			const arrowIdx = lineId.indexOf('->');
-			if (arrowIdx < 0) continue;
-			const hubId = lineId.slice(0, arrowIdx);
-			const nodeId = lineId.slice(arrowIdx + 2);
-			const hub = this.hubs.get(hubId);
-			const node = this.containers.get(nodeId);
+			const parsed = parseLineId(lineId);
+			if (!parsed) continue;
+			const hub = this.hubs.get(parsed.hubId);
+			const node = this.containers.get(parsed.nodeId);
 			if (hub && node) line.setEndpoints(hub.position, node.position);
 		}
 	}
@@ -250,7 +367,7 @@ export class Topology {
 		}
 	}
 
-	// ---- Focus API (Phase 2) ----
+	// ---- Focus API ----
 
 	focusContainer(id: string): void {
 		const node = this.containers.get(id);
@@ -259,7 +376,7 @@ export class Topology {
 		this.animator?.fitSphere(node.position, 18);
 	}
 
-	focusHub(id: string, _type: 'stack' | 'network' | 'volume'): void {
+	focusHub(id: string, _type: HubType): void {
 		const hub = this.hubs.get(id);
 		if (!hub) return;
 		const related = new Set<string>([hub.id, ...hub.memberIds]);
@@ -285,10 +402,6 @@ export class Topology {
 		this.pinner.clear();
 		this.layout.unpinAll();
 		this.layout.clearFocus();
-		// Full-alpha reheat so scattered nodes get pulled back to the
-		// center force instead of lingering at their old positions —
-		// restores the "everything clustered at origin" initial feel
-		// (req #9, user-reported).
 		this.layout.reheat(1.0);
 		this.animator?.resetCamera();
 	}
@@ -297,8 +410,6 @@ export class Topology {
 		if (!this.layout) return;
 		this.activeFocusId = focusId;
 
-		// Release pins on nodes that are now *back* in the related set —
-		// they should re-gather toward the new focus (req #10, second half).
 		for (const id of this.pinner.snapshot()) {
 			if (related.has(id)) {
 				this.pinner.unpin(id);
@@ -306,12 +417,6 @@ export class Topology {
 			}
 		}
 
-		// Freeze related nodes at their click-time position and keep
-		// them frozen — unpinning after the tween (as earlier revisions
-		// did) lets link/collide/center forces nudge the target away,
-		// which leaves the camera aimed at empty space. Track them in
-		// the pinner so req #10's "don't move scattered nodes" rule
-		// treats them uniformly and resetFocus() unpins everything.
 		for (const id of related) {
 			if (this.layout.hasNode(id)) {
 				this.layout.pin(id);
@@ -326,7 +431,6 @@ export class Topology {
 
 		this.scatterPinTimer = setTimeout(() => {
 			this.scatterPinTimer = null;
-			// Only pin if the user hasn't moved on to a different focus.
 			if (this.activeFocusId !== capturedFocusId) return;
 			if (!this.layout) return;
 			for (const id of this.containers.keys()) {
@@ -338,10 +442,49 @@ export class Topology {
 		}, SCATTER_PIN_DELAY_MS);
 	}
 
-	// ---- Phase 3 placeholder ----
+	// ---- Visibility API (Phase 3) ----
 
-	setHubVisibility(_type: 'stack' | 'network' | 'volume', _visible: boolean): void {
-		/* Phase 3 */
+	setHubVisibility(type: HubType, visible: boolean): void {
+		if (this.hubVisibility[type] === visible) return;
+		this.hubVisibility[type] = visible;
+		this.applyVisibility();
+		// Lines / hubs just turned visible need their links reflected
+		// in the layout so force positions work; recompute links.
+		this.rebuildLayoutLinks();
+	}
+
+	private applyVisibility(): void {
+		for (const hub of this.hubs.values()) {
+			hub.object.visible = this.hubVisibility[hub.hubType];
+		}
+		for (const [lineId, line] of this.lines) {
+			const parsed = parseLineId(lineId);
+			if (!parsed) continue;
+			line.object.visible = this.hubVisibility[parsed.kind as HubType];
+		}
+	}
+
+	private rebuildLayoutLinks(): void {
+		if (!this.layout) return;
+		const visibleHubs = Array.from(this.hubs.values()).filter(
+			(h) => this.hubVisibility[h.hubType]
+		);
+		const entities: LayoutEntityRef[] = [
+			...visibleHubs.map((h) => ({ id: h.id, position: h.position })),
+			...Array.from(this.containers.values()).map((n) => ({ id: n.id, position: n.position })),
+		];
+		const links: LayoutLink[] = [];
+		for (const hub of visibleHubs) {
+			for (const memberId of hub.memberIds) {
+				if (this.containers.has(memberId)) {
+					links.push({ source: hub.id, target: memberId });
+				}
+			}
+		}
+		this.layout.setData(entities, links);
+		for (const id of this.pinner.snapshot()) {
+			if (this.layout.hasNode(id)) this.layout.pin(id);
+		}
 	}
 
 	dispose(): void {
