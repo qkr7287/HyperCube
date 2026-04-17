@@ -93,21 +93,21 @@
 						<span class="pill-label">총 프로세스</span>
 						<span class="pill-value">{data.totalProcesses ?? 0}<small>개</small></span>
 					</div>
-					{#if topCpu}
+					{#if topCpu && (topCpu.cpu ?? 0) > 0}
 						<div class="stat-pill" title={topCpu.command || topCpu.name}>
 							<span class="pill-label">Top CPU</span>
 							<span class="pill-value">
 								<span class="pill-name">{topCpu.name}</span>
-								<small class="pill-metric">{(topCpu.cpu ?? 0).toFixed(1)}%</small>
+								<small class="pill-metric">{(topCpu.cpu).toFixed(1)}%</small>
 							</span>
 						</div>
 					{/if}
-					{#if topMem}
+					{#if topMem && (topMem.memoryMB ?? 0) > 0}
 						<div class="stat-pill" title={topMem.command || topMem.name}>
 							<span class="pill-label">Top Memory</span>
 							<span class="pill-value">
 								<span class="pill-name">{topMem.name}</span>
-								<small class="pill-metric">{formatMem(topMem.memoryMB ?? 0)}</small>
+								<small class="pill-metric">{formatMem(topMem.memoryMB)}</small>
 							</span>
 						</div>
 					{/if}
