@@ -20,6 +20,7 @@
 	import MemoryDetailModal from '$lib/components/MemoryDetailModal.svelte';
 	import DiskDetailModal from '$lib/components/DiskDetailModal.svelte';
 	import logoHypercube from '$lib/assets/logo_hypercube.png';
+	import { resolveGroup, groupContainersByStack } from '$lib/utils/container-grouping';
 
 	interface Container {
 		id: string;
@@ -206,9 +207,8 @@
 
 	function openContainerDetail(container: Container) {
 		selectedContainer = container;
-		const rawProject = container.labels?.['com.docker.compose.project'] || 'default';
-		const projectName = extractProjectPrefix(rawProject);
-		updateGraphForProject(projectName);
+		const group = resolveGroup(container);
+		updateGraphForProject(group.name);
 	}
 
 	function closeContainerDetail() {
@@ -216,33 +216,8 @@
 	}
 
 
-	function extractProjectPrefix(name: string): string {
-		const parts = name.split(/[-_]/);
-		if (parts.length > 1 && parts[0].length >= 2) return parts[0];
-		return name;
-	}
-
 	function groupContainers(containerList: Container[]) {
-		const projectMap = new Map<string, Container[]>();
-
-		containerList.forEach(container => {
-			const rawProject = container.labels?.['com.docker.compose.project'] || 'default';
-			const projectName = extractProjectPrefix(rawProject);
-			if (!projectMap.has(projectName)) projectMap.set(projectName, []);
-			projectMap.get(projectName)!.push(container);
-		});
-
-		projects = Array.from(projectMap.entries()).map(([name, ctrs], i) => ({
-			name,
-			containers: ctrs,
-			color: projectColors[i % projectColors.length],
-			stats: {
-				total: ctrs.length,
-				running: ctrs.filter(c => c.state === 'running').length,
-				stopped: ctrs.filter(c => c.state === 'exited').length,
-				paused: ctrs.filter(c => c.state === 'paused').length,
-			}
-		})).sort((a, b) => a.name.localeCompare(b.name));
+		projects = groupContainersByStack(containerList, projectColors) as Project[];
 	}
 
 	function getContainerDisplayName(container: Container): string {
