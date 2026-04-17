@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Disposer } from './core/Disposer';
 import { RenderLoop } from './core/RenderLoop';
 import { SceneManager } from './core/SceneManager';
+import { Starfield } from './core/Starfield';
 import { ContainerNode } from './entities/ContainerNode';
 import { Hub } from './entities/Hub';
 import { NetworkHub, networkColorFor } from './hubs/NetworkHub';
@@ -79,6 +80,7 @@ export class Topology {
 	private layout: ForceLayout | null = null;
 	private animator: CameraAnimator | null = null;
 	private raycaster: Raycaster | null = null;
+	private starfield: Starfield | null = null;
 	private readonly pinner = new NodePinner();
 	private readonly disposer = new Disposer();
 
@@ -122,11 +124,14 @@ export class Topology {
 		this.loop = new RenderLoop();
 		this.animator = new CameraAnimator(scene.camera, scene.controls);
 		this.raycaster = new Raycaster();
+		this.starfield = new Starfield();
+		scene.scene.add(this.starfield.object);
 
 		this.update(data);
 
-		this.detachTick = this.loop.add(() => {
+		this.detachTick = this.loop.add((dt) => {
 			this.layout?.tick();
+			this.starfield?.tick(dt);
 			this.syncEntityPositions();
 			this.syncLinePositions();
 			this.animator?.tick();
@@ -527,6 +532,10 @@ export class Topology {
 				this.scene.scene.remove(l.object);
 				l.dispose();
 			}
+			if (this.starfield) {
+				this.scene.scene.remove(this.starfield.object);
+				this.starfield.dispose();
+			}
 			const toRemove: THREE.Object3D[] = [];
 			this.scene.scene.traverse((o) => {
 				if (o.type.includes('Light')) toRemove.push(o);
@@ -544,6 +553,7 @@ export class Topology {
 		this.layout = null;
 		this.animator = null;
 		this.raycaster = null;
+		this.starfield = null;
 		this.host = null;
 		this.activeFocusId = null;
 	}
