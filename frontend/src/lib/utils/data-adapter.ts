@@ -153,6 +153,8 @@ export interface ContainerInfo {
 	labels: Record<string, string>;
 	ports?: any;
 	created?: number;
+	networks?: string[];
+	mounts?: { name: string; type: 'volume' }[];
 }
 
 export function transformContainers(msg: any): ContainerInfo[] {
@@ -169,6 +171,8 @@ export function transformContainers(msg: any): ContainerInfo[] {
 		labels: c.labels ?? {},
 		ports: c.ports,
 		created: c.created,
+		networks: Array.isArray(c.networks) ? c.networks : undefined,
+		mounts: Array.isArray(c.mounts) ? c.mounts : undefined,
 	}));
 }
 

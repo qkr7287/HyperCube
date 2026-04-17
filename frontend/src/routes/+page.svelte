@@ -31,6 +31,8 @@
 		state: string;
 		status: string;
 		labels: any;
+		networks?: string[];
+		mounts?: { name: string; type: 'volume' }[];
 	}
 
 	interface Project {
@@ -92,6 +94,8 @@
 		name: c.names?.[0]?.replace('/', '') || c.shortId,
 		state: c.state,
 		stack: resolveGroup(c).name,
+		networks: c.networks,
+		mounts: c.mounts,
 	}));
 
 	// TopologyCanvas exposes resetFocus/focusContainer/focusHub as

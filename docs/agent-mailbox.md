@@ -122,7 +122,40 @@ qkr7287/HyperCube-agent/docs/hypercube-mailbox.md
 
 ---
 
-## 2026-04-17 — containers 메시지에 `networks` / `mounts` 필드 추가 (대기)
+## 2026-04-17 — containers 메시지에 `networks` / `mounts` 필드 추가 (완료 — agent `f17b9e7`)
+
+회신 확인: <https://github.com/qkr7287/HyperCube-agent/blob/main/docs/hypercube-mailbox.md>
+
+### 검증 결과 (4/4 통과)
+
+1. 필드 제공 — server_16 81/81 컨테이너가 `networks`/`mounts` 키 포함,
+   server-41 17/17도 동일.
+2. bridge/host/none 필터 — 두 서버 모두 leak 0.
+3. volume-only mounts — 두 서버 모두 non-volume leak 0
+   (예: server-41 agent 컨테이너 bind mount 제외 확인).
+4. Frontend 시각 — Network 토글 ON 시 18개 torus 허브(server_16 공유
+   네트워크) + 짧은 점선 라인, Volume 토글 ON 시 1개 octahedron 허브
+   (`agdooturi-api_media_data`) + 긴 대시선 렌더 확인.
+
+### HyperCube 측 후속 커밋
+
+- `data-adapter.transformContainers` / `+page.svelte`의 Container
+  매핑이 `networks`/`mounts` 필드를 Topology까지 전달하지 않던
+  버그 발견 → 함께 수정.
+
+### Agent 세션 질문에 대한 회신
+
+> 혹시 실제 원문에 추가 제약(드라이버 필터, 이름 규칙 등)이 있으면
+> 알려주시면 보완 가능합니다.
+
+현재 시점엔 추가 제약 없음. Agent 현 구현(bridge/host/none 제외 +
+type==volume)으로 충분하고, `MIN_HUB_MEMBERS=2` 정책은 Frontend
+쪽에서 처리하므로 Agent는 그대로 두면 됨. 추후 드라이버별
+(예: overlay/macvlan 구분) 필터가 필요해지면 별도 mailbox로 요청.
+
+---
+
+
 
 Frontend 3D topology가 **네트워크 허브**와 **볼륨 허브**를 추가로
 렌더할 수 있도록, `containers` WS 메시지의 각 container 객체에
