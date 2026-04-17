@@ -14,6 +14,11 @@ export abstract class Connection {
 		this.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
 		this.material = material;
 		this.object = new THREE.Line(this.geometry, material);
+		// Lines must never be pickable — only containers and hubs can be
+		// clicked. Without this, a line in front of a distant hub can
+		// absorb the ray and the picker falls through to an unrelated
+		// node behind it.
+		this.object.raycast = () => {};
 	}
 
 	setEndpoints(a: THREE.Vector3, b: THREE.Vector3): void {

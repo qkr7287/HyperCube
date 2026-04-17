@@ -46,6 +46,10 @@ function stackColorFor(stackName: string, sortedNames: readonly string[]): numbe
 // freeze their position (req #10).
 const SCATTER_PIN_DELAY_MS = 1500;
 
+// Camera tween duration (must match CameraAnimator.fitSphere default
+// so related-node freeze ends exactly when the camera lands).
+const CAMERA_TWEEN_MS = 900;
+
 // When a focus is active and the user dollies the camera far enough
 // back that the focused region no longer fills the viewport, treat
 // that zoom-out as an implicit reset (req #9).
@@ -326,10 +330,31 @@ export class Topology {
 			}
 		}
 
+		// Freeze related nodes at their current positions for the camera
+		// tween so the target the animator lerps toward isn't drifting
+		// while the sim continues. Without this freeze, the user sees
+		// the scene settle next to the hub instead of on it.
+		for (const id of related) {
+			if (this.layout.hasNode(id)) this.layout.pin(id);
+		}
+
 		this.layout.setFocus(related, { x: center.x, y: center.y, z: center.z });
 
 		if (this.scatterPinTimer) clearTimeout(this.scatterPinTimer);
 		const capturedFocusId = focusId;
+
+		// After the camera lands, release the related freeze so the
+		// gather force can pull them into the focus cluster.
+		setTimeout(() => {
+			if (this.activeFocusId !== capturedFocusId) return;
+			if (!this.layout) return;
+			for (const id of related) {
+				// Don't unpin ids that were already permanently scattered.
+				if (this.pinner.isPinned(id)) continue;
+				this.layout.unpin(id);
+			}
+		}, CAMERA_TWEEN_MS);
+
 		this.scatterPinTimer = setTimeout(() => {
 			this.scatterPinTimer = null;
 			// Only pin if the user hasn't moved on to a different focus.
