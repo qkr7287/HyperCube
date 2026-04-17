@@ -244,7 +244,10 @@
 
 	function openContainerDetail(container: Container) {
 		selectedContainer = container;
-		// Phase 4 will also call topology.focusContainer(container.id).
+		// Phase 4 — also focus that container in the 3D scene
+		// (req #15: LIST-detail / group-card-member click should
+		// drive the topology).
+		topologyCanvas?.focusContainer?.(container.id);
 	}
 
 	function closeContainerDetail() {
@@ -253,7 +256,14 @@
 
 	function onProjectSelect(name: string | null) {
 		selectedProject = name;
-		// Phase 4 will also call topology.focusHub() / resetFocus().
+		// Phase 4 — group card click mirrors clicking the stack hub
+		// in 3D. Deselect (null) returns the scene to its initial
+		// clustered state.
+		if (name) {
+			topologyCanvas?.focusHub?.(`stack:${name}`, 'stack');
+		} else {
+			topologyCanvas?.resetFocus?.();
+		}
 	}
 
 	function groupContainers(containerList: Container[]) {
@@ -507,6 +517,7 @@
 		top: 56px;
 		left: 24px;
 		flex-direction: column;
+		align-items: flex-start;
 		gap: 8px;
 		padding: 10px 12px;
 		background: rgba(13, 17, 23, 0.55);
@@ -517,9 +528,11 @@
 	}
 
 	.hub-toggle {
-		display: flex;
+		display: grid;
+		grid-template-columns: 14px 8px auto;
 		align-items: center;
 		gap: 8px;
+		justify-content: flex-start;
 		font-size: 12px;
 		font-weight: 600;
 		color: var(--text-secondary);
