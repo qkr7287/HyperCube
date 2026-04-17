@@ -3,6 +3,7 @@ import {
 	forceCollide,
 	forceLink,
 	forceManyBody,
+	forceRadial,
 	forceSimulation,
 	type LinkForce,
 	type Simulation,
@@ -112,5 +113,38 @@ export class ForceLayout {
 			n.fy = null;
 			n.fz = null;
 		}
+	}
+
+	hasNode(id: string): boolean {
+		return this.nodes.has(id);
+	}
+
+	getPosition(id: string): { x: number; y: number; z: number } | null {
+		const n = this.nodes.get(id);
+		if (!n) return null;
+		return { x: n.x ?? 0, y: n.y ?? 0, z: n.z ?? 0 };
+	}
+
+	/**
+	 * Install focus forces: related ids gather toward center, unrelated
+	 * ids are pushed to a shell well outside the cluster. Pinned nodes
+	 * are unaffected (their positions are already frozen via fx/fy/fz).
+	 */
+	setFocus(related: ReadonlySet<string>, center: { x: number; y: number; z: number }): void {
+		const gather = forceRadial(0, center.x, center.y, center.z).strength((n: SimulationNode) =>
+			related.has(n.id) ? 0.35 : 0
+		);
+		const scatter = forceRadial(450, center.x, center.y, center.z).strength((n: SimulationNode) =>
+			related.has(n.id) ? 0 : 0.09
+		);
+		this.sim.force('focusGather', gather);
+		this.sim.force('focusScatter', scatter);
+		this.sim.alpha(0.85).restart();
+	}
+
+	clearFocus(): void {
+		this.sim.force('focusGather', null);
+		this.sim.force('focusScatter', null);
+		this.sim.alpha(0.6).restart();
 	}
 }

@@ -1,9 +1,11 @@
-/**
- * Active-focus layout: related nodes gather, unrelated ones push outward.
- * Cooperates with NodePinner so already-scattered nodes stay put.
- * Phase 2.
- */
+import type * as THREE from 'three';
 
-export class FocusState {
-	// Phase 2 implementation
+/**
+ * Active focus — the entities that should gather near a target point
+ * and (implicitly) everything else that should scatter away.
+ */
+export interface FocusDescriptor {
+	readonly focusId: string;
+	readonly related: ReadonlySet<string>;
+	readonly center: THREE.Vector3;
 }

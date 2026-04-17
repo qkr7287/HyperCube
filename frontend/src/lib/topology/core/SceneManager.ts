@@ -54,6 +54,15 @@ export class SceneManager {
 	dispose(): void {
 		this.resizeObserver.disconnect();
 		this.controls.dispose();
+		// Force the WebGL context to release before the renderer and canvas
+		// go away. Without this, repeated server switches can leave GPU
+		// contexts alive until GC and eventually exhaust the browser's
+		// fixed WebGL context budget.
+		try {
+			this.renderer.forceContextLoss();
+		} catch {
+			/* some drivers throw on dead contexts — safe to ignore */
+		}
 		this.renderer.dispose();
 		if (this.renderer.domElement.parentElement === this.host) {
 			this.host.removeChild(this.renderer.domElement);

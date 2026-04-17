@@ -3,8 +3,14 @@ import { Disposer } from './core/Disposer';
 import { RenderLoop } from './core/RenderLoop';
 import { SceneManager } from './core/SceneManager';
 import { ContainerNode } from './entities/ContainerNode';
+import type { Entity } from './entities/Entity';
+import { Hub } from './entities/Hub';
 import { StackHub } from './hubs/StackHub';
+import { CameraAnimator } from './interaction/CameraAnimator';
+import { InputController } from './interaction/InputController';
+import { Raycaster } from './interaction/Raycaster';
 import { ForceLayout, type LayoutEntityRef, type LayoutLink } from './layout/ForceLayout';
+import { NodePinner } from './layout/NodePinner';
 import { StackLine } from './lines/StackLine';
 
 export interface TopologyContainerData {
@@ -37,28 +43,37 @@ function stackColorFor(stackName: string, sortedNames: readonly string[]): numbe
 	return STACK_COLORS[Math.max(idx, 0) % STACK_COLORS.length];
 }
 
-/**
- * Facade over the topology. Svelte components instantiate this,
- * mount it into a host element, feed it data with update(), and
- * dispose() on teardown.
- *
- * Phase 1 scope: stack hub + stack line + force layout. Focus /
- * pin / network / volume / sidebar events land in later phases.
- */
+// Delay before newly-scattered unrelated nodes get pinned in place.
+// The layout needs a moment to actually push them outward before we
+// freeze their position (req #10).
+const SCATTER_PIN_DELAY_MS = 1500;
+
 export class Topology {
 	private scene: SceneManager | null = null;
 	private loop: RenderLoop | null = null;
 	private layout: ForceLayout | null = null;
+	private animator: CameraAnimator | null = null;
+	private raycaster: Raycaster | null = null;
+	private input: InputController | null = null;
+	private readonly pinner = new NodePinner();
 	private readonly disposer = new Disposer();
 
 	private readonly containers: Map<string, ContainerNode> = new Map();
-	private readonly hubs: Map<string, StackHub> = new Map();
+	private readonly hubs: Map<string, Hub> = new Map();
 	private readonly lines: Map<string, StackLine> = new Map();
 
+	private host: HTMLElement | null = null;
+	private callbacks: TopologyCallbacks = {};
 	private detachTick: (() => void) | null = null;
+	private detachClick: (() => void) | null = null;
+	private scatterPinTimer: ReturnType<typeof setTimeout> | null = null;
+	private activeFocusId: string | null = null;
 
-	mount(host: HTMLElement, data: TopologyData, _cb?: TopologyCallbacks): void {
+	mount(host: HTMLElement, data: TopologyData, cb?: TopologyCallbacks): void {
 		if (this.scene) throw new Error('Topology.mount: already mounted');
+
+		this.host = host;
+		this.callbacks = cb ?? {};
 
 		const scene = new SceneManager(host);
 		scene.scene.add(new THREE.AmbientLight(0xffffff, 0.55));
@@ -72,6 +87,10 @@ export class Topology {
 		this.scene = scene;
 		this.layout = new ForceLayout();
 		this.loop = new RenderLoop();
+		this.animator = new CameraAnimator(scene.camera, scene.controls);
+		this.raycaster = new Raycaster();
+		this.input = new InputController();
+		this.input.attach(() => this.resetFocus());
 
 		this.update(data);
 
@@ -79,9 +98,14 @@ export class Topology {
 			this.layout?.tick();
 			this.syncEntityPositions();
 			this.syncLinePositions();
+			this.animator?.tick();
 			this.scene?.render();
 		});
 		this.loop.start();
+
+		const onClick = (e: MouseEvent) => this.handlePointerClick(e);
+		host.addEventListener('click', onClick);
+		this.detachClick = () => host.removeEventListener('click', onClick);
 	}
 
 	update(data: TopologyData): void {
@@ -101,7 +125,7 @@ export class Topology {
 			seenHubs.add(hubId);
 			const color = stackColorFor(stack, sortedStacks);
 			const existing = this.hubs.get(hubId);
-			if (existing) {
+			if (existing && existing instanceof StackHub) {
 				existing.update({ name: stack, color });
 				existing.clearMembers();
 			} else {
@@ -116,8 +140,7 @@ export class Topology {
 			const stack = c.stack || 'Unmanaged';
 			seenContainers.add(c.id);
 			const hubId = `stack:${stack}`;
-			const hub = this.hubs.get(hubId);
-			hub?.addMember(c.id);
+			this.hubs.get(hubId)?.addMember(c.id);
 
 			const existing = this.containers.get(c.id);
 			if (existing) {
@@ -137,7 +160,7 @@ export class Topology {
 			seenLines.add(lineId);
 			if (!this.lines.has(lineId)) {
 				const hub = this.hubs.get(hubId);
-				if (!hub) continue;
+				if (!(hub instanceof StackHub)) continue;
 				const line = new StackLine(hub.color);
 				this.lines.set(lineId, line);
 				this.scene.scene.add(line.object);
@@ -168,6 +191,13 @@ export class Topology {
 			target: c.id,
 		}));
 		this.layout.setData(entities, links);
+
+		// Re-pin anything the pinner still remembers (node objects are
+		// recreated across server switches, but pin ids may persist).
+		for (const id of this.pinner.snapshot()) {
+			if (this.layout.hasNode(id)) this.layout.pin(id);
+			else this.pinner.unpin(id);
+		}
 	}
 
 	private pruneStale<T>(
@@ -199,27 +229,113 @@ export class Topology {
 		}
 	}
 
-	// Phase 2 hooks — currently no-ops.
-	focusContainer(_id: string): void {
-		/* Phase 2 */
-	}
-	focusHub(_id: string, _type: 'stack' | 'network' | 'volume'): void {
-		/* Phase 2 */
-	}
-	resetFocus(): void {
-		/* Phase 2 */
+	// ---- Click dispatch ----
+
+	private handlePointerClick(event: MouseEvent): void {
+		if (!this.scene || !this.raycaster || !this.host) return;
+		const hit = this.raycaster.pickAt(event, this.host, this.scene.camera, this.scene.scene);
+		if (!hit) return;
+		if (hit instanceof ContainerNode) {
+			this.focusContainer(hit.id);
+			this.callbacks.onContainerClick?.(hit.id);
+			return;
+		}
+		if (hit instanceof Hub) {
+			this.focusHub(hit.id, hit.hubType);
+			this.callbacks.onHubClick?.(hit.id, hit.hubType);
+		}
 	}
 
-	// Phase 3 hook — currently no-op.
+	// ---- Focus API (Phase 2) ----
+
+	focusContainer(id: string): void {
+		const node = this.containers.get(id);
+		if (!node) return;
+		this.applyFocus(id, new Set([id]), node.position);
+		this.animator?.fitSphere(node.position, 18);
+	}
+
+	focusHub(id: string, _type: 'stack' | 'network' | 'volume'): void {
+		const hub = this.hubs.get(id);
+		if (!hub) return;
+		const related = new Set<string>([hub.id, ...hub.memberIds]);
+		const center = hub.position.clone();
+		let maxDist = 0;
+		for (const mid of hub.memberIds) {
+			const n = this.containers.get(mid);
+			if (!n) continue;
+			const d = n.position.distanceTo(center);
+			if (d > maxDist) maxDist = d;
+		}
+		this.applyFocus(id, related, center);
+		this.animator?.fitSphere(center, maxDist + 25);
+	}
+
+	resetFocus(): void {
+		if (!this.layout) return;
+		if (this.scatterPinTimer) {
+			clearTimeout(this.scatterPinTimer);
+			this.scatterPinTimer = null;
+		}
+		this.activeFocusId = null;
+		this.pinner.clear();
+		this.layout.unpinAll();
+		this.layout.clearFocus();
+		this.animator?.resetCamera();
+	}
+
+	private applyFocus(focusId: string, related: ReadonlySet<string>, center: THREE.Vector3): void {
+		if (!this.layout) return;
+		this.activeFocusId = focusId;
+
+		// Release pins on nodes that are now *back* in the related set —
+		// they should re-gather toward the new focus (req #10, second half).
+		for (const id of this.pinner.snapshot()) {
+			if (related.has(id)) {
+				this.pinner.unpin(id);
+				this.layout.unpin(id);
+			}
+		}
+
+		this.layout.setFocus(related, { x: center.x, y: center.y, z: center.z });
+
+		if (this.scatterPinTimer) clearTimeout(this.scatterPinTimer);
+		const capturedFocusId = focusId;
+		this.scatterPinTimer = setTimeout(() => {
+			this.scatterPinTimer = null;
+			// Only pin if the user hasn't moved on to a different focus.
+			if (this.activeFocusId !== capturedFocusId) return;
+			if (!this.layout) return;
+			for (const id of this.containers.keys()) {
+				if (related.has(id)) continue;
+				if (this.pinner.isPinned(id)) continue;
+				this.pinner.pin(id);
+				this.layout.pin(id);
+			}
+		}, SCATTER_PIN_DELAY_MS);
+	}
+
+	// ---- Phase 3 placeholder ----
+
 	setHubVisibility(_type: 'stack' | 'network' | 'volume', _visible: boolean): void {
 		/* Phase 3 */
 	}
 
 	dispose(): void {
+		if (this.scatterPinTimer) {
+			clearTimeout(this.scatterPinTimer);
+			this.scatterPinTimer = null;
+		}
+		if (this.detachClick) {
+			this.detachClick();
+			this.detachClick = null;
+		}
 		if (this.detachTick) {
 			this.detachTick();
 			this.detachTick = null;
 		}
+		this.input?.detach();
+		this.animator?.cancel();
 		this.loop?.stop();
 		this.layout?.stop();
 
@@ -236,7 +352,6 @@ export class Topology {
 				this.scene.scene.remove(l.object);
 				l.dispose();
 			}
-			// Clear ambient/directional lights and anything else we added.
 			const toRemove: THREE.Object3D[] = [];
 			this.scene.scene.traverse((o) => {
 				if (o.type.includes('Light')) toRemove.push(o);
@@ -248,8 +363,14 @@ export class Topology {
 		this.containers.clear();
 		this.hubs.clear();
 		this.lines.clear();
+		this.pinner.clear();
 		this.scene = null;
 		this.loop = null;
 		this.layout = null;
+		this.animator = null;
+		this.raycaster = null;
+		this.input = null;
+		this.host = null;
+		this.activeFocusId = null;
 	}
 }

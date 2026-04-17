@@ -71,4 +71,13 @@ declare module 'd3-force-3d' {
 		iterations(v: number): this;
 	}
 	export function forceCollide(radius?: number | ((n: SimulationNode) => number)): CollideForce;
+
+	export interface RadialForce extends Force {
+		radius(v: number | ((n: SimulationNode) => number)): this;
+		strength(v: number | ((n: SimulationNode) => number)): this;
+		x(v: number): this;
+		y(v: number): this;
+		z(v: number): this;
+	}
+	export function forceRadial(radius: number, x?: number, y?: number, z?: number): RadialForce;
 }
