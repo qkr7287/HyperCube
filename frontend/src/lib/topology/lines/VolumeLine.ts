@@ -212,15 +212,30 @@ export class VolumeLine extends Connection {
 		// pulseTime is private in base — reconstruct a monotonically
 		// increasing clock from perf.now() instead of reaching in.
 		const pulseTime = performance.now() * 0.001;
+		// Spine comes from the base Connection geometry so the strands
+		// follow the same gentle arc that stack / network lines use when
+		// curvedLines is enabled. Fallback to straight a→b when the base
+		// buffer hasn't been populated yet.
+		const baseAttr = this.geometry.attributes.position as THREE.BufferAttribute;
+		const spineReady = baseAttr && baseAttr.count >= SEGMENTS + 1;
 
 		for (let s = 0; s < count; s += 1) {
 			const strand = this.strands[s];
 			const posAttr = strand.geometry.attributes.position as THREE.BufferAttribute;
 			for (let i = 0; i <= SEGMENTS; i += 1) {
 				const t = i / SEGMENTS;
-				const baseX = a.x + (b.x - a.x) * t;
-				const baseY = a.y + (b.y - a.y) * t;
-				const baseZ = a.z + (b.z - a.z) * t;
+				let baseX: number;
+				let baseY: number;
+				let baseZ: number;
+				if (spineReady) {
+					baseX = baseAttr.getX(i);
+					baseY = baseAttr.getY(i);
+					baseZ = baseAttr.getZ(i);
+				} else {
+					baseX = a.x + (b.x - a.x) * t;
+					baseY = a.y + (b.y - a.y) * t;
+					baseZ = a.z + (b.z - a.z) * t;
+				}
 				const { n, a: aOff } = offsetFn(t, s, count, pulseTime, preset);
 				posAttr.setXYZ(
 					i,

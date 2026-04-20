@@ -62,10 +62,13 @@ export interface TopologyCallbacks {
 }
 
 // Stack palette — stable mapping across renders, indexed by sorted name.
+// Teal/cyan/emerald are reserved for container state + network tunnels,
+// so those hues are deliberately absent from this palette to keep group
+// membranes visually distinct from the network layer.
 const STACK_COLORS: readonly number[] = [
-	0x30d5c8, 0xfbbf24, 0xf472b6, 0x60a5fa, 0xa78bfa,
-	0x4ade80, 0xfb923c, 0xf87171, 0x2dd4bf, 0xeab308,
-	0xc084fc, 0x38bdf8, 0x34d399, 0xfacc15, 0xfb7185,
+	0xfbbf24, 0xf472b6, 0x60a5fa, 0xa78bfa, 0xfb923c,
+	0xf87171, 0xeab308, 0xc084fc, 0xfacc15, 0xfb7185,
+	0xd4a574, 0x8e24aa, 0xef5350, 0xba68c8, 0xff9100,
 ];
 
 function stackColorFor(

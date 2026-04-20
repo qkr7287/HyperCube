@@ -20,7 +20,7 @@ export class NetworkLine extends Connection {
 		// so traffic reads clearly, shape+orientation signal flow. The
 		// capsule is rotated per-frame to the line tangent in screen
 		// space (see Connection.enablePackets).
-		this.enablePackets(0xa3e635, 14, 0.4, 4);
+		this.enablePackets(0xa3e635, 16, 0.45, 7);
 		this.enableTunnelVisual(color, 2.1);
 	}
 }

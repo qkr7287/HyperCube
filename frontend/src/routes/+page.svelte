@@ -56,9 +56,12 @@
 		uptime?: number;
 	}
 
+	// Teal/cyan family is reserved for running containers + network
+	// tunnels, so it's intentionally excluded from the group palette to
+	// keep group membranes visually distinct from network state.
 	const projectColors = [
-		'#4fc3f7', '#ff7043', '#66bb6a', '#ffa726', '#ab47bc',
-		'#26c6da', '#ef5350', '#5c6bc0', '#ffca28', '#ec407a'
+		'#d4a574', '#ff7043', '#66bb6a', '#ffa726', '#ab47bc',
+		'#8e24aa', '#ef5350', '#5c6bc0', '#ffca28', '#ec407a'
 	];
 
 	let containers: Container[] = [];

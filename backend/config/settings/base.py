@@ -120,9 +120,16 @@ REST_FRAMEWORK = {
 }
 
 # Simple JWT
+# Expiration is effectively disabled during development by setting very
+# long lifetimes. Original production values are preserved below for
+# easy restoration — swap the active block back when re-enabling.
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    # --- Expiration disabled (dev) ---
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=365 * 10),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=365 * 10),
+    # --- Production values (re-enable by swapping the two lines above) ---
+    # "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
+    # "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "TOKEN_OBTAIN_SERIALIZER": "apps.users.token_serializers.CustomTokenObtainPairSerializer",

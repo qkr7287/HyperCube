@@ -104,10 +104,10 @@ const TUNNEL_PRESETS: Record<TunnelStyle, TunnelPreset> = {
 		stripeSpeed: 0.5,
 		// Traffic needs to pop against the fuchsia tunnel body, so
 		// packets are bigger, more numerous and brighter than before.
-		packetOpacity: 0.95,
-		packetCount: 3,
-		packetSpacing: 0.34,
-		packetSizeMul: 1.3,
+		packetOpacity: 0.98,
+		packetCount: 5,
+		packetSpacing: 0.3,
+		packetSizeMul: 1.35,
 		radiusMul: 1.08,
 		stripeRadiusMul: 1.0,
 	},
@@ -267,8 +267,7 @@ function makeStripeTexture(): THREE.CanvasTexture {
 }
 
 function makeCapsuleTexture(): THREE.CanvasTexture {
-	// Short pill shape with a tight halo. Tinted at draw time by
-	// SpriteMaterial.color so one shared texture covers every packet.
+	// Short pill shape tinted at draw time by SpriteMaterial.color.
 	// Oriented along +x so `SpriteMaterial.rotation = screen-space tangent
 	// angle` lines the capsule up with the underlying line direction.
 	const canvas = document.createElement('canvas');
@@ -281,22 +280,22 @@ function makeCapsuleTexture(): THREE.CanvasTexture {
 
 	ctx.clearRect(0, 0, 64, 32);
 
-	// Tight halo — small radius and low alpha so the capsule doesn't
-	// bleed into the tunnel body (previous halo was twice as wide and
-	// ~2x brighter, which looked hazy).
-	const halo = ctx.createRadialGradient(32, 16, 2, 32, 16, 12);
-	halo.addColorStop(0, 'rgba(255,255,255,0.12)');
-	halo.addColorStop(0.5, 'rgba(255,255,255,0.026)');
+	// Halo: slightly wider + brighter than the prior tight version so
+	// packets pop against the fuchsia tunnel without looking hazy.
+	const halo = ctx.createRadialGradient(32, 16, 2, 32, 16, 14);
+	halo.addColorStop(0, 'rgba(255,255,255,0.18)');
+	halo.addColorStop(0.55, 'rgba(255,255,255,0.05)');
 	halo.addColorStop(1, 'rgba(255,255,255,0)');
 	ctx.fillStyle = halo;
 	ctx.fillRect(0, 0, 64, 32);
 
-	// Body — shorter pill: straight section between two rounded caps.
-	const x = 24;
+	// Body — pill with dual-tone highlight gradient for a slightly
+	// liquid, metallic read.
+	const x = 22;
 	const y = 10;
-	const w = 16;
+	const w = 20;
 	const h = 12;
-	const r = 6;
+	const r = h * 0.5;
 	ctx.beginPath();
 	ctx.moveTo(x + r, y);
 	ctx.arcTo(x + w, y, x + w, y + h, r);
@@ -306,9 +305,10 @@ function makeCapsuleTexture(): THREE.CanvasTexture {
 	ctx.closePath();
 
 	const body = ctx.createLinearGradient(0, y, 0, y + h);
-	body.addColorStop(0, 'rgba(255,255,255,0.95)');
-	body.addColorStop(0.5, 'rgba(255,255,255,1)');
-	body.addColorStop(1, 'rgba(255,255,255,0.95)');
+	body.addColorStop(0, 'rgba(220,255,255,0.97)');
+	body.addColorStop(0.45, 'rgba(255,255,255,1)');
+	body.addColorStop(0.55, 'rgba(255,255,255,1)');
+	body.addColorStop(1, 'rgba(180,250,255,0.95)');
 	ctx.fillStyle = body;
 	ctx.fill();
 
@@ -409,10 +409,10 @@ export abstract class Connection {
 		// Short pill: width:height ≈ 1.7:1. Roughly 1/4 of the previous
 		// elongated streak so packets read as individual capsules rather
 		// than long bars.
-		const coreW = size * 0.16;
-		const coreH = size * 0.18;
-		const glowW = size * 0.22;
-		const glowH = size * 0.26;
+		const coreW = size * 0.24;
+		const coreH = size * 0.26;
+		const glowW = size * 0.34;
+		const glowH = size * 0.38;
 		for (let i = 0; i < count; i += 1) {
 			const mat = new THREE.SpriteMaterial({
 				color,
@@ -682,6 +682,19 @@ export abstract class Connection {
 		this.onTick(displayLevel, pulse, dt);
 	}
 
+	// Fixed packet visual constants (previously 'dualTone' preset, now
+	// boosted for better visibility against the fuchsia tunnel).
+	private static readonly PACKET_CORE_W_MUL = 0.24;
+	private static readonly PACKET_CORE_H_MUL = 0.26;
+	private static readonly PACKET_GLOW_W_MUL = 0.34;
+	private static readonly PACKET_GLOW_H_MUL = 0.38;
+	private static readonly PACKET_CORE_SIZE_MUL = 1.15;
+	private static readonly PACKET_GLOW_SIZE_MUL = 1.15;
+	private static readonly PACKET_CORE_OPACITY_MUL = 1.2;
+	private static readonly PACKET_GLOW_OPACITY_MUL = 0.75;
+	private static readonly PACKET_CORE_OPACITY_CLAMP = 0.98;
+	private static readonly PACKET_GLOW_OPACITY_CLAMP = 0.16;
+
 	private updatePackets(displayLevel: number, count: number, spacing: number, dt: number): void {
 		if (this.packets.length === 0) return;
 		const preset = TUNNEL_PRESETS[this.tunnelStyle];
@@ -772,37 +785,42 @@ export abstract class Connection {
 			const pulseGlow =
 				0.72 + Math.sin(this.pulseTime * 7.2 + packetIndex * 1.4) * 0.12 + displayLevel * 0.22;
 			const coreSizeScale =
-				preset.packetSizeMul * fxPreset.coreSizeMul * (1 + displayLevel * 0.16);
+				preset.packetSizeMul *
+				fxPreset.coreSizeMul *
+				Connection.PACKET_CORE_SIZE_MUL *
+				(1 + displayLevel * 0.16);
 			packet.scale.set(
-				this.packetBaseSize * 0.16 * coreSizeScale,
-				this.packetBaseSize * 0.18 * coreSizeScale,
+				this.packetBaseSize * Connection.PACKET_CORE_W_MUL * coreSizeScale,
+				this.packetBaseSize * Connection.PACKET_CORE_H_MUL * coreSizeScale,
 				1
 			);
 			packetMat.opacity = THREE.MathUtils.clamp(
-				(preset.packetOpacity + displayLevel * 0.14) * pulseGlow * fxPreset.coreOpacityMul,
+				(preset.packetOpacity + displayLevel * 0.14) *
+					pulseGlow *
+					fxPreset.coreOpacityMul *
+					Connection.PACKET_CORE_OPACITY_MUL,
 				0,
-				0.92
+				Connection.PACKET_CORE_OPACITY_CLAMP
 			);
 			const glowSizeScale =
 				preset.packetSizeMul *
 				fxPreset.glowSizeMul *
+				Connection.PACKET_GLOW_SIZE_MUL *
 				this.packetGlowStrength *
 				(1 + displayLevel * 0.22);
 			packetGlow.scale.set(
-				this.packetBaseSize * 0.22 * glowSizeScale,
-				this.packetBaseSize * 0.26 * glowSizeScale,
+				this.packetBaseSize * Connection.PACKET_GLOW_W_MUL * glowSizeScale,
+				this.packetBaseSize * Connection.PACKET_GLOW_H_MUL * glowSizeScale,
 				1
 			);
-			// Max halo opacity halved (0.24 → 0.12) — was contributing to
-			// the hazy look; the tighter texture halo already provides
-			// enough bleed.
 			packetGlowMat.opacity = THREE.MathUtils.clamp(
 				(preset.packetOpacity * 0.42 + displayLevel * 0.08) *
 					(0.92 + pulseGlow * 0.16) *
 					fxPreset.glowOpacityMul *
+					Connection.PACKET_GLOW_OPACITY_MUL *
 					this.packetGlowStrength,
 				0,
-				0.07
+				Connection.PACKET_GLOW_OPACITY_CLAMP
 			);
 			packet.visible = true;
 			packetGlow.visible = true;
