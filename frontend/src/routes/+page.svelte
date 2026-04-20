@@ -11,6 +11,8 @@
 	import AdminHeader from '$lib/components/AdminHeader.svelte';
 	import RightSidebar from '$lib/components/RightSidebar.svelte';
 	import RackUtilization from '$lib/components/RackUtilization.svelte';
+	import SelectionHud from '$lib/components/SelectionHud.svelte';
+	import type { HudSelection } from '$lib/components/SelectionHud.svelte';
 	import TopologyCanvas from '$lib/components/TopologyCanvas.svelte';
 	import TopologyToolbar from '$lib/components/TopologyToolbar.svelte';
 	import ContainerDetailModal from '$lib/components/ContainerDetailModal.svelte';
@@ -127,6 +129,7 @@
 		topologyCanvas?.resetFocus?.();
 		autoRotating = false;
 		topologyCanvas?.setAutoRotate?.(false);
+		clearHudSelection();
 	}
 	function handleToolbarRotate() {
 		autoRotating = !autoRotating;
@@ -155,9 +158,102 @@
 	// re-applied when the scene is remounted (e.g. after resetFocus).
 	let showStackHub = true;
 	let showNetworkHub = true;
-	let showVolumeHub = false;
+	let showVolumeHub = true;
 	let groupVisualMode: 'soft' = 'soft';
 	const tunnelStyle: 'subsea' = 'subsea';
+
+	// HUD selection — driven by 3D click callbacks. Null when nothing
+	// is currently selected in the scene.
+	let hudSelection: HudSelection | null = null;
+	// List-mode filter/highlight set. When non-null the sidebar list
+	// narrows to exactly these ids.
+	let listHighlightIds: Set<string> | null = null;
+	// Specific container active from a 3D click — used by the sidebar
+	// to emphasise the matching row (list mode) or dot (group mode).
+	let selectedContainerId: string | null = null;
+
+	function clearHudSelection() {
+		hudSelection = null;
+		listHighlightIds = null;
+		selectedContainerId = null;
+	}
+
+	function dismissHudSelection() {
+		hudSelection = null;
+	}
+
+	// Full reset — used when the user presses Enter on an empty search
+	// or wants to get back to the initial clustered view. Also drops
+	// the 3D focus so the tooltip and camera return to default.
+	function resetAllSelection() {
+		clearHudSelection();
+		selectedProject = null;
+		topologyCanvas?.resetFocus?.();
+	}
+
+	function handle3dContainerClick(id: string) {
+		const c = containers.find((x) => x.id === id);
+		if (!c) return;
+		hudSelection = { kind: 'container', container: c };
+		selectedProject = resolveGroup(c).name;
+		selectedContainerId = c.id;
+		// List mode: narrow the table to the single clicked container.
+		listHighlightIds = viewMode === 'list' ? new Set([c.id]) : null;
+	}
+
+	function handle3dHubClick(hubId: string, hubType: 'stack' | 'network' | 'volume') {
+		const colonIdx = hubId.indexOf(':');
+		const name = colonIdx >= 0 ? hubId.slice(colonIdx + 1) : hubId;
+
+		if (hubType === 'stack') {
+			const proj = projects.find((p) => p.name === name);
+			hudSelection = {
+				kind: 'stack',
+				name,
+				total: proj?.stats.total ?? 0,
+				running: proj?.stats.running ?? 0,
+				stopped: proj?.stats.stopped ?? 0,
+			};
+			selectedProject = name;
+			selectedContainerId = null;
+			// List mode: narrow to the stack's containers.
+			if (viewMode === 'list') {
+				const ids = containers
+					.filter((c) => resolveGroup(c).name === name)
+					.map((c) => c.id);
+				listHighlightIds = new Set(ids);
+			} else {
+				listHighlightIds = null;
+			}
+			return;
+		}
+
+		// Network / Volume hub — collect members from live container state.
+		const members = containers.filter((c) =>
+			hubType === 'network'
+				? (c.networks ?? []).includes(name)
+				: (c.mounts ?? []).some((m) => m.type === 'volume' && m.name === name)
+		);
+		const stackSet = new Set<string>();
+		for (const c of members) stackSet.add(resolveGroup(c).name);
+		const stacks = Array.from(stackSet).sort();
+
+		hudSelection =
+			hubType === 'network'
+				? { kind: 'network', name, memberCount: members.length, stacks }
+				: { kind: 'volume', name, memberCount: members.length, stacks };
+
+		selectedContainerId = null;
+		// Network / Volume hubs can span stacks, so only filter+highlight
+		// the sidebar list when the list view is open. In group mode we
+		// just show the HUD — no sidebar changes.
+		if (viewMode === 'list') {
+			listHighlightIds = new Set(members.map((m) => m.id));
+			selectedProject = null;
+		} else {
+			listHighlightIds = null;
+		}
+	}
 	let networkTunnelThickness = 0.7;
 	const trafficFxStyle: 'soft' = 'soft';
 	const volumeEnergyStyle: 'tendril' = 'tendril';
@@ -181,6 +277,7 @@
 		);
 		if (inField || anyModalOpen()) return;
 		topologyCanvas?.resetFocus?.();
+		clearHudSelection();
 	}
 
 	function decodeUsername(token: string): string {
@@ -460,6 +557,9 @@
 					{networkTunnelThickness}
 					{trafficFxStyle}
 					{volumeEnergyStyle}
+					onContainerClick={handle3dContainerClick}
+					onHubClick={handle3dHubClick}
+					onEmptyClick={dismissHudSelection}
 					bind:this={topologyCanvas}
 				/>
 			{/key}
@@ -494,6 +594,11 @@
 				onReset={handleToolbarReset}
 				isRotating={autoRotating}
 			/>
+			<SelectionHud
+				selection={hudSelection}
+				onClose={clearHudSelection}
+				onOpenDetail={openContainerDetail}
+			/>
 		</div>
 	</main>
 
@@ -505,7 +610,10 @@
 		onSelectProject={onProjectSelect}
 		onSelectContainer={openContainerDetail}
 		{viewMode}
-		onViewModeChange={(mode) => { viewMode = mode; }}
+		onViewModeChange={(mode) => { viewMode = mode; listHighlightIds = null; }}
+		highlightedContainerIds={listHighlightIds}
+		{selectedContainerId}
+		onClearFilters={resetAllSelection}
 	/>
 </div>
 

@@ -8,13 +8,27 @@ const RIPPLE_RING_GEOMETRY = new THREE.TorusGeometry(8.5, 0.28, 10, 56);
 const LATTICE_FRAME_GEOMETRY = new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(8.2, 0));
 const LATTICE_NODE_GEOMETRY = new THREE.SphereGeometry(0.85, 10, 10);
 
-const NETWORK_COLORS: readonly number[] = [
-	0x22d3ee, 0x38bdf8, 0x818cf8, 0x67e8f9, 0x7dd3fc,
-];
+// Single fuchsia tone shared by every network hub / line / tunnel —
+// "any pink line belongs to a network hub" becomes a one-glance rule.
+// Deliberately outside the cyan family so it never collides with the
+// stack accent and sits opposite volume orange on the colour wheel.
+export type NetworkPaletteMode = 'fuchsia' | 'cyan' | 'emerald' | 'sunset';
 
-function networkColorFor(name: string, sortedNames: readonly string[]): number {
-	const idx = sortedNames.indexOf(name);
-	return NETWORK_COLORS[Math.max(idx, 0) % NETWORK_COLORS.length];
+const NETWORK_PALETTES: Record<NetworkPaletteMode, number> = {
+	fuchsia: 0xe879f9,
+	cyan: 0x67e8f9,
+	emerald: 0x34d399,
+	sunset: 0xfb7185,
+};
+
+let currentNetworkPalette: NetworkPaletteMode = 'cyan';
+
+function networkColorFor(_name: string, _sortedNames: readonly string[]): number {
+	return NETWORK_PALETTES[currentNetworkPalette];
+}
+
+function setNetworkPalette(mode: NetworkPaletteMode): void {
+	currentNetworkPalette = mode;
 }
 
 export interface NetworkHubData {
@@ -45,6 +59,7 @@ function cloneMaterialSet(
 }
 
 export class NetworkHub extends Hub {
+	private static readonly ANCHOR_HEIGHT_RATIO = 0.13;
 	readonly hubType = 'network' as const;
 	readonly id: string;
 	name: string;
@@ -53,6 +68,7 @@ export class NetworkHub extends Hub {
 	private readonly coreObject: THREE.Object3D;
 	private readonly group: THREE.Group;
 	private readonly materials: THREE.MeshStandardMaterial[];
+	private readonly usesTemplate: boolean;
 	private readonly crownGroup: THREE.Group;
 	private readonly crownMats: THREE.MeshBasicMaterial[];
 	private readonly crownSpikes: THREE.Mesh[];
@@ -71,6 +87,7 @@ export class NetworkHub extends Hub {
 	private readonly baseScale = new THREE.Vector3(1, 1, 1);
 	private readonly anchorBox = new THREE.Box3();
 	private readonly anchorCenter = new THREE.Vector3();
+	private readonly anchorSize = new THREE.Vector3();
 	private readonly baseOpacity = 0.9;
 	private readonly baseEmissiveIntensity = 0.45;
 
@@ -209,6 +226,7 @@ export class NetworkHub extends Hub {
 		this.coreObject = object;
 		this.group = group;
 		this.materials = materials;
+		this.usesTemplate = template !== null;
 		this.crownGroup = crownGroup;
 		this.crownMats = crownMats;
 		this.crownSpikes = crownSpikes;
@@ -228,7 +246,12 @@ export class NetworkHub extends Hub {
 		this.coreObject.updateMatrixWorld(true);
 		this.anchorBox.setFromObject(this.coreObject);
 		if (!this.anchorBox.isEmpty()) {
-			this.anchorBox.getCenter(this.anchorCenter);
+			this.anchorBox.getSize(this.anchorSize);
+			this.anchorCenter.set(
+				(this.anchorBox.min.x + this.anchorBox.max.x) * 0.5,
+				this.anchorBox.min.y + this.anchorSize.y * NetworkHub.ANCHOR_HEIGHT_RATIO,
+				(this.anchorBox.min.z + this.anchorBox.max.z) * 0.5
+			);
 			return this.anchorCenter;
 		}
 		return this.coreObject.getWorldPosition(this.anchorCenter);
@@ -270,8 +293,10 @@ export class NetworkHub extends Hub {
 			mat.transparent = true;
 			mat.needsUpdate = true;
 			mat.opacity = THREE.MathUtils.clamp(this.baseOpacity + displayLevel * 0.06, 0.25, 1);
-			mat.emissiveIntensity =
-				this.baseEmissiveIntensity + displayLevel * 0.62 + pulse * displayLevel * 0.28;
+			if (!this.usesTemplate) {
+				mat.emissiveIntensity =
+					this.baseEmissiveIntensity + displayLevel * 0.62 + pulse * displayLevel * 0.28;
+			}
 		}
 
 		this.tickCrown(displayLevel, pulse, dt);
@@ -284,6 +309,7 @@ export class NetworkHub extends Hub {
 		if (data.color !== this.color) {
 			this.color = data.color;
 			for (const mat of this.materials) {
+				if (this.usesTemplate) continue;
 				mat.color.setHex(data.color);
 				mat.emissive.setHex(data.color);
 			}
@@ -319,6 +345,8 @@ export class NetworkHub extends Hub {
 	}
 
 	private tickRipple(displayLevel: number, pulse: number, dt: number): void {
+		this.rippleGroup.visible = this.fxMode === 'ripple' && displayLevel > 0.02;
+		if (!this.rippleGroup.visible) return;
 		this.rippleGroup.rotation.y -= dt * (0.08 + displayLevel * 0.18);
 		for (let i = 0; i < this.rippleRings.length; i += 1) {
 			const phase = (this.pulseTime * 0.9 + i * 0.22) % 1;
@@ -351,9 +379,9 @@ export class NetworkHub extends Hub {
 
 	private applyFxMode(): void {
 		this.crownGroup.visible = this.fxMode === 'crown';
-		this.rippleGroup.visible = this.fxMode === 'ripple';
+		this.rippleGroup.visible = false;
 		this.latticeGroup.visible = this.fxMode === 'lattice';
 	}
 }
 
-export { networkColorFor };
+export { networkColorFor, setNetworkPalette };

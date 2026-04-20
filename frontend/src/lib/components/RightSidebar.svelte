@@ -28,6 +28,9 @@
 		onSelectContainer = (container: Container) => {},
 		viewMode = 'group',
 		onViewModeChange = (mode: string) => {},
+		highlightedContainerIds = null,
+		selectedContainerId = null,
+		onClearFilters = () => {},
 	}: {
 		projects: Project[];
 		containers: Container[];
@@ -36,6 +39,9 @@
 		onSelectContainer: (container: Container) => void;
 		viewMode: string;
 		onViewModeChange: (mode: string) => void;
+		highlightedContainerIds?: Set<string> | null;
+		selectedContainerId?: string | null;
+		onClearFilters?: () => void;
 	} = $props();
 
 	let runningCount = $derived(containers.filter(c => c.state === 'running').length);
@@ -98,6 +104,13 @@
 
 	let filteredContainers = $derived.by(() => {
 		let result = containers;
+		// 3D에서 Network/Volume hub를 클릭하면 해당 hub의 멤버들만
+		// 리스트에 남긴다. Group 모드에서는 prop이 null로 들어와서
+		// 이 필터는 무시된다.
+		if (highlightedContainerIds) {
+			const ids = highlightedContainerIds;
+			result = result.filter((c) => ids.has(c.id));
+		}
 		if (searchQuery.trim()) {
 			const q = searchQuery.trim().toLowerCase();
 			result = result.filter(c =>
@@ -194,6 +207,9 @@
 				class="search-input"
 				placeholder="그룹명 검색..."
 				bind:value={groupSearchQuery}
+				onkeydown={(e) => {
+					if (e.key === 'Enter' && groupSearchQuery.trim() === '') onClearFilters();
+				}}
 			/>
 			{#if groupSearchQuery}
 				<button class="search-clear" onclick={() => groupSearchQuery = ''}>
@@ -210,6 +226,7 @@
 				<ProjectCard
 					{project}
 					selected={selectedProject === project.name}
+					{selectedContainerId}
 					onclick={() => onSelectProject(selectedProject === project.name ? null : project.name)}
 					onContainerClick={onSelectContainer}
 				/>
@@ -245,6 +262,9 @@
 				class="search-input"
 				placeholder="컨테이너명, 프로젝트명 검색..."
 				bind:value={searchQuery}
+				onkeydown={(e) => {
+					if (e.key === 'Enter' && searchQuery.trim() === '') onClearFilters();
+				}}
 			/>
 			{#if searchQuery}
 				<button class="search-clear" onclick={() => searchQuery = ''}>
@@ -295,7 +315,10 @@
 				</thead>
 				<tbody>
 					{#each sortedContainers as container}
-						<tr>
+						<tr
+							class:row-highlight={highlightedContainerIds?.has(container.id)}
+							class:row-selected={selectedContainerId === container.id}
+						>
 							<td>
 								<span class="status-text" class:status-running={container.state === 'running'} class:status-stopped={container.state === 'exited'}>
 									{getStateLabel(container.state)}
@@ -572,6 +595,16 @@
 
 	.container-table tbody tr:hover {
 		background: rgba(48, 213, 200, 0.03);
+	}
+
+	.container-table tbody tr.row-highlight {
+		background: rgba(56, 189, 248, 0.08);
+		box-shadow: inset 2px 0 0 var(--accent);
+	}
+
+	.container-table tbody tr.row-selected {
+		background: rgba(48, 213, 200, 0.14);
+		box-shadow: inset 3px 0 0 var(--accent);
 	}
 
 	.status-text {

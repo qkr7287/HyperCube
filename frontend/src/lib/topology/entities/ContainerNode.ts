@@ -92,6 +92,8 @@ export class ContainerNode extends Entity {
 	// tweaks don't bleed across container nodes.
 	private readonly materials: THREE.MeshStandardMaterial[];
 	private readonly overlayMaterial: THREE.MeshBasicMaterial;
+	private readonly tooltipAnchorObject: THREE.Object3D;
+	private readonly tooltipAnchorBox = new THREE.Box3();
 
 	constructor(
 		data: ContainerNodeData,
@@ -132,7 +134,14 @@ export class ContainerNode extends Entity {
 			metalness: 0.58,
 		});
 		materials.push(bodyMat, capMat, ringMat, strutMat);
-		buildGeometryStyle(object, style, bodyMat, capMat, ringMat, strutMat);
+		const tooltipAnchorObject = buildGeometryStyle(
+			object,
+			style,
+			bodyMat,
+			capMat,
+			ringMat,
+			strutMat
+		);
 
 		const overlayMaterial = new THREE.MeshBasicMaterial({
 			color: 0x30d5c8,
@@ -152,6 +161,10 @@ export class ContainerNode extends Entity {
 			overlayMaterial
 		);
 		overlay.renderOrder = 14;
+		// Halo is ~1.08x the body, so it would inflate any bounding box
+		// computed from this object and push the tooltip anchor up. Mark
+		// it so Topology's tooltip math can skip it.
+		overlay.userData.tooltipIgnore = true;
 		fitOverlayToObject(overlay, object, style);
 		object.add(overlay);
 
@@ -162,6 +175,7 @@ export class ContainerNode extends Entity {
 		this.stack = data.stack;
 		this.materials = materials;
 		this.overlayMaterial = overlayMaterial;
+		this.tooltipAnchorObject = tooltipAnchorObject;
 		this.applyStateTint();
 	}
 
@@ -193,6 +207,18 @@ export class ContainerNode extends Entity {
 		this.overlayMaterial.opacity = this.state === 'running' ? 0.16 : 0.22;
 	}
 
+	override getTooltipAnchor(out: THREE.Vector3): THREE.Vector3 {
+		this.tooltipAnchorObject.updateWorldMatrix(true, false);
+		this.tooltipAnchorBox.setFromObject(this.tooltipAnchorObject);
+		if (this.tooltipAnchorBox.isEmpty()) return super.getTooltipAnchor(out);
+		out.set(
+			(this.tooltipAnchorBox.min.x + this.tooltipAnchorBox.max.x) * 0.5,
+			this.tooltipAnchorBox.max.y,
+			(this.tooltipAnchorBox.min.z + this.tooltipAnchorBox.max.z) * 0.5
+		);
+		return out;
+	}
+
 }
 
 function buildGeometryStyle(
@@ -202,9 +228,10 @@ function buildGeometryStyle(
 	capMat: THREE.MeshStandardMaterial,
 	ringMat: THREE.MeshStandardMaterial,
 	strutMat: THREE.MeshStandardMaterial
-): void {
+): THREE.Object3D {
 	if (style === 'prism') {
-		object.add(new THREE.Mesh(PRISM_GEOMETRY, bodyMat));
+		const prism = new THREE.Mesh(PRISM_GEOMETRY, bodyMat);
+		object.add(prism);
 		const topRing = new THREE.Mesh(FRAME_RING_GEOMETRY, ringMat);
 		const bottomRing = new THREE.Mesh(FRAME_RING_GEOMETRY, ringMat);
 		topRing.scale.setScalar(0.9);
@@ -212,7 +239,7 @@ function buildGeometryStyle(
 		topRing.position.z = 4.5;
 		bottomRing.position.z = -4.5;
 		object.add(topRing, bottomRing);
-		return;
+		return prism;
 	}
 
 	if (style === 'capsule') {
@@ -225,7 +252,7 @@ function buildGeometryStyle(
 		const belt = new THREE.Mesh(FRAME_RING_GEOMETRY, ringMat);
 		belt.scale.setScalar(0.82);
 		object.add(belt);
-		return;
+		return body;
 	}
 
 	if (style === 'crate') {
@@ -254,7 +281,7 @@ function buildGeometryStyle(
 				object.add(edge);
 			}
 		}
-		return;
+		return core;
 	}
 
 	const body = new THREE.Mesh(FRAME_BODY_GEOMETRY, bodyMat);
@@ -279,4 +306,5 @@ function buildGeometryStyle(
 		strut.position.copy(offset);
 		object.add(strut);
 	}
+	return body;
 }

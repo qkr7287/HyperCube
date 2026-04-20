@@ -16,7 +16,11 @@ export class NetworkLine extends Connection {
 				gapSize: 2.5,
 			})
 		);
-		this.enablePackets(0xffffff, 7, 0.34, 4);
+		// Lime capsules against the fuchsia tunnel — complementary hue
+		// so traffic reads clearly, shape+orientation signal flow. The
+		// capsule is rotated per-frame to the line tangent in screen
+		// space (see Connection.enablePackets).
+		this.enablePackets(0xa3e635, 14, 0.4, 4);
 		this.enableTunnelVisual(color, 2.1);
 	}
 }

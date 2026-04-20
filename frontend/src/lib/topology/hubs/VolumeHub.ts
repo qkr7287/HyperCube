@@ -6,13 +6,12 @@ const FALLBACK_GEOMETRY = new THREE.OctahedronGeometry(15, 0);
 
 // Orange / amber family — storage connotation, distinct from stack
 // and network palettes.
-const VOLUME_COLORS: readonly number[] = [
-	0xfb923c, 0xf97316, 0xfdba74, 0xfbbf24, 0xf59e0b,
-];
+// Single orange shared by every volume hub / line / strand so the
+// viewer can tell the kind of hub from the line colour alone.
+const VOLUME_COLOR = 0xfb923c;
 
-function volumeColorFor(name: string, sortedNames: readonly string[]): number {
-	const idx = sortedNames.indexOf(name);
-	return VOLUME_COLORS[Math.max(idx, 0) % VOLUME_COLORS.length];
+function volumeColorFor(_name: string, _sortedNames: readonly string[]): number {
+	return VOLUME_COLOR;
 }
 
 export interface VolumeHubData {

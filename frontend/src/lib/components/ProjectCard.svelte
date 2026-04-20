@@ -19,11 +19,13 @@
 	let {
 		project,
 		selected = false,
+		selectedContainerId = null,
 		onclick = () => {},
 		onContainerClick = (container: Container) => {},
 	}: {
 		project: Project;
 		selected: boolean;
+		selectedContainerId?: string | null;
 		onclick: () => void;
 		onContainerClick: (container: Container) => void;
 	} = $props();
@@ -48,7 +50,7 @@
 	</div>
 	<div class="container-dots">
 		{#each project.containers as container}
-			<div class="dot-wrapper" onclick={(e) => { e.stopPropagation(); onContainerClick(container); }} role="button" tabindex="0" title={container.names?.[0]?.replace('/', '') || container.shortId}>
+			<div class="dot-wrapper" class:dot-active={selectedContainerId === container.id} onclick={(e) => { e.stopPropagation(); onContainerClick(container); }} role="button" tabindex="0" title={container.names?.[0]?.replace('/', '') || container.shortId}>
 				<svg width="28" height="24" viewBox="0 0 28 24" fill="none">
 					<path d="M7 0h14l7 12-7 12H7L0 12 7 0Z"
 						fill={container.state === 'running' ? 'var(--accent)' : 'var(--error)'}
@@ -151,5 +153,10 @@
 
 	.dot-wrapper:hover {
 		transform: scale(1.2);
+	}
+
+	.dot-wrapper.dot-active {
+		transform: scale(1.25);
+		filter: drop-shadow(0 0 6px var(--accent));
 	}
 </style>

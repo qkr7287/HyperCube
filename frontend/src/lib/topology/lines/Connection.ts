@@ -102,10 +102,12 @@ const TUNNEL_PRESETS: Record<TunnelStyle, TunnelPreset> = {
 		stripeWhiteMix: 0.36,
 		stripeRepeat: 3,
 		stripeSpeed: 0.5,
-		packetOpacity: 0.56,
-		packetCount: 2,
-		packetSpacing: 0.42,
-		packetSizeMul: 0.95,
+		// Traffic needs to pop against the fuchsia tunnel body, so
+		// packets are bigger, more numerous and brighter than before.
+		packetOpacity: 0.95,
+		packetCount: 3,
+		packetSpacing: 0.34,
+		packetSizeMul: 1.3,
 		radiusMul: 1.08,
 		stripeRadiusMul: 1.0,
 	},
@@ -264,23 +266,51 @@ function makeStripeTexture(): THREE.CanvasTexture {
 	return texture;
 }
 
-function makePacketTexture(): THREE.CanvasTexture {
+function makeCapsuleTexture(): THREE.CanvasTexture {
+	// Short pill shape with a tight halo. Tinted at draw time by
+	// SpriteMaterial.color so one shared texture covers every packet.
+	// Oriented along +x so `SpriteMaterial.rotation = screen-space tangent
+	// angle` lines the capsule up with the underlying line direction.
 	const canvas = document.createElement('canvas');
 	canvas.width = 64;
-	canvas.height = 64;
+	canvas.height = 32;
 	const ctx = canvas.getContext('2d');
 	if (!ctx) {
 		return new THREE.CanvasTexture(canvas);
 	}
 
-	ctx.clearRect(0, 0, 64, 64);
-	const gradient = ctx.createRadialGradient(32, 32, 2, 32, 32, 28);
-	gradient.addColorStop(0, 'rgba(255,255,255,1)');
-	gradient.addColorStop(0.2, 'rgba(255,255,255,0.95)');
-	gradient.addColorStop(0.55, 'rgba(180,245,255,0.65)');
-	gradient.addColorStop(1, 'rgba(180,245,255,0)');
-	ctx.fillStyle = gradient;
-	ctx.fillRect(0, 0, 64, 64);
+	ctx.clearRect(0, 0, 64, 32);
+
+	// Tight halo — small radius and low alpha so the capsule doesn't
+	// bleed into the tunnel body (previous halo was twice as wide and
+	// ~2x brighter, which looked hazy).
+	const halo = ctx.createRadialGradient(32, 16, 2, 32, 16, 12);
+	halo.addColorStop(0, 'rgba(255,255,255,0.12)');
+	halo.addColorStop(0.5, 'rgba(255,255,255,0.026)');
+	halo.addColorStop(1, 'rgba(255,255,255,0)');
+	ctx.fillStyle = halo;
+	ctx.fillRect(0, 0, 64, 32);
+
+	// Body — shorter pill: straight section between two rounded caps.
+	const x = 24;
+	const y = 10;
+	const w = 16;
+	const h = 12;
+	const r = 6;
+	ctx.beginPath();
+	ctx.moveTo(x + r, y);
+	ctx.arcTo(x + w, y, x + w, y + h, r);
+	ctx.arcTo(x + w, y + h, x, y + h, r);
+	ctx.arcTo(x, y + h, x, y, r);
+	ctx.arcTo(x, y, x + w, y, r);
+	ctx.closePath();
+
+	const body = ctx.createLinearGradient(0, y, 0, y + h);
+	body.addColorStop(0, 'rgba(255,255,255,0.95)');
+	body.addColorStop(0.5, 'rgba(255,255,255,1)');
+	body.addColorStop(1, 'rgba(255,255,255,0.95)');
+	ctx.fillStyle = body;
+	ctx.fill();
 
 	const texture = new THREE.CanvasTexture(canvas);
 	texture.needsUpdate = true;
@@ -305,12 +335,17 @@ export abstract class Connection {
 	private pulseMode: LinePulseMode = 'tunnel';
 	private tunnelStyle: TunnelStyle = 'subsea';
 	private trafficFxStyle: TrafficFxStyle = 'soft';
+	private packetGlowStrength = 1;
 	protected volumeEnergyStyle: VolumeEnergyStyle = 'tendril';
 	private curveSeed = 0;
-	private readonly packets: THREE.Points[] = [];
-	private readonly packetMats: THREE.PointsMaterial[] = [];
-	private readonly packetGlows: THREE.Points[] = [];
-	private readonly packetGlowMats: THREE.PointsMaterial[] = [];
+	// Capsule sprites (B1). Each sprite's SpriteMaterial.rotation is
+	// recomputed per-render from the screen-space tangent so the capsule
+	// lies along the line direction instead of being axis-aligned.
+	private readonly packets: THREE.Sprite[] = [];
+	private readonly packetMats: THREE.SpriteMaterial[] = [];
+	private readonly packetTangents: THREE.Vector3[] = [];
+	private readonly packetGlows: THREE.Sprite[] = [];
+	private readonly packetGlowMats: THREE.SpriteMaterial[] = [];
 	private packetSpeed = 0.25;
 	private packetTravelDistance = 0;
 	private packetBaseSize = 8;
@@ -341,7 +376,11 @@ export abstract class Connection {
 		curvePoints: [] as THREE.Vector3[],
 	};
 	private static readonly SEGMENTS = 18;
-	private static readonly PACKET_TEXTURE = makePacketTexture();
+	private static readonly PACKET_TEXTURE = makeCapsuleTexture();
+	// Scratch vectors reused by every sprite's onBeforeRender to avoid
+	// allocating per frame.
+	private static readonly PACKET_SCRATCH_A = new THREE.Vector3();
+	private static readonly PACKET_SCRATCH_B = new THREE.Vector3();
 
 	protected constructor(material: THREE.LineBasicMaterial | THREE.LineDashedMaterial) {
 		this.geometry = new THREE.BufferGeometry();
@@ -367,53 +406,72 @@ export abstract class Connection {
 
 	protected enablePackets(color: number, size: number = 10, speed: number = 0.25, count: number = 2): void {
 		this.packetBaseSize = size;
+		// Short pill: width:height ≈ 1.7:1. Roughly 1/4 of the previous
+		// elongated streak so packets read as individual capsules rather
+		// than long bars.
+		const coreW = size * 0.16;
+		const coreH = size * 0.18;
+		const glowW = size * 0.22;
+		const glowH = size * 0.26;
 		for (let i = 0; i < count; i += 1) {
-			const geom = new THREE.BufferGeometry();
-			geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3), 3));
-			const mat = new THREE.PointsMaterial({
+			const mat = new THREE.SpriteMaterial({
 				color,
-				size,
-				sizeAttenuation: true,
+				map: Connection.PACKET_TEXTURE,
 				transparent: true,
 				opacity: 0,
 				depthTest: false,
 				depthWrite: false,
 				blending: THREE.AdditiveBlending,
 				toneMapped: false,
-				map: Connection.PACKET_TEXTURE,
-				alphaMap: Connection.PACKET_TEXTURE,
+				rotation: 0,
 			});
-			const points = new THREE.Points(geom, mat);
-			points.renderOrder = 18;
-			points.raycast = () => {};
-			points.visible = false;
-			points.frustumCulled = false;
-			this.object.add(points);
-			this.packets.push(points);
+			const sprite = new THREE.Sprite(mat);
+			sprite.scale.set(coreW, coreH, 1);
+			sprite.renderOrder = 18;
+			sprite.raycast = () => {};
+			sprite.visible = false;
+			sprite.frustumCulled = false;
+			const tangent = new THREE.Vector3(1, 0, 0);
+			sprite.onBeforeRender = (_renderer, _scene, camera) => {
+				if (!sprite.visible) return;
+				const a = Connection.PACKET_SCRATCH_A.copy(sprite.position);
+				const b = Connection.PACKET_SCRATCH_B.copy(sprite.position).add(tangent);
+				a.project(camera);
+				b.project(camera);
+				mat.rotation = Math.atan2(b.y - a.y, b.x - a.x);
+			};
+			this.object.add(sprite);
+			this.packets.push(sprite);
 			this.packetMats.push(mat);
+			this.packetTangents.push(tangent);
 
-			const glowGeom = new THREE.BufferGeometry();
-			glowGeom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3), 3));
-			const glowMat = new THREE.PointsMaterial({
+			const glowMat = new THREE.SpriteMaterial({
 				color,
-				size: size * 2.3,
-				sizeAttenuation: true,
+				map: Connection.PACKET_TEXTURE,
 				transparent: true,
 				opacity: 0,
 				depthTest: false,
 				depthWrite: false,
 				blending: THREE.AdditiveBlending,
 				toneMapped: false,
-				map: Connection.PACKET_TEXTURE,
-				alphaMap: Connection.PACKET_TEXTURE,
+				rotation: 0,
 			});
-			const glowPoints = new THREE.Points(glowGeom, glowMat);
-			glowPoints.renderOrder = 17;
-			glowPoints.raycast = () => {};
-			glowPoints.visible = false;
-			glowPoints.frustumCulled = false;
-			this.object.add(glowPoints);
-			this.packetGlows.push(glowPoints);
+			const glowSprite = new THREE.Sprite(glowMat);
+			glowSprite.scale.set(glowW, glowH, 1);
+			glowSprite.renderOrder = 17;
+			glowSprite.raycast = () => {};
+			glowSprite.visible = false;
+			glowSprite.frustumCulled = false;
+			glowSprite.onBeforeRender = (_renderer, _scene, camera) => {
+				if (!glowSprite.visible) return;
+				const a = Connection.PACKET_SCRATCH_A.copy(glowSprite.position);
+				const b = Connection.PACKET_SCRATCH_B.copy(glowSprite.position).add(tangent);
+				a.project(camera);
+				b.project(camera);
+				glowMat.rotation = Math.atan2(b.y - a.y, b.x - a.x);
+			};
+			this.object.add(glowSprite);
+			this.packetGlows.push(glowSprite);
 			this.packetGlowMats.push(glowMat);
 		}
 		this.packetSpeed = speed;
@@ -478,6 +536,20 @@ export abstract class Connection {
 
 	setTrafficFxStyle(style: TrafficFxStyle): void {
 		this.trafficFxStyle = style;
+	}
+
+	setColor(color: number, packetColor?: number): void {
+		this.baseColor.setHex(color);
+		this.material.color.setHex(color);
+		this.tunnelMat?.color.setHex(color);
+		this.stripeMat?.color.setHex(color);
+		const trafficColor = packetColor ?? color;
+		for (const mat of this.packetMats) mat.color.setHex(trafficColor);
+		for (const mat of this.packetGlowMats) mat.color.setHex(trafficColor);
+	}
+
+	setPacketGlowStrength(strength: number): void {
+		this.packetGlowStrength = strength;
 	}
 
 	setVolumeEnergyStyle(style: VolumeEnergyStyle): void {
@@ -686,35 +758,51 @@ export abstract class Connection {
 			const px = ax + (bx - ax) * f;
 			const py = ay + (by - ay) * f;
 			const pz = az + (bz - az) * f;
-			const packetPos = packet.geometry.attributes.position as THREE.BufferAttribute;
-			packetPos.setXYZ(0, px, py, pz);
-			packetPos.needsUpdate = true;
-			const glowPos = packetGlow.geometry.attributes.position as THREE.BufferAttribute;
-			glowPos.setXYZ(0, px, py, pz);
-			glowPos.needsUpdate = true;
+			packet.position.set(px, py, pz);
+			packetGlow.position.set(px, py, pz);
+			// Capsule orientation reference (shared between core + glow).
+			const tangent = this.packetTangents[packetIndex];
+			const tdx = bx - ax;
+			const tdy = by - ay;
+			const tdz = bz - az;
+			const tLen = Math.hypot(tdx, tdy, tdz);
+			if (tLen > 1e-6) {
+				tangent.set(tdx / tLen, tdy / tLen, tdz / tLen);
+			}
 			const pulseGlow =
 				0.72 + Math.sin(this.pulseTime * 7.2 + packetIndex * 1.4) * 0.12 + displayLevel * 0.22;
-			packetMat.size =
-				this.packetBaseSize *
-				preset.packetSizeMul *
-				fxPreset.coreSizeMul *
-				(1 + displayLevel * 0.16);
+			const coreSizeScale =
+				preset.packetSizeMul * fxPreset.coreSizeMul * (1 + displayLevel * 0.16);
+			packet.scale.set(
+				this.packetBaseSize * 0.16 * coreSizeScale,
+				this.packetBaseSize * 0.18 * coreSizeScale,
+				1
+			);
 			packetMat.opacity = THREE.MathUtils.clamp(
 				(preset.packetOpacity + displayLevel * 0.14) * pulseGlow * fxPreset.coreOpacityMul,
 				0,
 				0.92
 			);
-			packetGlowMat.size =
-				this.packetBaseSize *
+			const glowSizeScale =
 				preset.packetSizeMul *
 				fxPreset.glowSizeMul *
+				this.packetGlowStrength *
 				(1 + displayLevel * 0.22);
+			packetGlow.scale.set(
+				this.packetBaseSize * 0.22 * glowSizeScale,
+				this.packetBaseSize * 0.26 * glowSizeScale,
+				1
+			);
+			// Max halo opacity halved (0.24 → 0.12) — was contributing to
+			// the hazy look; the tighter texture halo already provides
+			// enough bleed.
 			packetGlowMat.opacity = THREE.MathUtils.clamp(
 				(preset.packetOpacity * 0.42 + displayLevel * 0.08) *
 					(0.92 + pulseGlow * 0.16) *
-					fxPreset.glowOpacityMul,
+					fxPreset.glowOpacityMul *
+					this.packetGlowStrength,
 				0,
-				0.24
+				0.07
 			);
 			packet.visible = true;
 			packetGlow.visible = true;
@@ -893,10 +981,10 @@ export abstract class Connection {
 	dispose(): void {
 		this.geometry.dispose();
 		this.material.dispose();
-		for (let i = 0; i < this.packets.length; i += 1) {
-			this.packets[i].geometry.dispose();
+		// THREE.Sprite shares a module-level quad geometry — don't dispose
+		// it. Only the per-sprite SpriteMaterial is owned by this line.
+		for (let i = 0; i < this.packetMats.length; i += 1) {
 			this.packetMats[i].dispose();
-			this.packetGlows[i].geometry.dispose();
 			this.packetGlowMats[i].dispose();
 		}
 		// stripeGeometry is the same reference as tunnelGeometry — dispose once.

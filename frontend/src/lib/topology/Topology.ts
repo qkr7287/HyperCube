@@ -7,12 +7,13 @@ import { Starfield } from './core/Starfield';
 import { ContainerNode, type ContainerGeometryStyle } from './entities/ContainerNode';
 import { Hub } from './entities/Hub';
 import { GroupMesh, type GroupVisualMode } from './hubs/GroupMesh';
-import { NetworkHub, networkColorFor } from './hubs/NetworkHub';
-import type { NetworkHubFxMode } from './hubs/NetworkHub';
+import { NetworkHub, networkColorFor, setNetworkPalette } from './hubs/NetworkHub';
+import type { NetworkHubFxMode, NetworkPaletteMode } from './hubs/NetworkHub';
 import { StackHub } from './hubs/StackHub';
 import { VolumeHub, volumeColorFor } from './hubs/VolumeHub';
 import { CameraAnimator } from './interaction/CameraAnimator';
 import { Raycaster } from './interaction/Raycaster';
+import type { Entity } from './entities/Entity';
 import { ForceLayout, type LayoutEntityRef, type LayoutLink } from './layout/ForceLayout';
 import { NodePinner } from './layout/NodePinner';
 import type { Connection } from './lines/Connection';
@@ -45,9 +46,19 @@ export interface TopologyData {
 
 export type HubType = 'stack' | 'network' | 'volume';
 
+// Loading stages surfaced to the Svelte layer so it can show a staged
+// loading overlay with logo + progress text. Progresses:
+//   models      — GLB templates are downloading
+//   scene       — templates ready, entities being rebuilt
+//   stabilizing — first real frames rendering, waiting for steady dt
+//   ready       — overlay can cross-fade out
+export type LoadingStage = 'models' | 'scene' | 'stabilizing' | 'ready';
+
 export interface TopologyCallbacks {
 	onContainerClick?: (id: string) => void;
 	onHubClick?: (hubId: string, hubType: HubType) => void;
+	onEmptyClick?: () => void;
+	onLoadingStage?: (stage: LoadingStage) => void;
 }
 
 // Stack palette — stable mapping across renders, indexed by sorted name.
@@ -100,13 +111,32 @@ function hashString(input: string): number {
 	return Math.abs(hash);
 }
 
+function networkPacketColorFor(mode: NetworkPaletteMode): number {
+	switch (mode) {
+		case 'cyan':
+			return 0x06b6d4;
+		case 'emerald':
+			return 0x86efac;
+		case 'sunset':
+			return 0xfcd34d;
+		case 'fuchsia':
+		default:
+			return 0xa3e635;
+	}
+}
+
 export class Topology {
+	private static readonly CLICK_MOVE_THRESHOLD_PX = 4;
 	private scene: SceneManager | null = null;
 	private loop: RenderLoop | null = null;
 	private layout: ForceLayout | null = null;
 	private animator: CameraAnimator | null = null;
 	private raycaster: Raycaster | null = null;
 	private starfield: Starfield | null = null;
+	// Current selection — the Svelte layer reads this each frame and
+	// renders a DOM tooltip on top of the canvas, which avoids every
+	// z-ordering and depthTest pitfall that a 3D sprite ran into.
+	private selectionTarget: Entity | null = null;
 	private readonly pinner = new NodePinner();
 	private readonly disposer = new Disposer();
 
@@ -129,15 +159,34 @@ export class Topology {
 	private callbacks: TopologyCallbacks = {};
 	private detachTick: (() => void) | null = null;
 	private detachClick: (() => void) | null = null;
+	private pointerDownId: number | null = null;
+	private pointerDownX = 0;
+	private pointerDownY = 0;
+	private pointerMoved = false;
 	private scatterPinTimer: ReturnType<typeof setTimeout> | null = null;
+	// --- Loading overlay state ---
+	private loadingStage: LoadingStage = 'models';
+	private stableFrameCount = 0;
+	private loadingWatchdog: ReturnType<typeof setTimeout> | null = null;
+	private loadingSceneHoldTimer: ReturnType<typeof setTimeout> | null = null;
+	private loadingStartedAt = 0;
+	private static readonly STABLE_FRAME_TARGET = 30;
+	private static readonly STABLE_DT_MAX = 0.022; // ~45fps floor
+	private static readonly LOADING_SAFETY_MS = 8000;
+	private static readonly STAGE_HOLD_MS = 350;
+	// Even on fast loads, hold the overlay for this long so users can
+	// register the branding / stage text instead of a sub-second flash.
+	private static readonly LOADING_MIN_MS = 1400;
 	private activeFocusId: string | null = null;
 	private curvedLines = false;
 	private groupVisualMode: GroupVisualMode = 'soft';
+	private networkPaletteMode: NetworkPaletteMode = 'cyan';
 	private networkHubFxMode: NetworkHubFxMode = 'ripple';
 	private linePulseMode: LinePulseMode = 'tunnel';
 	private tunnelStyle: TunnelStyle = 'subsea';
 	private networkTunnelThickness = 0.7;
 	private trafficFxStyle: TrafficFxStyle = 'soft';
+	private packetGlowStrength = 1;
 	private volumeEnergyStyle: VolumeEnergyStyle = 'tendril';
 	private containerGeometryStyle: ContainerGeometryStyle = 'crate';
 	private bloomStrength = 0.1;
@@ -159,6 +208,7 @@ export class Topology {
 
 		this.host = host;
 		this.callbacks = cb ?? {};
+		setNetworkPalette(this.networkPaletteMode);
 
 		const scene = new SceneManager(host);
 		scene.scene.add(new THREE.AmbientLight(0xffffff, 0.55));
@@ -185,6 +235,19 @@ export class Topology {
 
 		this.update(data);
 
+		// Kick off the staged loading overlay. 'models' fires immediately;
+		// 'scene' / 'stabilizing' fire from loadTemplatesAsync below; the
+		// tick below promotes 'stabilizing' → 'ready' once frame dt has
+		// been steady for STABLE_FRAME_TARGET frames.
+		this.loadingStage = 'models';
+		this.stableFrameCount = 0;
+		this.loadingStartedAt = performance.now();
+		this.callbacks.onLoadingStage?.('models');
+		this.loadingWatchdog = setTimeout(
+			() => this.emitLoadingStage('ready'),
+			Topology.LOADING_SAFETY_MS
+		);
+
 		this.detachTick = this.loop.add((dt) => {
 			this.layout?.tick();
 			this.starfield?.tick(dt);
@@ -194,12 +257,36 @@ export class Topology {
 			this.updateNetworkTrafficVisuals(dt);
 			this.animator?.tick();
 			this.scene?.render();
+
+			if (this.loadingStage !== 'ready') {
+				if (dt > 0 && dt < Topology.STABLE_DT_MAX) this.stableFrameCount += 1;
+				else this.stableFrameCount = 0;
+				const stable =
+					this.loadingStage === 'stabilizing' &&
+					this.stableFrameCount >= Topology.STABLE_FRAME_TARGET;
+				const elapsedOk =
+					performance.now() - this.loadingStartedAt >= Topology.LOADING_MIN_MS;
+				if (stable && elapsedOk) {
+					this.emitLoadingStage('ready');
+				}
+			}
 		});
 		this.loop.start();
 
-		const onClick = (e: MouseEvent) => this.handlePointerClick(e);
-		host.addEventListener('click', onClick);
-		this.detachClick = () => host.removeEventListener('click', onClick);
+		const onPointerDown = (e: PointerEvent) => this.handlePointerDown(e);
+		const onPointerMove = (e: PointerEvent) => this.handlePointerMove(e);
+		const onPointerUp = (e: PointerEvent) => this.handlePointerUp(e);
+		const onPointerCancel = () => this.resetPointerTracking();
+		host.addEventListener('pointerdown', onPointerDown);
+		host.addEventListener('pointermove', onPointerMove);
+		host.addEventListener('pointerup', onPointerUp);
+		host.addEventListener('pointercancel', onPointerCancel);
+		this.detachClick = () => {
+			host.removeEventListener('pointerdown', onPointerDown);
+			host.removeEventListener('pointermove', onPointerMove);
+			host.removeEventListener('pointerup', onPointerUp);
+			host.removeEventListener('pointercancel', onPointerCancel);
+		};
 
 		// Kick off GLB load in the background. Scene already rendered
 		// with the fallback geometries; once templates arrive we
@@ -213,8 +300,29 @@ export class Topology {
 			if (!this.scene) return;
 			this.templates = bundle;
 			this.rebuildAllFromTemplates();
+			this.emitLoadingStage('scene');
+			this.loadingSceneHoldTimer = setTimeout(
+				() => this.emitLoadingStage('stabilizing'),
+				Topology.STAGE_HOLD_MS
+			);
 		} catch {
-			/* silent fallback */
+			// Silent fallback — still progress the overlay so the user
+			// isn't stuck on "Loading models" when GLBs can't be fetched.
+			this.emitLoadingStage('scene');
+			this.loadingSceneHoldTimer = setTimeout(
+				() => this.emitLoadingStage('stabilizing'),
+				120
+			);
+		}
+	}
+
+	private emitLoadingStage(stage: LoadingStage): void {
+		if (this.loadingStage === stage) return;
+		this.loadingStage = stage;
+		this.callbacks.onLoadingStage?.(stage);
+		if (stage === 'ready' && this.loadingWatchdog !== null) {
+			clearTimeout(this.loadingWatchdog);
+			this.loadingWatchdog = null;
 		}
 	}
 
@@ -325,6 +433,7 @@ export class Topology {
 					line.setTunnelStyle(this.tunnelStyle);
 					line.setTunnelThickness(this.networkTunnelThickness);
 					line.setTrafficFxStyle(this.trafficFxStyle);
+					line.setPacketGlowStrength(this.packetGlowStrength);
 					line.setVolumeEnergyStyle(this.volumeEnergyStyle);
 					line.setCurveSeed(hashString(lineId));
 					this.lines.set(lineId, line);
@@ -375,10 +484,14 @@ export class Topology {
 					line.setTunnelStyle(this.tunnelStyle);
 					line.setTunnelThickness(this.networkTunnelThickness);
 					line.setTrafficFxStyle(this.trafficFxStyle);
+					line.setPacketGlowStrength(this.packetGlowStrength);
 					line.setVolumeEnergyStyle(this.volumeEnergyStyle);
 					line.setCurveSeed(hashString(lineId));
+					line.setColor(hub.color, networkPacketColorFor(this.networkPaletteMode));
 					this.lines.set(lineId, line);
 					this.scene.scene.add(line.object);
+				} else {
+					this.lines.get(lineId)?.setColor(color, networkPacketColorFor(this.networkPaletteMode));
 				}
 			}
 		}
@@ -423,6 +536,7 @@ export class Topology {
 					line.setTunnelStyle(this.tunnelStyle);
 					line.setTunnelThickness(this.networkTunnelThickness);
 					line.setTrafficFxStyle(this.trafficFxStyle);
+					line.setPacketGlowStrength(this.packetGlowStrength);
 					line.setVolumeEnergyStyle(this.volumeEnergyStyle);
 					line.setCurveSeed(hashString(lineId));
 					this.lines.set(lineId, line);
@@ -638,10 +752,48 @@ export class Topology {
 
 	// ---- Click dispatch ----
 
+	private handlePointerDown(event: PointerEvent): void {
+		if (event.button !== 0) return;
+		this.pointerDownId = event.pointerId;
+		this.pointerDownX = event.clientX;
+		this.pointerDownY = event.clientY;
+		this.pointerMoved = false;
+	}
+
+	private handlePointerMove(event: PointerEvent): void {
+		if (this.pointerDownId !== event.pointerId) return;
+		const dx = event.clientX - this.pointerDownX;
+		const dy = event.clientY - this.pointerDownY;
+		if ((dx * dx + dy * dy) > Topology.CLICK_MOVE_THRESHOLD_PX * Topology.CLICK_MOVE_THRESHOLD_PX) {
+			this.pointerMoved = true;
+		}
+	}
+
+	private handlePointerUp(event: PointerEvent): void {
+		if (this.pointerDownId !== event.pointerId) return;
+		const isClick = !this.pointerMoved;
+		this.resetPointerTracking();
+		if (!isClick) return;
+		this.handlePointerClick(event);
+	}
+
+	private resetPointerTracking(): void {
+		this.pointerDownId = null;
+		this.pointerMoved = false;
+	}
+
 	private handlePointerClick(event: MouseEvent): void {
 		if (!this.scene || !this.raycaster || !this.host) return;
 		const hit = this.raycaster.pickAt(event, this.host, this.scene.camera, this.scene.scene);
-		if (!hit) return;
+		if (!hit) {
+			// Empty-space click → drop tooltip immediately and let the page
+			// clear HUD / sidebar highlight. We don't call resetFocus()
+			// here because the camera reset is disruptive; only selection
+			// state is dropped.
+			this.selectionTarget = null;
+			this.callbacks.onEmptyClick?.();
+			return;
+		}
 		if (hit instanceof ContainerNode) {
 			this.focusContainer(hit.id);
 			this.callbacks.onContainerClick?.(hit.id);
@@ -655,16 +807,45 @@ export class Topology {
 
 	// ---- Focus API ----
 
+	/**
+	 * Return the active selection projected to pixel coordinates of
+	 * the given host. The Svelte layer calls this per frame to place
+	 * a DOM tooltip above the canvas — avoids the z-fighting / render-
+	 * order pitfalls of a 3D sprite label.
+	 */
+	getActiveTooltip(host: HTMLElement):
+		| { text: string; x: number; y: number }
+		| null {
+		if (!this.scene || !this.selectionTarget) return null;
+		const target = this.selectionTarget;
+		const text =
+			target instanceof ContainerNode || target instanceof Hub ? target.name : '';
+		if (!text) return null;
+
+		const topCentre = this.tooltipTopCentre;
+		target.getTooltipAnchor(topCentre);
+
+		const ndc = topCentre.project(this.scene.camera);
+		if (ndc.z < -1 || ndc.z > 1) return null;
+		const rect = host.getBoundingClientRect();
+		const x = ((ndc.x + 1) / 2) * rect.width;
+		const y = ((1 - (ndc.y + 1) / 2)) * rect.height;
+		return { text, x, y };
+	}
+	private readonly tooltipTopCentre = new THREE.Vector3();
+
 	focusContainer(id: string): void {
 		const node = this.containers.get(id);
 		if (!node) return;
 		this.applyFocus(id, new Set([id]), node.position);
 		this.animator?.fitSphere(node.position, 18);
+		this.selectionTarget = node;
 	}
 
 	focusHub(id: string, _type: HubType): void {
 		const hub = this.hubs.get(id);
 		if (!hub) return;
+		this.selectionTarget = hub;
 		const related = new Set<string>([hub.id, ...hub.memberIds]);
 		const center = hub.position.clone();
 		let maxDist = 0;
@@ -690,6 +871,7 @@ export class Topology {
 		this.layout.clearFocus();
 		this.layout.reheat(1.0);
 		this.animator?.resetCamera();
+		this.selectionTarget = null;
 	}
 
 	private applyFocus(focusId: string, related: ReadonlySet<string>, center: THREE.Vector3): void {
@@ -787,11 +969,32 @@ export class Topology {
 		}
 	}
 
+	setNetworkPaletteMode(mode: NetworkPaletteMode): void {
+		if (this.networkPaletteMode === mode) return;
+		this.networkPaletteMode = mode;
+		setNetworkPalette(mode);
+		if (this.lastData) {
+			this.update(this.lastData);
+		}
+	}
+
+	setPacketGlowStrength(strength: number): void {
+		this.packetGlowStrength = strength;
+		for (const line of this.lines.values()) {
+			line.setPacketGlowStrength(strength);
+		}
+	}
+
 	setVolumeEnergyStyle(style: VolumeEnergyStyle): void {
 		this.volumeEnergyStyle = style;
 		for (const line of this.lines.values()) {
 			line.setVolumeEnergyStyle(style);
 		}
+	}
+
+	setBloomStrength(strength: number): void {
+		this.bloomStrength = strength;
+		this.scene?.setBloomStrength(strength);
 	}
 
 	setContainerGeometryStyle(style: ContainerGeometryStyle): void {
@@ -851,6 +1054,14 @@ export class Topology {
 			clearTimeout(this.scatterPinTimer);
 			this.scatterPinTimer = null;
 		}
+		if (this.loadingWatchdog) {
+			clearTimeout(this.loadingWatchdog);
+			this.loadingWatchdog = null;
+		}
+		if (this.loadingSceneHoldTimer) {
+			clearTimeout(this.loadingSceneHoldTimer);
+			this.loadingSceneHoldTimer = null;
+		}
 		if (this.detachClick) {
 			this.detachClick();
 			this.detachClick = null;
@@ -903,6 +1114,7 @@ export class Topology {
 		this.animator = null;
 		this.raycaster = null;
 		this.starfield = null;
+		this.selectionTarget = null;
 		this.host = null;
 		this.activeFocusId = null;
 	}
