@@ -183,13 +183,13 @@ export class Topology {
 	private loadingWatchdog: ReturnType<typeof setTimeout> | null = null;
 	private loadingSceneHoldTimer: ReturnType<typeof setTimeout> | null = null;
 	private loadingStartedAt = 0;
-	private static readonly STABLE_FRAME_TARGET = 30;
-	private static readonly STABLE_DT_MAX = 0.022; // ~45fps floor
-	private static readonly LOADING_SAFETY_MS = 8000;
-	private static readonly STAGE_HOLD_MS = 350;
+	private static readonly STABLE_FRAME_TARGET = 12;
+	private static readonly STABLE_DT_MAX = 0.026; // ~38fps floor
+	private static readonly LOADING_SAFETY_MS = 3500;
+	private static readonly STAGE_HOLD_MS = 160;
 	// Even on fast loads, hold the overlay for this long so users can
 	// register the branding / stage text instead of a sub-second flash.
-	private static readonly LOADING_MIN_MS = 1400;
+	private static readonly LOADING_MIN_MS = 600;
 	private activeFocusId: string | null = null;
 	private hasComputedInitialHome = false;
 	private curvedLines = false;

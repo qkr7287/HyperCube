@@ -85,6 +85,12 @@
 		return Math.round((cpuHealth + memHealth + diskHealth) / 3);
 	}
 
+	function healthTone(pct: number): string {
+		if (pct >= 75) return 'tone-good';
+		if (pct >= 45) return 'tone-warn';
+		return 'tone-bad';
+	}
+
 	function formatUptime(seconds: number | undefined): string {
 		const s = Math.floor(seconds ?? 0);
 		if (s <= 0) return '—';
@@ -99,12 +105,9 @@
 
 <aside class="sidebar">
 	<div class="server-section">
-		<div class="section-header">
-			<span class="heading">서버 정보</span>
-		</div>
-
 		{#if systemInfo}
-			<div class="info-list">
+			<div class="info-group">
+				<div class="group-label">Identity</div>
 				<div class="info-row">
 					<div class="info-label-group">
 						<img src={iconHostname} alt="" class="icon" />
@@ -139,10 +142,10 @@
 				{#if currentAgent}
 					<div class="info-row">
 						<div class="info-label-group">
-							<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+							<svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
 							<span class="label">IP</span>
 						</div>
-						<span class="value">{currentAgent.ip_address}</span>
+						<span class="value mono">{currentAgent.ip_address}</span>
 					</div>
 				{/if}
 
@@ -151,9 +154,12 @@
 						<img src={iconOs} alt="" class="icon" />
 						<span class="label">OS</span>
 					</div>
-					<span class="value small">{systemInfo.os}</span>
+					<span class="value value-small" title={systemInfo.os}>{systemInfo.os}</span>
 				</div>
+			</div>
 
+			<div class="info-group">
+				<div class="group-label">Resources</div>
 				<div class="info-row clickable" onclick={onOpenCpu} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenCpu()}>
 					<div class="info-label-group">
 						<img src={iconCpu} alt="" class="icon" />
@@ -177,7 +183,10 @@
 					</div>
 					<span class="value">{systemInfo.disk.total}</span>
 				</div>
+			</div>
 
+			<div class="info-group">
+				<div class="group-label">Activity</div>
 				<div class="info-row clickable" onclick={onOpenNetwork} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenNetwork()}>
 					<div class="info-label-group">
 						<img src={iconNetwork} alt="" class="icon" />
@@ -218,19 +227,18 @@
 	<div class="spacer"></div>
 
 	{#if systemInfo}
+		{@const healthPct = getHealthPercent(systemInfo)}
 		<div class="health-card">
 			<div class="health-header">
 				<span class="health-label">Health Status</span>
+				<span class="health-percent {healthTone(healthPct)}">{healthPct}%</span>
 			</div>
 			<div class="health-bar-track">
-				<div
-					class="health-bar-fill"
-					style="width: {getHealthPercent(systemInfo)}%"
-				></div>
+				<div class="health-bar-fill" style="width: {healthPct}%"></div>
 			</div>
 			<div class="health-footer">
-				<span class="health-percent">{getHealthPercent(systemInfo)}% Stable</span>
-				<span class="health-uptime">Uptime: {formatUptime(systemInfo.uptime)}</span>
+				<span class="health-caption">Stable</span>
+				<span class="health-uptime">{formatUptime(systemInfo.uptime)}</span>
 			</div>
 		</div>
 	{/if}
@@ -242,21 +250,39 @@
 		min-width: 288px;
 		background: var(--bg-base);
 		border-right: 1px solid var(--border);
-		padding: 24px;
+		padding: 22px 20px 20px;
 		display: flex;
 		flex-direction: column;
-		gap: 24px;
+		gap: 20px;
 		overflow-y: auto;
 	}
 
-	.section-header {
-		margin-bottom: 24px;
+	.server-section {
+		display: flex;
+		flex-direction: column;
+		gap: 18px;
 	}
 
-	.heading {
-		font-size: 13px;
+	.info-group {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		padding-bottom: 14px;
+		border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+	}
+
+	.info-group:last-child {
+		border-bottom: none;
+		padding-bottom: 4px;
+	}
+
+	.group-label {
+		font-size: 10px;
 		font-weight: 700;
-		color: var(--text-secondary);
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
+		color: rgba(148, 163, 184, 0.7);
+		margin-bottom: 4px;
 	}
 
 	.server-switcher {
@@ -337,56 +363,73 @@
 		font-family: monospace;
 	}
 
-	.info-list {
-		display: flex;
-		flex-direction: column;
-		gap: 20px;
-	}
-
 	.info-row {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
+		gap: 10px;
+		min-height: 32px;
 	}
 
 	.info-row.clickable {
 		cursor: pointer;
-		border-radius: 6px;
-		padding: 4px 8px;
-		margin: -4px -8px;
+		border-radius: 8px;
+		padding: 6px 10px;
+		margin: -6px -10px;
 		transition: background 0.15s ease;
 	}
 
 	.info-row.clickable:hover {
 		background: rgba(48, 213, 200, 0.08);
 	}
+	.info-row.clickable:hover .icon {
+		filter: drop-shadow(0 0 6px rgba(48, 213, 200, 0.45));
+	}
 
 	.info-label-group {
 		display: flex;
 		align-items: center;
-		gap: 12px;
+		gap: 10px;
 		color: var(--text-primary);
+		min-width: 0;
 	}
 
 	.icon {
-		width: 16px;
-		height: 16px;
+		width: 18px;
+		height: 18px;
 		flex-shrink: 0;
+		opacity: 0.9;
 	}
 
 	.label {
-		font-size: 13px;
-		font-weight: 700;
-		color: var(--text-primary);
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--text-secondary);
+		letter-spacing: 0.01em;
 	}
 
 	.value {
-		font-size: 12px;
+		font-size: 14px;
+		font-weight: 600;
 		color: var(--text-primary);
+		text-align: right;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 170px;
 	}
 
-	.value.small {
-		font-size: 10px;
+	.value.mono {
+		font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+		font-size: 12.5px;
+		letter-spacing: 0.01em;
+	}
+
+	.value.value-small {
+		font-size: 11px;
+		font-weight: 500;
+		color: var(--text-secondary);
+		max-width: 180px;
 	}
 
 	.spacer {
@@ -395,13 +438,13 @@
 	}
 
 	.health-card {
-		background: var(--bg-card);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-sm);
-		padding: 16px;
+		background: linear-gradient(180deg, rgba(19, 27, 40, 0.94), rgba(13, 17, 23, 0.96));
+		border: 1px solid rgba(148, 163, 184, 0.1);
+		border-radius: var(--radius-md);
+		padding: 14px 16px;
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
+		gap: 10px;
 	}
 
 	.health-header {
@@ -411,39 +454,56 @@
 	}
 
 	.health-label {
-		font-size: 13px;
+		font-size: 10px;
 		font-weight: 700;
-		color: var(--text-secondary);
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
+		color: rgba(148, 163, 184, 0.78);
 	}
+
+	.health-percent {
+		font-size: 15px;
+		font-weight: 700;
+		letter-spacing: 0.01em;
+	}
+	.health-percent.tone-good { color: #4ade80; }
+	.health-percent.tone-warn { color: #facc15; }
+	.health-percent.tone-bad  { color: #f87171; }
 
 	.health-bar-track {
 		height: 6px;
-		background: var(--tag-bg);
+		background: rgba(15, 23, 42, 0.75);
+		border: 1px solid rgba(148, 163, 184, 0.08);
 		border-radius: var(--radius-full);
 		overflow: hidden;
 	}
 
 	.health-bar-fill {
 		height: 100%;
-		background: var(--accent);
+		background: linear-gradient(90deg, #f87171 0%, #facc15 50%, #4ade80 100%);
 		border-radius: var(--radius-full);
 		transition: width 0.5s ease;
+		box-shadow: 0 0 8px rgba(250, 204, 21, 0.28);
 	}
 
 	.health-footer {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
+		font-size: 11px;
 	}
 
-	.health-percent {
-		font-size: 13px;
-		color: var(--text-primary);
+	.health-caption {
+		color: var(--text-secondary);
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		font-weight: 600;
 	}
 
 	.health-uptime {
-		font-size: 13px;
 		color: var(--accent);
+		font-weight: 600;
+		font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
 	}
 
 	.loading {
