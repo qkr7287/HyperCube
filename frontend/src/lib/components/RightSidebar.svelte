@@ -161,7 +161,7 @@
 	}
 </script>
 
-<aside class="sidebar" class:wide={viewMode === 'list'}>
+<aside class="sidebar" class:list-mode={viewMode === 'list'} class:group-mode={viewMode === 'group'}>
 	<!-- Header -->
 	<div class="sidebar-header">
 		<span class="heading">컨테이너 정보</span>
@@ -349,8 +349,8 @@
 
 <style>
 	.sidebar {
-		width: 480px;
-		min-width: 480px;
+		width: 678px;
+		min-width: 678px;
 		background: var(--bg-base);
 		border-left: 1px solid var(--border);
 		padding: 24px;
@@ -358,12 +358,6 @@
 		flex-direction: column;
 		gap: 0;
 		overflow: hidden;
-		transition: width 0.3s ease, min-width 0.3s ease;
-	}
-
-	.sidebar.wide {
-		width: 678px;
-		min-width: 678px;
 	}
 
 	.sidebar-header {
@@ -482,6 +476,7 @@
 		flex: 1;
 		min-height: 0;
 		padding-bottom: 16px;
+		width: 100%;
 	}
 
 	/* List View Styles */

@@ -28,6 +28,13 @@ export class SceneManager {
 
 	private readonly host: HTMLElement;
 	private readonly resizeObserver: ResizeObserver;
+	private resizeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+	// CSS transitions on the sidebar cause the host to resize over ~300ms.
+	// Each setSize on the EffectComposer reallocates UnrealBloom render
+	// targets — visible as a black flash. We keep aspect up-to-date each
+	// frame but defer the full setSize until the host has been stable
+	// for RESIZE_SETTLE_MS.
+	private static readonly RESIZE_SETTLE_MS = 140;
 
 	constructor(host: HTMLElement) {
 		this.host = host;
@@ -36,9 +43,12 @@ export class SceneManager {
 		this.scene.background = new THREE.Color(0x0d1117);
 
 		this.camera = new THREE.PerspectiveCamera(60, 1, 0.03, 10000);
-		this.camera.position.set(0, 0, 500);
+		this.camera.position.set(0, 0, 680);
 
-		this.renderer = new THREE.WebGLRenderer({ antialias: true });
+		this.renderer = new THREE.WebGLRenderer({
+			antialias: true,
+			logarithmicDepthBuffer: true,
+		});
 		this.renderer.setPixelRatio(window.devicePixelRatio);
 		this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 		this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -69,8 +79,31 @@ export class SceneManager {
 		this.composer.addPass(this.bloomPass);
 
 		this.applySize();
-		this.resizeObserver = new ResizeObserver(() => this.applySize());
+		this.resizeObserver = new ResizeObserver(() => this.onHostResize());
 		this.resizeObserver.observe(host);
+	}
+
+	private onHostResize(): void {
+		// Cheap per-frame adjustment: update camera aspect right away so
+		// the view doesn't distort during a CSS sidebar transition. The
+		// canvas DOM element is `width: 100%` so it stretches visually
+		// while the internal buffers keep their previous size.
+		const w = this.host.clientWidth || 1;
+		const h = this.host.clientHeight || 1;
+		this.camera.aspect = w / h;
+		this.camera.updateProjectionMatrix();
+
+		// Expensive path — allocate new render targets — is deferred
+		// until the host has been stable. Coalesces the burst of
+		// ResizeObserver callbacks that fire throughout the 300ms CSS
+		// transition into a single setSize at the end.
+		if (this.resizeDebounceTimer !== null) {
+			clearTimeout(this.resizeDebounceTimer);
+		}
+		this.resizeDebounceTimer = setTimeout(() => {
+			this.resizeDebounceTimer = null;
+			this.applySize();
+		}, SceneManager.RESIZE_SETTLE_MS);
 	}
 
 	private applySize(): void {
@@ -93,6 +126,10 @@ export class SceneManager {
 
 	dispose(): void {
 		this.resizeObserver.disconnect();
+		if (this.resizeDebounceTimer !== null) {
+			clearTimeout(this.resizeDebounceTimer);
+			this.resizeDebounceTimer = null;
+		}
 		this.controls.dispose();
 		this.composer.dispose?.();
 		this.scene.environment = null;

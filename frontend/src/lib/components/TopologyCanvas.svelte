@@ -17,7 +17,7 @@
 
 	interface Props {
 		containers: TopologyContainerData[];
-		stackColors?: Record<string, number>;
+		stackHealth?: Record<string, { running: number; total: number }>;
 		onContainerClick?: (id: string) => void;
 		onHubClick?: (hubId: string, hubType: 'stack' | 'network' | 'volume') => void;
 		onEmptyClick?: () => void;
@@ -36,7 +36,7 @@
 
 	let {
 		containers,
-		stackColors,
+		stackHealth,
 		onContainerClick,
 		onHubClick,
 		onEmptyClick,
@@ -126,7 +126,7 @@
 		topology.setTrafficFxStyle(trafficFxStyle);
 		topology.setVolumeEnergyStyle(volumeEnergyStyle);
 		topology.setNetworkPaletteMode(networkPaletteMode);
-		topology.mount(host, { containers, stackColors, networkTraffic }, buildCallbacks());
+		topology.mount(host, { containers, stackHealth, networkTraffic }, buildCallbacks());
 		mounted = true;
 		startTooltipLoop();
 	}
@@ -148,7 +148,7 @@
 
 	$effect(() => {
 		if (!mounted || !topology) return;
-		topology.update({ containers, stackColors });
+		topology.update({ containers, stackHealth });
 	});
 
 	$effect(() => {
@@ -176,7 +176,17 @@
 
 	// External API — let the page (or future TopologyToolbar) trigger
 	// focus / reset without exposing the Topology instance itself.
+	//
+	// resetFocus performs an in-place reset (camera + selection +
+	// layout reheat) via Topology.resetFocus(). The previous
+	// implementation called reloadTopology() which disposed and
+	// remounted the whole scene — that re-ran GLB loading and showed
+	// the loading overlay every time the user pressed Reset / ESC.
+	// Use reloadTopologyHard() if a full teardown is ever needed.
 	export function resetFocus(): void {
+		topology?.resetFocus();
+	}
+	export function reloadTopologyHard(): void {
 		reloadTopology();
 	}
 	export function focusContainer(id: string): void {
@@ -220,6 +230,20 @@
 			</div>
 		</div>
 	{/if}
+
+	<div
+		class="health-legend"
+		class:health-legend-visible={loadingStage === 'ready'}
+		aria-hidden="true"
+	>
+		<div class="legend-title">Stack Health</div>
+		<div class="legend-bar"></div>
+		<div class="legend-labels">
+			<span>0%</span>
+			<span>50%</span>
+			<span>100%</span>
+		</div>
+	</div>
 </div>
 
 <style>
@@ -373,5 +397,58 @@
 	@keyframes bar-shimmer {
 		0%   { transform: translateX(-80%); }
 		100% { transform: translateX(260%); }
+	}
+
+	/* ---------- Stack Health legend (bottom-right overlay) ---------- */
+	.health-legend {
+		position: absolute;
+		right: 16px;
+		bottom: 16px;
+		z-index: 20;
+		padding: 10px 14px 9px;
+		border-radius: 10px;
+		background: rgba(13, 17, 23, 0.78);
+		border: 1px solid rgba(48, 213, 200, 0.16);
+		backdrop-filter: blur(8px);
+		-webkit-backdrop-filter: blur(8px);
+		pointer-events: none;
+		min-width: 148px;
+		opacity: 0;
+		transform: translateY(4px);
+		transition: opacity 360ms ease-out, transform 360ms ease-out;
+		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.38);
+	}
+
+	.health-legend-visible {
+		opacity: 1;
+		transform: translateY(0);
+	}
+
+	.legend-title {
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: rgba(203, 213, 225, 0.78);
+		margin-bottom: 8px;
+	}
+
+	.legend-bar {
+		height: 6px;
+		border-radius: 3px;
+		background: linear-gradient(90deg, #f87171 0%, #facc15 50%, #4ade80 100%);
+		box-shadow:
+			inset 0 0 0 1px rgba(15, 23, 42, 0.35),
+			0 0 10px rgba(250, 204, 21, 0.18);
+	}
+
+	.legend-labels {
+		display: flex;
+		justify-content: space-between;
+		margin-top: 5px;
+		font-size: 10px;
+		color: rgba(148, 163, 184, 0.85);
+		font-weight: 600;
+		letter-spacing: 0.02em;
 	}
 </style>

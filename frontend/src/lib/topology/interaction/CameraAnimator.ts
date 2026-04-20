@@ -25,6 +25,33 @@ export class CameraAnimator {
 		this.initialTarget = controls.target.clone();
 	}
 
+	setHome(position: THREE.Vector3, target: THREE.Vector3, snap = false): void {
+		this.initialPosition.copy(position);
+		this.initialTarget.copy(target);
+		if (snap) {
+			this.cancel();
+			this.camera.position.copy(position);
+			this.controls.target.copy(target);
+		}
+	}
+
+	setHomeFromSphere(center: THREE.Vector3, radius: number, snap = false): void {
+		const safeRadius = Math.max(radius, 40);
+		const fovRad = (this.camera.fov * Math.PI) / 180;
+		const dist = (safeRadius * 1.9) / Math.tan(fovRad / 2);
+		const offset = new THREE.Vector3(dist * 0.62, dist * 0.4, dist * 0.62);
+		const position = center.clone().add(offset);
+		this.setHome(position, center, snap);
+	}
+
+	setHomeFromCount(center: THREE.Vector3, count: number, snap = false): void {
+		const safeCount = Math.max(count, 1);
+		const dist = 420 + Math.sqrt(safeCount) * 48;
+		const offset = new THREE.Vector3(dist * 0.62, dist * 0.4, dist * 0.62);
+		const position = center.clone().add(offset);
+		this.setHome(position, center, snap);
+	}
+
 	tick(): void {
 		this.group.update();
 	}

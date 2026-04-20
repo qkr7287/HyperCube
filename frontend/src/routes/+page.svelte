@@ -106,12 +106,13 @@
 		mounts: c.mounts,
 	}));
 
-	// Stack colour map shared with the sidebar — keeps group mesh
-	// colour in sync with the project card colour dots. ProjectCard's
-	// colour is a CSS hex string; three.js wants a number.
-	let topologyStackColors: Record<string, number> = {};
-	$: topologyStackColors = Object.fromEntries(
-		projects.map((p) => [p.name, parseInt(p.color.replace('#', ''), 16)])
+	// Per-stack running/total counts driven straight from projects[].
+	// The membrane (group mesh) colours itself from this via
+	// healthColor() — see $lib/utils/health-color. Stacks missing from
+	// the map are treated as fully-healthy on the 3D side.
+	let topologyStackHealth: Record<string, { running: number; total: number }> = {};
+	$: topologyStackHealth = Object.fromEntries(
+		projects.map((p) => [p.name, { running: p.stats.running, total: p.stats.total }])
 	);
 	let topologyNetworkTraffic: TopologyNetworkTrafficIndex = new Map();
 
@@ -279,7 +280,8 @@
 			target.isContentEditable
 		);
 		if (inField || anyModalOpen()) return;
-		topologyCanvas?.resetFocus?.();
+		// ESC only dismisses the HUD + tooltip. Camera / layout / focus
+		// stay untouched — press the Reset button for a full reset.
 		clearHudSelection();
 	}
 
@@ -550,7 +552,7 @@
 			{#key selectedServerId}
 				<TopologyCanvas
 					containers={topologyContainers}
-					stackColors={topologyStackColors}
+					stackHealth={topologyStackHealth}
 					networkTraffic={topologyNetworkTraffic}
 					showStack={showStackHub}
 					showNetwork={showNetworkHub}

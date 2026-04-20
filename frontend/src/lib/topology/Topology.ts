@@ -22,6 +22,7 @@ import { NetworkLine } from './lines/NetworkLine';
 import { StackLine } from './lines/StackLine';
 import { VolumeLine } from './lines/VolumeLine';
 import type { TopologyNetworkTrafficIndex } from './traffic-adapter';
+import { healthColor } from '$lib/utils/health-color';
 
 export interface TopologyContainerData {
 	id: string;
@@ -35,12 +36,12 @@ export interface TopologyContainerData {
 export interface TopologyData {
 	containers: TopologyContainerData[];
 	/**
-	 * Optional mapping from stack name to colour (as a three.js hex
-	 * number). When provided, overrides the built-in STACK_COLORS
-	 * palette so stack hubs, lines, and group meshes line up with the
-	 * caller's own colour scheme (e.g. the sidebar group dots).
+	 * Per-stack running/total counts. Drives the group-mesh (membrane)
+	 * fill colour as a red→amber→green gradient — see
+	 * `$lib/utils/health-color.healthColor`. Stacks missing from the
+	 * map are treated as fully-healthy.
 	 */
-	stackColors?: Record<string, number>;
+	stackHealth?: Record<string, { running: number; total: number }>;
 	networkTraffic?: TopologyNetworkTrafficIndex;
 }
 
@@ -61,24 +62,19 @@ export interface TopologyCallbacks {
 	onLoadingStage?: (stage: LoadingStage) => void;
 }
 
-// Stack palette — stable mapping across renders, indexed by sorted name.
-// Teal/cyan/emerald are reserved for container state + network tunnels,
-// so those hues are deliberately absent from this palette to keep group
-// membranes visually distinct from the network layer.
-const STACK_COLORS: readonly number[] = [
-	0xfbbf24, 0xf472b6, 0x60a5fa, 0xa78bfa, 0xfb923c,
-	0xf87171, 0xeab308, 0xc084fc, 0xfacc15, 0xfb7185,
-	0xd4a574, 0x8e24aa, 0xef5350, 0xba68c8, 0xff9100,
-];
+// Per-group palette was retired: the group-mesh (membrane) fill now
+// reads health (running/total) via healthColor(), and stack hubs keep
+// their authored GLB colour. A single neutral slate is used for the
+// fallback StackHub geometry and every StackLine so those structural
+// layers stay visually consistent across every group.
+const STACK_NEUTRAL_COLOR = 0xcbd5e1;
 
-function stackColorFor(
+function healthColorForStack(
 	stackName: string,
-	sortedNames: readonly string[],
-	override?: Record<string, number>
+	stackHealth?: Record<string, { running: number; total: number }>
 ): number {
-	if (override && override[stackName] !== undefined) return override[stackName];
-	const idx = sortedNames.indexOf(stackName);
-	return STACK_COLORS[Math.max(idx, 0) % STACK_COLORS.length];
+	const h = stackHealth?.[stackName];
+	return healthColor(h?.running ?? 0, h?.total ?? 0).number;
 }
 
 // Delay before newly-scattered unrelated nodes get pinned in place.
@@ -86,10 +82,24 @@ function stackColorFor(
 // freeze their position (req #10).
 const SCATTER_PIN_DELAY_MS = 1500;
 
-// Minimum members for a network / volume hub to be drawn. A hub that
-// points at a single container adds noise without carrying any
-// "shared resource" meaning.
-const MIN_HUB_MEMBERS = 2;
+// Minimum members for a network / volume hub to be drawn.
+// Network keeps the "shared resource" rule (≥2 members); volume is
+// relaxed to 1 so per-stack named volumes still surface as hubs.
+// To revert volume to the original "shared only" behaviour, change
+// MIN_VOLUME_HUB_MEMBERS back to 2.
+const MIN_NETWORK_HUB_MEMBERS = 2;
+const MIN_VOLUME_HUB_MEMBERS = 1;
+
+// Docker auto-generates anonymous volume names as 64-char lowercase
+// hex hashes. Those carry no user-facing meaning, so they stay hidden
+// even when MIN_VOLUME_HUB_MEMBERS is 1.
+const ANONYMOUS_VOLUME_RE = /^[0-9a-f]{64}$/;
+
+function isMeaningfulVolumeName(name: string): boolean {
+	if (!name) return false;
+	if (ANONYMOUS_VOLUME_RE.test(name)) return false;
+	return true;
+}
 
 type LineKind = 'stack' | 'network' | 'volume';
 
@@ -181,6 +191,7 @@ export class Topology {
 	// register the branding / stage text instead of a sub-second flash.
 	private static readonly LOADING_MIN_MS = 1400;
 	private activeFocusId: string | null = null;
+	private hasComputedInitialHome = false;
 	private curvedLines = false;
 	private groupVisualMode: GroupVisualMode = 'soft';
 	private networkPaletteMode: NetworkPaletteMode = 'cyan';
@@ -211,6 +222,7 @@ export class Topology {
 
 		this.host = host;
 		this.callbacks = cb ?? {};
+		this.hasComputedInitialHome = false;
 		setNetworkPalette(this.networkPaletteMode);
 
 		const scene = new SceneManager(host);
@@ -399,25 +411,29 @@ export class Topology {
 			const hubId = `stack:${stack}`;
 			seenHubs.add(hubId);
 			seenGroups.add(stack);
-			const color = stackColorFor(stack, sortedStacks, mergedData.stackColors);
+			// StackHub: authored GLB keeps its original colour;
+			// the fallback geometry uses the shared neutral.
+			const hubColor = STACK_NEUTRAL_COLOR;
+			// GroupMesh: fill tracks health (running / total) so the
+			// membrane reads as a live heat indicator.
+			const gmColor = healthColorForStack(stack, mergedData.stackHealth);
 			const existing = this.hubs.get(hubId);
 			if (existing instanceof StackHub) {
-				existing.update({ name: stack, color });
+				existing.update({ name: stack, color: hubColor });
 				existing.clearMembers();
 			} else {
-				const hub = new StackHub({ name: stack, color }, this.templates.stack);
+				const hub = new StackHub({ name: stack, color: hubColor }, this.templates.stack);
 				this.hubs.set(hubId, hub);
 				this.scene.scene.add(hub.object);
 			}
-			// GroupMesh: one per stack, tracks the hub color.
 			let gm = this.groupMeshes.get(stack);
 			if (!gm) {
-				gm = new GroupMesh(color);
+				gm = new GroupMesh(gmColor);
 				gm.setMode(this.groupVisualMode);
 				this.groupMeshes.set(stack, gm);
 				this.scene.scene.add(gm.object);
 			} else {
-				gm.setColor(color);
+				gm.setColor(gmColor);
 				gm.setMode(this.groupVisualMode);
 			}
 		}
@@ -430,7 +446,7 @@ export class Topology {
 			if (!this.lines.has(lineId)) {
 				const hub = this.hubs.get(`stack:${stack}`);
 				if (hub instanceof StackHub) {
-					const line = new StackLine(hub.color);
+					const line = new StackLine(STACK_NEUTRAL_COLOR);
 					line.setCurved(this.curvedLines);
 					line.setPulseMode(this.linePulseMode);
 					line.setTunnelStyle(this.tunnelStyle);
@@ -456,7 +472,7 @@ export class Topology {
 			}
 		}
 		const activeNetworks = Array.from(networkMembers.entries())
-			.filter(([, members]) => members.length >= MIN_HUB_MEMBERS)
+			.filter(([, members]) => members.length >= MIN_NETWORK_HUB_MEMBERS)
 			.map(([name]) => name)
 			.sort();
 		for (const net of activeNetworks) {
@@ -499,18 +515,19 @@ export class Topology {
 			}
 		}
 
-		// --- volume hubs (named volumes shared by 2+ containers) ---
+		// --- volume hubs (named volumes, 1+ containers; anonymous/hash
+		// volumes skipped so only meaningful names surface) ---
 		const volumeMembers = new Map<string, string[]>();
 		for (const c of mergedData.containers) {
 			for (const m of c.mounts ?? []) {
-				if (!m || m.type !== 'volume' || !m.name) continue;
+				if (!m || m.type !== 'volume' || !isMeaningfulVolumeName(m.name)) continue;
 				const arr = volumeMembers.get(m.name);
 				if (arr) arr.push(c.id);
 				else volumeMembers.set(m.name, [c.id]);
 			}
 		}
 		const activeVolumes = Array.from(volumeMembers.entries())
-			.filter(([, members]) => members.length >= MIN_HUB_MEMBERS)
+			.filter(([, members]) => members.length >= MIN_VOLUME_HUB_MEMBERS)
 			.map(([name]) => name)
 			.sort();
 		for (const vol of activeVolumes) {
@@ -584,6 +601,11 @@ export class Topology {
 		// --- feed layout ---
 		const { entities, links } = this.buildLayoutGraph();
 		this.layout.setData(entities, links);
+		if (!this.hasComputedInitialHome && !this.activeFocusId) {
+			this.layout.tick();
+			this.syncEntityPositions();
+			this.computeInitialCameraHome();
+		}
 
 		// Re-pin anything the pinner still remembers.
 		for (const id of this.pinner.snapshot()) {
@@ -679,6 +701,19 @@ export class Topology {
 		}
 	}
 
+	private computeInitialCameraHome(): void {
+		if (!this.animator) return;
+		const box = this.homeBounds;
+		box.makeEmpty();
+		for (const hub of this.hubs.values()) box.expandByPoint(hub.position);
+		for (const node of this.containers.values()) box.expandByPoint(node.position);
+		if (box.isEmpty()) return;
+		box.getCenter(this.homeCenter);
+		const totalCount = this.hubs.size + this.containers.size;
+		this.animator.setHomeFromCount(this.homeCenter, totalCount, true);
+		this.hasComputedInitialHome = true;
+	}
+
 	private updateGroupMeshes(): void {
 		const stackVisible = this.hubVisibility.stack;
 		for (const [stack, gm] of this.groupMeshes) {
@@ -704,7 +739,7 @@ export class Topology {
 		if (!this.scene) return;
 		this.lastData = {
 			containers: this.lastData?.containers ?? [],
-			stackColors: this.lastData?.stackColors,
+			stackHealth: this.lastData?.stackHealth,
 			networkTraffic,
 		};
 		this.applyNetworkTraffic(networkTraffic);
@@ -836,6 +871,8 @@ export class Topology {
 		return { text, x, y };
 	}
 	private readonly tooltipTopCentre = new THREE.Vector3();
+	private readonly homeBounds = new THREE.Box3();
+	private readonly homeCenter = new THREE.Vector3();
 
 	focusContainer(id: string): void {
 		const node = this.containers.get(id);
