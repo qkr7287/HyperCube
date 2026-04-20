@@ -1,38 +1,842 @@
 import * as THREE from 'three';
 
+export type LinePulseMode = 'glow' | 'flow' | 'stream' | 'tunnel';
+export type TunnelStyle = 'mist' | 'ribs' | 'subsea' | 'core';
+export type TrafficFxStyle = 'soft' | 'comet' | 'relay' | 'surge';
+export type VolumeEnergyStyle = 'plasma' | 'arc' | 'conduit';
+
+type TunnelPreset = {
+	bodyOpacity: number;
+	bodyBoost: number;
+	bodyWhiteMix: number; // how much to lerp body colour towards white (0 = pure hue)
+	stripeOpacity: number;
+	stripeBoost: number;
+	stripeWhiteMix: number;
+	stripeRepeat: number;
+	stripeSpeed: number;
+	packetOpacity: number;
+	packetCount: number;
+	packetSpacing: number;
+	packetSizeMul: number;
+	radiusMul: number;
+	stripeRadiusMul: number; // stripe tube radius relative to base radius
+};
+
+type TrafficFxPreset = {
+	countMul: number;
+	speedMul: number;
+	coreSizeMul: number;
+	glowSizeMul: number;
+	coreOpacityMul: number;
+	glowOpacityMul: number;
+	spacingMul: number;
+};
+
+type VolumeEnergyPreset = {
+	lineOpacity: number;
+	lineBoost: number;
+	whiteMix: number;
+	dashSize: number;
+	gapSize: number;
+	dashSpeed: number;
+};
+
+// Four styles intentionally pull apart on different axes so they
+// read as distinct rather than "same thing with different numbers":
+//   mist   — barely-there body, gentle washy stripes (calm fog)
+//   ribs   — dim body, sharp high-density stripes (digital segments)
+//   subsea — thickest body, balanced stripe with 2 moving packets (deep-sea tunnel)
+//   core   — near-invisible body, fast bright stripes with big packets (energy beam)
+// Stripe texture = 1 bar per cycle. `stripeRepeat` maps 1:1 to
+// on-screen bar count across the full tube, so these values are
+// "how many distinct rings of light do I want on this line".
+const TUNNEL_PRESETS: Record<TunnelStyle, TunnelPreset> = {
+	mist: {
+		bodyOpacity: 0.035,
+		bodyBoost: 0.05,
+		bodyWhiteMix: 0.85,
+		stripeOpacity: 0.38,
+		stripeBoost: 0.14,
+		stripeWhiteMix: 0.8,
+		stripeRepeat: 2,
+		stripeSpeed: 0.3,
+		packetOpacity: 0,
+		packetCount: 0,
+		packetSpacing: 0.5,
+		packetSizeMul: 1.0,
+		radiusMul: 1.15,
+		stripeRadiusMul: 1.0,
+	},
+	ribs: {
+		bodyOpacity: 0.05,
+		bodyBoost: 0.05,
+		bodyWhiteMix: 0.2,
+		stripeOpacity: 0.82,
+		stripeBoost: 0.22,
+		stripeWhiteMix: 0.35,
+		stripeRepeat: 6,
+		stripeSpeed: 0.9,
+		packetOpacity: 0,
+		packetCount: 0,
+		packetSpacing: 0.5,
+		packetSizeMul: 0.9,
+		radiusMul: 1.0,
+		stripeRadiusMul: 1.0,
+	},
+	subsea: {
+		bodyOpacity: 0.045,
+		bodyBoost: 0.045,
+		bodyWhiteMix: 0.32,
+		stripeOpacity: 0.5,
+		stripeBoost: 0.1,
+		stripeWhiteMix: 0.36,
+		stripeRepeat: 3,
+		stripeSpeed: 0.5,
+		packetOpacity: 0.56,
+		packetCount: 2,
+		packetSpacing: 0.42,
+		packetSizeMul: 0.95,
+		radiusMul: 1.08,
+		stripeRadiusMul: 1.0,
+	},
+	core: {
+		bodyOpacity: 0.02,
+		bodyBoost: 0.03,
+		bodyWhiteMix: 0.15,
+		stripeOpacity: 0.55,
+		stripeBoost: 0.18,
+		stripeWhiteMix: 0.2,
+		stripeRepeat: 4,
+		stripeSpeed: 1.25,
+		packetOpacity: 0.88,
+		packetCount: 2,
+		packetSpacing: 0.36,
+		packetSizeMul: 1.55,
+		radiusMul: 0.8,
+		stripeRadiusMul: 1.0,
+	},
+};
+
+const TRAFFIC_FX_PRESETS: Record<TrafficFxStyle, TrafficFxPreset> = {
+	soft: {
+		countMul: 1,
+		speedMul: 0.92,
+		coreSizeMul: 0.95,
+		glowSizeMul: 1.12,
+		coreOpacityMul: 0.82,
+		glowOpacityMul: 0.28,
+		spacingMul: 1,
+	},
+	comet: {
+		countMul: 0.5,
+		speedMul: 1.08,
+		coreSizeMul: 1.35,
+		glowSizeMul: 1.9,
+		coreOpacityMul: 1.1,
+		glowOpacityMul: 0.56,
+		spacingMul: 1.35,
+	},
+	relay: {
+		countMul: 1,
+		speedMul: 1,
+		coreSizeMul: 1.08,
+		glowSizeMul: 1.55,
+		coreOpacityMul: 1,
+		glowOpacityMul: 0.48,
+		spacingMul: 0.92,
+	},
+	surge: {
+		countMul: 1.5,
+		speedMul: 1.22,
+		coreSizeMul: 0.92,
+		glowSizeMul: 1.5,
+		coreOpacityMul: 1.06,
+		glowOpacityMul: 0.52,
+		spacingMul: 0.72,
+	},
+};
+
+const VOLUME_ENERGY_PRESETS: Record<VolumeEnergyStyle, VolumeEnergyPreset> = {
+	plasma: {
+		lineOpacity: 0.74,
+		lineBoost: 0.18,
+		whiteMix: 0.3,
+		dashSize: 11,
+		gapSize: 2.8,
+		dashSpeed: 0.46,
+	},
+	arc: {
+		lineOpacity: 0.9,
+		lineBoost: 0.24,
+		whiteMix: 0.48,
+		dashSize: 7.5,
+		gapSize: 4.8,
+		dashSpeed: 0.84,
+	},
+	conduit: {
+		lineOpacity: 0.68,
+		lineBoost: 0.14,
+		whiteMix: 0.18,
+		dashSize: 14,
+		gapSize: 2.2,
+		dashSpeed: 0.28,
+	},
+};
+
+const WHITE = new THREE.Color(0xffffff);
+
+function makeStripeTexture(): THREE.CanvasTexture {
+	// Single chunky bar per texture cycle with soft edges.
+	// Result: each tile = one clearly-readable stripe with generous
+	// empty gap, so at any sensible `repeat` (3..9) we get a handful
+	// of distinct bars rather than a fuzz of thin lines.
+	const canvas = document.createElement('canvas');
+	canvas.width = 128;
+	canvas.height = 32;
+	const ctx = canvas.getContext('2d');
+	if (!ctx) {
+		const fallback = new THREE.CanvasTexture(canvas);
+		fallback.wrapS = THREE.RepeatWrapping;
+		fallback.wrapT = THREE.RepeatWrapping;
+		return fallback;
+	}
+
+	ctx.clearRect(0, 0, canvas.width, canvas.height);
+	// Centre-heavy bar with a feather of half-opacity on each edge.
+	// Bar spans ~28px inside a 128px cycle → gap:bar ≈ 3.6:1.
+	const barCentre = 64; // centre of 128
+	const barHalf = 14;
+	const feather = 6;
+	const g = ctx.createLinearGradient(barCentre - barHalf - feather, 0, barCentre + barHalf + feather, 0);
+	g.addColorStop(0.0, 'rgba(255,255,255,0)');
+	g.addColorStop(feather / (barHalf * 2 + feather * 2), 'rgba(255,255,255,0.98)');
+	g.addColorStop(1 - feather / (barHalf * 2 + feather * 2), 'rgba(255,255,255,0.98)');
+	g.addColorStop(1.0, 'rgba(255,255,255,0)');
+	ctx.fillStyle = g;
+	ctx.fillRect(barCentre - barHalf - feather, 0, (barHalf + feather) * 2, canvas.height);
+
+	const texture = new THREE.CanvasTexture(canvas);
+	texture.wrapS = THREE.RepeatWrapping;
+	texture.wrapT = THREE.RepeatWrapping;
+	texture.repeat.set(4, 1);
+	return texture;
+}
+
+function makePacketTexture(): THREE.CanvasTexture {
+	const canvas = document.createElement('canvas');
+	canvas.width = 64;
+	canvas.height = 64;
+	const ctx = canvas.getContext('2d');
+	if (!ctx) {
+		return new THREE.CanvasTexture(canvas);
+	}
+
+	ctx.clearRect(0, 0, 64, 64);
+	const gradient = ctx.createRadialGradient(32, 32, 2, 32, 32, 28);
+	gradient.addColorStop(0, 'rgba(255,255,255,1)');
+	gradient.addColorStop(0.2, 'rgba(255,255,255,0.95)');
+	gradient.addColorStop(0.55, 'rgba(180,245,255,0.65)');
+	gradient.addColorStop(1, 'rgba(180,245,255,0)');
+	ctx.fillStyle = gradient;
+	ctx.fillRect(0, 0, 64, 64);
+
+	const texture = new THREE.CanvasTexture(canvas);
+	texture.needsUpdate = true;
+	return texture;
+}
+
 /**
  * Base single-segment line between a hub and a container. Subclasses
- * pick the material (solid / dashed / dotted) and color.
+ * choose the material style; this base class keeps the line readable
+ * above the membrane and hub meshes.
  */
 export abstract class Connection {
 	readonly object: THREE.Line;
 	protected readonly geometry: THREE.BufferGeometry;
 	protected readonly material: THREE.LineBasicMaterial | THREE.LineDashedMaterial;
+	private readonly baseOpacity: number;
+	private readonly baseColor: THREE.Color;
+	private curved = false;
+	private targetTrafficLevel = 0;
+	private visibleTrafficLevel = 0;
+	private pulseTime = 0;
+	private pulseMode: LinePulseMode = 'tunnel';
+	private tunnelStyle: TunnelStyle = 'subsea';
+	private trafficFxStyle: TrafficFxStyle = 'soft';
+	private volumeEnergyStyle: VolumeEnergyStyle = 'plasma';
+	private curveSeed = 0;
+	private readonly packets: THREE.Points[] = [];
+	private readonly packetMats: THREE.PointsMaterial[] = [];
+	private readonly packetGlows: THREE.Points[] = [];
+	private readonly packetGlowMats: THREE.PointsMaterial[] = [];
+	private packetSpeed = 0.25;
+	private packetTravelDistance = 0;
+	private packetBaseSize = 8;
+	private tunnelEnabled = false;
+	private energyLineEnabled = false;
+	private tunnelRadius = 2.4;
+	private tunnelThicknessMul = 1;
+	private tunnelMesh: THREE.Mesh | null = null;
+	private tunnelMat: THREE.MeshBasicMaterial | null = null;
+	private stripeMesh: THREE.Mesh | null = null;
+	private stripeMat: THREE.MeshBasicMaterial | null = null;
+	private stripeTexture: THREE.CanvasTexture | null = null;
+	private tunnelGeometry: THREE.TubeGeometry | null = null;
+	private stripeGeometry: THREE.TubeGeometry | null = null;
+	// Track last endpoints used to rebuild the tube so we can skip the
+	// rebuild while the line is essentially stationary. TubeGeometry is
+	// an immutable build; rebuilding every frame (74 network lines x 2
+	// tubes x 60fps) was the main source of jitter + GC churn.
+	private readonly lastTunnelA = new THREE.Vector3();
+	private readonly lastTunnelB = new THREE.Vector3();
+	private tunnelGeometryDirty = true;
+	private static readonly TUNNEL_REBUILD_THRESHOLD_SQ = 0.14 * 0.14;
+	private readonly temp = {
+		dir: new THREE.Vector3(),
+		normal: new THREE.Vector3(),
+		aux: new THREE.Vector3(),
+		point: new THREE.Vector3(),
+		curvePoints: [] as THREE.Vector3[],
+	};
+	private static readonly SEGMENTS = 18;
+	private static readonly PACKET_TEXTURE = makePacketTexture();
 
 	protected constructor(material: THREE.LineBasicMaterial | THREE.LineDashedMaterial) {
 		this.geometry = new THREE.BufferGeometry();
-		this.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+		this.geometry.setAttribute(
+			'position',
+			new THREE.BufferAttribute(new Float32Array((Connection.SEGMENTS + 1) * 3), 3)
+		);
 		this.material = material;
+		this.material.linewidth = 2;
+		this.material.toneMapped = false;
+		this.material.blending = THREE.AdditiveBlending;
+		this.material.depthTest = false;
+		this.material.depthWrite = false;
+		this.baseOpacity = material.opacity;
+		this.baseColor = material.color.clone();
 		this.object = new THREE.Line(this.geometry, material);
-		// Lines must never be pickable — only containers and hubs can be
-		// clicked. Without this, a line in front of a distant hub can
-		// absorb the ray and the picker falls through to an unrelated
-		// node behind it.
+		this.object.renderOrder = 16;
 		this.object.raycast = () => {};
+		this.object.frustumCulled = false;
+	}
+
+	protected enablePackets(color: number, size: number = 10, speed: number = 0.25, count: number = 2): void {
+		this.packetBaseSize = size;
+		for (let i = 0; i < count; i += 1) {
+			const geom = new THREE.BufferGeometry();
+			geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3), 3));
+			const mat = new THREE.PointsMaterial({
+				color,
+				size,
+				sizeAttenuation: true,
+				transparent: true,
+				opacity: 0,
+				depthTest: false,
+				depthWrite: false,
+				blending: THREE.AdditiveBlending,
+				toneMapped: false,
+				map: Connection.PACKET_TEXTURE,
+				alphaMap: Connection.PACKET_TEXTURE,
+			});
+			const points = new THREE.Points(geom, mat);
+			points.renderOrder = 18;
+			points.raycast = () => {};
+			points.visible = false;
+			points.frustumCulled = false;
+			this.object.add(points);
+			this.packets.push(points);
+			this.packetMats.push(mat);
+
+			const glowGeom = new THREE.BufferGeometry();
+			glowGeom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3), 3));
+			const glowMat = new THREE.PointsMaterial({
+				color,
+				size: size * 2.3,
+				sizeAttenuation: true,
+				transparent: true,
+				opacity: 0,
+				depthTest: false,
+				depthWrite: false,
+				blending: THREE.AdditiveBlending,
+				toneMapped: false,
+				map: Connection.PACKET_TEXTURE,
+				alphaMap: Connection.PACKET_TEXTURE,
+			});
+			const glowPoints = new THREE.Points(glowGeom, glowMat);
+			glowPoints.renderOrder = 17;
+			glowPoints.raycast = () => {};
+			glowPoints.visible = false;
+			glowPoints.frustumCulled = false;
+			this.object.add(glowPoints);
+			this.packetGlows.push(glowPoints);
+			this.packetGlowMats.push(glowMat);
+		}
+		this.packetSpeed = speed;
+	}
+
+	protected enableTunnelVisual(color: number, radius: number = 2.4): void {
+		this.tunnelEnabled = true;
+		this.tunnelRadius = radius;
+
+		this.tunnelMat = new THREE.MeshBasicMaterial({
+			color,
+			transparent: true,
+			opacity: 0.12,
+			depthTest: false,
+			depthWrite: false,
+			blending: THREE.AdditiveBlending,
+			toneMapped: false,
+			side: THREE.DoubleSide,
+		});
+		this.tunnelMesh = new THREE.Mesh(new THREE.BufferGeometry(), this.tunnelMat);
+		this.tunnelMesh.renderOrder = 14;
+		this.tunnelMesh.raycast = () => {};
+		this.tunnelMesh.frustumCulled = false;
+		this.object.add(this.tunnelMesh);
+
+		this.stripeTexture = makeStripeTexture();
+		this.stripeMat = new THREE.MeshBasicMaterial({
+			color,
+			transparent: true,
+			opacity: 0.45,
+			depthTest: false,
+			depthWrite: false,
+			blending: THREE.AdditiveBlending,
+			toneMapped: false,
+			side: THREE.DoubleSide,
+			map: this.stripeTexture,
+			alphaMap: this.stripeTexture,
+		});
+		this.stripeMesh = new THREE.Mesh(new THREE.BufferGeometry(), this.stripeMat);
+		this.stripeMesh.renderOrder = 17;
+		this.stripeMesh.raycast = () => {};
+		this.stripeMesh.visible = false;
+		this.stripeMesh.frustumCulled = false;
+		this.object.add(this.stripeMesh);
+	}
+
+	setPulseMode(mode: LinePulseMode): void {
+		this.pulseMode = mode;
+	}
+
+	setTunnelStyle(style: TunnelStyle): void {
+		this.tunnelStyle = style;
+		this.tunnelGeometryDirty = true;
+		this.rebuildTunnelGeometry();
+	}
+
+	setTunnelThickness(multiplier: number): void {
+		this.tunnelThicknessMul = THREE.MathUtils.clamp(multiplier, 0.45, 1.4);
+		this.tunnelGeometryDirty = true;
+		this.rebuildTunnelGeometry();
+	}
+
+	setTrafficFxStyle(style: TrafficFxStyle): void {
+		this.trafficFxStyle = style;
+	}
+
+	setVolumeEnergyStyle(style: VolumeEnergyStyle): void {
+		this.volumeEnergyStyle = style;
+	}
+
+	setCurveSeed(seed: number): void {
+		this.curveSeed = seed;
+	}
+
+	protected enableEnergyLine(): void {
+		this.energyLineEnabled = true;
+	}
+
+	setTrafficLevel(level: number): void {
+		this.targetTrafficLevel = THREE.MathUtils.clamp(level, 0, 1);
+		if (this.targetTrafficLevel <= 0 && this.visibleTrafficLevel <= 0.001) {
+			this.material.opacity = this.baseOpacity;
+			this.material.color.copy(this.baseColor);
+			this.hidePackets();
+			this.updateTunnelStyle(0, 0);
+		}
+	}
+
+	setCurved(enabled: boolean): void {
+		this.curved = enabled;
+	}
+
+	tick(dt: number): void {
+		this.pulseTime += dt;
+		const smoothing = 1 - Math.exp(-dt * (this.targetTrafficLevel > this.visibleTrafficLevel ? 6 : 1.75));
+		this.visibleTrafficLevel = THREE.MathUtils.lerp(
+			this.visibleTrafficLevel,
+			this.targetTrafficLevel,
+			smoothing
+		);
+		const displayLevel = this.visibleTrafficLevel > 0.001
+			? Math.max(this.visibleTrafficLevel, this.targetTrafficLevel > 0 ? 0.2 : 0)
+			: 0;
+
+		const pulse = (Math.sin(this.pulseTime * 6.4) + 1) * 0.5;
+		if (displayLevel <= 0) {
+			this.material.opacity = this.baseOpacity;
+			this.material.color.copy(this.baseColor);
+			if (this.material instanceof THREE.LineDashedMaterial) {
+				this.material.dashOffset = 0;
+			}
+			this.hidePackets();
+			this.updateTunnelStyle(0, pulse);
+			return;
+		}
+
+		// Tunnel pulse is a network-line-only effect. Stack / Volume
+		// lines share the same pulseMode setting but have no tunnel
+		// geometry, so fall back to 'flow' for them — otherwise the
+		// tunnel branch dims their material by 0.4x and they vanish.
+		const effectiveMode: LinePulseMode =
+			this.pulseMode === 'tunnel' && !this.tunnelEnabled ? 'flow' : this.pulseMode;
+		switch (effectiveMode) {
+			case 'glow': {
+				const glow = displayLevel * (0.22 + pulse * 0.14);
+				this.material.opacity = THREE.MathUtils.clamp(this.baseOpacity + glow, 0.18, 0.86);
+				this.material.color.copy(this.baseColor).lerp(WHITE, glow * 0.24);
+				if (this.material instanceof THREE.LineDashedMaterial) {
+					this.material.dashOffset = -this.pulseTime * (0.16 + displayLevel * 0.46);
+				}
+				this.hidePackets();
+				this.updateTunnelStyle(0, pulse);
+				break;
+			}
+			case 'stream': {
+				const glow = displayLevel * (0.3 + pulse * 0.16);
+				this.material.opacity = THREE.MathUtils.clamp(this.baseOpacity + glow, 0.22, 0.95);
+				this.material.color.copy(this.baseColor).lerp(WHITE, glow * 0.38);
+				if (this.material instanceof THREE.LineDashedMaterial) {
+					this.material.dashOffset = -this.pulseTime * (0.45 + displayLevel * 0.95);
+				}
+				this.updatePackets(displayLevel, 2, 0.42, dt);
+				this.updateTunnelStyle(0, pulse);
+				break;
+			}
+			case 'tunnel': {
+				const glow = displayLevel * (0.16 + pulse * 0.06);
+				this.material.opacity = THREE.MathUtils.clamp(this.baseOpacity * 0.4 + glow, 0.14, 0.42);
+				this.material.color.copy(this.baseColor).lerp(WHITE, glow * 0.16);
+				if (this.material instanceof THREE.LineDashedMaterial) {
+					this.material.dashOffset = -this.pulseTime * (0.1 + displayLevel * 0.22);
+				}
+				this.updatePackets(
+					displayLevel,
+					TUNNEL_PRESETS[this.tunnelStyle].packetCount,
+					TUNNEL_PRESETS[this.tunnelStyle].packetSpacing,
+					dt
+				);
+				this.updateTunnelStyle(displayLevel, pulse);
+				break;
+			}
+			case 'flow':
+			default: {
+				if (this.energyLineEnabled) {
+					const preset = VOLUME_ENERGY_PRESETS[this.volumeEnergyStyle];
+					const glow = displayLevel * (0.18 + pulse * 0.07);
+					this.material.opacity = THREE.MathUtils.clamp(
+						preset.lineOpacity + displayLevel * preset.lineBoost + glow,
+						0.32,
+						1
+					);
+					this.material.color.copy(this.baseColor).lerp(WHITE, preset.whiteMix);
+					if (this.material instanceof THREE.LineDashedMaterial) {
+						this.material.dashSize = preset.dashSize;
+						this.material.gapSize = preset.gapSize;
+						this.material.dashOffset = -this.pulseTime * (preset.dashSpeed + displayLevel * 0.34);
+					}
+					this.hidePackets();
+					this.updateTunnelStyle(0, pulse);
+					break;
+				}
+				const glow = displayLevel * (0.38 + pulse * 0.2);
+				this.material.opacity = THREE.MathUtils.clamp(this.baseOpacity + glow, 0.24, 1);
+				this.material.color.copy(this.baseColor).lerp(WHITE, glow * 0.46);
+				if (this.material instanceof THREE.LineDashedMaterial) {
+					this.material.dashOffset = -this.pulseTime * (0.62 + displayLevel * 1.35);
+				}
+				this.updatePackets(displayLevel, 1, 0.5, dt);
+				this.updateTunnelStyle(0, pulse);
+				break;
+			}
+		}
+	}
+
+	private updatePackets(displayLevel: number, count: number, spacing: number, dt: number): void {
+		if (this.packets.length === 0) return;
+		const preset = TUNNEL_PRESETS[this.tunnelStyle];
+		const fxPreset = TRAFFIC_FX_PRESETS[this.trafficFxStyle];
+		const pos = this.geometry.attributes.position as THREE.BufferAttribute;
+		if (!pos || pos.count < 2) {
+			this.hidePackets();
+			return;
+		}
+
+		const distances = new Float32Array(pos.count);
+		let totalLength = 0;
+		for (let i = 1; i < pos.count; i += 1) {
+			const dx = pos.getX(i) - pos.getX(i - 1);
+			const dy = pos.getY(i) - pos.getY(i - 1);
+			const dz = pos.getZ(i) - pos.getZ(i - 1);
+			totalLength += Math.hypot(dx, dy, dz);
+			distances[i] = totalLength;
+		}
+		if (totalLength <= 1e-3) {
+			this.hidePackets();
+			return;
+		}
+		const trafficDensity = THREE.MathUtils.clamp(displayLevel, 0, 1);
+		const lengthFactor = THREE.MathUtils.clamp(totalLength / 120, 0.8, 2.2);
+		const activeCount = Math.min(
+			this.packets.length,
+			count <= 0
+				? 0
+				: Math.max(
+					1,
+					Math.round(
+						THREE.MathUtils.lerp(1, count, 0.25 + trafficDensity * 0.95) *
+						fxPreset.countMul *
+						lengthFactor
+					)
+				)
+		);
+		const effectiveSpacing =
+			spacing *
+			fxPreset.spacingMul *
+			THREE.MathUtils.lerp(1.22, 0.72, trafficDensity) /
+			Math.max(1, lengthFactor * 0.9);
+		const speedUnitsPerSec =
+			THREE.MathUtils.lerp(26, 96, trafficDensity) * fxPreset.speedMul;
+		this.packetTravelDistance =
+			(this.packetTravelDistance + dt * this.packetSpeed * speedUnitsPerSec) % totalLength;
+		for (let packetIndex = 0; packetIndex < this.packets.length; packetIndex += 1) {
+			const packet = this.packets[packetIndex];
+			const packetMat = this.packetMats[packetIndex];
+			const packetGlow = this.packetGlows[packetIndex];
+			const packetGlowMat = this.packetGlowMats[packetIndex];
+			if (packetIndex >= activeCount) {
+				packet.visible = false;
+				packetMat.opacity = 0;
+				packetGlow.visible = false;
+				packetGlowMat.opacity = 0;
+				continue;
+			}
+
+			const distanceAlong =
+				(this.packetTravelDistance + packetIndex * effectiveSpacing * totalLength) % totalLength;
+			let idx = 0;
+			while (idx < distances.length - 2 && distances[idx + 1] < distanceAlong) idx += 1;
+			const segmentStart = distances[idx];
+			const segmentLength = Math.max(1e-6, distances[idx + 1] - segmentStart);
+			const f = (distanceAlong - segmentStart) / segmentLength;
+			const ax = pos.getX(idx);
+			const ay = pos.getY(idx);
+			const az = pos.getZ(idx);
+			const bx = pos.getX(idx + 1);
+			const by = pos.getY(idx + 1);
+			const bz = pos.getZ(idx + 1);
+			const px = ax + (bx - ax) * f;
+			const py = ay + (by - ay) * f;
+			const pz = az + (bz - az) * f;
+			const packetPos = packet.geometry.attributes.position as THREE.BufferAttribute;
+			packetPos.setXYZ(0, px, py, pz);
+			packetPos.needsUpdate = true;
+			const glowPos = packetGlow.geometry.attributes.position as THREE.BufferAttribute;
+			glowPos.setXYZ(0, px, py, pz);
+			glowPos.needsUpdate = true;
+			const pulseGlow =
+				0.72 + Math.sin(this.pulseTime * 7.2 + packetIndex * 1.4) * 0.12 + displayLevel * 0.22;
+			packetMat.size =
+				this.packetBaseSize *
+				preset.packetSizeMul *
+				fxPreset.coreSizeMul *
+				(1 + displayLevel * 0.16);
+			packetMat.opacity = THREE.MathUtils.clamp(
+				(preset.packetOpacity + displayLevel * 0.14) * pulseGlow * fxPreset.coreOpacityMul,
+				0,
+				0.92
+			);
+			packetGlowMat.size =
+				this.packetBaseSize *
+				preset.packetSizeMul *
+				fxPreset.glowSizeMul *
+				(1 + displayLevel * 0.22);
+			packetGlowMat.opacity = THREE.MathUtils.clamp(
+				(preset.packetOpacity * 0.42 + displayLevel * 0.08) *
+					(0.92 + pulseGlow * 0.16) *
+					fxPreset.glowOpacityMul,
+				0,
+				0.24
+			);
+			packet.visible = true;
+			packetGlow.visible = true;
+		}
+	}
+
+	private updateTunnelStyle(displayLevel: number, pulse: number): void {
+		if (!this.tunnelEnabled || !this.tunnelMat || !this.stripeMat || !this.stripeTexture || !this.tunnelMesh || !this.stripeMesh) {
+			return;
+		}
+
+		const preset = TUNNEL_PRESETS[this.tunnelStyle];
+		const visible = this.pulseMode === 'tunnel';
+		this.tunnelMesh.visible = visible;
+		this.stripeMesh.visible = false;
+		if (!visible) {
+			this.tunnelMat.opacity = 0;
+			this.stripeMat.opacity = 0;
+			return;
+		}
+
+		// Keep tunnel geometry itself aligned to the curve. Non-uniform
+		// mesh scaling in object space was causing the tube to drift away
+		// from the underlying line depending on camera angle / path direction.
+		this.tunnelMesh.scale.setScalar(1);
+		this.stripeMesh.scale.setScalar(1);
+
+		// body — opaque drop per user direction. Clamp tightly so no
+		// style bleeds into the others' brightness range.
+		this.tunnelMat.opacity = THREE.MathUtils.clamp(
+			preset.bodyOpacity + displayLevel * preset.bodyBoost,
+			0.015,
+			0.22
+		);
+		this.tunnelMat.color.copy(this.baseColor).lerp(WHITE, preset.bodyWhiteMix);
+
+		// stripe — the dominant cue. Allow it to reach near-full opacity
+		// on ribs, stay subtle on mist.
+		this.stripeMat.opacity = 0;
+		this.stripeMat.color.copy(this.baseColor).lerp(WHITE, preset.stripeWhiteMix);
+		this.stripeTexture.repeat.set(preset.stripeRepeat, 1);
+		// Stripes are stationary rings on the tube — only packets move.
+		this.stripeTexture.offset.x = 0;
+	}
+
+	private hidePackets(): void {
+		for (let i = 0; i < this.packets.length; i += 1) {
+			this.packets[i].visible = false;
+			this.packetMats[i].opacity = 0;
+			this.packetGlows[i].visible = false;
+			this.packetGlowMats[i].opacity = 0;
+		}
 	}
 
 	setEndpoints(a: THREE.Vector3, b: THREE.Vector3): void {
 		const pos = this.geometry.attributes.position as THREE.BufferAttribute;
-		pos.setXYZ(0, a.x, a.y, a.z);
-		pos.setXYZ(1, b.x, b.y, b.z);
+		if (!this.curved) {
+			for (let i = 0; i <= Connection.SEGMENTS; i++) {
+				const t = i / Connection.SEGMENTS;
+				pos.setXYZ(
+					i,
+					THREE.MathUtils.lerp(a.x, b.x, t),
+					THREE.MathUtils.lerp(a.y, b.y, t),
+					THREE.MathUtils.lerp(a.z, b.z, t)
+				);
+			}
+			pos.needsUpdate = true;
+			if (this.material instanceof THREE.LineDashedMaterial) {
+				this.object.computeLineDistances();
+			}
+			this.maybeRebuildTunnelGeometry(a, b);
+			return;
+		}
+
+		const { dir, normal, aux, point } = this.temp;
+		dir.subVectors(b, a);
+		const length = dir.length();
+		if (length < 1e-3) {
+			for (let i = 0; i <= Connection.SEGMENTS; i++) pos.setXYZ(i, a.x, a.y, a.z);
+			pos.needsUpdate = true;
+			this.maybeRebuildTunnelGeometry(a, b);
+			return;
+		}
+		dir.normalize();
+		normal.crossVectors(dir, new THREE.Vector3(0, 1, 0));
+		if (normal.lengthSq() < 1e-4) {
+			normal.crossVectors(dir, new THREE.Vector3(1, 0, 0));
+		}
+		normal.normalize();
+		aux.crossVectors(dir, normal).normalize();
+		const seed01 = ((Math.sin(this.curveSeed * 12.9898) * 43758.5453) % 1 + 1) % 1;
+		const amplitude = Math.min(Math.max(length * 0.1, 10), 28) * (0.86 + seed01 * 0.42);
+		const wobble = amplitude * (0.18 + seed01 * 0.18);
+		const normalSign = seed01 > 0.5 ? 1 : -1;
+		const wobblePhase = seed01 * Math.PI * 2;
+
+		for (let i = 0; i <= Connection.SEGMENTS; i++) {
+			const t = i / Connection.SEGMENTS;
+			point.set(
+				THREE.MathUtils.lerp(a.x, b.x, t),
+				THREE.MathUtils.lerp(a.y, b.y, t),
+				THREE.MathUtils.lerp(a.z, b.z, t)
+			);
+			point.addScaledVector(normal, Math.sin(Math.PI * t) * amplitude * normalSign);
+			point.addScaledVector(aux, Math.sin(Math.PI * 2 * t + wobblePhase) * wobble);
+			pos.setXYZ(i, point.x, point.y, point.z);
+		}
 		pos.needsUpdate = true;
 		if (this.material instanceof THREE.LineDashedMaterial) {
 			this.object.computeLineDistances();
 		}
+		this.maybeRebuildTunnelGeometry(a, b);
+	}
+
+	/**
+	 * Only rebuild the tube when endpoints moved meaningfully. Avoids
+	 * disposing + re-creating two TubeGeometries per line per frame
+	 * (4000+ geometries/sec across the scene), which manifested as
+	 * position jitter and GC stalls.
+	 */
+	private maybeRebuildTunnelGeometry(a: THREE.Vector3, b: THREE.Vector3): void {
+		if (!this.tunnelEnabled) return;
+		const aMoved = this.lastTunnelA.distanceToSquared(a) > Connection.TUNNEL_REBUILD_THRESHOLD_SQ;
+		const bMoved = this.lastTunnelB.distanceToSquared(b) > Connection.TUNNEL_REBUILD_THRESHOLD_SQ;
+		if (!this.tunnelGeometryDirty && !aMoved && !bMoved) return;
+		this.lastTunnelA.copy(a);
+		this.lastTunnelB.copy(b);
+		this.tunnelGeometryDirty = false;
+		this.rebuildTunnelGeometry();
+	}
+
+	private rebuildTunnelGeometry(): void {
+		if (!this.tunnelEnabled || !this.tunnelMesh || !this.stripeMesh) return;
+		const pos = this.geometry.attributes.position as THREE.BufferAttribute;
+		const points = this.temp.curvePoints;
+		points.length = 0;
+		for (let i = 0; i < pos.count; i += 1) {
+			points.push(new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i)));
+		}
+		if (points.length < 2) return;
+
+		const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal');
+		const preset = TUNNEL_PRESETS[this.tunnelStyle];
+		const radius = this.tunnelRadius * this.tunnelThicknessMul * preset.radiusMul;
+		// Body and stripe share one tube so the two layers sit on
+		// exactly the same curve at exactly the same radius. The old
+		// "stripe 4% larger" shell looked misaligned from the side.
+		// Render order + additive blending handles the z ordering.
+		if (this.tunnelGeometry) this.tunnelGeometry.dispose();
+		this.tunnelGeometry = new THREE.TubeGeometry(curve, 48, radius, 10, false);
+		this.stripeGeometry = this.tunnelGeometry;
+		this.tunnelMesh.geometry = this.tunnelGeometry;
+		this.stripeMesh.geometry = this.tunnelGeometry;
 	}
 
 	dispose(): void {
 		this.geometry.dispose();
 		this.material.dispose();
+		for (let i = 0; i < this.packets.length; i += 1) {
+			this.packets[i].geometry.dispose();
+			this.packetMats[i].dispose();
+			this.packetGlows[i].geometry.dispose();
+			this.packetGlowMats[i].dispose();
+		}
+		// stripeGeometry is the same reference as tunnelGeometry — dispose once.
+		this.tunnelGeometry?.dispose();
+		this.tunnelMat?.dispose();
+		this.stripeMat?.dispose();
+		this.stripeTexture?.dispose();
 	}
 }

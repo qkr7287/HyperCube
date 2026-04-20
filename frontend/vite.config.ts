@@ -15,6 +15,14 @@ export default defineConfig(({ mode }) => {
 					target: apiTarget,
 					changeOrigin: true,
 				},
+				'/django-admin': {
+					target: apiTarget,
+					changeOrigin: true,
+				},
+				'/static': {
+					target: apiTarget,
+					changeOrigin: true,
+				},
 				'/ws': {
 					target: apiTarget,
 					changeOrigin: true,

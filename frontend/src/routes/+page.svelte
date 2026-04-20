@@ -3,7 +3,7 @@
 	import { browser } from '$app/environment';
 	import { base } from '$app/paths';
 	import { goto } from '$app/navigation';
-	import { systemStore, containersStore, connect, disconnect } from '$lib/stores/ws-store';
+	import { systemStore, containersStore, containerMetricsStore, connect, disconnect } from '$lib/stores/ws-store';
 	import { connectGlobal, disconnectGlobal, seedActiveAgents } from '$lib/stores/global-events';
 	import LeftSidebar from '$lib/components/LeftSidebar.svelte';
 	import StatusToasts from '$lib/components/StatusToasts.svelte';
@@ -21,6 +21,7 @@
 	import MemoryDetailModal from '$lib/components/MemoryDetailModal.svelte';
 	import DiskDetailModal from '$lib/components/DiskDetailModal.svelte';
 	import logoHypercube from '$lib/assets/logo_hypercube.png';
+	import { buildNetworkTrafficIndex, type TopologyNetworkTrafficIndex } from '$lib/topology/traffic-adapter';
 	import { resolveGroup, groupContainersByStack } from '$lib/utils/container-grouping';
 	import type { TopologyContainerData } from '$lib/topology/Topology';
 
@@ -65,6 +66,7 @@
 	let lastUpdate = new Date();
 	let unsubSystem: (() => void) | null = null;
 	let unsubContainers: (() => void) | null = null;
+	let unsubMetrics: (() => void) | null = null;
 	let fallbackInterval: ReturnType<typeof setInterval> | null = null;
 	let wsDataReceived = false;
 	let viewMode = 'group';
@@ -98,6 +100,15 @@
 		networks: c.networks,
 		mounts: c.mounts,
 	}));
+
+	// Stack colour map shared with the sidebar — keeps group mesh
+	// colour in sync with the project card colour dots. ProjectCard's
+	// colour is a CSS hex string; three.js wants a number.
+	let topologyStackColors: Record<string, number> = {};
+	$: topologyStackColors = Object.fromEntries(
+		projects.map((p) => [p.name, parseInt(p.color.replace('#', ''), 16)])
+	);
+	let topologyNetworkTraffic: TopologyNetworkTrafficIndex = new Map();
 
 	// TopologyCanvas exposes resetFocus/focusContainer/focusHub as
 	// component methods. Bind so ESC and Phase 4 sidebar wiring can
@@ -143,8 +154,13 @@
 	// Values are passed into TopologyCanvas as props so visibility is
 	// re-applied when the scene is remounted (e.g. after resetFocus).
 	let showStackHub = true;
-	let showNetworkHub = false;
+	let showNetworkHub = true;
 	let showVolumeHub = false;
+	let groupVisualMode: 'soft' = 'soft';
+	const tunnelStyle: 'subsea' = 'subsea';
+	let networkTunnelThickness = 0.7;
+	const trafficFxStyle: 'soft' = 'soft';
+	let volumeEnergyStyle: 'plasma' | 'arc' | 'conduit' = 'plasma';
 
 	function anyModalOpen(): boolean {
 		return cpuModalOpen || memoryModalOpen || diskModalOpen
@@ -334,6 +350,10 @@
 			lastUpdate = new Date();
 		});
 
+		unsubMetrics = containerMetricsStore.subscribe((metrics) => {
+			topologyNetworkTraffic = buildNetworkTrafficIndex(metrics);
+		});
+
 		if (selectedServerId && accessToken) {
 			connect(selectedServerId, accessToken);
 		}
@@ -342,6 +362,7 @@
 	onDestroy(() => {
 		if (unsubSystem) unsubSystem();
 		if (unsubContainers) unsubContainers();
+		if (unsubMetrics) unsubMetrics();
 		if (fallbackInterval) clearInterval(fallbackInterval);
 		disconnect();
 	});
@@ -429,9 +450,16 @@
 			{#key selectedServerId}
 				<TopologyCanvas
 					containers={topologyContainers}
+					stackColors={topologyStackColors}
+					networkTraffic={topologyNetworkTraffic}
 					showStack={showStackHub}
 					showNetwork={showNetworkHub}
 					showVolume={showVolumeHub}
+					groupVisualMode={groupVisualMode}
+					{tunnelStyle}
+					{networkTunnelThickness}
+					{trafficFxStyle}
+					{volumeEnergyStyle}
 					bind:this={topologyCanvas}
 				/>
 			{/key}
@@ -453,6 +481,14 @@
 					<input type="checkbox" bind:checked={showVolumeHub} />
 					<span class="dot"></span>
 					<span class="label">Volume</span>
+				</label>
+				<label class="hub-select">
+					<span class="label">Volume FX</span>
+					<select bind:value={volumeEnergyStyle}>
+						<option value="plasma">Plasma</option>
+						<option value="arc">Arc</option>
+						<option value="conduit">Conduit</option>
+					</select>
 				</label>
 			</div>
 			<div class="topology-overlay topology-overlay-live">
@@ -622,9 +658,54 @@
 	.hub-toggle-stack .dot { background: #30d5c8; }
 	.hub-toggle-network .dot { background: #22d3ee; box-shadow: 0 0 4px #22d3ee; }
 	.hub-toggle-volume .dot { background: #fb923c; box-shadow: 0 0 4px #fb923c; }
+	.hub-toggle-mode-static {
+		grid-template-columns: 8px auto minmax(110px, 1fr);
+		width: 100%;
+	}
+
+	.hub-toggle-mode-static .dot { background: #cbd5e1; box-shadow: 0 0 4px rgba(203, 213, 225, 0.25); }
+
+	.mode-value {
+		justify-self: end;
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--text-secondary);
+	}
 
 	.hub-toggle .label {
 		color: var(--text-primary);
+	}
+
+	.hub-select {
+		display: grid;
+		grid-template-columns: auto minmax(108px, 1fr);
+		align-items: center;
+		gap: 10px;
+		width: 100%;
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--text-secondary);
+	}
+
+	.hub-select .label {
+		color: var(--text-primary);
+	}
+
+	.hub-select select {
+		width: 100%;
+		padding: 6px 8px;
+		border-radius: 8px;
+		border: 1px solid var(--border);
+		background: rgba(22, 27, 34, 0.82);
+		color: var(--text-primary);
+		font-size: 12px;
+		font-weight: 600;
+		outline: none;
+	}
+
+	.hub-select select:focus {
+		border-color: var(--accent);
+		box-shadow: 0 0 0 1px rgba(48, 213, 200, 0.25);
 	}
 
 	.topology-title {

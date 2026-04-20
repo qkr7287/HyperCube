@@ -26,6 +26,61 @@ class ContainerSerializer(serializers.ModelSerializer):
         read_only_fields = ["last_seen", "requester_username"]
 
 
+class MyContainerSerializer(ContainerSerializer):
+    request_id = serializers.UUIDField(
+        source="created_via_request_id",
+        read_only=True,
+        allow_null=True,
+    )
+    template_name = serializers.CharField(
+        source="created_via_request.template.name",
+        read_only=True,
+        default=None,
+        allow_null=True,
+    )
+    requested_at = serializers.DateTimeField(
+        source="created_via_request.created_at",
+        read_only=True,
+        allow_null=True,
+    )
+    request_status = serializers.CharField(
+        source="created_via_request.status",
+        read_only=True,
+        default=None,
+        allow_null=True,
+    )
+    review_note = serializers.CharField(
+        source="created_via_request.review_note",
+        read_only=True,
+        default="",
+    )
+    custom_env = serializers.JSONField(
+        source="created_via_request.custom_env",
+        read_only=True,
+    )
+    custom_ports = serializers.JSONField(
+        source="created_via_request.custom_ports",
+        read_only=True,
+    )
+    selected_image = serializers.CharField(
+        source="created_via_request.selected_image",
+        read_only=True,
+        default="",
+    )
+
+    class Meta(ContainerSerializer.Meta):
+        fields = ContainerSerializer.Meta.fields + [
+            "request_id",
+            "template_name",
+            "requested_at",
+            "request_status",
+            "review_note",
+            "custom_env",
+            "custom_ports",
+            "selected_image",
+        ]
+
+
 # ---------- Templates ----------
 
 class ContainerTemplateSerializer(serializers.ModelSerializer):

@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 // @ts-ignore — three.js addon typings are resolved at runtime
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+// @ts-ignore ??safe clone for skinned / animated GLBs too
+import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 
 /**
  * Loads GLB templates once and hands out clones. Meshes share the
@@ -11,53 +14,147 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
  * their procedural geometry.
  */
 
-let cachedContainer: THREE.Object3D | null = null;
-let containerPromise: Promise<THREE.Object3D | null> | null = null;
+export type TemplateKind = 'container' | 'stack' | 'network' | 'volume';
 
-export async function loadContainerTemplate(
+export type TemplateBundle = Record<TemplateKind, THREE.Object3D | null>;
+
+// Per-kind target size (longest bbox axis after normalize).
+// Containers are smaller than hubs so hubs remain visually dominant.
+const TARGET_SIZE: Record<TemplateKind, number> = {
+	container: 14,
+	stack: 22,
+	network: 30,
+	volume: 22,
+};
+
+const ASSET_FILE: Record<TemplateKind, string> = {
+	container: 'Container_node.glb',
+	stack: 'Stack_hub.glb',
+	network: 'Network_hub.glb',
+	volume: 'Volume_hub.glb',
+};
+
+const cache: Partial<Record<TemplateKind, THREE.Object3D | null>> = {};
+const inflight: Partial<Record<TemplateKind, Promise<THREE.Object3D | null>>> = {};
+
+export async function loadTemplate(
+	kind: TemplateKind,
 	baseUrl: string
 ): Promise<THREE.Object3D | null> {
-	if (cachedContainer) return cachedContainer;
-	if (containerPromise) return containerPromise;
+	if (kind === 'container') {
+		cache[kind] = null;
+		return null;
+	}
+	if (Object.prototype.hasOwnProperty.call(cache, kind)) return cache[kind] ?? null;
+	if (inflight[kind]) return inflight[kind]!;
 
-	const url = `${baseUrl}/models/container.glb`;
+	const url = `${baseUrl}/models/${ASSET_FILE[kind]}`;
 	const loader = new GLTFLoader();
-	containerPromise = loader
+	loader.setMeshoptDecoder(MeshoptDecoder);
+	const promise = loader
 		.loadAsync(url)
 		.then((gltf: { scene: THREE.Object3D }) => {
-			cachedContainer = normalize(gltf.scene);
-			return cachedContainer;
+			const normalized = normalize(gltf.scene, TARGET_SIZE[kind]);
+			cache[kind] = normalized;
+			delete inflight[kind];
+			return normalized;
 		})
 		.catch((err: unknown) => {
-			console.warn('[topology] container.glb failed to load:', err);
-			containerPromise = null;
+			console.warn(`[topology] ${ASSET_FILE[kind]} failed to load:`, err);
+			delete cache[kind];
+			delete inflight[kind];
 			return null;
 		});
-	return containerPromise;
+	inflight[kind] = promise;
+	return promise;
+}
+
+export async function loadAllTemplates(baseUrl: string): Promise<TemplateBundle> {
+	const kinds: TemplateKind[] = ['stack', 'network', 'volume'];
+	const results = await Promise.all(kinds.map((k) => loadTemplate(k, baseUrl)));
+	return {
+		container: null,
+		stack: results[0],
+		network: results[1],
+		volume: results[2],
+	};
 }
 
 /**
- * Fit the imported model into a cube of roughly the same size the
- * old CylinderGeometry occupied (diameter ~16) and center it on the
- * origin so the force-layout position drives its world transform.
+ * Fit the imported model into a cube whose longest axis equals
+ * targetSize and recenter its visual bounding box on the origin so
+ * force-layout positions drive its world transform.
+ *
+ * The returned object is a wrapper Group whose own position is (0,0,0),
+ * with the imported scene held as its child shifted by -bboxCenter.
+ * Callers copy the layout position onto the wrapper.position; the
+ * inner offset is preserved through cloning, so line endpoints anchor
+ * at the model's visual centre instead of wherever the GLB happened
+ * to place its own origin. (The previous implementation set the offset
+ * on the root itself, but entity syncPosition() overwrote root.position
+ * every frame and the offset was lost — line endpoints drifted into
+ * empty space next to the rendered model.)
  */
-function normalize(root: THREE.Object3D): THREE.Object3D {
-	const box = new THREE.Box3().setFromObject(root);
-	const size = new THREE.Vector3();
-	box.getSize(size);
-	const diameter = Math.max(size.x, size.y, size.z);
-	const targetDiameter = 16;
+function normalize(root: THREE.Object3D, targetSize: number): THREE.Object3D {
+	root.updateMatrixWorld(true);
 
-	if (diameter > 0) {
-		const scale = targetDiameter / diameter;
+	const size = new THREE.Vector3();
+	new THREE.Box3().setFromObject(root).getSize(size);
+	const longest = Math.max(size.x, size.y, size.z);
+	if (longest > 0) {
+		const scale = targetSize / longest;
 		root.scale.multiplyScalar(scale);
 		root.updateMatrixWorld(true);
 	}
 
 	const center = new THREE.Vector3();
 	new THREE.Box3().setFromObject(root).getCenter(center);
-	root.position.sub(center);
-	root.updateMatrixWorld(true);
 
-	return root;
+	const wrapper = new THREE.Group();
+	wrapper.add(root);
+	root.position.sub(center);
+	wrapper.updateMatrixWorld(true);
+	return wrapper;
+}
+
+/**
+ * Back-compat alias. Some older call sites still reach for the
+ * container-only loader.
+ */
+export function loadContainerTemplate(baseUrl: string): Promise<THREE.Object3D | null> {
+	void baseUrl;
+	return Promise.resolve(null);
+}
+
+export interface BuiltFromTemplate {
+	object: THREE.Object3D;
+	/** Non-empty only when a material override was requested. */
+	materials: THREE.MeshStandardMaterial[];
+}
+
+/**
+ * Clone a GLB template. When `params` is provided every child mesh
+ * gets a per-instance MeshStandardMaterial so callers can mutate
+ * colour without affecting other clones. When `params` is omitted
+ * the original GLB materials (and their textures) are kept as-is,
+ * shared across clones — use this for models whose authored look
+ * should stay intact.
+ */
+export function buildFromTemplate(
+	template: THREE.Object3D,
+	params?: THREE.MeshStandardMaterialParameters
+): BuiltFromTemplate {
+	const object = cloneSkeleton(template);
+	if (!params) {
+		return { object, materials: [] };
+	}
+	const materials: THREE.MeshStandardMaterial[] = [];
+	object.traverse((child) => {
+		const mesh = child as THREE.Mesh;
+		if (!mesh.isMesh) return;
+		const mat = new THREE.MeshStandardMaterial(params);
+		mesh.material = mat;
+		materials.push(mat);
+	});
+	return { object, materials };
 }

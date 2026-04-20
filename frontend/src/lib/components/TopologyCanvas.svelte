@@ -2,23 +2,42 @@
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { base } from '$app/paths';
 	import { Topology, type TopologyCallbacks, type TopologyContainerData } from '$lib/topology/Topology';
+	import type { GroupVisualMode } from '$lib/topology/hubs/GroupMesh';
+	import type { TrafficFxStyle, TunnelStyle, VolumeEnergyStyle } from '$lib/topology/lines/Connection';
+	import type { TopologyNetworkTrafficIndex } from '$lib/topology/traffic-adapter';
 
 	interface Props {
 		containers: TopologyContainerData[];
+		stackColors?: Record<string, number>;
 		onContainerClick?: (id: string) => void;
 		onHubClick?: (hubId: string, hubType: 'stack' | 'network' | 'volume') => void;
 		showStack?: boolean;
 		showNetwork?: boolean;
 		showVolume?: boolean;
+		curvedLines?: boolean;
+		groupVisualMode?: GroupVisualMode;
+		tunnelStyle?: TunnelStyle;
+		networkTunnelThickness?: number;
+		trafficFxStyle?: TrafficFxStyle;
+		volumeEnergyStyle?: VolumeEnergyStyle;
+		networkTraffic?: TopologyNetworkTrafficIndex;
 	}
 
 	let {
 		containers,
+		stackColors,
 		onContainerClick,
 		onHubClick,
 		showStack = true,
 		showNetwork = false,
 		showVolume = false,
+		curvedLines = true,
+		groupVisualMode = 'soft',
+		tunnelStyle = 'subsea',
+		networkTunnelThickness = 0.7,
+		trafficFxStyle = 'soft',
+		volumeEnergyStyle = 'plasma',
+		networkTraffic = new Map(),
 	}: Props = $props();
 
 	let host: HTMLDivElement | undefined = $state();
@@ -51,7 +70,13 @@
 		topology.setHubVisibility('stack', showStack);
 		topology.setHubVisibility('network', showNetwork);
 		topology.setHubVisibility('volume', showVolume);
-		topology.mount(host, { containers }, buildCallbacks());
+		topology.setCurvedLines(curvedLines);
+		topology.setGroupVisualMode(groupVisualMode);
+		topology.setTunnelStyle(tunnelStyle);
+		topology.setNetworkTunnelThickness(networkTunnelThickness);
+		topology.setTrafficFxStyle(trafficFxStyle);
+		topology.setVolumeEnergyStyle(volumeEnergyStyle);
+		topology.mount(host, { containers, stackColors, networkTraffic }, buildCallbacks());
 		mounted = true;
 	}
 
@@ -72,7 +97,12 @@
 
 	$effect(() => {
 		if (!mounted || !topology) return;
-		topology.update({ containers });
+		topology.update({ containers, stackColors });
+	});
+
+	$effect(() => {
+		if (!mounted || !topology) return;
+		topology.setNetworkTraffic(networkTraffic);
 	});
 
 	// Re-apply visibility whenever the topology instance is (re)created
@@ -84,6 +114,12 @@
 		topology.setHubVisibility('stack', showStack);
 		topology.setHubVisibility('network', showNetwork);
 		topology.setHubVisibility('volume', showVolume);
+		topology.setCurvedLines(curvedLines);
+		topology.setGroupVisualMode(groupVisualMode);
+		topology.setTunnelStyle(tunnelStyle);
+		topology.setNetworkTunnelThickness(networkTunnelThickness);
+		topology.setTrafficFxStyle(trafficFxStyle);
+		topology.setVolumeEnergyStyle(volumeEnergyStyle);
 	});
 
 	// External API — let the page (or future TopologyToolbar) trigger
@@ -102,6 +138,12 @@
 	}
 	export function setAutoRotate(enabled: boolean): void {
 		topology?.setAutoRotate(enabled);
+	}
+	export function setCurvedLines(enabled: boolean): void {
+		topology?.setCurvedLines(enabled);
+	}
+	export function setGroupVisualMode(mode: GroupVisualMode): void {
+		topology?.setGroupVisualMode(mode);
 	}
 </script>
 

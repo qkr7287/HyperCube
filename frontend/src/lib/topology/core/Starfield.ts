@@ -19,12 +19,12 @@ export class Starfield {
 
 	constructor() {
 		this.object = new THREE.Group();
-		this.addStarLayer(5000, 500, 1200, 0xaabbcc, 0.8, 0.3);
-		this.addStarLayer(2000, 350, 800, 0xffffff, 1.4, 0.6);
-		this.addStarLayer(150, 300, 600, 0xffffff, 3.0, 0.9);
-		this.addStarLayer(300, 400, 900, 0x4fc3f7, 1.8, 0.4);
-		this.addStarLayer(150, 400, 900, 0xffaa44, 1.5, 0.25);
-		this.addStarLayer(100, 450, 900, 0xbb77ff, 1.6, 0.2);
+		this.addStarLayer(2800, 500, 1200, 0xaabbcc, 0.75, 0.24);
+		this.addStarLayer(1000, 350, 800, 0xffffff, 1.25, 0.44);
+		this.addStarLayer(70, 300, 600, 0xffffff, 2.5, 0.72);
+		this.addStarLayer(150, 400, 900, 0x4fc3f7, 1.5, 0.28);
+		this.addStarLayer(80, 400, 900, 0xffaa44, 1.3, 0.18);
+		this.addStarLayer(60, 450, 900, 0xbb77ff, 1.35, 0.16);
 		this.addNebulae([0x1a0a3e, 0x0a1a3e, 0x0a2a2a]);
 	}
 

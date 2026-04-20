@@ -11,10 +11,11 @@ export class VolumeLine extends Connection {
 			new THREE.LineDashedMaterial({
 				color,
 				transparent: true,
-				opacity: 0.5,
-				dashSize: 8,
-				gapSize: 4,
+				opacity: 1,
+				dashSize: 9,
+				gapSize: 3,
 			})
 		);
+		this.enableEnergyLine();
 	}
 }

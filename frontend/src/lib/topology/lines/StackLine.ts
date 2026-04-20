@@ -10,7 +10,7 @@ export class StackLine extends Connection {
 			new THREE.LineBasicMaterial({
 				color,
 				transparent: true,
-				opacity: 0.35,
+				opacity: 0.9,
 			})
 		);
 	}

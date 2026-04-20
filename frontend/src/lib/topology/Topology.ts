@@ -1,12 +1,14 @@
 import * as THREE from 'three';
 import { Disposer } from './core/Disposer';
-import { loadContainerTemplate } from './core/MeshFactory';
+import { loadAllTemplates, type TemplateBundle } from './core/MeshFactory';
 import { RenderLoop } from './core/RenderLoop';
 import { SceneManager } from './core/SceneManager';
 import { Starfield } from './core/Starfield';
-import { ContainerNode } from './entities/ContainerNode';
+import { ContainerNode, type ContainerGeometryStyle } from './entities/ContainerNode';
 import { Hub } from './entities/Hub';
+import { GroupMesh, type GroupVisualMode } from './hubs/GroupMesh';
 import { NetworkHub, networkColorFor } from './hubs/NetworkHub';
+import type { NetworkHubFxMode } from './hubs/NetworkHub';
 import { StackHub } from './hubs/StackHub';
 import { VolumeHub, volumeColorFor } from './hubs/VolumeHub';
 import { CameraAnimator } from './interaction/CameraAnimator';
@@ -14,9 +16,11 @@ import { Raycaster } from './interaction/Raycaster';
 import { ForceLayout, type LayoutEntityRef, type LayoutLink } from './layout/ForceLayout';
 import { NodePinner } from './layout/NodePinner';
 import type { Connection } from './lines/Connection';
+import type { LinePulseMode, TrafficFxStyle, TunnelStyle, VolumeEnergyStyle } from './lines/Connection';
 import { NetworkLine } from './lines/NetworkLine';
 import { StackLine } from './lines/StackLine';
 import { VolumeLine } from './lines/VolumeLine';
+import type { TopologyNetworkTrafficIndex } from './traffic-adapter';
 
 export interface TopologyContainerData {
 	id: string;
@@ -29,6 +33,14 @@ export interface TopologyContainerData {
 
 export interface TopologyData {
 	containers: TopologyContainerData[];
+	/**
+	 * Optional mapping from stack name to colour (as a three.js hex
+	 * number). When provided, overrides the built-in STACK_COLORS
+	 * palette so stack hubs, lines, and group meshes line up with the
+	 * caller's own colour scheme (e.g. the sidebar group dots).
+	 */
+	stackColors?: Record<string, number>;
+	networkTraffic?: TopologyNetworkTrafficIndex;
 }
 
 export type HubType = 'stack' | 'network' | 'volume';
@@ -45,7 +57,12 @@ const STACK_COLORS: readonly number[] = [
 	0xc084fc, 0x38bdf8, 0x34d399, 0xfacc15, 0xfb7185,
 ];
 
-function stackColorFor(stackName: string, sortedNames: readonly string[]): number {
+function stackColorFor(
+	stackName: string,
+	sortedNames: readonly string[],
+	override?: Record<string, number>
+): number {
+	if (override && override[stackName] !== undefined) return override[stackName];
 	const idx = sortedNames.indexOf(stackName);
 	return STACK_COLORS[Math.max(idx, 0) % STACK_COLORS.length];
 }
@@ -75,6 +92,14 @@ function parseLineId(lineId: string): { kind: LineKind; hubId: string; nodeId: s
 	return { kind, hubId, nodeId };
 }
 
+function hashString(input: string): number {
+	let hash = 0;
+	for (let i = 0; i < input.length; i += 1) {
+		hash = ((hash << 5) - hash + input.charCodeAt(i)) | 0;
+	}
+	return Math.abs(hash);
+}
+
 export class Topology {
 	private scene: SceneManager | null = null;
 	private loop: RenderLoop | null = null;
@@ -88,6 +113,8 @@ export class Topology {
 	private readonly containers: Map<string, ContainerNode> = new Map();
 	private readonly hubs: Map<string, Hub> = new Map();
 	private readonly lines: Map<string, Connection> = new Map();
+	// Stack name → mesh wrapping its members. Same lifecycle as StackHub.
+	private readonly groupMeshes: Map<string, GroupMesh> = new Map();
 
 	// Visibility for each hub type. Lines of the same kind follow the
 	// hub visibility — a network hub hidden with its lines still
@@ -104,7 +131,22 @@ export class Topology {
 	private detachClick: (() => void) | null = null;
 	private scatterPinTimer: ReturnType<typeof setTimeout> | null = null;
 	private activeFocusId: string | null = null;
-	private containerTemplate: THREE.Object3D | null = null;
+	private curvedLines = false;
+	private groupVisualMode: GroupVisualMode = 'soft';
+	private networkHubFxMode: NetworkHubFxMode = 'ripple';
+	private linePulseMode: LinePulseMode = 'tunnel';
+	private tunnelStyle: TunnelStyle = 'subsea';
+	private networkTunnelThickness = 0.7;
+	private trafficFxStyle: TrafficFxStyle = 'soft';
+	private volumeEnergyStyle: VolumeEnergyStyle = 'plasma';
+	private containerGeometryStyle: ContainerGeometryStyle = 'crate';
+	private bloomStrength = 0.1;
+	private templates: TemplateBundle = {
+		container: null,
+		stack: null,
+		network: null,
+		volume: null,
+	};
 	private modelBaseUrl: string = '';
 	private lastData: TopologyData | null = null;
 
@@ -120,14 +162,20 @@ export class Topology {
 
 		const scene = new SceneManager(host);
 		scene.scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+		const hemi = new THREE.HemisphereLight(0x9bd7ff, 0x0d1117, 0.85);
+		scene.scene.add(hemi);
 		const dir = new THREE.DirectionalLight(0xffffff, 0.85);
 		dir.position.set(150, 250, 350);
 		scene.scene.add(dir);
 		const fill = new THREE.DirectionalLight(0x60a5fa, 0.25);
 		fill.position.set(-200, -100, -150);
 		scene.scene.add(fill);
+		const rim = new THREE.PointLight(0x30d5c8, 12000, 0, 2);
+		rim.position.set(-220, 140, 260);
+		scene.scene.add(rim);
 
 		this.scene = scene;
+		scene.setBloomStrength(this.bloomStrength);
 		this.layout = new ForceLayout();
 		this.loop = new RenderLoop();
 		this.animator = new CameraAnimator(scene.camera, scene.controls);
@@ -142,6 +190,8 @@ export class Topology {
 			this.starfield?.tick(dt);
 			this.syncEntityPositions();
 			this.syncLinePositions();
+			this.updateGroupMeshes();
+			this.updateNetworkTrafficVisuals(dt);
 			this.animator?.tick();
 			this.scene?.render();
 		});
@@ -152,42 +202,67 @@ export class Topology {
 		this.detachClick = () => host.removeEventListener('click', onClick);
 
 		// Kick off GLB load in the background. Scene already rendered
-		// with the fallback cylinder; once the template arrives we
-		// rebuild container nodes so they switch to the GLB mesh.
-		this.loadContainerTemplateAsync();
+		// with the fallback geometries; once templates arrive we
+		// rebuild every entity so they switch to the GLB meshes.
+		this.loadTemplatesAsync();
 	}
 
-	private async loadContainerTemplateAsync(): Promise<void> {
+	private async loadTemplatesAsync(): Promise<void> {
 		try {
-			const template = await loadContainerTemplate(this.modelBaseUrl);
-			if (!template || !this.scene) return;
-			this.containerTemplate = template;
-			this.rebuildContainersFromTemplate();
+			const bundle = await loadAllTemplates(this.modelBaseUrl);
+			if (!this.scene) return;
+			this.templates = bundle;
+			this.rebuildAllFromTemplates();
 		} catch {
 			/* silent fallback */
 		}
 	}
 
-	private rebuildContainersFromTemplate(): void {
-		if (!this.scene || !this.containerTemplate || !this.lastData) return;
+	private rebuildAllFromTemplates(): void {
+		if (!this.scene || !this.lastData) return;
+		// Drop every entity so they re-create with the GLB templates.
 		for (const node of this.containers.values()) {
 			this.scene.scene.remove(node.object);
 			node.dispose();
 		}
 		this.containers.clear();
+		for (const hub of this.hubs.values()) {
+			this.scene.scene.remove(hub.object);
+			hub.dispose();
+		}
+		this.hubs.clear();
+		for (const line of this.lines.values()) {
+			this.scene.scene.remove(line.object);
+			line.dispose();
+		}
+		this.lines.clear();
+		// Group meshes survive: they don't carry geometry that depends
+		// on GLB templates, only on live member positions. But their
+		// members now point at disposed ContainerNodes — clear and let
+		// update() rebuild them.
+		for (const gm of this.groupMeshes.values()) {
+			this.scene.scene.remove(gm.object);
+			gm.dispose();
+		}
+		this.groupMeshes.clear();
+
 		this.update(this.lastData);
 	}
 
 	update(data: TopologyData): void {
 		if (!this.scene || !this.layout) return;
-		this.lastData = data;
+		const mergedData: TopologyData = {
+			...data,
+			networkTraffic: data.networkTraffic ?? this.lastData?.networkTraffic,
+		};
+		this.lastData = mergedData;
 
 		const seenHubs = new Set<string>();
 		const seenContainers = new Set<string>();
 		const seenLines = new Set<string>();
 
 		// --- containers first so hubs can reference their ids ---
-		for (const c of data.containers) {
+		for (const c of mergedData.containers) {
 			const stack = c.stack || 'Unmanaged';
 			seenContainers.add(c.id);
 			const existing = this.containers.get(c.id);
@@ -196,7 +271,8 @@ export class Topology {
 			} else {
 				const node = new ContainerNode(
 					{ id: c.id, name: c.name, state: c.state, stack },
-					this.containerTemplate
+					this.templates.container,
+					this.containerGeometryStyle
 				);
 				this.containers.set(c.id, node);
 				this.scene.scene.add(node.object);
@@ -205,24 +281,37 @@ export class Topology {
 
 		// --- stack hubs (always computed; visibility toggled later) ---
 		const sortedStacks = Array.from(
-			new Set(data.containers.map((c) => c.stack || 'Unmanaged'))
+			new Set(mergedData.containers.map((c) => c.stack || 'Unmanaged'))
 		).sort();
+		const seenGroups = new Set<string>();
 		for (const stack of sortedStacks) {
 			const hubId = `stack:${stack}`;
 			seenHubs.add(hubId);
-			const color = stackColorFor(stack, sortedStacks);
+			seenGroups.add(stack);
+			const color = stackColorFor(stack, sortedStacks, mergedData.stackColors);
 			const existing = this.hubs.get(hubId);
 			if (existing instanceof StackHub) {
 				existing.update({ name: stack, color });
 				existing.clearMembers();
 			} else {
-				const hub = new StackHub({ name: stack, color });
+				const hub = new StackHub({ name: stack, color }, this.templates.stack);
 				this.hubs.set(hubId, hub);
 				this.scene.scene.add(hub.object);
 			}
+			// GroupMesh: one per stack, tracks the hub color.
+			let gm = this.groupMeshes.get(stack);
+			if (!gm) {
+				gm = new GroupMesh(color);
+				gm.setMode(this.groupVisualMode);
+				this.groupMeshes.set(stack, gm);
+				this.scene.scene.add(gm.object);
+			} else {
+				gm.setColor(color);
+				gm.setMode(this.groupVisualMode);
+			}
 		}
 		// Stack membership
-		for (const c of data.containers) {
+		for (const c of mergedData.containers) {
 			const stack = c.stack || 'Unmanaged';
 			this.hubs.get(`stack:${stack}`)?.addMember(c.id);
 			const lineId = `stack:${stack}->${c.id}`;
@@ -231,6 +320,13 @@ export class Topology {
 				const hub = this.hubs.get(`stack:${stack}`);
 				if (hub instanceof StackHub) {
 					const line = new StackLine(hub.color);
+					line.setCurved(this.curvedLines);
+					line.setPulseMode(this.linePulseMode);
+					line.setTunnelStyle(this.tunnelStyle);
+					line.setTunnelThickness(this.networkTunnelThickness);
+					line.setTrafficFxStyle(this.trafficFxStyle);
+					line.setVolumeEnergyStyle(this.volumeEnergyStyle);
+					line.setCurveSeed(hashString(lineId));
 					this.lines.set(lineId, line);
 					this.scene.scene.add(line.object);
 				}
@@ -239,7 +335,7 @@ export class Topology {
 
 		// --- network hubs (from optional containers[].networks) ---
 		const networkMembers = new Map<string, string[]>();
-		for (const c of data.containers) {
+		for (const c of mergedData.containers) {
 			for (const net of c.networks ?? []) {
 				if (!net) continue;
 				const arr = networkMembers.get(net);
@@ -258,9 +354,12 @@ export class Topology {
 			const existing = this.hubs.get(hubId);
 			if (existing instanceof NetworkHub) {
 				existing.update({ name: net, color });
+				existing.setFxMode(this.networkHubFxMode);
 				existing.clearMembers();
 			} else {
-				const hub = new NetworkHub({ name: net, color });
+				const hub = new NetworkHub({ name: net, color }, this.templates.network);
+				hub.setFxMode(this.networkHubFxMode);
+				this.seedHubPosition(hub, networkMembers.get(net) ?? []);
 				this.hubs.set(hubId, hub);
 				this.scene.scene.add(hub.object);
 			}
@@ -271,6 +370,13 @@ export class Topology {
 				if (!this.lines.has(lineId)) {
 					const hub = this.hubs.get(hubId) as NetworkHub;
 					const line = new NetworkLine(hub.color);
+					line.setCurved(this.curvedLines);
+					line.setPulseMode(this.linePulseMode);
+					line.setTunnelStyle(this.tunnelStyle);
+					line.setTunnelThickness(this.networkTunnelThickness);
+					line.setTrafficFxStyle(this.trafficFxStyle);
+					line.setVolumeEnergyStyle(this.volumeEnergyStyle);
+					line.setCurveSeed(hashString(lineId));
 					this.lines.set(lineId, line);
 					this.scene.scene.add(line.object);
 				}
@@ -279,7 +385,7 @@ export class Topology {
 
 		// --- volume hubs (named volumes shared by 2+ containers) ---
 		const volumeMembers = new Map<string, string[]>();
-		for (const c of data.containers) {
+		for (const c of mergedData.containers) {
 			for (const m of c.mounts ?? []) {
 				if (!m || m.type !== 'volume' || !m.name) continue;
 				const arr = volumeMembers.get(m.name);
@@ -300,7 +406,8 @@ export class Topology {
 				existing.update({ name: vol, color });
 				existing.clearMembers();
 			} else {
-				const hub = new VolumeHub({ name: vol, color });
+				const hub = new VolumeHub({ name: vol, color }, this.templates.volume);
+				this.seedHubPosition(hub, volumeMembers.get(vol) ?? []);
 				this.hubs.set(hubId, hub);
 				this.scene.scene.add(hub.object);
 			}
@@ -311,6 +418,13 @@ export class Topology {
 				if (!this.lines.has(lineId)) {
 					const hub = this.hubs.get(hubId) as VolumeHub;
 					const line = new VolumeLine(hub.color);
+					line.setCurved(this.curvedLines);
+					line.setPulseMode(this.linePulseMode);
+					line.setTunnelStyle(this.tunnelStyle);
+					line.setTunnelThickness(this.networkTunnelThickness);
+					line.setTrafficFxStyle(this.trafficFxStyle);
+					line.setVolumeEnergyStyle(this.volumeEnergyStyle);
+					line.setCurveSeed(hashString(lineId));
 					this.lines.set(lineId, line);
 					this.scene.scene.add(line.object);
 				}
@@ -330,24 +444,28 @@ export class Topology {
 			this.scene!.scene.remove(l.object);
 			l.dispose();
 		});
+		this.pruneStale(this.groupMeshes, seenGroups, (gm) => {
+			this.scene!.scene.remove(gm.object);
+			gm.dispose();
+		});
+
+		// --- rewire group mesh memberships ---
+		for (const [stack, gm] of this.groupMeshes) {
+			const members: Array<ContainerNode | Hub> = [];
+			const stackHub = this.hubs.get(`stack:${stack}`);
+			if (stackHub) members.push(stackHub);
+			for (const node of this.containers.values()) {
+				if ((node.stack || 'Unmanaged') === stack) members.push(node);
+			}
+			gm.setMembers(members);
+		}
 
 		// --- apply current visibility toggles (some hubs are new) ---
 		this.applyVisibility();
+		this.applyNetworkTraffic(mergedData.networkTraffic);
 
 		// --- feed layout ---
-		const visibleHubs = Array.from(this.hubs.values()).filter((h) => this.hubVisibility[h.hubType]);
-		const entities: LayoutEntityRef[] = [
-			...visibleHubs.map((h) => ({ id: h.id, position: h.position })),
-			...Array.from(this.containers.values()).map((n) => ({ id: n.id, position: n.position })),
-		];
-		const links: LayoutLink[] = [];
-		for (const hub of visibleHubs) {
-			for (const memberId of hub.memberIds) {
-				if (this.containers.has(memberId)) {
-					links.push({ source: hub.id, target: memberId });
-				}
-			}
-		}
+		const { entities, links } = this.buildLayoutGraph();
 		this.layout.setData(entities, links);
 
 		// Re-pin anything the pinner still remembers.
@@ -378,6 +496,57 @@ export class Topology {
 		}
 	}
 
+	private buildLayoutGraph(): { entities: LayoutEntityRef[]; links: LayoutLink[] } {
+		const entities: LayoutEntityRef[] = [
+			...Array.from(this.hubs.values()).map((h) => ({ id: h.id, position: h.position })),
+			...Array.from(this.containers.values()).map((n) => ({ id: n.id, position: n.position })),
+		];
+		const links: LayoutLink[] = [];
+		const affinityPairs = new Set<string>();
+		for (const hub of this.hubs.values()) {
+			for (const memberId of hub.memberIds) {
+				if (this.containers.has(memberId)) {
+					links.push({ source: hub.id, target: memberId });
+				}
+			}
+			if (hub.hubType === 'network' || hub.hubType === 'volume') {
+				const relatedStacks = Array.from(
+					new Set(
+						Array.from(hub.memberIds)
+							.map((memberId) => this.containers.get(memberId)?.stack || 'Unmanaged')
+							.filter(Boolean)
+					)
+				).sort();
+				for (let i = 0; i < relatedStacks.length; i += 1) {
+					for (let j = i + 1; j < relatedStacks.length; j += 1) {
+						const stackA = `stack:${relatedStacks[i]}`;
+						const stackB = `stack:${relatedStacks[j]}`;
+						const key = `${stackA}|${stackB}`;
+						if (affinityPairs.has(key)) continue;
+						affinityPairs.add(key);
+						links.push({ source: stackA, target: stackB });
+					}
+				}
+			}
+		}
+		return { entities, links };
+	}
+
+	private seedHubPosition(hub: Hub, memberIds: readonly string[]): void {
+		const anchors: THREE.Vector3[] = [];
+		for (const memberId of memberIds) {
+			const node = this.containers.get(memberId);
+			if (!node) continue;
+			const stackHub = this.hubs.get(`stack:${node.stack || 'Unmanaged'}`);
+			if (stackHub) anchors.push(stackHub.position);
+			else anchors.push(node.position);
+		}
+		if (anchors.length === 0) return;
+		hub.position.set(0, 0, 0);
+		for (const anchor of anchors) hub.position.add(anchor);
+		hub.position.multiplyScalar(1 / anchors.length);
+	}
+
 	private syncEntityPositions(): void {
 		for (const n of this.containers.values()) n.syncPosition();
 		for (const h of this.hubs.values()) h.syncPosition();
@@ -389,7 +558,81 @@ export class Topology {
 			if (!parsed) continue;
 			const hub = this.hubs.get(parsed.hubId);
 			const node = this.containers.get(parsed.nodeId);
-			if (hub && node) line.setEndpoints(hub.position, node.position);
+			if (hub && node) line.setEndpoints(hub.getWorldAnchor(), node.getWorldAnchor());
+		}
+	}
+
+	private updateGroupMeshes(): void {
+		const stackVisible = this.hubVisibility.stack;
+		for (const [stack, gm] of this.groupMeshes) {
+			gm.object.visible = stackVisible;
+			gm.setMode(this.groupVisualMode);
+			gm.setHighlighted(this.activeFocusId === `stack:${stack}`);
+			if (stackVisible) gm.update();
+		}
+	}
+
+	private updateNetworkTrafficVisuals(dt: number): void {
+		for (const hub of this.hubs.values()) {
+			if (hub instanceof NetworkHub) {
+				hub.tick(dt);
+			}
+		}
+		for (const line of this.lines.values()) {
+			line.tick(dt);
+		}
+	}
+
+	setNetworkTraffic(networkTraffic?: TopologyNetworkTrafficIndex): void {
+		if (!this.scene) return;
+		this.lastData = {
+			containers: this.lastData?.containers ?? [],
+			stackColors: this.lastData?.stackColors,
+			networkTraffic,
+		};
+		this.applyNetworkTraffic(networkTraffic);
+	}
+
+	private applyNetworkTraffic(networkTraffic?: TopologyNetworkTrafficIndex): void {
+		const hubRates = new Map<string, number>();
+		const lineRates = new Map<string, number>();
+
+		for (const [hubId, hub] of this.hubs) {
+			if (!(hub instanceof NetworkHub)) continue;
+			let totalRate = 0;
+			for (const memberId of hub.memberIds) {
+				const point = networkTraffic?.get(memberId)?.get(hub.name);
+				const rate = point?.totalRateBps ?? 0;
+				totalRate += rate;
+				lineRates.set(`${hubId}->${memberId}`, rate);
+			}
+			hubRates.set(hubId, totalRate);
+		}
+
+		const maxHubRate = Math.max(0, ...hubRates.values());
+		const maxLineRate = Math.max(0, ...lineRates.values());
+
+		for (const [hubId, hub] of this.hubs) {
+			if (hub instanceof NetworkHub) {
+				hub.setTrafficLevel(normalizeTrafficLevel(hubRates.get(hubId) ?? 0, maxHubRate));
+			}
+		}
+
+		for (const [lineId, line] of this.lines) {
+			const parsed = parseLineId(lineId);
+			if (!parsed) {
+				line.setTrafficLevel(0);
+				continue;
+			}
+			if (parsed.kind === 'network') {
+				line.setTrafficLevel(normalizeTrafficLevel(lineRates.get(lineId) ?? 0, maxLineRate));
+				continue;
+			}
+			if (parsed.kind === 'volume') {
+				line.setTrafficLevel(0.3);
+				continue;
+			}
+			line.setTrafficLevel(0);
 		}
 	}
 
@@ -495,11 +738,82 @@ export class Topology {
 		this.scene.controls.autoRotateSpeed = speed;
 	}
 
+	setCurvedLines(enabled: boolean): void {
+		this.curvedLines = enabled;
+		for (const line of this.lines.values()) {
+			line.setCurved(enabled);
+		}
+	}
+
+	setGroupVisualMode(mode: GroupVisualMode): void {
+		this.groupVisualMode = mode;
+		for (const mesh of this.groupMeshes.values()) {
+			mesh.setMode(mode);
+		}
+	}
+
+	setNetworkHubFxMode(mode: NetworkHubFxMode): void {
+		this.networkHubFxMode = mode;
+		for (const hub of this.hubs.values()) {
+			if (hub instanceof NetworkHub) hub.setFxMode(mode);
+		}
+	}
+
+	setLinePulseMode(mode: LinePulseMode): void {
+		this.linePulseMode = mode;
+		for (const line of this.lines.values()) {
+			line.setPulseMode(mode);
+		}
+	}
+
+	setTunnelStyle(style: TunnelStyle): void {
+		this.tunnelStyle = style;
+		for (const line of this.lines.values()) {
+			line.setTunnelStyle(style);
+		}
+	}
+
+	setNetworkTunnelThickness(multiplier: number): void {
+		this.networkTunnelThickness = multiplier;
+		for (const line of this.lines.values()) {
+			line.setTunnelThickness(multiplier);
+		}
+	}
+
+	setTrafficFxStyle(style: TrafficFxStyle): void {
+		this.trafficFxStyle = style;
+		for (const line of this.lines.values()) {
+			line.setTrafficFxStyle(style);
+		}
+	}
+
+	setVolumeEnergyStyle(style: VolumeEnergyStyle): void {
+		this.volumeEnergyStyle = style;
+		for (const line of this.lines.values()) {
+			line.setVolumeEnergyStyle(style);
+		}
+	}
+
+	setContainerGeometryStyle(style: ContainerGeometryStyle): void {
+		if (this.containerGeometryStyle === style) return;
+		this.containerGeometryStyle = style;
+		if (!this.scene || !this.lastData) return;
+		for (const node of this.containers.values()) {
+			this.scene.scene.remove(node.object);
+			node.dispose();
+		}
+		this.containers.clear();
+		this.update(this.lastData);
+	}
+
 	// ---- Visibility API (Phase 3) ----
 
 	setHubVisibility(type: HubType, visible: boolean): void {
 		if (this.hubVisibility[type] === visible) return;
 		this.hubVisibility[type] = visible;
+		if (!visible && this.activeFocusId?.startsWith(`${type}:`)) {
+			this.resetFocus();
+		}
 		this.applyVisibility();
 		// Lines / hubs just turned visible need their links reflected
 		// in the layout so force positions work; recompute links.
@@ -515,25 +829,17 @@ export class Topology {
 			if (!parsed) continue;
 			line.object.visible = this.hubVisibility[parsed.kind as HubType];
 		}
+		// Group meshes follow stack visibility. Per-tick updateGroupMeshes
+		// also sets this, but apply it here so the first frame after a
+		// toggle is consistent even before the next tick runs.
+		for (const gm of this.groupMeshes.values()) {
+			gm.object.visible = this.hubVisibility.stack;
+		}
 	}
 
 	private rebuildLayoutLinks(): void {
 		if (!this.layout) return;
-		const visibleHubs = Array.from(this.hubs.values()).filter(
-			(h) => this.hubVisibility[h.hubType]
-		);
-		const entities: LayoutEntityRef[] = [
-			...visibleHubs.map((h) => ({ id: h.id, position: h.position })),
-			...Array.from(this.containers.values()).map((n) => ({ id: n.id, position: n.position })),
-		];
-		const links: LayoutLink[] = [];
-		for (const hub of visibleHubs) {
-			for (const memberId of hub.memberIds) {
-				if (this.containers.has(memberId)) {
-					links.push({ source: hub.id, target: memberId });
-				}
-			}
-		}
+		const { entities, links } = this.buildLayoutGraph();
 		this.layout.setData(entities, links);
 		for (const id of this.pinner.snapshot()) {
 			if (this.layout.hasNode(id)) this.layout.pin(id);
@@ -570,6 +876,10 @@ export class Topology {
 				this.scene.scene.remove(l.object);
 				l.dispose();
 			}
+			for (const gm of this.groupMeshes.values()) {
+				this.scene.scene.remove(gm.object);
+				gm.dispose();
+			}
 			if (this.starfield) {
 				this.scene.scene.remove(this.starfield.object);
 				this.starfield.dispose();
@@ -585,6 +895,7 @@ export class Topology {
 		this.containers.clear();
 		this.hubs.clear();
 		this.lines.clear();
+		this.groupMeshes.clear();
 		this.pinner.clear();
 		this.scene = null;
 		this.loop = null;
@@ -595,4 +906,9 @@ export class Topology {
 		this.host = null;
 		this.activeFocusId = null;
 	}
+}
+
+function normalizeTrafficLevel(value: number, maxValue: number): number {
+	if (value <= 0 || maxValue <= 0) return 0;
+	return THREE.MathUtils.clamp(Math.log1p(value) / Math.log1p(maxValue), 0, 1);
 }

@@ -11,10 +11,12 @@ export class NetworkLine extends Connection {
 			new THREE.LineDashedMaterial({
 				color,
 				transparent: true,
-				opacity: 0.5,
-				dashSize: 4,
-				gapSize: 3,
+				opacity: 1,
+				dashSize: 5,
+				gapSize: 2.5,
 			})
 		);
+		this.enablePackets(0xffffff, 7, 0.34, 4);
+		this.enableTunnelVisual(color, 2.1);
 	}
 }

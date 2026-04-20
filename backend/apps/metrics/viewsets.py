@@ -4,6 +4,7 @@ from rest_framework.mixins import ListModelMixin, RetrieveModelMixin
 from rest_framework.viewsets import GenericViewSet
 
 from apps.common.permissions import IsViewer
+from apps.containers.models import Container
 
 from .models import ContainerMetricsHistory, SystemMetricsHistory
 from .serializers import (
@@ -52,6 +53,17 @@ class SystemMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet):
     ordering = ["-recorded_at"]
     permission_classes = [IsViewer]
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if getattr(user, "role", None) == "admin":
+            return qs
+
+        owned_agent_ids = Container.objects.filter(
+            requester=user
+        ).values_list("agent_id", flat=True)
+        return qs.filter(agent_id__in=owned_agent_ids)
+
     def get_serializer_class(self):
         if self.action == "retrieve":
             return SystemMetricsHistoryDetailSerializer
@@ -74,6 +86,17 @@ class ContainerMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet
     ordering_fields = ["recorded_at"]
     ordering = ["-recorded_at"]
     permission_classes = [IsViewer]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if getattr(user, "role", None) == "admin":
+            return qs
+
+        owned_container_ids = Container.objects.filter(
+            requester=user
+        ).values_list("container_id", flat=True)
+        return qs.filter(container_id__in=owned_container_ids)
 
     def get_serializer_class(self):
         if self.action == "retrieve":

@@ -1,4 +1,6 @@
+import json
 import logging
+from datetime import timedelta
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
@@ -8,10 +10,13 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.viewsets import ModelViewSet
+from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
 from apps.common import command_router
 from apps.common.permissions import IsAdmin
+from apps.common.redis_client import get_redis_client
+from apps.metrics.models import ContainerMetricsHistory
+from apps.metrics.serializers import ContainerMetricsHistorySerializer
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +25,7 @@ from .serializers import (
     ContainerRequestSerializer,
     ContainerSerializer,
     ContainerTemplateSerializer,
+    MyContainerSerializer,
     ReviewActionSerializer,
 )
 
@@ -40,6 +46,119 @@ class ContainerViewSet(ModelViewSet):
     search_fields = ["name", "image"]
     ordering_fields = ["name", "status", "last_seen"]
     permission_classes = [IsAdmin]
+
+
+@extend_schema_view(
+    list=extend_schema(
+        summary="내 컨테이너 목록 조회",
+        description="로그인 사용자가 직접 요청해 생성된 컨테이너만 조회합니다.",
+    ),
+    retrieve=extend_schema(
+        summary="내 컨테이너 상세 조회",
+        description="로그인 사용자가 직접 요청해 생성된 단일 컨테이너의 상세 정보를 조회합니다.",
+    ),
+)
+class MyContainerViewSet(ReadOnlyModelViewSet):
+    queryset = Container.objects.select_related(
+        "agent",
+        "requester",
+        "created_via_request",
+        "created_via_request__template",
+    ).all()
+    serializer_class = MyContainerSerializer
+    filterset_fields = ["status", "agent"]
+    search_fields = ["name", "image"]
+    ordering_fields = ["name", "status", "last_seen"]
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return super().get_queryset().filter(requester=self.request.user)
+
+    @extend_schema(
+        summary="내 컨테이너 최신 메트릭 조회",
+        description="Redis 캐시에서 현재 컨테이너의 최신 CPU/메모리/네트워크/디스크 메트릭을 조회합니다.",
+    )
+    @action(detail=True, methods=["get"], url_path="current-metrics")
+    def current_metrics(self, request, pk=None):
+        container = self.get_object()
+        r = get_redis_client()
+
+        payload = None
+        cache_keys = [
+            f"server:{container.agent_id}:container:{container.container_id}:metrics",
+            f"server:{container.agent_id}:container:{container.container_id[:12]}:metrics",
+        ]
+
+        for key in cache_keys:
+            raw = r.get(key)
+            if not raw:
+                continue
+            try:
+                payload = json.loads(raw)
+                break
+            except json.JSONDecodeError:
+                payload = None
+
+        if payload is None:
+            pattern = f"server:{container.agent_id}:container:{container.container_id[:12]}*:metrics"
+            for key in r.scan_iter(match=pattern, count=20):
+                raw = r.get(key)
+                if not raw:
+                    continue
+                try:
+                    payload = json.loads(raw)
+                    break
+                except json.JSONDecodeError:
+                    payload = None
+
+        if payload is None:
+            return Response(
+                {
+                    "timestamp": None,
+                    "containerId": container.container_id,
+                    "cpu": None,
+                    "memory": None,
+                    "network": None,
+                    "disk": None,
+                    "network_stats": [],
+                }
+            )
+
+        body = payload.get("data") or {}
+        body["timestamp"] = payload.get("timestamp")
+        body["containerId"] = body.get("containerId") or container.container_id
+        return Response(body)
+
+    @extend_schema(
+        summary="내 컨테이너 메트릭 히스토리 조회",
+        description="로그인 사용자의 컨테이너에 대한 시계열 메트릭을 지정 범위로 조회합니다.",
+    )
+    @action(detail=True, methods=["get"], url_path="metrics-history")
+    def metrics_history(self, request, pk=None):
+        container = self.get_object()
+        range_key = request.query_params.get("range", "1h")
+        try:
+            limit = min(int(request.query_params.get("limit", "240")), 500)
+        except ValueError:
+            limit = 240
+
+        range_map = {
+            "1h": timedelta(hours=1),
+            "6h": timedelta(hours=6),
+            "24h": timedelta(hours=24),
+            "7d": timedelta(days=7),
+        }
+        from_delta = range_map.get(range_key, range_map["1h"])
+        from_time = timezone.now() - from_delta
+
+        metrics_qs = ContainerMetricsHistory.objects.filter(
+            agent=container.agent,
+            container_id__startswith=container.container_id[:12],
+            recorded_at__gte=from_time,
+        ).order_by("-recorded_at")[:limit]
+
+        serializer = ContainerMetricsHistorySerializer(metrics_qs, many=True)
+        return Response(list(reversed(serializer.data)))
 
 
 # ---------- Templates ----------

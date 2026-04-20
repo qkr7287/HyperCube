@@ -1,7 +1,8 @@
 import * as THREE from 'three';
+import { buildFromTemplate } from '../core/MeshFactory';
 import { Hub } from '../entities/Hub';
 
-const VOLUME_GEOMETRY = new THREE.OctahedronGeometry(15, 0);
+const FALLBACK_GEOMETRY = new THREE.OctahedronGeometry(15, 0);
 
 // Orange / amber family — storage connotation, distinct from stack
 // and network palettes.
@@ -25,8 +26,10 @@ export class VolumeHub extends Hub {
 	name: string;
 	color: number;
 
-	constructor(data: VolumeHubData) {
-		const material = new THREE.MeshStandardMaterial({
+	private readonly materials: THREE.MeshStandardMaterial[];
+
+	constructor(data: VolumeHubData, template: THREE.Object3D | null = null) {
+		const params: THREE.MeshStandardMaterialParameters = {
 			color: data.color,
 			emissive: data.color,
 			emissiveIntensity: 0.4,
@@ -34,26 +37,40 @@ export class VolumeHub extends Hub {
 			metalness: 0.25,
 			transparent: true,
 			opacity: 0.9,
-		});
-		super(new THREE.Mesh(VOLUME_GEOMETRY, material));
+		};
+
+		let object: THREE.Object3D;
+		let materials: THREE.MeshStandardMaterial[];
+		if (template) {
+			const built = buildFromTemplate(template);
+			object = built.object;
+			materials = built.materials;
+		} else {
+			const mat = new THREE.MeshStandardMaterial(params);
+			object = new THREE.Mesh(FALLBACK_GEOMETRY, mat);
+			materials = [mat];
+		}
+
+		super(object);
 		this.id = `volume:${data.name}`;
 		this.name = data.name;
 		this.color = data.color;
+		this.materials = materials;
 	}
 
 	update(data: VolumeHubData): void {
 		this.name = data.name;
 		if (data.color !== this.color) {
 			this.color = data.color;
-			const mat = (this.object as THREE.Mesh).material as THREE.MeshStandardMaterial;
-			mat.color.setHex(data.color);
-			mat.emissive.setHex(data.color);
+			for (const mat of this.materials) {
+				mat.color.setHex(data.color);
+				mat.emissive.setHex(data.color);
+			}
 		}
 	}
 
 	dispose(): void {
-		const mat = (this.object as THREE.Mesh).material as THREE.Material;
-		mat.dispose();
+		for (const mat of this.materials) mat.dispose();
 	}
 }
 

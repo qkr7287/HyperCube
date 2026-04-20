@@ -14,7 +14,38 @@ import type { SystemInfo, ContainerInfo } from '$lib/utils/data-adapter';
 
 export const systemStore = writable<SystemInfo | null>(null);
 export const containersStore = writable<ContainerInfo[]>([]);
-export const containerMetricsStore = writable<Map<string, any>>(new Map());
+export type NetworkMappingMode = 'exact' | 'single-network-fallback' | 'unresolved';
+
+export interface RawContainerNetworkStat {
+	network_name?: string | null;
+	interface_name?: string | null;
+	mapping_mode?: NetworkMappingMode | null;
+	rx_bytes?: number | null;
+	tx_bytes?: number | null;
+	rx_rate_bps?: number | null;
+	tx_rate_bps?: number | null;
+	rx_packets?: number | null;
+	tx_packets?: number | null;
+	errors_rx?: number | null;
+	errors_tx?: number | null;
+	timestamp?: string | null;
+}
+
+export interface RawContainerMetrics {
+	containerId: string;
+	cpu?: number;
+	memory?: any;
+	network?: {
+		rx?: number;
+		tx?: number;
+		rx_bytes?: number;
+		tx_bytes?: number;
+	};
+	network_stats?: RawContainerNetworkStat[];
+	[key: string]: any;
+}
+
+export const containerMetricsStore = writable<Map<string, RawContainerMetrics>>(new Map());
 export const cpuDetailStore = writable<any>(null);
 export const wsConnected = writable(false);
 
