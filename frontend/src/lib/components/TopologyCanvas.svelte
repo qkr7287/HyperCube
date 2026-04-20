@@ -36,7 +36,7 @@
 		tunnelStyle = 'subsea',
 		networkTunnelThickness = 0.7,
 		trafficFxStyle = 'soft',
-		volumeEnergyStyle = 'plasma',
+		volumeEnergyStyle = 'tendril',
 		networkTraffic = new Map(),
 	}: Props = $props();
 

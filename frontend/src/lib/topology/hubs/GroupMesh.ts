@@ -52,12 +52,18 @@ export class GroupMesh {
 	private static readonly MOVEMENT_THRESHOLD_SQ = 1.25 * 1.25;
 
 	constructor(color: number) {
+		// depthTest=true on every membrane layer so normal z-buffer
+		// ordering takes over — hubs / containers / lines that sit
+		// closer to the camera naturally occlude the membrane, the
+		// membrane only fills the empty space behind them. depthWrite
+		// stays false so the membrane doesn't punch through other
+		// transparent passes.
 		this.surfaceMat = new THREE.MeshBasicMaterial({
 			color,
 			transparent: true,
 			opacity: 0.03,
 			side: THREE.DoubleSide,
-			depthTest: false,
+			depthTest: true,
 			depthWrite: false,
 			toneMapped: false,
 		});
@@ -65,33 +71,33 @@ export class GroupMesh {
 			color,
 			transparent: true,
 			opacity: 0.12,
-			depthTest: false,
+			depthTest: true,
 			depthWrite: false,
 			toneMapped: false,
 		});
 
 		this.surface = new THREE.Mesh(new THREE.BufferGeometry(), this.surfaceMat);
 		this.wire = new THREE.LineSegments(new THREE.BufferGeometry(), this.wireMat);
-		this.surface.renderOrder = 1;
-		this.wire.renderOrder = 2;
+		this.surface.renderOrder = 0;
+		this.wire.renderOrder = 0;
 		this.contourMats = [0.03, 0.045, 0.065].map(
 			(opacity) =>
 				new THREE.LineBasicMaterial({
 					color,
 					transparent: true,
 					opacity,
-					depthTest: false,
+					depthTest: true,
 					depthWrite: false,
 					toneMapped: false,
 				})
 		);
 		this.contourGroup = new THREE.Group();
-		this.contourGroup.renderOrder = 2;
+		this.contourGroup.renderOrder = 0;
 		for (const mat of this.contourMats) {
 			const geometry = new THREE.BufferGeometry();
 			this.contourGeometries.push(geometry);
 			const ring = new THREE.LineLoop(geometry, mat);
-			ring.renderOrder = 2;
+			ring.renderOrder = 0;
 			this.contourGroup.add(ring);
 		}
 		this.auraMat = new THREE.PointsMaterial({
@@ -99,16 +105,16 @@ export class GroupMesh {
 			size: 5,
 			transparent: true,
 			opacity: 0.028,
-			depthTest: false,
+			depthTest: true,
 			depthWrite: false,
 			sizeAttenuation: true,
 			toneMapped: false,
 		});
 		this.aura = new THREE.Points(new THREE.BufferGeometry(), this.auraMat);
-		this.aura.renderOrder = 2;
+		this.aura.renderOrder = 0;
 
 		this.object = new THREE.Group();
-		this.object.renderOrder = 1;
+		this.object.renderOrder = 0;
 		this.object.add(this.surface);
 		this.object.add(this.wire);
 		this.object.add(this.contourGroup);

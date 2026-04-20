@@ -3,7 +3,10 @@ import * as THREE from 'three';
 export type LinePulseMode = 'glow' | 'flow' | 'stream' | 'tunnel';
 export type TunnelStyle = 'mist' | 'ribs' | 'subsea' | 'core';
 export type TrafficFxStyle = 'soft' | 'comet' | 'relay' | 'surge';
-export type VolumeEnergyStyle = 'plasma' | 'arc' | 'conduit';
+// Four multi-line energy looks. All render the primary line as a
+// thin guide and a bundle of extra strands on top for the woven /
+// sinewy / arcing look.
+export type VolumeEnergyStyle = 'bundle' | 'helix' | 'arc' | 'tendril';
 
 type TunnelPreset = {
 	bodyOpacity: number;
@@ -33,12 +36,19 @@ type TrafficFxPreset = {
 };
 
 type VolumeEnergyPreset = {
+	// Primary (base) line — kept as a thin guide.
 	lineOpacity: number;
 	lineBoost: number;
 	whiteMix: number;
 	dashSize: number;
 	gapSize: number;
 	dashSpeed: number;
+	// Extra strands laid on top.
+	strandCount: number;
+	strandAmplitude: number;
+	strandOpacity: number;
+	strandWhiteMix: number;
+	phaseSpeed: number;
 };
 
 // Four styles intentionally pull apart on different axes so they
@@ -156,30 +166,62 @@ const TRAFFIC_FX_PRESETS: Record<TrafficFxStyle, TrafficFxPreset> = {
 	},
 };
 
-const VOLUME_ENERGY_PRESETS: Record<VolumeEnergyStyle, VolumeEnergyPreset> = {
-	plasma: {
-		lineOpacity: 0.74,
-		lineBoost: 0.18,
-		whiteMix: 0.3,
-		dashSize: 11,
-		gapSize: 2.8,
-		dashSpeed: 0.46,
+export const VOLUME_ENERGY_PRESETS: Record<VolumeEnergyStyle, VolumeEnergyPreset> = {
+	// 3 strands weaving with phase-shifted sines — calm energy bundle.
+	bundle: {
+		lineOpacity: 0.22,
+		lineBoost: 0.05,
+		whiteMix: 0.2,
+		dashSize: 20,
+		gapSize: 1.2,
+		dashSpeed: 0.25,
+		strandCount: 3,
+		strandAmplitude: 3.8,
+		strandOpacity: 0.75,
+		strandWhiteMix: 0.3,
+		phaseSpeed: 0.85,
 	},
+	// 2 strands coiled around the axis — clean sci-fi double helix.
+	helix: {
+		lineOpacity: 0.28,
+		lineBoost: 0.08,
+		whiteMix: 0.25,
+		dashSize: 20,
+		gapSize: 1.2,
+		dashSpeed: 0.2,
+		strandCount: 2,
+		strandAmplitude: 3.2,
+		strandOpacity: 0.9,
+		strandWhiteMix: 0.4,
+		phaseSpeed: 0.9,
+	},
+	// Primary line + zigzag arcs — crackling plasma.
 	arc: {
-		lineOpacity: 0.9,
-		lineBoost: 0.24,
-		whiteMix: 0.48,
-		dashSize: 7.5,
-		gapSize: 4.8,
-		dashSpeed: 0.84,
+		lineOpacity: 0.32,
+		lineBoost: 0.1,
+		whiteMix: 0.3,
+		dashSize: 9,
+		gapSize: 4,
+		dashSpeed: 0.6,
+		strandCount: 3,
+		strandAmplitude: 5.5,
+		strandOpacity: 0.82,
+		strandWhiteMix: 0.55,
+		phaseSpeed: 5.5, // noise churn rate
 	},
-	conduit: {
-		lineOpacity: 0.68,
-		lineBoost: 0.14,
-		whiteMix: 0.18,
-		dashSize: 14,
-		gapSize: 2.2,
-		dashSpeed: 0.28,
+	// Many thin strands drifting like sea-grass — tighter bundle.
+	tendril: {
+		lineOpacity: 0.18,
+		lineBoost: 0.04,
+		whiteMix: 0.15,
+		dashSize: 20,
+		gapSize: 1.2,
+		dashSpeed: 0.18,
+		strandCount: 7,
+		strandAmplitude: 1.6,
+		strandOpacity: 0.55,
+		strandWhiteMix: 0.2,
+		phaseSpeed: 0.6,
 	},
 };
 
@@ -254,8 +296,8 @@ export abstract class Connection {
 	readonly object: THREE.Line;
 	protected readonly geometry: THREE.BufferGeometry;
 	protected readonly material: THREE.LineBasicMaterial | THREE.LineDashedMaterial;
-	private readonly baseOpacity: number;
-	private readonly baseColor: THREE.Color;
+	protected readonly baseOpacity: number;
+	protected readonly baseColor: THREE.Color;
 	private curved = false;
 	private targetTrafficLevel = 0;
 	private visibleTrafficLevel = 0;
@@ -263,7 +305,7 @@ export abstract class Connection {
 	private pulseMode: LinePulseMode = 'tunnel';
 	private tunnelStyle: TunnelStyle = 'subsea';
 	private trafficFxStyle: TrafficFxStyle = 'soft';
-	private volumeEnergyStyle: VolumeEnergyStyle = 'plasma';
+	protected volumeEnergyStyle: VolumeEnergyStyle = 'tendril';
 	private curveSeed = 0;
 	private readonly packets: THREE.Points[] = [];
 	private readonly packetMats: THREE.PointsMaterial[] = [];
@@ -311,7 +353,9 @@ export abstract class Connection {
 		this.material.linewidth = 2;
 		this.material.toneMapped = false;
 		this.material.blending = THREE.AdditiveBlending;
-		this.material.depthTest = false;
+		// depthTest=true so hub and container geometry naturally
+		// occlude the portion of the line that's behind them.
+		this.material.depthTest = true;
 		this.material.depthWrite = false;
 		this.baseOpacity = material.opacity;
 		this.baseColor = material.color.clone();
@@ -383,7 +427,7 @@ export abstract class Connection {
 			color,
 			transparent: true,
 			opacity: 0.12,
-			depthTest: false,
+			depthTest: true,
 			depthWrite: false,
 			blending: THREE.AdditiveBlending,
 			toneMapped: false,
@@ -400,7 +444,7 @@ export abstract class Connection {
 			color,
 			transparent: true,
 			opacity: 0.45,
-			depthTest: false,
+			depthTest: true,
 			depthWrite: false,
 			blending: THREE.AdditiveBlending,
 			toneMapped: false,
@@ -483,6 +527,7 @@ export abstract class Connection {
 			}
 			this.hidePackets();
 			this.updateTunnelStyle(0, pulse);
+			this.onTick(0, pulse, dt);
 			return;
 		}
 
@@ -562,6 +607,7 @@ export abstract class Connection {
 				break;
 			}
 		}
+		this.onTick(displayLevel, pulse, dt);
 	}
 
 	private updatePackets(displayLevel: number, count: number, spacing: number, dt: number): void {
@@ -723,6 +769,23 @@ export abstract class Connection {
 		}
 	}
 
+	/**
+	 * Subclasses override to react to endpoint updates (e.g. rebuild
+	 * extra strand geometry). Called after the primary position buffer
+	 * is updated. Default is no-op.
+	 */
+	protected onEndpointsUpdated(_a: THREE.Vector3, _b: THREE.Vector3): void {
+		/* no-op */
+	}
+
+	/**
+	 * Subclasses override to animate effects that depend on the live
+	 * pulse clock (e.g. strand phase). Called every tick. Default no-op.
+	 */
+	protected onTick(_displayLevel: number, _pulse: number, _dt: number): void {
+		/* no-op */
+	}
+
 	setEndpoints(a: THREE.Vector3, b: THREE.Vector3): void {
 		const pos = this.geometry.attributes.position as THREE.BufferAttribute;
 		if (!this.curved) {
@@ -740,6 +803,7 @@ export abstract class Connection {
 				this.object.computeLineDistances();
 			}
 			this.maybeRebuildTunnelGeometry(a, b);
+			this.onEndpointsUpdated(a, b);
 			return;
 		}
 
@@ -750,6 +814,7 @@ export abstract class Connection {
 			for (let i = 0; i <= Connection.SEGMENTS; i++) pos.setXYZ(i, a.x, a.y, a.z);
 			pos.needsUpdate = true;
 			this.maybeRebuildTunnelGeometry(a, b);
+			this.onEndpointsUpdated(a, b);
 			return;
 		}
 		dir.normalize();
@@ -781,6 +846,7 @@ export abstract class Connection {
 			this.object.computeLineDistances();
 		}
 		this.maybeRebuildTunnelGeometry(a, b);
+		this.onEndpointsUpdated(a, b);
 	}
 
 	/**

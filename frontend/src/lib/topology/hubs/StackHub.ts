@@ -15,6 +15,8 @@ export class StackHub extends Hub {
 	name: string;
 	color: number;
 
+	// Only populated on the fallback path; GLB-backed materials are
+	// left untouched so the authored look is preserved.
 	private readonly materials: THREE.MeshStandardMaterial[];
 
 	constructor(data: StackHubData, template: THREE.Object3D | null = null) {
@@ -31,6 +33,9 @@ export class StackHub extends Hub {
 		let object: THREE.Object3D;
 		let materials: THREE.MeshStandardMaterial[];
 		if (template) {
+			// Keep the authored GLB materials entirely as-is — no
+			// clone, no emissive tint. The hub reads with its
+			// original colour and no extra glow overlay.
 			const built = buildFromTemplate(template);
 			object = built.object;
 			materials = built.materials;

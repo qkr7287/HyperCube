@@ -138,7 +138,7 @@ export class Topology {
 	private tunnelStyle: TunnelStyle = 'subsea';
 	private networkTunnelThickness = 0.7;
 	private trafficFxStyle: TrafficFxStyle = 'soft';
-	private volumeEnergyStyle: VolumeEnergyStyle = 'plasma';
+	private volumeEnergyStyle: VolumeEnergyStyle = 'tendril';
 	private containerGeometryStyle: ContainerGeometryStyle = 'crate';
 	private bloomStrength = 0.1;
 	private templates: TemplateBundle = {

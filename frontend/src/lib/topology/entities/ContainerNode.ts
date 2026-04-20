@@ -138,9 +138,14 @@ export class ContainerNode extends Entity {
 			color: 0x30d5c8,
 			transparent: true,
 			opacity: 0.16,
-			depthTest: false,
+			// depthTest enabled so hubs / other models occlude the
+			// halo when the container is behind them. DoubleSide
+			// keeps the halo visible on the bit that extends past
+			// the container body (BackSide would get hidden behind
+			// the body itself once depthTest is on).
+			depthTest: true,
 			depthWrite: false,
-			side: THREE.BackSide,
+			side: THREE.DoubleSide,
 		});
 		const overlay = new THREE.Mesh(
 			style === 'crate' ? OVERLAY_BOX_GEOMETRY : OVERLAY_ORB_GEOMETRY,

@@ -26,6 +26,8 @@ export class VolumeHub extends Hub {
 	name: string;
 	color: number;
 
+	// Only populated on the fallback path; GLB-backed materials are
+	// left untouched so the authored look is preserved.
 	private readonly materials: THREE.MeshStandardMaterial[];
 
 	constructor(data: VolumeHubData, template: THREE.Object3D | null = null) {
@@ -42,6 +44,8 @@ export class VolumeHub extends Hub {
 		let object: THREE.Object3D;
 		let materials: THREE.MeshStandardMaterial[];
 		if (template) {
+			// GLB materials kept untouched — no clone, no emissive
+			// overlay.
 			const built = buildFromTemplate(template);
 			object = built.object;
 			materials = built.materials;

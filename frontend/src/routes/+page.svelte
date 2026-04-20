@@ -160,7 +160,7 @@
 	const tunnelStyle: 'subsea' = 'subsea';
 	let networkTunnelThickness = 0.7;
 	const trafficFxStyle: 'soft' = 'soft';
-	let volumeEnergyStyle: 'plasma' | 'arc' | 'conduit' = 'plasma';
+	const volumeEnergyStyle: 'tendril' = 'tendril';
 
 	function anyModalOpen(): boolean {
 		return cpuModalOpen || memoryModalOpen || diskModalOpen
@@ -481,14 +481,6 @@
 					<input type="checkbox" bind:checked={showVolumeHub} />
 					<span class="dot"></span>
 					<span class="label">Volume</span>
-				</label>
-				<label class="hub-select">
-					<span class="label">Volume FX</span>
-					<select bind:value={volumeEnergyStyle}>
-						<option value="plasma">Plasma</option>
-						<option value="arc">Arc</option>
-						<option value="conduit">Conduit</option>
-					</select>
 				</label>
 			</div>
 			<div class="topology-overlay topology-overlay-live">
