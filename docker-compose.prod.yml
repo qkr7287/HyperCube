@@ -1,14 +1,17 @@
+# Local "prod-like" compose. Use this when you want to rebuild images
+# from source on the current machine (no registry involved).
+# For image-based appliance deploys, use deploy/docker-compose.yml
+# (pulls pre-built images from GHCR — no source tree required).
+
 services:
   nginx:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: frontend/Dockerfile
     container_name: hc-nginx
     restart: unless-stopped
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
     ports:
-      - "7003:7003"
+      - "${HC_PORT:-7003}:7003"
     depends_on:
       - backend
     networks:
@@ -18,10 +21,32 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    command: uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --workers 4
-    ports:
-      - "8000:8000"
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --workers 4"
     restart: unless-stopped
     environment:
       DJANGO_ENV: prod
+      DJANGO_SETTINGS_MODULE: config.settings.prod
       DEBUG: "false"
+
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A config worker -l info --concurrency=2
+    restart: unless-stopped
+    environment:
+      DJANGO_ENV: prod
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A config beat -l info
+    restart: unless-stopped
+    environment:
+      DJANGO_ENV: prod
+      DJANGO_SETTINGS_MODULE: config.settings.prod
