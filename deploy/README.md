@@ -11,7 +11,16 @@ GitHub Actions on every push to `main`.
 - Docker Compose v2 (bundled with Docker Desktop or `docker-compose-plugin` package)
 - Outbound access to `ghcr.io`
 
-That's it. No repo clone.
+That's it. No repo clone, no `docker login` (images are public).
+
+> **Note — first-time publisher setup.** The source repo is private but
+> the images are published **public** so no GitHub auth is needed to
+> pull them. Right after the very first CI build of `hypercube-backend`
+> and `hypercube-nginx`, open each package on GitHub
+> (profile → Packages) and flip *Package settings → Change visibility →
+> Public*. GHCR keeps that setting for all future pushes. If images are
+> left private, operators must run `docker login ghcr.io` with a PAT
+> that has `read:packages`.
 
 ## 1. Drop the deploy files onto the host
 
