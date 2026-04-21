@@ -12,7 +12,7 @@ RUN npm ci
 
 COPY frontend/ ./
 
-ARG BASE_PATH=/hypercube
+ARG BASE_PATH=
 ENV BASE_PATH=${BASE_PATH}
 
 RUN npm run build
