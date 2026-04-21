@@ -1,0 +1,84 @@
+# Sync the deploy bundle (docker-compose.yml, .env.example, README)
+# from HyperCube/main → public qkr7287/hypercube-deploy on every main push.
+#
+# Requires a repo secret `DEPLOY_BUNDLE_PAT` — a fine-grained PAT with
+# "Contents: read/write" on qkr7287/hypercube-deploy only. Nothing else.
+
+name: Publish deploy bundle
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/**'
+      - '.github/workflows/publish-deploy-bundle.yml'
+  workflow_dispatch:
+
+jobs:
+  publish:
+    if: github.repository == 'qkr7287/HyperCube'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout HyperCube source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Short SHA
+        id: sha
+        run: echo "value=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout hypercube-deploy
+        uses: actions/checkout@v4
+        with:
+          repository: qkr7287/hypercube-deploy
+          token: ${{ secrets.DEPLOY_BUNDLE_PAT }}
+          path: deploy-bundle
+          ref: main
+
+      - name: Sync bundle files
+        run: |
+          set -euo pipefail
+          cp deploy/docker-compose.yml  deploy-bundle/docker-compose.yml
+          cp deploy/.env.example        deploy-bundle/.env.example
+          # README in the public repo is maintained there — do not overwrite.
+          cd deploy-bundle
+          if git status --porcelain | grep -q .; then
+            echo "changes=true" >> "$GITHUB_ENV"
+          else
+            echo "changes=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Commit and push
+        if: env.changes == 'true'
+        working-directory: deploy-bundle
+        run: |
+          git config user.name  "hypercube-ci"
+          git config user.email "hypercube-ci@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: sync bundle from HyperCube@${{ steps.sha.outputs.value }}"
+          git push origin main
+
+      - name: Tag release
+        if: env.changes == 'true'
+        working-directory: deploy-bundle
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOY_BUNDLE_PAT }}
+        run: |
+          TAG="sha-${{ steps.sha.outputs.value }}"
+          gh release create "$TAG" \
+            --repo qkr7287/hypercube-deploy \
+            --title "Bundle $TAG" \
+            --notes "Auto-published from HyperCube@${{ github.sha }}." \
+            docker-compose.yml .env.example || true
+
+      - name: Summary
+        run: |
+          echo "### Deploy bundle" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ env.changes }}" = "true" ]; then
+            echo "- Synced to https://github.com/qkr7287/hypercube-deploy" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Release: \`sha-${{ steps.sha.outputs.value }}\`" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- No changes — bundle already up to date." >> "$GITHUB_STEP_SUMMARY"
+          fi
