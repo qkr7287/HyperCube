@@ -1,10 +1,65 @@
+# Development stack.
+#
+# Two ways to run this:
+#
+# 1) Local Docker (everything on your PC)
+#    $ docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+#        --env-file .env.dev up
+#
+# 2) Remote Docker via Mutagen Compose
+#    $ mutagen-compose -f docker-compose.yml -f docker-compose.dev.yml \
+#        --env-file .env.dev up -d
+#    Mutagen will keep ./backend and ./frontend in sync with the
+#    `hc-backend-src` and `hc-frontend-src` named volumes on whichever
+#    Docker context you've selected. Set one up with:
+#      $ docker context create server16 \
+#          --docker "host=ssh://agics-ai@192.168.0.16:2022"
+#      $ docker context use server16
+
+x-mutagen:
+  sync:
+    defaults:
+      ignore:
+        vcs: true
+        paths:
+          - node_modules
+          - build
+          - .svelte-kit
+          - staticfiles
+          - __pycache__
+          - "**/__pycache__"
+          - "*.pyc"
+          - ".pytest_cache"
+          - ".claude"
+          - ".playwright-mcp"
+          - ".serena"
+    backend-src:
+      alpha: "./backend"
+      beta: "volume://hc-backend-src"
+      mode: "two-way-resolved"
+    frontend-src:
+      alpha: "./frontend"
+      beta: "volume://hc-frontend-src"
+      mode: "two-way-resolved"
+
 services:
+  # Postgres and Redis get bumped to non-default host ports in dev so the
+  # stack happily coexists with other databases already bound on :5432
+  # on a shared dev host (e.g. server 16).
+  postgres:
+    ports:
+      - "${DB_PORT:-15432}:5432"
+
+  redis:
+    ports:
+      - "${REDIS_PORT:-16379}:6379"
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
     volumes:
-      - ./backend:/app
+      - hc-backend-src:/app
     command: >
       sh -c "python manage.py migrate --noinput &&
              uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --reload"
@@ -28,7 +83,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile.dev
     volumes:
-      - ./backend:/app
+      - hc-backend-src:/app
     command: celery -A config worker -l info --concurrency=2
     environment:
       DJANGO_ENV: dev
@@ -41,7 +96,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile.dev
     volumes:
-      - ./backend:/app
+      - hc-backend-src:/app
     command: celery -A config beat -l info
     environment:
       DJANGO_ENV: dev
@@ -55,7 +110,7 @@ services:
       dockerfile: Dockerfile.dev
     container_name: hc-frontend-dev
     volumes:
-      - ./frontend:/app
+      - hc-frontend-src:/app
       - /app/node_modules
     command: npm run dev -- --host 0.0.0.0 --port 3000
     ports:
@@ -67,6 +122,10 @@ services:
         condition: service_healthy
     networks:
       - hc-network
+
+volumes:
+  hc-backend-src:
+  hc-frontend-src:
 
 networks:
   hc-network:
