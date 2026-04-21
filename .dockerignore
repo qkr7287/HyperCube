@@ -1,10 +1,15 @@
 frontend/node_modules
 frontend/build
 frontend/.svelte-kit
-backend/
+backend/__pycache__
+backend/**/__pycache__
+backend/.venv
+backend/staticfiles
 .env
 .env.local
+.env.dev
 *.md
 .git
 .gitignore
 docs/
+.claude/

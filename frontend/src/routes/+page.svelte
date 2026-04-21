@@ -2,11 +2,19 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
 	import { base } from '$app/paths';
-	import { systemStore, containersStore, connect, disconnect } from '$lib/stores/ws-store';
+	import { goto } from '$app/navigation';
+	import { systemStore, containersStore, containerMetricsStore, connect, disconnect } from '$lib/stores/ws-store';
+	import { connectGlobal, disconnectGlobal, seedActiveAgents } from '$lib/stores/global-events';
 	import LeftSidebar from '$lib/components/LeftSidebar.svelte';
+	import StatusToasts from '$lib/components/StatusToasts.svelte';
+	import AgentStatusBadge from '$lib/components/AgentStatusBadge.svelte';
+	import AdminHeader from '$lib/components/AdminHeader.svelte';
 	import RightSidebar from '$lib/components/RightSidebar.svelte';
-	import TopologyToolbar from '$lib/components/TopologyToolbar.svelte';
 	import RackUtilization from '$lib/components/RackUtilization.svelte';
+	import SelectionHud from '$lib/components/SelectionHud.svelte';
+	import type { HudSelection } from '$lib/components/SelectionHud.svelte';
+	import TopologyCanvas from '$lib/components/TopologyCanvas.svelte';
+	import TopologyToolbar from '$lib/components/TopologyToolbar.svelte';
 	import ContainerDetailModal from '$lib/components/ContainerDetailModal.svelte';
 	import NetworkDetailModal from '$lib/components/NetworkDetailModal.svelte';
 	import LoginDetailModal from '$lib/components/LoginDetailModal.svelte';
@@ -14,6 +22,10 @@
 	import CpuDetailModal from '$lib/components/CpuDetailModal.svelte';
 	import MemoryDetailModal from '$lib/components/MemoryDetailModal.svelte';
 	import DiskDetailModal from '$lib/components/DiskDetailModal.svelte';
+	import logoHypercube from '$lib/assets/logo_hypercube.png';
+	import { buildNetworkTrafficIndex, type TopologyNetworkTrafficIndex } from '$lib/topology/traffic-adapter';
+	import { resolveGroup, groupContainersByStack } from '$lib/utils/container-grouping';
+	import type { TopologyContainerData } from '$lib/topology/Topology';
 
 	interface Container {
 		id: string;
@@ -23,6 +35,8 @@
 		state: string;
 		status: string;
 		labels: any;
+		networks?: string[];
+		mounts?: { name: string; type: 'volume' }[];
 	}
 
 	interface Project {
@@ -39,27 +53,27 @@
 		memory: { total: string; used: string; free: string; usage: number };
 		disk: { total: string; used: string; free: string; usage: number };
 		docker: { version: string; containers: number; images: number };
+		uptime?: number;
 	}
 
+	// Teal/cyan family is reserved for running containers + network
+	// tunnels, so it's intentionally excluded from the group palette to
+	// keep group membranes visually distinct from network state.
 	const projectColors = [
-		'#4fc3f7', '#ff7043', '#66bb6a', '#ffa726', '#ab47bc',
-		'#26c6da', '#ef5350', '#5c6bc0', '#ffca28', '#ec407a'
+		'#d4a574', '#ff7043', '#66bb6a', '#ffa726', '#ab47bc',
+		'#8e24aa', '#ef5350', '#5c6bc0', '#ffca28', '#ec407a'
 	];
 
 	let containers: Container[] = [];
 	let projects: Project[] = [];
 	let systemInfo: SystemInfo | null = null;
 	let selectedProject: string | null = null;
-	let graphContainer: HTMLDivElement;
-	let graph: any = null;
 	let lastUpdate = new Date();
 	let unsubSystem: (() => void) | null = null;
 	let unsubContainers: (() => void) | null = null;
+	let unsubMetrics: (() => void) | null = null;
 	let fallbackInterval: ReturnType<typeof setInterval> | null = null;
 	let wsDataReceived = false;
-	let cameraTransitioning = false;
-	let starfieldGroup: any = null;
-	let starfieldRotationId: number | null = null;
 	let viewMode = 'group';
 	let selectedContainer: Container | null = null;
 	let cpuModalOpen = false;
@@ -69,739 +83,63 @@
 	let loginModalOpen = false;
 	let processModalOpen = false;
 
-	function openContainerDetail(container: Container) {
-		selectedContainer = container;
-		const rawProject = container.labels?.['com.docker.compose.project'] || 'default';
-		const projectName = extractProjectPrefix(rawProject);
-		updateGraphForProject(projectName);
+	// ----- Auth + Server Selection -----
+	let accessToken = '';
+	let isLoggedIn = false;
+	let agents: any[] = [];
+	let selectedServerId = '';
+	let loginUsername = '';
+	let currentUsername = '';
+	let loginPassword = '';
+	let loginError = '';
+	let agentsLoading = false;
+
+	// Topology input — projected from live container state.
+	// Phase 3 will also feed networks / mounts once the Agent emits them.
+	let topologyContainers: TopologyContainerData[] = [];
+	$: topologyContainers = containers.map((c) => ({
+		id: c.id,
+		name: c.names?.[0]?.replace('/', '') || c.shortId,
+		state: c.state,
+		stack: resolveGroup(c).name,
+		networks: c.networks,
+		mounts: c.mounts,
+	}));
+
+	// Per-stack running/total counts driven straight from projects[].
+	// The membrane (group mesh) colours itself from this via
+	// healthColor() — see $lib/utils/health-color. Stacks missing from
+	// the map are treated as fully-healthy on the 3D side.
+	let topologyStackHealth: Record<string, { running: number; total: number }> = {};
+	$: topologyStackHealth = Object.fromEntries(
+		projects.map((p) => [p.name, { running: p.stats.running, total: p.stats.total }])
+	);
+	let topologyNetworkTraffic: TopologyNetworkTrafficIndex = new Map();
+
+	// TopologyCanvas exposes resetFocus/focusContainer/focusHub as
+	// component methods. Bind so ESC and Phase 4 sidebar wiring can
+	// drive the 3D scene without exposing the Topology facade.
+	let topologyCanvas: {
+		resetFocus?: () => void;
+		focusContainer?: (id: string) => void;
+		focusHub?: (id: string, type: 'stack' | 'network' | 'volume') => void;
+		setHubVisibility?: (type: 'stack' | 'network' | 'volume', visible: boolean) => void;
+		setAutoRotate?: (enabled: boolean) => void;
+	} | null = null;
+
+	// Toolbar state (Phase 5 — restored)
+	let autoRotating = false;
+	function handleToolbarReset() {
+		topologyCanvas?.resetFocus?.();
+		autoRotating = false;
+		topologyCanvas?.setAutoRotate?.(false);
+		clearHudSelection();
 	}
-
-	function closeContainerDetail() {
-		selectedContainer = null;
+	function handleToolbarRotate() {
+		autoRotating = !autoRotating;
+		topologyCanvas?.setAutoRotate?.(autoRotating);
 	}
-
-	// Mock data for demo (used when API is not available)
-	const mockContainers: Container[] = [
-		{ id: '1', shortId: 'abc1', names: ['/agdreamlog-api-api-1'], image: 'node:20', state: 'running', status: 'Up 2 days', labels: { 'com.docker.compose.project': 'agdreamlog-api' } },
-		{ id: '2', shortId: 'abc2', names: ['/agdreamlog-api-db-1'], image: 'postgres:15', state: 'running', status: 'Up 2 days', labels: { 'com.docker.compose.project': 'agdreamlog-api' } },
-		{ id: '3', shortId: 'abc3', names: ['/agdreamlog-api-redis-1'], image: 'redis:7', state: 'running', status: 'Up 2 days', labels: { 'com.docker.compose.project': 'agdreamlog-api' } },
-		{ id: '4', shortId: 'abc4', names: ['/agdreamlog-api-worker-1'], image: 'node:20', state: 'running', status: 'Up 2 days', labels: { 'com.docker.compose.project': 'agdreamlog-api' } },
-		{ id: '5', shortId: 'abc5', names: ['/agdreamlog-api-beat-1'], image: 'node:20', state: 'running', status: 'Up 1 day', labels: { 'com.docker.compose.project': 'agdreamlog-api' } },
-		{ id: '6', shortId: 'abc6', names: ['/agdreamlog-api-minio-1'], image: 'minio/minio', state: 'running', status: 'Up 2 days', labels: { 'com.docker.compose.project': 'agdreamlog-api' } },
-		{ id: '7', shortId: 'def1', names: ['/agdevblog_frontend'], image: 'node:20', state: 'running', status: 'Up 5 days', labels: { 'com.docker.compose.project': 'agdevblog' } },
-		{ id: '8', shortId: 'def2', names: ['/agdevblog_backend'], image: 'python:3.11', state: 'running', status: 'Up 5 days', labels: { 'com.docker.compose.project': 'agdevblog' } },
-		{ id: '9', shortId: 'def3', names: ['/agdevblog_postgres'], image: 'postgres:15', state: 'running', status: 'Up 5 days', labels: { 'com.docker.compose.project': 'agdevblog' } },
-		{ id: '10', shortId: 'def4', names: ['/agdevblog_minio'], image: 'minio/minio', state: 'running', status: 'Up 5 days', labels: { 'com.docker.compose.project': 'agdevblog' } },
-		{ id: '11', shortId: 'ghi1', names: ['/agsafecat-backend-backend-1'], image: 'python:3.11', state: 'running', status: 'Up 3 days', labels: { 'com.docker.compose.project': 'agsafecat-backend' } },
-		{ id: '12', shortId: 'ghi2', names: ['/agsafecat-backend-celery-1'], image: 'python:3.11', state: 'running', status: 'Up 3 days', labels: { 'com.docker.compose.project': 'agsafecat-backend' } },
-		{ id: '13', shortId: 'ghi3', names: ['/agsafecat-backend-db-1'], image: 'postgres:15', state: 'exited', status: 'Exited (0)', labels: { 'com.docker.compose.project': 'agsafecat-backend' } },
-		{ id: '14', shortId: 'jkl1', names: ['/ai_translate_frontend'], image: 'node:20', state: 'running', status: 'Up 1 day', labels: { 'com.docker.compose.project': 'aitranslateplatform' } },
-		{ id: '15', shortId: 'jkl2', names: ['/ai_translate_backend'], image: 'python:3.11', state: 'running', status: 'Up 1 day', labels: { 'com.docker.compose.project': 'aitranslateplatform' } },
-		{ id: '16', shortId: 'jkl3', names: ['/ai_translate_db'], image: 'postgres:15', state: 'running', status: 'Up 1 day', labels: { 'com.docker.compose.project': 'aitranslateplatform' } },
-		{ id: '17', shortId: 'mno1', names: ['/3d-widget-web-host-full-three-1'], image: 'node:20', state: 'running', status: 'Up 12 hours', labels: { 'com.docker.compose.project': '3d-widget-web-host' } },
-		{ id: '18', shortId: 'mno2', names: ['/3d-widget-web-host-full-babylon-1'], image: 'node:20', state: 'running', status: 'Up 12 hours', labels: { 'com.docker.compose.project': '3d-widget-web-host' } },
-		{ id: '19', shortId: 'mno3', names: ['/3d-widget-web-host-webhost-only-three-1'], image: 'node:20', state: 'running', status: 'Up 12 hours', labels: { 'com.docker.compose.project': '3d-widget-web-host' } },
-		{ id: '20', shortId: 'mno4', names: ['/3d-widget-web-host-webhost-only-babylon-1'], image: 'node:20', state: 'running', status: 'Up 12 hours', labels: { 'com.docker.compose.project': '3d-widget-web-host' } },
-		{ id: '21', shortId: 'pqr1', names: ['/coatervision-web-1'], image: 'node:20', state: 'running', status: 'Up 7 days', labels: { 'com.docker.compose.project': 'coatervision' } },
-		{ id: '22', shortId: 'pqr2', names: ['/coatervision-api-1'], image: 'python:3.11', state: 'running', status: 'Up 7 days', labels: { 'com.docker.compose.project': 'coatervision' } },
-		{ id: '23', shortId: 'stu1', names: ['/release-notes-frontend-1'], image: 'node:20', state: 'running', status: 'Up 4 days', labels: { 'com.docker.compose.project': 'release-notes' } },
-		{ id: '24', shortId: 'stu2', names: ['/release-notes-backend-1'], image: 'python:3.11', state: 'exited', status: 'Exited (1)', labels: { 'com.docker.compose.project': 'release-notes' } },
-		{ id: '25', shortId: 'stu3', names: ['/release-notes-db-1'], image: 'postgres:15', state: 'running', status: 'Up 4 days', labels: { 'com.docker.compose.project': 'release-notes' } },
-	];
-
-	function extractProjectPrefix(name: string): string {
-		const parts = name.split(/[-_]/);
-		if (parts.length > 1 && parts[0].length >= 2) return parts[0];
-		return name;
-	}
-
-	function groupContainers(containerList: Container[]) {
-		const projectMap = new Map<string, Container[]>();
-
-		containerList.forEach(container => {
-			const rawProject = container.labels?.['com.docker.compose.project'] || 'default';
-			const projectName = extractProjectPrefix(rawProject);
-			if (!projectMap.has(projectName)) projectMap.set(projectName, []);
-			projectMap.get(projectName)!.push(container);
-		});
-
-		projects = Array.from(projectMap.entries()).map(([name, ctrs], i) => ({
-			name,
-			containers: ctrs,
-			color: projectColors[i % projectColors.length],
-			stats: {
-				total: ctrs.length,
-				running: ctrs.filter(c => c.state === 'running').length,
-				stopped: ctrs.filter(c => c.state === 'exited').length,
-				paused: ctrs.filter(c => c.state === 'paused').length,
-			}
-		})).sort((a, b) => a.name.localeCompare(b.name));
-	}
-
-	function getContainerDisplayName(container: Container): string {
-		const name = container.names?.[0]?.replace('/', '') || container.shortId;
-		return name.replace(/^[a-z0-9]+-/, '').replace(/-1$/, '').replace(/_1$/, '');
-	}
-
-	function getNodeColor(container: Container): string {
-		const project = projects.find(p => p.containers.some(c => c.id === container.id));
-		return project?.color || '#888';
-	}
-
-	function getStateColor(state: string): string {
-		switch (state) {
-			case 'running': return '#00e676';
-			case 'exited': return '#ff1744';
-			case 'paused': return '#ff9100';
-			default: return '#546e7a';
-		}
-	}
-
-	function getStateEmissive(state: string): string {
-		switch (state) {
-			case 'running': return '#00ff88';
-			case 'exited': return '#ff3333';
-			case 'paused': return '#ffaa00';
-			default: return '#333333';
-		}
-	}
-
-	function buildGraphData() {
-		const nodes: any[] = [];
-		const links: any[] = [];
-
-		containers.forEach(container => {
-			const project = projects.find(p => p.containers.some(c => c.id === container.id));
-			nodes.push({
-				id: container.id,
-				name: getContainerDisplayName(container),
-				fullName: container.names?.[0]?.replace('/', '') || container.shortId,
-				image: container.image,
-				state: container.state,
-				project: project?.name || 'default',
-				color: project?.color || '#888',
-				val: container.state === 'running' ? 8 : 4,
-				isHub: false,
-			});
-		});
-
-		projects.forEach(project => {
-			const hubId = `hub-${project.name}`;
-			nodes.push({
-				id: hubId,
-				name: project.name,
-				state: 'hub',
-				project: project.name,
-				color: project.color,
-				val: 15,
-				isHub: true,
-			});
-
-			project.containers.forEach(c => {
-				links.push({
-					source: hubId,
-					target: c.id,
-					project: project.name,
-				});
-			});
-		});
-
-		return { nodes, links };
-	}
-
-	async function initGraph() {
-		if (!browser || !graphContainer) return;
-
-		// @ts-ignore
-		const ForceGraph3D = (await import('3d-force-graph')).default;
-		const THREE = await import('three');
-
-		const data = buildGraphData();
-
-		// @ts-ignore
-		graph = ForceGraph3D({
-			extraRenderers: []
-		})(graphContainer)
-			.backgroundColor('#0d1117')
-			.width(graphContainer.clientWidth)
-			.height(graphContainer.clientHeight)
-			.graphData(data)
-			.cooldownTicks(100)
-			.cooldownTime(3000)
-			.d3AlphaDecay(0.05)
-			.d3VelocityDecay(0.4)
-			.warmupTicks(50)
-			.nodeThreeObject((node: any) => {
-				if (!node) return new THREE.Object3D();
-
-				const group = new THREE.Group();
-
-				if (node.isHub) {
-					const hubSize = 5;
-					const geo = new THREE.IcosahedronGeometry(hubSize, 1);
-					const mat = new THREE.MeshPhongMaterial({
-						color: new THREE.Color(node.color),
-						emissive: new THREE.Color(node.color),
-						emissiveIntensity: 0.7,
-						transparent: true,
-						opacity: 0.6,
-						shininess: 200,
-						wireframe: false,
-					});
-					group.add(new THREE.Mesh(geo, mat));
-
-					const wireGeo = new THREE.IcosahedronGeometry(hubSize * 1.05, 1);
-					const wireMat = new THREE.MeshBasicMaterial({
-						color: new THREE.Color(node.color),
-						transparent: true,
-						opacity: 0.3,
-						wireframe: true,
-					});
-					group.add(new THREE.Mesh(wireGeo, wireMat));
-
-					const glowGeo = new THREE.IcosahedronGeometry(hubSize * 1.6, 1);
-					const glowMat = new THREE.MeshBasicMaterial({
-						color: new THREE.Color(node.color),
-						transparent: true,
-						opacity: 0.06,
-						side: THREE.BackSide,
-					});
-					group.add(new THREE.Mesh(glowGeo, glowMat));
-
-					const canvas = document.createElement('canvas');
-					const ctx = canvas.getContext('2d')!;
-					canvas.width = 512;
-					canvas.height = 64;
-					ctx.font = 'bold 24px Arial';
-					ctx.textAlign = 'center';
-					ctx.fillStyle = node.color;
-					ctx.fillText(node.name.toUpperCase(), 256, 40);
-
-					const texture = new THREE.CanvasTexture(canvas);
-					const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-						map: texture, transparent: true, opacity: 0.9,
-					}));
-					sprite.scale.set(30, 4, 1);
-					sprite.position.set(0, hubSize + 5, 0);
-					group.add(sprite);
-
-					return group;
-				}
-
-				const isRunning = node.state === 'running';
-				const size = isRunning ? 6 : 4;
-				const stateColor = getStateColor(node.state);
-
-				const geometry = new THREE.BoxGeometry(size, size, size);
-				const material = new THREE.MeshPhongMaterial({
-					color: new THREE.Color(stateColor),
-					emissive: new THREE.Color(getStateEmissive(node.state)),
-					emissiveIntensity: isRunning ? 0.6 : 0.15,
-					transparent: true,
-					opacity: isRunning ? 0.9 : 0.4,
-					shininess: isRunning ? 150 : 30,
-				});
-				group.add(new THREE.Mesh(geometry, material));
-
-				const wireGeo = new THREE.EdgesGeometry(geometry);
-				const wireMat = new THREE.LineBasicMaterial({
-					color: new THREE.Color(stateColor),
-					transparent: true,
-					opacity: isRunning ? 0.8 : 0.3,
-				});
-				group.add(new THREE.LineSegments(wireGeo, wireMat));
-
-				if (isRunning) {
-					const glowGeo = new THREE.BoxGeometry(size * 1.3, size * 1.3, size * 1.3);
-					const glowMat = new THREE.MeshBasicMaterial({
-						color: new THREE.Color(stateColor),
-						transparent: true,
-						opacity: 0.08,
-						side: THREE.BackSide,
-					});
-					group.add(new THREE.Mesh(glowGeo, glowMat));
-				}
-
-				const canvas = document.createElement('canvas');
-				const ctx = canvas.getContext('2d')!;
-				canvas.width = 256;
-				canvas.height = 64;
-				ctx.font = 'bold 18px Arial';
-				ctx.textAlign = 'center';
-				const label = node.name;
-				ctx.fillStyle = stateColor;
-				ctx.beginPath();
-				ctx.arc(128 - ctx.measureText(label).width / 2 - 10, 36, 4, 0, Math.PI * 2);
-				ctx.fill();
-				ctx.fillStyle = isRunning ? '#ffffff' : '#888888';
-				ctx.fillText(label, 128, 40);
-
-				const texture = new THREE.CanvasTexture(canvas);
-				const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-					map: texture, transparent: true, opacity: isRunning ? 0.9 : 0.5,
-				}));
-				sprite.scale.set(20, 5, 1);
-				sprite.position.set(0, size + 4, 0);
-				group.add(sprite);
-
-				return group;
-			})
-			.nodeVal((node: any) => node.val)
-			.linkColor((link: any) => {
-				const project = projects.find(p => p.name === link.project);
-				const c = project?.color || '#4fc3f7';
-				return c + '40';
-			})
-			.linkWidth(1.2)
-			.linkOpacity(0.4)
-			.linkDirectionalParticles(2)
-			.linkDirectionalParticleWidth(1.5)
-			.linkDirectionalParticleSpeed(0.004)
-			.linkDirectionalParticleColor((link: any) => {
-				const project = projects.find(p => p.name === link.project);
-				return project?.color || '#4fc3f7';
-			})
-			.d3Force('charge', null)
-			.d3Force('center', null)
-			.onNodeHover((node: any) => {
-				graphContainer.style.cursor = node ? 'pointer' : 'default';
-			})
-			.onNodeClick((node: any) => {
-				if (!node) return;
-				if (node.project) {
-					updateGraphForProject(
-						selectedProject === node.project ? null : node.project
-					);
-				}
-			})
-			.onNodeDrag((node: any) => {
-				if (node) graph.d3ReheatSimulation();
-				markHullDirty();
-			})
-			.onNodeDragEnd((node: any) => {
-				if (node) {
-					node.fx = node.x;
-					node.fy = node.y;
-					node.fz = node.z;
-				}
-				const controls = graph.controls();
-				if (controls) controls.enabled = true;
-			})
-			.enableNodeDrag(true)
-			.onEngineTick(() => {
-				markHullDirty();
-			});
-
-		// @ts-ignore
-		const d3 = await import('d3-force-3d');
-		graph.d3Force('charge', d3.forceManyBody().strength(-120));
-		graph.d3Force('center', d3.forceCenter(0, 0, 0).strength(0.05));
-
-		// Bloom post-processing
-		try {
-			const { UnrealBloomPass } = await import('three/examples/jsm/postprocessing/UnrealBloomPass.js');
-			const { EffectComposer } = await import('three/examples/jsm/postprocessing/EffectComposer.js');
-			const { RenderPass } = await import('three/examples/jsm/postprocessing/RenderPass.js');
-
-			const renderer = graph.renderer();
-			const scene = graph.scene();
-			const camera = graph.camera();
-
-			const composer = new EffectComposer(renderer);
-			composer.addPass(new RenderPass(scene, camera));
-
-			const bloomPass = new UnrealBloomPass(
-				new THREE.Vector2(window.innerWidth, window.innerHeight),
-				1.2, 0.4, 0.85
-			);
-			composer.addPass(bloomPass);
-			graph.postProcessingComposer(composer);
-		} catch (e) {
-			console.warn('Bloom post-processing not available:', e);
-		}
-
-		// Lighting
-		const scene = graph.scene();
-		const ambientLight = new THREE.AmbientLight(0x404060, 0.8);
-		scene.add(ambientLight);
-		const pointLight = new THREE.PointLight(0x4fc3f7, 1.5, 500);
-		pointLight.position.set(0, 100, 0);
-		scene.add(pointLight);
-
-		// Starfield
-		starfieldGroup = new THREE.Group();
-
-		function addStarLayer(count: number, minR: number, maxR: number, color: number, size: number, opacity: number) {
-			const positions = new Float32Array(count * 3);
-			for (let i = 0; i < count; i++) {
-				const r = minR + Math.random() * (maxR - minR);
-				const theta = Math.random() * Math.PI * 2;
-				const phi = Math.acos(2 * Math.random() - 1);
-				positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-				positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-				positions[i * 3 + 2] = r * Math.cos(phi);
-			}
-			const geo = new THREE.BufferGeometry();
-			geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-			const mat = new THREE.PointsMaterial({
-				color, size, transparent: true, opacity, sizeAttenuation: true,
-			});
-			starfieldGroup.add(new THREE.Points(geo, mat));
-		}
-
-		addStarLayer(5000, 500, 1200, 0xaabbcc, 0.8, 0.3);
-		addStarLayer(2000, 350, 800, 0xffffff, 1.4, 0.6);
-		addStarLayer(150, 300, 600, 0xffffff, 3.0, 0.9);
-		addStarLayer(300, 400, 900, 0x4fc3f7, 1.8, 0.4);
-		addStarLayer(150, 400, 900, 0xffaa44, 1.5, 0.25);
-		addStarLayer(100, 450, 900, 0xbb77ff, 1.6, 0.2);
-
-		const nebulaColors = [0x1a0a3e, 0x0a1a3e, 0x0a2a2a];
-		nebulaColors.forEach((color, i) => {
-			const nebulaGeo = new THREE.SphereGeometry(600 + i * 150, 16, 16);
-			const nebulaMat = new THREE.MeshBasicMaterial({
-				color: new THREE.Color(color),
-				transparent: true,
-				opacity: 0.08 - i * 0.02,
-				side: THREE.BackSide,
-				depthWrite: false,
-			});
-			const nebula = new THREE.Mesh(nebulaGeo, nebulaMat);
-			nebula.rotation.set(i * 0.5, i * 0.8, i * 0.3);
-			starfieldGroup.add(nebula);
-		});
-
-		scene.add(starfieldGroup);
-
-		function rotateStarfield() {
-			if (starfieldGroup) {
-				starfieldGroup.rotation.y += 0.00006;
-				starfieldGroup.rotation.x += 0.00002;
-			}
-			starfieldRotationId = requestAnimationFrame(rotateStarfield);
-		}
-		rotateStarfield();
-
-		const controls = graph.controls();
-		if (controls) {
-			controls.rotateSpeed = 1.2;
-			controls.zoomSpeed = 0.6;
-			controls.panSpeed = 0.05;
-			controls.dynamicDampingFactor = 0.25;
-
-			const origOnPointerUp = controls.onPointerUp?.bind(controls);
-			if (origOnPointerUp) {
-				controls.onPointerUp = function(event: any) {
-					try { origOnPointerUp(event); } catch (_) { /* ignore */ }
-				};
-			}
-		}
-
-		// Set initial camera position
-		graph.cameraPosition({ x: 0, y: 0, z: 500 }, { x: 0, y: 0, z: 0 });
-
-		graphInitialized = true;
-
-		await ensureHullDeps();
-		startHullUpdates();
-
-		if (controls) {
-			controls.addEventListener('change', () => {
-				if (!selectedProject || !graph || cameraTransitioning) return;
-				const cam = graph.camera();
-				if (!cam) return;
-
-				const allNodes = graph.graphData().nodes;
-				const projectNodes = allNodes.filter((n: any) => n.project === selectedProject && !n.isHub);
-				if (projectNodes.length === 0) return;
-
-				const cx = projectNodes.reduce((s: number, n: any) => s + (n.x || 0), 0) / projectNodes.length;
-				const cy = projectNodes.reduce((s: number, n: any) => s + (n.y || 0), 0) / projectNodes.length;
-				const cz = projectNodes.reduce((s: number, n: any) => s + (n.z || 0), 0) / projectNodes.length;
-
-				const dx = cam.position.x - cx;
-				const dy = cam.position.y - cy;
-				const dz = cam.position.z - cz;
-				const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-				if (dist > 350) {
-					gatherNodesToCenter();
-				}
-			});
-		}
-	}
-
-	let hullMeshes: Map<string, any> = new Map();
-	let cachedConvexGeometry: any = null;
-	let cachedTHREE: any = null;
-
-	function removeHull(projectName?: string) {
-		if (!graph) return;
-		const scene = graph.scene();
-		if (projectName) {
-			const mesh = hullMeshes.get(projectName);
-			if (mesh) {
-				scene.remove(mesh);
-				mesh.children.forEach((child: any) => { child.geometry?.dispose(); child.material?.dispose(); });
-				mesh.geometry?.dispose();
-				mesh.material?.dispose();
-				hullMeshes.delete(projectName);
-			}
-		} else {
-			hullMeshes.forEach(mesh => {
-				scene.remove(mesh);
-				mesh.children.forEach((child: any) => { child.geometry?.dispose(); child.material?.dispose(); });
-				mesh.geometry?.dispose();
-				mesh.material?.dispose();
-			});
-			hullMeshes.clear();
-		}
-	}
-
-	async function ensureHullDeps() {
-		if (!cachedTHREE) cachedTHREE = await import('three');
-		if (!cachedConvexGeometry) {
-			// @ts-ignore
-			const mod = await import('three/examples/jsm/geometries/ConvexGeometry.js');
-			cachedConvexGeometry = mod.ConvexGeometry;
-		}
-	}
-
-	function rebuildAllHulls() {
-		if (!graph) return;
-		const THREE = cachedTHREE;
-		const ConvexGeometry = cachedConvexGeometry;
-		if (!THREE || !ConvexGeometry) return;
-
-		projects.forEach(project => {
-			const projectNodes = graph.graphData().nodes.filter(
-				(n: any) => n.project === project.name
-			);
-			if (projectNodes.length < 2) {
-				removeHull(project.name);
-				return;
-			}
-
-			removeHull(project.name);
-
-			try {
-				const points: any[] = [];
-				const padding = 18;
-				projectNodes.forEach((n: any) => {
-					const x = n.x || 0, y = n.y || 0, z = n.z || 0;
-					points.push(new THREE.Vector3(x + padding, y, z));
-					points.push(new THREE.Vector3(x - padding, y, z));
-					points.push(new THREE.Vector3(x, y + padding, z));
-					points.push(new THREE.Vector3(x, y - padding, z));
-					points.push(new THREE.Vector3(x, y, z + padding));
-					points.push(new THREE.Vector3(x, y, z - padding));
-				});
-
-				const isSelected = project.name === selectedProject;
-				const geo = new ConvexGeometry(points);
-				const mat = new THREE.MeshBasicMaterial({
-					color: new THREE.Color(project.color),
-					transparent: true,
-					opacity: isSelected ? 0.06 : 0.03,
-					side: THREE.DoubleSide,
-					depthWrite: false,
-				});
-				const mesh = new THREE.Mesh(geo, mat);
-
-				const edgeGeo = new THREE.EdgesGeometry(geo);
-				const edgeMat = new THREE.LineBasicMaterial({
-					color: new THREE.Color(project.color),
-					transparent: true,
-					opacity: isSelected ? 0.2 : 0.08,
-				});
-				mesh.add(new THREE.LineSegments(edgeGeo, edgeMat));
-
-				graph.scene().add(mesh);
-				hullMeshes.set(project.name, mesh);
-			} catch (e) {
-				// Hull is cosmetic
-			}
-		});
-	}
-
-	let hullAnimationId: number | null = null;
-	let hullDirty = false;
-
-	function stopHullUpdates() {
-		if (hullAnimationId) {
-			cancelAnimationFrame(hullAnimationId);
-			hullAnimationId = null;
-		}
-		hullDirty = false;
-	}
-
-	function markHullDirty() {
-		hullDirty = true;
-	}
-
-	function startHullUpdates() {
-		stopHullUpdates();
-		function tick() {
-			if (hullDirty) {
-				rebuildAllHulls();
-				hullDirty = false;
-			}
-			hullAnimationId = requestAnimationFrame(tick);
-		}
-		hullDirty = true;
-		hullAnimationId = requestAnimationFrame(tick);
-	}
-
-	async function updateGraphForProject(projectName: string | null) {
-		if (!graph) return;
-
-		selectedProject = projectName;
-
-		if (projectName) {
-			cameraTransitioning = true;
-
-			graph.graphData().nodes.forEach((n: any) => {
-				n.fx = undefined;
-				n.fy = undefined;
-				n.fz = undefined;
-			});
-
-			const hubNode = graph.graphData().nodes.find((n: any) => n.id === `hub-${projectName}`);
-			const anchorX = hubNode?.x || 0;
-			const anchorY = hubNode?.y || 0;
-			const anchorZ = hubNode?.z || 0;
-
-			const camDist = 150;
-			graph.cameraPosition(
-				{ x: anchorX + camDist * 0.55, y: anchorY + camDist * 0.35, z: anchorZ + camDist * 0.55 },
-				{ x: anchorX, y: anchorY, z: anchorZ },
-				1500
-			);
-
-			// @ts-ignore
-			import('d3-force-3d').then(d3 => {
-				graph.d3Force('cluster', d3.forceRadial(35, anchorX, anchorY, anchorZ)
-					.strength((node: any) => node.project === projectName ? 0.3 : 0));
-				graph.d3Force('scatter', d3.forceManyBody()
-					.strength((node: any) => node.project !== projectName ? -150 : 0));
-				graph.cooldownTicks(300);
-				graph.d3AlphaDecay(0.008);
-				graph.d3VelocityDecay(0.6);
-				graph.d3ReheatSimulation();
-			});
-
-			setTimeout(() => {
-				const projectNodes = graph.graphData().nodes.filter((n: any) => n.project === projectName);
-				if (projectNodes.length === 0) return;
-
-				const cx = projectNodes.reduce((s: number, n: any) => s + (n.x || 0), 0) / projectNodes.length;
-				const cy = projectNodes.reduce((s: number, n: any) => s + (n.y || 0), 0) / projectNodes.length;
-				const cz = projectNodes.reduce((s: number, n: any) => s + (n.z || 0), 0) / projectNodes.length;
-
-				let maxDist = 0;
-				projectNodes.forEach((n: any) => {
-					const d = Math.hypot((n.x || 0) - cx, (n.y || 0) - cy, (n.z || 0) - cz);
-					if (d > maxDist) maxDist = d;
-				});
-
-				const camera = graph.camera();
-				const fov = camera?.fov || 60;
-				const halfFovRad = (fov / 2) * (Math.PI / 180);
-				const radius = Math.max(maxDist, 30) + 30;
-				const fitDist = (radius / Math.tan(halfFovRad)) * 1.6;
-
-				graph.cameraPosition(
-					{ x: cx + fitDist * 0.55, y: cy + fitDist * 0.35, z: cz + fitDist * 0.55 },
-					{ x: cx, y: cy, z: cz },
-					800
-				);
-
-				setTimeout(() => { cameraTransitioning = false; }, 1600);
-				markHullDirty();
-			}, 1000);
-		} else {
-			gatherNodesToCenter();
-		}
-	}
-
-	function gatherNodesToCenter() {
-		if (!graph) return;
-
-		selectedProject = null;
-
-		graph.graphData().nodes.forEach((n: any) => {
-			n.fx = undefined;
-			n.fy = undefined;
-			n.fz = undefined;
-		});
-
-		// @ts-ignore
-		import('d3-force-3d').then(d3 => {
-			graph.d3Force('scatter', null);
-			graph.d3Force('cluster', d3.forceRadial(8, 0, 0, 0).strength(0.25));
-			graph.cooldownTicks(300);
-			graph.d3AlphaDecay(0.008);
-			graph.d3VelocityDecay(0.6);
-			graph.d3ReheatSimulation();
-		});
-
-		markHullDirty();
-	}
-
-	let graphInitialized = false;
-
-	async function fetchData() {
-		try {
-			const response = await fetch(`${base}/api/containers`);
-			const result = await response.json();
-			if (result.success) {
-				containers = result.data;
-				groupContainers(containers);
-				lastUpdate = new Date();
-				if (graph && graphInitialized) {
-					const currentNodes = graph.graphData().nodes;
-					currentNodes.forEach((node: any) => {
-						const updated = containers.find((c: Container) => c.id === node.id);
-						if (updated) {
-							node.state = updated.state;
-							node.val = updated.state === 'running' ? 8 : 4;
-						}
-					});
-					graph.nodeThreeObject(graph.nodeThreeObject());
-				}
-				return;
-			}
-		} catch (e) {
-			// API not available, use mock data
-		}
-		containers = mockContainers;
-		groupContainers(containers);
-		lastUpdate = new Date();
-	}
-
-	async function fetchSystemInfoData() {
-		try {
-			const response = await fetch(`${base}/api/system`);
-			const result = await response.json();
-			if (result.success) {
-				systemInfo = result.data;
-				return;
-			}
-		} catch (e) {
-			// Use mock
-		}
-		systemInfo = {
-			hostname: 'agicsai-desktop',
-			os: 'Ubuntu 22.04.3 LTS',
-			cpu: { cores: 16, model: 'AMD Ryzen 9 5950X', usage: 23.5 },
-			memory: { total: '64.0 GB', used: '28.3 GB', free: '35.7 GB', usage: 44.2 },
-			disk: { total: '1.0 TB', used: '456 GB', free: '544 GB', usage: 45.6 },
-			docker: { version: '24.0.7', containers: 25, images: 42 },
-		};
-	}
-
-	// Toolbar actions
-	async function handleScreenshot() {
+	async function handleToolbarScreenshot() {
 		try {
 			const html2canvas = (await import('html2canvas')).default;
 			const canvas = await html2canvas(document.body, {
@@ -810,187 +148,396 @@
 				useCORS: true,
 				logging: false,
 			});
-			const dataUrl = canvas.toDataURL('image/png');
 			const link = document.createElement('a');
-			link.download = `agics-monitor-${Date.now()}.png`;
-			link.href = dataUrl;
+			link.download = `hypercube-${Date.now()}.png`;
+			link.href = canvas.toDataURL('image/png');
 			link.click();
-		} catch (e) {
-			// Fallback: 3D canvas only
-			if (!graph) return;
-			const renderer = graph.renderer();
-			if (!renderer) return;
-			renderer.render(graph.scene(), graph.camera());
-			const dataUrl = renderer.domElement.toDataURL('image/png');
-			const link = document.createElement('a');
-			link.download = `topology-${Date.now()}.png`;
-			link.href = dataUrl;
-			link.click();
+		} catch {
+			// html2canvas can choke on tainted canvases; ignore silently.
 		}
 	}
 
-	let autoRotating = false;
-	let autoRotateId: number | null = null;
-	let autoRotatePausedByDrag = false;
+	// Hub visibility toggles (req #5). Defaults: stack ON, others OFF.
+	// Values are passed into TopologyCanvas as props so visibility is
+	// re-applied when the scene is remounted (e.g. after resetFocus).
+	let showStackHub = true;
+	let showNetworkHub = true;
+	let showVolumeHub = true;
+	let groupVisualMode: 'soft' = 'soft';
+	const tunnelStyle: 'subsea' = 'subsea';
 
-	function handleRotate() {
-		autoRotating = !autoRotating;
-		if (autoRotating) {
-			startAutoRotate();
+	// HUD selection — driven by 3D click callbacks. Null when nothing
+	// is currently selected in the scene.
+	let hudSelection: HudSelection | null = null;
+	// List-mode filter/highlight set. When non-null the sidebar list
+	// narrows to exactly these ids.
+	let listHighlightIds: Set<string> | null = null;
+	// Specific container active from a 3D click — used by the sidebar
+	// to emphasise the matching row (list mode) or dot (group mode).
+	let selectedContainerId: string | null = null;
+
+	function clearHudSelection() {
+		hudSelection = null;
+		listHighlightIds = null;
+		selectedContainerId = null;
+	}
+
+	function dismissHudSelection() {
+		hudSelection = null;
+	}
+
+	// Full reset — used when the user presses Enter on an empty search
+	// or wants to get back to the initial clustered view. Also drops
+	// the 3D focus so the tooltip and camera return to default.
+	function resetAllSelection() {
+		clearHudSelection();
+		selectedProject = null;
+		topologyCanvas?.resetFocus?.();
+	}
+
+	function handle3dContainerClick(id: string) {
+		const c = containers.find((x) => x.id === id);
+		if (!c) return;
+		hudSelection = { kind: 'container', container: c };
+		selectedProject = resolveGroup(c).name;
+		selectedContainerId = c.id;
+		// List mode: narrow the table to the single clicked container.
+		listHighlightIds = viewMode === 'list' ? new Set([c.id]) : null;
+	}
+
+	function handle3dHubClick(hubId: string, hubType: 'stack' | 'network' | 'volume') {
+		const colonIdx = hubId.indexOf(':');
+		const name = colonIdx >= 0 ? hubId.slice(colonIdx + 1) : hubId;
+
+		if (hubType === 'stack') {
+			const proj = projects.find((p) => p.name === name);
+			hudSelection = {
+				kind: 'stack',
+				name,
+				total: proj?.stats.total ?? 0,
+				running: proj?.stats.running ?? 0,
+				stopped: proj?.stats.stopped ?? 0,
+			};
+			selectedProject = name;
+			selectedContainerId = null;
+			// List mode: narrow to the stack's containers.
+			if (viewMode === 'list') {
+				const ids = containers
+					.filter((c) => resolveGroup(c).name === name)
+					.map((c) => c.id);
+				listHighlightIds = new Set(ids);
+			} else {
+				listHighlightIds = null;
+			}
+			return;
+		}
+
+		// Network / Volume hub — collect members from live container state.
+		const members = containers.filter((c) =>
+			hubType === 'network'
+				? (c.networks ?? []).includes(name)
+				: (c.mounts ?? []).some((m) => m.type === 'volume' && m.name === name)
+		);
+		const stackSet = new Set<string>();
+		for (const c of members) stackSet.add(resolveGroup(c).name);
+		const stacks = Array.from(stackSet).sort();
+
+		hudSelection =
+			hubType === 'network'
+				? { kind: 'network', name, memberCount: members.length, stacks }
+				: { kind: 'volume', name, memberCount: members.length, stacks };
+
+		selectedContainerId = null;
+		// Network / Volume hubs can span stacks, so only filter+highlight
+		// the sidebar list when the list view is open. In group mode we
+		// just show the HUD — no sidebar changes.
+		if (viewMode === 'list') {
+			listHighlightIds = new Set(members.map((m) => m.id));
+			selectedProject = null;
 		} else {
-			stopAutoRotate();
+			listHighlightIds = null;
+		}
+	}
+	let networkTunnelThickness = 0.7;
+	const trafficFxStyle: 'soft' = 'soft';
+	const volumeEnergyStyle: 'tendril' = 'tendril';
+
+	function anyModalOpen(): boolean {
+		return cpuModalOpen || memoryModalOpen || diskModalOpen
+			|| networkModalOpen || loginModalOpen || processModalOpen
+			|| selectedContainer !== null;
+	}
+
+	function handleGlobalKeydown(e: KeyboardEvent) {
+		if (e.key !== 'Escape') return;
+		// Codex P2: modals own ESC. Topology only claims it when no
+		// overlay is active and the event didn't originate inside a
+		// text field.
+		const target = e.target as HTMLElement | null;
+		const inField = target && (
+			target.tagName === 'INPUT' ||
+			target.tagName === 'TEXTAREA' ||
+			target.isContentEditable
+		);
+		if (inField || anyModalOpen()) return;
+		// ESC only dismisses the HUD + tooltip. Camera / layout / focus
+		// stay untouched — press the Reset button for a full reset.
+		clearHudSelection();
+	}
+
+	function decodeUsername(token: string): string {
+		try {
+			return JSON.parse(atob(token.split('.')[1])).username ?? '';
+		} catch {
+			return '';
 		}
 	}
 
-	function startAutoRotate() {
-		stopAutoRotate();
-		const controls = graph?.controls();
-		if (controls) {
-			controls.addEventListener('start', pauseAutoRotateOnDrag);
-			controls.addEventListener('end', resumeAutoRotateAfterDrag);
+	function decodeRole(token: string): string {
+		try {
+			return JSON.parse(atob(token.split('.')[1])).role ?? '';
+		} catch {
+			return '';
 		}
-		function tick() {
-			if (!graph || !autoRotating || autoRotatePausedByDrag) {
-				autoRotateId = requestAnimationFrame(tick);
+	}
+
+	async function doLogin() {
+		loginError = '';
+		try {
+			const res = await fetch(`${base}/api/auth/token/`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ username: loginUsername, password: loginPassword }),
+			});
+			const json = await res.json();
+			if (!res.ok) {
+				loginError = json.error?.detail || json.detail || 'Login failed';
 				return;
 			}
-			const cam = graph.camera();
-			if (cam) {
-				const speed = 0.003;
-				const x = cam.position.x * Math.cos(speed) - cam.position.z * Math.sin(speed);
-				const z = cam.position.x * Math.sin(speed) + cam.position.z * Math.cos(speed);
-				cam.position.x = x;
-				cam.position.z = z;
-				cam.lookAt(0, 0, 0);
+			accessToken = json.data?.access || json.access;
+			isLoggedIn = true;
+			currentUsername = decodeUsername(accessToken);
+			if (browser) {
+				localStorage.setItem('hc_access_token', accessToken);
 			}
-			autoRotateId = requestAnimationFrame(tick);
+			if (decodeRole(accessToken) === 'user') {
+				goto(`${base}/user`);
+				return;
+			}
+			connectGlobal(accessToken);
+			await loadApprovedAgents();
+		} catch {
+			loginError = 'Connection failed';
 		}
-		autoRotateId = requestAnimationFrame(tick);
 	}
 
-	function stopAutoRotate() {
-		if (autoRotateId) {
-			cancelAnimationFrame(autoRotateId);
-			autoRotateId = null;
+	function doLogout() {
+		disconnect();
+		disconnectGlobal();
+		accessToken = '';
+		isLoggedIn = false;
+		selectedServerId = '';
+		agents = [];
+		if (browser) {
+			localStorage.removeItem('hc_access_token');
+			localStorage.removeItem('hc_selected_server');
 		}
-		const controls = graph?.controls();
-		if (controls) {
-			controls.removeEventListener('start', pauseAutoRotateOnDrag);
-			controls.removeEventListener('end', resumeAutoRotateAfterDrag);
+	}
+
+	async function loadApprovedAgents() {
+		agentsLoading = true;
+		try {
+			const res = await fetch(`${base}/api/agents/?status=approved&active=true`, {
+				headers: { 'Authorization': `Bearer ${accessToken}` },
+			});
+			if (res.status === 401) { doLogout(); return; }
+			const json = await res.json();
+			const data = json.data;
+			agents = data.results ?? data ?? [];
+			seedActiveAgents(agents.map((a: any) => a.id));
+
+			if (agents.length === 1) {
+				selectServer(agents[0].id);
+			} else if (browser) {
+				const saved = localStorage.getItem('hc_selected_server');
+				if (saved && agents.find((a: any) => a.id === saved)) {
+					selectServer(saved);
+				}
+			}
+		} catch {
+			agents = [];
+		} finally {
+			agentsLoading = false;
 		}
-		autoRotatePausedByDrag = false;
 	}
 
-	function pauseAutoRotateOnDrag() {
-		autoRotatePausedByDrag = true;
-	}
-
-	function resumeAutoRotateAfterDrag() {
-		autoRotatePausedByDrag = false;
-	}
-
-	function handleReset() {
-		if (!graph) return;
-
-		// Deselect project
+	function selectServer(serverId: string) {
+		if (serverId === selectedServerId) return;
+		disconnect();
+		selectedServerId = serverId;
+		if (browser) {
+			localStorage.setItem('hc_selected_server', serverId);
+		}
+		// Reset local view state — the TopologyCanvas will rebuild itself
+		// once `topologyContainers` flips to [] and back to the new list.
+		systemInfo = null;
+		containers = [];
+		projects = [];
 		selectedProject = null;
+		selectedContainer = null;
+		cpuModalOpen = false;
+		memoryModalOpen = false;
+		diskModalOpen = false;
+		networkModalOpen = false;
+		loginModalOpen = false;
+		processModalOpen = false;
+		connect(selectedServerId, accessToken);
+	}
 
-		// Unfix all nodes, gather to center
-		gatherNodesToCenter();
+	function openContainerDetail(container: Container) {
+		selectedContainer = container;
+		// Phase 4 — also focus that container in the 3D scene
+		// (req #15: LIST-detail / group-card-member click should
+		// drive the topology).
+		topologyCanvas?.focusContainer?.(container.id);
+	}
 
-		// Reset camera to initial default position
-		graph.cameraPosition(
-			{ x: 0, y: 0, z: 500 },
-			{ x: 0, y: 0, z: 0 },
-			800
-		);
+	function closeContainerDetail() {
+		selectedContainer = null;
+	}
+
+	function onProjectSelect(name: string | null) {
+		selectedProject = name;
+		// Phase 4 — group card click mirrors clicking the stack hub
+		// in 3D. Deselect (null) returns the scene to its initial
+		// clustered state.
+		if (name) {
+			topologyCanvas?.focusHub?.(`stack:${name}`, 'stack');
+		} else {
+			topologyCanvas?.resetFocus?.();
+		}
+	}
+
+	function groupContainers(containerList: Container[]) {
+		projects = groupContainersByStack(containerList, projectColors) as Project[];
 	}
 
 	onMount(async () => {
-		// Initial data fetch (REST fallback for first paint)
-		await fetchData();
-		await fetchSystemInfoData();
-		await initGraph();
-
-		if (graphContainer) {
-			graphContainer.addEventListener('pointerleave', () => {
-				const controls = graph?.controls();
-				if (controls) controls.enabled = true;
-			});
+		if (browser) {
+			const savedToken = localStorage.getItem('hc_access_token');
+			if (savedToken) {
+				if (decodeRole(savedToken) === 'user') {
+					goto(`${base}/user`);
+					return;
+				}
+				accessToken = savedToken;
+				isLoggedIn = true;
+				currentUsername = decodeUsername(accessToken);
+				connectGlobal(accessToken);
+				await loadApprovedAgents();
+			}
 		}
-
-		// Connect WebSocket and subscribe to stores
-		connect();
 
 		unsubSystem = systemStore.subscribe((data) => {
 			if (data) {
 				systemInfo = data;
 				wsDataReceived = true;
-				// WS is working, stop REST fallback
 				if (fallbackInterval) { clearInterval(fallbackInterval); fallbackInterval = null; }
 			}
 		});
 
 		unsubContainers = containersStore.subscribe((data) => {
-			if (data && data.length > 0) {
-				containers = data;
-				groupContainers(containers);
-				lastUpdate = new Date();
-				if (graph && graphInitialized) {
-					const currentNodes = graph.graphData().nodes;
-					currentNodes.forEach((node: any) => {
-						const updated = containers.find((c: Container) => c.id === node.id);
-						if (updated) {
-							node.state = updated.state;
-							node.val = updated.state === 'running' ? 8 : 4;
-						}
-					});
-					graph.nodeThreeObject(graph.nodeThreeObject());
-				}
-			}
+			containers = data ?? [];
+			groupContainers(containers);
+			lastUpdate = new Date();
 		});
 
-		// REST fallback: if WS doesn't deliver within 3s, poll via REST
-		setTimeout(() => {
-			if (!wsDataReceived) {
-				fallbackInterval = setInterval(async () => {
-					await fetchData();
-					await fetchSystemInfoData();
-				}, 10000);
-			}
-		}, 3000);
+		unsubMetrics = containerMetricsStore.subscribe((metrics) => {
+			topologyNetworkTraffic = buildNetworkTrafficIndex(metrics);
+		});
+
+		if (selectedServerId && accessToken) {
+			connect(selectedServerId, accessToken);
+		}
 	});
 
 	onDestroy(() => {
-		stopHullUpdates();
-		stopAutoRotate();
-		if (starfieldRotationId) cancelAnimationFrame(starfieldRotationId);
 		if (unsubSystem) unsubSystem();
 		if (unsubContainers) unsubContainers();
+		if (unsubMetrics) unsubMetrics();
 		if (fallbackInterval) clearInterval(fallbackInterval);
 		disconnect();
-		if (graph) graph._destructor?.();
 	});
-
-	function handleResize() {
-		if (graph && graphContainer) {
-			graph.width(graphContainer.clientWidth);
-			graph.height(graphContainer.clientHeight);
-		}
-	}
 </script>
-
-<svelte:window on:resize={handleResize} />
 
 <svelte:head>
 	<title>AGICS Container Monitor</title>
 </svelte:head>
 
+<svelte:window on:keydown={handleGlobalKeydown} />
+
+{#if !isLoggedIn}
+<div class="auth-page">
+	<div class="auth-card">
+		<img class="auth-logo" src={logoHypercube} alt="HyperCube" />
+		<p class="auth-subtitle">Container Monitoring Platform</p>
+		<form onsubmit={(e) => { e.preventDefault(); doLogin(); }}>
+			<div class="auth-field">
+				<label for="login-user">Username</label>
+				<input id="login-user" type="text" bind:value={loginUsername} placeholder="admin" />
+			</div>
+			<div class="auth-field">
+				<label for="login-pass">Password</label>
+				<input id="login-pass" type="password" bind:value={loginPassword} />
+			</div>
+			{#if loginError}
+				<p class="auth-error">{loginError}</p>
+			{/if}
+			<button class="auth-btn" type="submit">Login</button>
+		</form>
+	</div>
+</div>
+{:else if !selectedServerId}
+<StatusToasts />
+<div class="select-header">
+	<AgentStatusBadge totalKnown={agents.length} />
+</div>
+<div class="auth-page">
+	<div class="server-select-card">
+		<h2 class="auth-title">Select Server</h2>
+		<p class="auth-subtitle">Monitor a connected server</p>
+		{#if agentsLoading}
+			<p class="auth-subtitle">Loading servers...</p>
+		{:else if agents.length === 0}
+			<p class="auth-subtitle">연결된 서버가 아직 없습니다. 서버에서 Agent를 실행하면 자동으로 등록됩니다.</p>
+		{:else}
+			<div class="server-list">
+				{#each agents as agent (agent.id)}
+					<button class="server-item" onclick={() => selectServer(agent.id)}>
+						<span class="server-hostname">{agent.hostname}</span>
+						<span class="server-ip">{agent.ip_address}</span>
+						<span class="server-badge">
+							{agent.container_count ?? 0} containers
+						</span>
+					</button>
+				{/each}
+			</div>
+		{/if}
+		<button class="auth-btn-outline" onclick={doLogout}>Logout</button>
+	</div>
+</div>
+{:else}
+<StatusToasts />
+<div class="admin-shell">
+<AdminHeader totalAgents={agents.length} username={currentUsername} onLogout={doLogout} />
 <div class="layout">
 	<!-- Left Sidebar: Server Info -->
 	<LeftSidebar
 		{systemInfo}
 		totalContainers={containers.length}
+		{agents}
+		{selectedServerId}
+		onSwitchServer={selectServer}
 		onOpenCpu={() => { cpuModalOpen = true; }}
 		onOpenMemory={() => { memoryModalOpen = true; }}
 		onOpenDisk={() => { diskModalOpen = true; }}
@@ -999,24 +546,63 @@
 		onOpenProcess={() => { processModalOpen = true; }}
 	/>
 
-	<!-- Center: 3D Topology -->
+	<!-- Center: 3D Topology (새 OOP topology layer, Phase 1) -->
 	<main class="topology-area">
-		<div class="topology-header">
-			<span class="topology-title">SYSTEM TOPOLOGY</span>
-			<div class="live-indicator">
+		<div class="graph-wrapper">
+			{#key selectedServerId}
+				<TopologyCanvas
+					containers={topologyContainers}
+					stackHealth={topologyStackHealth}
+					networkTraffic={topologyNetworkTraffic}
+					showStack={showStackHub}
+					showNetwork={showNetworkHub}
+					showVolume={showVolumeHub}
+					groupVisualMode={groupVisualMode}
+					{tunnelStyle}
+					{networkTunnelThickness}
+					{trafficFxStyle}
+					{volumeEnergyStyle}
+					onContainerClick={handle3dContainerClick}
+					onHubClick={handle3dHubClick}
+					onEmptyClick={dismissHudSelection}
+					bind:this={topologyCanvas}
+				/>
+			{/key}
+			<div class="topology-overlay topology-overlay-title">
+				<span class="topology-title">SYSTEM TOPOLOGY</span>
+			</div>
+			<div class="topology-overlay topology-overlay-toggles">
+				<label class="hub-toggle hub-toggle-stack">
+					<input type="checkbox" bind:checked={showStackHub} />
+					<span class="dot"></span>
+					<span class="label">Stack</span>
+				</label>
+				<label class="hub-toggle hub-toggle-network">
+					<input type="checkbox" bind:checked={showNetworkHub} />
+					<span class="dot"></span>
+					<span class="label">Network</span>
+				</label>
+				<label class="hub-toggle hub-toggle-volume">
+					<input type="checkbox" bind:checked={showVolumeHub} />
+					<span class="dot"></span>
+					<span class="label">Volume</span>
+				</label>
+			</div>
+			<div class="topology-overlay topology-overlay-live">
 				<span class="live-dot"></span>
 				<span class="live-text">LIVE RENDER</span>
 			</div>
-		</div>
-
-		<div class="graph-wrapper">
-			<div class="graph-container" bind:this={graphContainer}></div>
 			<RackUtilization {systemInfo} />
 			<TopologyToolbar
-				onScreenshot={handleScreenshot}
-				onRotate={handleRotate}
-				onReset={handleReset}
+				onScreenshot={handleToolbarScreenshot}
+				onRotate={handleToolbarRotate}
+				onReset={handleToolbarReset}
 				isRotating={autoRotating}
+			/>
+			<SelectionHud
+				selection={hudSelection}
+				onClose={clearHudSelection}
+				onOpenDetail={openContainerDetail}
 			/>
 		</div>
 	</main>
@@ -1026,20 +612,19 @@
 		{projects}
 		{containers}
 		{selectedProject}
-		onSelectProject={updateGraphForProject}
+		onSelectProject={onProjectSelect}
 		onSelectContainer={openContainerDetail}
 		{viewMode}
-		onViewModeChange={(mode) => {
-			viewMode = mode;
-			setTimeout(() => handleResize(), 350);
-		}}
+		onViewModeChange={(mode) => { viewMode = mode; listHighlightIds = null; }}
+		highlightedContainerIds={listHighlightIds}
+		{selectedContainerId}
+		onClearFilters={resetAllSelection}
 	/>
 </div>
 
 <ContainerDetailModal
 	container={selectedContainer}
 	onClose={closeContainerDetail}
-	onStateChange={fetchData}
 />
 
 <CpuDetailModal
@@ -1068,18 +653,30 @@
 <LoginDetailModal
 	open={loginModalOpen}
 	onClose={() => { loginModalOpen = false; }}
+	uptimeSeconds={systemInfo?.uptime ?? 0}
 />
 
 <ProcessDetailModal
 	open={processModalOpen}
 	onClose={() => { processModalOpen = false; }}
 />
+</div>
+{/if}
 
 <style>
-	.layout {
+	.admin-shell {
 		display: flex;
+		flex-direction: column;
 		height: 100vh;
 		width: 100vw;
+		background: var(--bg-base);
+	}
+
+	.layout {
+		display: flex;
+		flex: 1;
+		min-height: 0;
+		width: 100%;
 		background: var(--bg-base);
 	}
 
@@ -1091,12 +688,129 @@
 		background: var(--bg-base);
 	}
 
-	.topology-header {
+	.topology-overlay {
+		position: absolute;
+		top: 24px;
 		display: flex;
-		justify-content: space-between;
 		align-items: center;
-		padding: 24px;
-		flex-shrink: 0;
+		gap: 6px;
+		pointer-events: none;
+		z-index: 5;
+	}
+	.topology-overlay-title { left: 24px; }
+	.topology-overlay-live { right: 24px; }
+
+	.topology-overlay-toggles {
+		top: 56px;
+		left: 24px;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 8px;
+		padding: 10px 12px;
+		background: rgba(13, 17, 23, 0.55);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		backdrop-filter: blur(6px);
+		pointer-events: auto;
+	}
+
+	.hub-toggle {
+		display: grid;
+		grid-template-columns: 14px 8px auto;
+		align-items: center;
+		gap: 8px;
+		justify-content: flex-start;
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--text-secondary);
+		cursor: pointer;
+		user-select: none;
+	}
+
+	.hub-toggle input[type='checkbox'] {
+		appearance: none;
+		width: 14px;
+		height: 14px;
+		border: 1.5px solid var(--border);
+		border-radius: 3px;
+		background: transparent;
+		cursor: pointer;
+		position: relative;
+	}
+
+	.hub-toggle input[type='checkbox']:checked {
+		background: var(--accent);
+		border-color: var(--accent);
+	}
+
+	.hub-toggle input[type='checkbox']:checked::after {
+		content: '';
+		position: absolute;
+		left: 3px;
+		top: 0px;
+		width: 4px;
+		height: 8px;
+		border: solid var(--bg-base);
+		border-width: 0 2px 2px 0;
+		transform: rotate(45deg);
+	}
+
+	.hub-toggle .dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+	}
+	.hub-toggle-stack .dot { background: #30d5c8; }
+	.hub-toggle-network .dot { background: #22d3ee; box-shadow: 0 0 4px #22d3ee; }
+	.hub-toggle-volume .dot { background: #fb923c; box-shadow: 0 0 4px #fb923c; }
+	.hub-toggle-mode-static {
+		grid-template-columns: 8px auto minmax(110px, 1fr);
+		width: 100%;
+	}
+
+	.hub-toggle-mode-static .dot { background: #cbd5e1; box-shadow: 0 0 4px rgba(203, 213, 225, 0.25); }
+
+	.mode-value {
+		justify-self: end;
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--text-secondary);
+	}
+
+	.hub-toggle .label {
+		color: var(--text-primary);
+	}
+
+	.hub-select {
+		display: grid;
+		grid-template-columns: auto minmax(108px, 1fr);
+		align-items: center;
+		gap: 10px;
+		width: 100%;
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--text-secondary);
+	}
+
+	.hub-select .label {
+		color: var(--text-primary);
+	}
+
+	.hub-select select {
+		width: 100%;
+		padding: 6px 8px;
+		border-radius: 8px;
+		border: 1px solid var(--border);
+		background: rgba(22, 27, 34, 0.82);
+		color: var(--text-primary);
+		font-size: 12px;
+		font-weight: 600;
+		outline: none;
+	}
+
+	.hub-select select:focus {
+		border-color: var(--accent);
+		box-shadow: 0 0 0 1px rgba(48, 213, 200, 0.25);
 	}
 
 	.topology-title {
@@ -1104,12 +818,14 @@
 		font-weight: 700;
 		color: var(--text-secondary);
 		letter-spacing: -0.01em;
+		text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
 	}
 
-	.live-indicator {
-		display: flex;
-		align-items: center;
-		gap: 6px;
+	.select-header {
+		position: fixed;
+		top: 16px;
+		right: 24px;
+		z-index: 50;
 	}
 
 	.live-dot {
@@ -1125,6 +841,7 @@
 		font-weight: 700;
 		color: var(--accent);
 		letter-spacing: -0.01em;
+		text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
 	}
 
 	@keyframes pulse {
@@ -1138,8 +855,161 @@
 		overflow: hidden;
 	}
 
-	.graph-container {
+	/* Auth & Server Selection */
+	.auth-page {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 100vh;
+		width: 100vw;
+		background: var(--bg-base);
+	}
+
+	.auth-card, .server-select-card {
+		background: var(--bg-card);
+		border: 1px solid var(--border);
+		border-radius: 12px;
+		padding: 40px;
 		width: 100%;
-		height: 100%;
+		max-width: 420px;
+	}
+
+	.server-select-card {
+		max-width: 500px;
+	}
+
+	.auth-title {
+		font-size: 22px;
+		font-weight: 700;
+		color: var(--accent);
+		margin-bottom: 4px;
+	}
+	.auth-logo {
+		display: block;
+		height: 40px;
+		width: auto;
+		margin-bottom: 8px;
+	}
+
+	.auth-subtitle {
+		font-size: 13px;
+		color: var(--text-secondary);
+		margin-bottom: 28px;
+	}
+
+	.auth-field {
+		margin-bottom: 16px;
+	}
+
+	.auth-field label {
+		display: block;
+		font-size: 13px;
+		color: var(--text-secondary);
+		margin-bottom: 6px;
+	}
+
+	.auth-field input {
+		width: 100%;
+		padding: 10px 14px;
+		background: var(--bg-base);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		color: var(--text-primary);
+		font-size: 14px;
+		outline: none;
+		box-sizing: border-box;
+	}
+
+	.auth-field input:focus {
+		border-color: var(--accent);
+	}
+
+	.auth-error {
+		color: var(--error);
+		font-size: 13px;
+		margin-bottom: 12px;
+	}
+
+	.auth-error a {
+		color: var(--accent);
+	}
+
+	.auth-btn {
+		width: 100%;
+		padding: 11px;
+		margin-top: 8px;
+		background: var(--accent);
+		color: var(--bg-base);
+		border: none;
+		border-radius: 8px;
+		font-size: 14px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.auth-btn:hover { opacity: 0.9; }
+
+	.auth-btn-outline {
+		width: 100%;
+		padding: 10px;
+		margin-top: 16px;
+		background: transparent;
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		color: var(--text-secondary);
+		font-size: 13px;
+		cursor: pointer;
+	}
+
+	.auth-btn-outline:hover {
+		border-color: var(--accent);
+		color: var(--accent);
+	}
+
+	.server-list {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		margin-bottom: 8px;
+	}
+
+	.server-item {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 14px 18px;
+		background: var(--bg-base);
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		cursor: pointer;
+		transition: all 0.15s;
+		text-align: left;
+		width: 100%;
+	}
+
+	.server-item:hover {
+		border-color: var(--accent);
+		background: rgba(48, 213, 200, 0.05);
+	}
+
+	.server-hostname {
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--accent);
+	}
+
+	.server-ip {
+		font-size: 12px;
+		color: var(--text-secondary);
+		font-family: monospace;
+	}
+
+	.server-badge {
+		margin-left: auto;
+		font-size: 11px;
+		color: var(--text-muted);
+		background: var(--bg-tab);
+		padding: 3px 10px;
+		border-radius: 9999px;
 	}
 </style>

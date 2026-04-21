@@ -11,6 +11,7 @@
 	interface SystemInfo {
 		hostname: string;
 		os: string;
+		uptime?: number;
 		cpu: { cores: number; model: string; usage: number };
 		memory: { total: string; used: string; free: string; usage: number };
 		disk: { total: string; used: string; free: string; usage: number };
@@ -20,9 +21,18 @@
 		processes?: { total?: number; running?: number };
 	}
 
+	interface AgentOption {
+		id: string;
+		hostname: string;
+		ip_address: string;
+	}
+
 	let {
 		systemInfo = null,
 		totalContainers = 0,
+		agents = [],
+		selectedServerId = '',
+		onSwitchServer = (_id: string) => {},
 		onOpenCpu = () => {},
 		onOpenMemory = () => {},
 		onOpenDisk = () => {},
@@ -32,6 +42,9 @@
 	}: {
 		systemInfo: SystemInfo | null;
 		totalContainers: number;
+		agents?: AgentOption[];
+		selectedServerId?: string;
+		onSwitchServer?: (id: string) => void;
 		onOpenCpu: () => void;
 		onOpenMemory: () => void;
 		onOpenDisk: () => void;
@@ -40,41 +53,113 @@
 		onOpenProcess: () => void;
 	} = $props();
 
+	let switcherOpen = $state(false);
+	let currentAgent = $derived(agents.find((a) => a.id === selectedServerId) ?? null);
+	let otherAgents = $derived(agents.filter((a) => a.id !== selectedServerId));
+
+	function toggleSwitcher(e: MouseEvent) {
+		e.stopPropagation();
+		switcherOpen = !switcherOpen;
+	}
+
+	function switchTo(id: string) {
+		switcherOpen = false;
+		if (id !== selectedServerId) onSwitchServer(id);
+	}
+
+	function handleDocClick(e: MouseEvent) {
+		if (!switcherOpen) return;
+		const target = e.target as HTMLElement;
+		if (!target.closest('.server-switcher')) switcherOpen = false;
+	}
+
+	$effect(() => {
+		document.addEventListener('click', handleDocClick);
+		return () => document.removeEventListener('click', handleDocClick);
+	});
+
 	function getHealthPercent(info: SystemInfo): number {
 		const cpuHealth = Math.max(0, 100 - info.cpu.usage);
 		const memHealth = Math.max(0, 100 - info.memory.usage);
 		const diskHealth = Math.max(0, 100 - info.disk.usage);
 		return Math.round((cpuHealth + memHealth + diskHealth) / 3);
 	}
+
+	function healthTone(pct: number): string {
+		if (pct >= 75) return 'tone-good';
+		if (pct >= 45) return 'tone-warn';
+		return 'tone-bad';
+	}
+
+	function formatUptime(seconds: number | undefined): string {
+		const s = Math.floor(seconds ?? 0);
+		if (s <= 0) return '—';
+		const days = Math.floor(s / 86400);
+		const hours = Math.floor((s % 86400) / 3600);
+		const mins = Math.floor((s % 3600) / 60);
+		if (days > 0) return `${days}d ${hours}h`;
+		if (hours > 0) return `${hours}h ${mins}m`;
+		return `${mins}m`;
+	}
 </script>
 
 <aside class="sidebar">
 	<div class="server-section">
-		<div class="section-header">
-			<span class="heading">서버 정보</span>
-			{#if systemInfo}
-				<span class="ip-badge">192.168.0.16</span>
-			{/if}
-		</div>
-
 		{#if systemInfo}
-			<div class="info-list">
+			<div class="info-group">
+				<div class="group-label">Identity</div>
 				<div class="info-row">
 					<div class="info-label-group">
 						<img src={iconHostname} alt="" class="icon" />
 						<span class="label">Hostname</span>
 					</div>
-					<span class="value">{systemInfo.hostname}</span>
+					<div class="server-switcher">
+						<button
+							class="hostname-trigger"
+							class:clickable={agents.length > 1}
+							onclick={toggleSwitcher}
+							disabled={agents.length <= 1}
+							title={agents.length > 1 ? '다른 서버로 전환' : systemInfo.hostname}
+						>
+							<span class="value">{systemInfo.hostname}</span>
+							{#if agents.length > 1}
+								<svg class="chevron" class:open={switcherOpen} width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+							{/if}
+						</button>
+						{#if switcherOpen && otherAgents.length > 0}
+							<div class="switcher-menu">
+								{#each otherAgents as a (a.id)}
+									<button class="switcher-item" onclick={() => switchTo(a.id)}>
+										<span class="switcher-hostname">{a.hostname}</span>
+										<span class="switcher-ip">{a.ip_address}</span>
+									</button>
+								{/each}
+							</div>
+						{/if}
+					</div>
 				</div>
+
+				{#if currentAgent}
+					<div class="info-row">
+						<div class="info-label-group">
+							<svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+							<span class="label">IP</span>
+						</div>
+						<span class="value mono">{currentAgent.ip_address}</span>
+					</div>
+				{/if}
 
 				<div class="info-row">
 					<div class="info-label-group">
 						<img src={iconOs} alt="" class="icon" />
 						<span class="label">OS</span>
 					</div>
-					<span class="value small">{systemInfo.os}</span>
+					<span class="value value-small" title={systemInfo.os}>{systemInfo.os}</span>
 				</div>
+			</div>
 
+			<div class="info-group">
+				<div class="group-label">Resources</div>
 				<div class="info-row clickable" onclick={onOpenCpu} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenCpu()}>
 					<div class="info-label-group">
 						<img src={iconCpu} alt="" class="icon" />
@@ -98,7 +183,10 @@
 					</div>
 					<span class="value">{systemInfo.disk.total}</span>
 				</div>
+			</div>
 
+			<div class="info-group">
+				<div class="group-label">Activity</div>
 				<div class="info-row clickable" onclick={onOpenNetwork} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenNetwork()}>
 					<div class="info-label-group">
 						<img src={iconNetwork} alt="" class="icon" />
@@ -124,26 +212,33 @@
 				</div>
 			</div>
 		{:else}
-			<div class="loading">Loading...</div>
+			<div class="loading">
+				<div class="loading-title">Agent 연결 대기 중</div>
+				<div class="loading-sub">
+					선택한 서버의 Agent에서 아직 데이터가 도착하지 않았습니다.
+					{#if agents.length > 1}
+						<br />다른 서버로 전환하려면 상단 IP 배지를 눌러주세요.
+					{/if}
+				</div>
+			</div>
 		{/if}
 	</div>
 
 	<div class="spacer"></div>
 
 	{#if systemInfo}
+		{@const healthPct = getHealthPercent(systemInfo)}
 		<div class="health-card">
 			<div class="health-header">
 				<span class="health-label">Health Status</span>
+				<span class="health-percent {healthTone(healthPct)}">{healthPct}%</span>
 			</div>
 			<div class="health-bar-track">
-				<div
-					class="health-bar-fill"
-					style="width: {getHealthPercent(systemInfo)}%"
-				></div>
+				<div class="health-bar-fill" style="width: {healthPct}%"></div>
 			</div>
 			<div class="health-footer">
-				<span class="health-percent">{getHealthPercent(systemInfo)}% Stable</span>
-				<span class="health-uptime">Uptime: 14d</span>
+				<span class="health-caption">Stable</span>
+				<span class="health-uptime">{formatUptime(systemInfo.uptime)}</span>
 			</div>
 		</div>
 	{/if}
@@ -155,84 +250,186 @@
 		min-width: 288px;
 		background: var(--bg-base);
 		border-right: 1px solid var(--border);
-		padding: 24px;
-		display: flex;
-		flex-direction: column;
-		gap: 24px;
-		overflow-y: auto;
-	}
-
-	.section-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 24px;
-	}
-
-	.heading {
-		font-size: 13px;
-		font-weight: 700;
-		color: var(--text-secondary);
-	}
-
-	.ip-badge {
-		background: var(--tag-bg);
-		color: var(--text-primary);
-		padding: 2px 8px;
-		border-radius: var(--radius-sm);
-		font-size: 10px;
-	}
-
-	.info-list {
+		padding: 22px 20px 20px;
 		display: flex;
 		flex-direction: column;
 		gap: 20px;
+		overflow-y: auto;
+	}
+
+	.server-section {
+		display: flex;
+		flex-direction: column;
+		gap: 18px;
+	}
+
+	.info-group {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		padding-bottom: 14px;
+		border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+	}
+
+	.info-group:last-child {
+		border-bottom: none;
+		padding-bottom: 4px;
+	}
+
+	.group-label {
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
+		color: rgba(148, 163, 184, 0.7);
+		margin-bottom: 4px;
+	}
+
+	.server-switcher {
+		position: relative;
+	}
+
+	.hostname-trigger {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		background: none;
+		border: none;
+		padding: 0;
+		font-family: inherit;
+		cursor: default;
+		color: var(--text-primary);
+	}
+	.hostname-trigger[disabled] { cursor: default; }
+	.hostname-trigger.clickable {
+		cursor: pointer;
+		transition: color 0.15s;
+	}
+	.hostname-trigger.clickable:hover .value,
+	.hostname-trigger.clickable:hover .chevron {
+		color: var(--accent);
+	}
+
+	.chevron {
+		transition: transform 0.15s, color 0.15s;
+		color: var(--text-secondary);
+	}
+	.chevron.open {
+		transform: rotate(180deg);
+	}
+
+	.switcher-menu {
+		position: absolute;
+		top: calc(100% + 6px);
+		right: 0;
+		min-width: 180px;
+		background: var(--bg-card);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+		padding: 6px;
+		z-index: 50;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.switcher-item {
+		background: none;
+		border: none;
+		color: var(--text-primary);
+		text-align: left;
+		padding: 8px 10px;
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		font-family: inherit;
+	}
+
+	.switcher-item:hover {
+		background: var(--bg-tab);
+	}
+
+	.switcher-hostname {
+		font-size: 12px;
+		font-weight: 600;
+	}
+
+	.switcher-ip {
+		font-size: 10px;
+		color: var(--text-secondary);
+		font-family: monospace;
 	}
 
 	.info-row {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
+		gap: 10px;
+		min-height: 32px;
 	}
 
 	.info-row.clickable {
 		cursor: pointer;
-		border-radius: 6px;
-		padding: 4px 8px;
-		margin: -4px -8px;
+		border-radius: 8px;
+		padding: 6px 10px;
+		margin: -6px -10px;
 		transition: background 0.15s ease;
 	}
 
 	.info-row.clickable:hover {
 		background: rgba(48, 213, 200, 0.08);
 	}
+	.info-row.clickable:hover .icon {
+		filter: drop-shadow(0 0 6px rgba(48, 213, 200, 0.45));
+	}
 
 	.info-label-group {
 		display: flex;
 		align-items: center;
-		gap: 12px;
+		gap: 10px;
 		color: var(--text-primary);
+		min-width: 0;
 	}
 
 	.icon {
-		width: 16px;
-		height: 16px;
+		width: 18px;
+		height: 18px;
 		flex-shrink: 0;
+		opacity: 0.9;
 	}
 
 	.label {
-		font-size: 13px;
-		font-weight: 700;
-		color: var(--text-primary);
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--text-secondary);
+		letter-spacing: 0.01em;
 	}
 
 	.value {
-		font-size: 12px;
+		font-size: 14px;
+		font-weight: 600;
 		color: var(--text-primary);
+		text-align: right;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 170px;
 	}
 
-	.value.small {
-		font-size: 10px;
+	.value.mono {
+		font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+		font-size: 12.5px;
+		letter-spacing: 0.01em;
+	}
+
+	.value.value-small {
+		font-size: 11px;
+		font-weight: 500;
+		color: var(--text-secondary);
+		max-width: 180px;
 	}
 
 	.spacer {
@@ -241,13 +438,13 @@
 	}
 
 	.health-card {
-		background: var(--bg-card);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-sm);
-		padding: 16px;
+		background: linear-gradient(180deg, rgba(19, 27, 40, 0.94), rgba(13, 17, 23, 0.96));
+		border: 1px solid rgba(148, 163, 184, 0.1);
+		border-radius: var(--radius-md);
+		padding: 14px 16px;
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
+		gap: 10px;
 	}
 
 	.health-header {
@@ -257,45 +454,75 @@
 	}
 
 	.health-label {
-		font-size: 13px;
+		font-size: 10px;
 		font-weight: 700;
-		color: var(--text-secondary);
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
+		color: rgba(148, 163, 184, 0.78);
 	}
+
+	.health-percent {
+		font-size: 15px;
+		font-weight: 700;
+		letter-spacing: 0.01em;
+	}
+	.health-percent.tone-good { color: #4ade80; }
+	.health-percent.tone-warn { color: #facc15; }
+	.health-percent.tone-bad  { color: #f87171; }
 
 	.health-bar-track {
 		height: 6px;
-		background: var(--tag-bg);
+		background: rgba(15, 23, 42, 0.75);
+		border: 1px solid rgba(148, 163, 184, 0.08);
 		border-radius: var(--radius-full);
 		overflow: hidden;
 	}
 
 	.health-bar-fill {
 		height: 100%;
-		background: var(--accent);
+		background: linear-gradient(90deg, #f87171 0%, #facc15 50%, #4ade80 100%);
 		border-radius: var(--radius-full);
 		transition: width 0.5s ease;
+		box-shadow: 0 0 8px rgba(250, 204, 21, 0.28);
 	}
 
 	.health-footer {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
+		font-size: 11px;
 	}
 
-	.health-percent {
-		font-size: 13px;
-		color: var(--text-primary);
+	.health-caption {
+		color: var(--text-secondary);
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		font-weight: 600;
 	}
 
 	.health-uptime {
-		font-size: 13px;
 		color: var(--accent);
+		font-weight: 600;
+		font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
 	}
 
 	.loading {
 		color: var(--text-secondary);
 		font-size: 12px;
 		text-align: center;
-		padding: 20px;
+		padding: 24px 16px;
+	}
+
+	.loading-title {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--text-primary);
+		margin-bottom: 8px;
+	}
+
+	.loading-sub {
+		font-size: 11px;
+		line-height: 1.5;
+		color: var(--text-secondary);
 	}
 </style>

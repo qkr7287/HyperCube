@@ -1,138 +1,164 @@
-# 개발 가이드
+# Development Guide
 
-## 로컬 개발 환경
+This document describes the practical development workflow for the current repository.
 
-### 필요 조건
+## Prerequisites
 
-- Node.js 20 이상
+- Node.js 20+
 - npm
+- Python 3.12+ if you want to run backend code outside containers
+- Docker Desktop or Docker Engine for local service dependencies
 
-Docker는 로컬에 없어도 됩니다. dev 모드에서는 192.168.0.16 서버의 API를 프록시합니다.
+## Repository Structure
 
-### 설치 및 실행
+```text
+frontend/   Svelte dashboard
+backend/    Django backend and domain apps
+docs/       project documentation
+nginx/      reverse proxy configuration
+```
+
+## Frontend Workflow
+
+From `frontend/`:
 
 ```bash
-# 의존성 설치
 npm install
-
-# 개발 서버 실행
 npm run dev
-# -> http://localhost:3334
 ```
 
-### 개발 모드 동작 방식
+Useful scripts:
 
-`npm run dev` 실행 시:
-- UI: 로컬 Vite dev server에서 렌더링 (HMR 지원)
-- API: `src/hooks.server.ts`에서 모든 `/api/*` 요청을 `192.168.0.16:3334`로 전달
-- 즉, 로컬에 Docker가 없어도 16번 서버의 실제 컨테이너 데이터로 개발 가능
+- `npm run dev`
+- `npm run build`
+- `npm run check`
 
-### 환경 설정
+Notes:
 
-`.env` 파일:
-```
-API_TARGET=http://192.168.0.16:3334
-```
+- the dashboard is client-heavy and uses WebSocket stores for live state
+- the current frontend build/deployment path is under active cleanup, so treat production frontend docs conservatively
 
-## 브랜치 전략
+## Backend Workflow
 
-```
-dev (개발) → PR → main (배포)
-```
+The backend uses Django with PostgreSQL and Redis.
+The root compose file currently defines the service dependencies used by the backend stack.
 
-- **dev**: 모든 개발 작업은 여기서
-- **main**: 안정 버전만. PR merge 시 자동으로 DCMTool에 동기화
+Typical local tasks:
 
-### 작업 흐름
-
-1. `dev` 브랜치에서 코드 수정
-2. commit & push
-3. GitHub에서 `dev → main` Pull Request 생성
-4. 리뷰 후 merge
-5. 자동으로 `dev-agics/DCMTool` dev 브랜치에 동기화
-6. `dev-agics/DCMTool`에서 `dev → main` PR 생성 & merge
-7. 16번 서버에 자동 배포
-
-## 커밋 규칙
-
-Conventional Commits 형식을 따릅니다:
-
-```
-<type>(<scope>): <description>
+```bash
+docker compose up -d postgres redis
 ```
 
-### 타입
+Then run backend commands in your preferred Python environment from `backend/`.
 
-| 타입 | 설명 |
-|------|------|
-| `feat` | 새로운 기능 |
-| `fix` | 버그 수정 |
-| `refactor` | 기능 변경 없는 코드 개선 |
-| `docs` | 문서 변경 |
-| `test` | 테스트 추가/수정 |
-| `chore` | 빌드, 설정 등 기타 변경 |
-| `style` | 코드 포맷팅 |
-| `perf` | 성능 개선 |
+Example tasks:
 
-### 예시
-
-```
-feat(ui): add container search filter
-fix(api): handle Docker socket connection timeout
-refactor(deploy): remove BASE_PATH from Dockerfile
-docs: update CI/CD pipeline documentation
+```bash
+python manage.py migrate
+python manage.py createsuperuser
+python manage.py runserver
 ```
 
-## 주의사항
+If you use Celery locally, the backend expects Redis-backed broker/result settings.
 
-### Svelte 5 runes
+## Branching
 
-- `+page.svelte`는 runes mode가 **아닙니다** -> `$state()` 사용 불가, `let` 사용
-- 컴포넌트 파일(.svelte)은 runes mode -> `$props()`, `$state()` 등 사용 가능
-- `+page.svelte`에서 `$state()` 사용하면 빈 화면이 됩니다
+Recommended branch flow:
 
-### Windows 환경
+1. work on `dev`
+2. open a pull request into `main`
+3. merge only reviewed/stable changes into `main`
 
-- Edit 도구 문자열 매칭 실패 시: Windows `\r\n` 줄바꿈 문제. Write로 전체 파일 재작성
-- `.js` 스크립트 ESM 에러: `"type": "module"` 설정 때문. `.cjs` 확장자 사용
-- `/tmp/` 경로 실패: Windows 환경에서는 `__dirname` 상대 경로 사용
+Do not push directly to `main` unless you explicitly intend to trigger downstream sync automation.
 
-## 프로젝트 구조 상세
+## Commits
 
-```
-src/
-├── hooks.server.ts                   # dev 모드: API 요청을 16번 서버로 프록시
-├── app.html                          # HTML 템플릿
-├── app.d.ts                          # 전역 타입 정의
-├── routes/
-│   ├── +layout.svelte                # 전역 레이아웃 + CSS 변수
-│   ├── +page.svelte                  # 메인 대시보드 (NON-runes, ~970줄)
-│   ├── +page.ts                      # ssr = false 설정
-│   └── api/
-│       ├── containers/
-│       │   ├── +server.ts            # GET 전체 컨테이너
-│       │   └── [id]/
-│       │       ├── +server.ts        # GET inspect + stats
-│       │       ├── control/+server.ts # POST start/stop/restart/...
-│       │       ├── logs/+server.ts    # GET 로그
-│       │       └── metrics/+server.ts # GET CPU/Memory/Network/Disk
-│       ├── server/ip/+server.ts      # GET 서버 IP
-│       └── system/
-│           ├── +server.ts            # GET 시스템 정보
-│           ├── logins/+server.ts     # GET 로그인 사용자
-│           ├── network/+server.ts    # GET 네트워크 연결
-│           └── processes/+server.ts  # GET 프로세스
-├── lib/
-│   ├── components/
-│   │   ├── ContainerDetailModal.svelte  # 컨테이너 상세 (Info/Metrics/Logs 탭)
-│   │   ├── LeftSidebar.svelte           # 좌측 시스템 정보 패널
-│   │   ├── RightSidebar.svelte          # 우측 GROUP/LIST 뷰
-│   │   ├── ProjectCard.svelte           # 프로젝트 카드 + 헥사곤 컨테이너
-│   │   ├── StatCard.svelte              # Total/Running/Waiting/Stopped 카드
-│   │   ├── TopologyToolbar.svelte       # Screenshot/Rotate/Zoom 툴바
-│   │   ├── RackUtilization.svelte       # 랙 사용률 표시
-│   │   ├── NetworkDetailModal.svelte    # 네트워크 상세 모달
-│   │   ├── LoginDetailModal.svelte      # 로그인 상세 모달
-│   │   └── ProcessDetailModal.svelte    # 프로세스 상세 모달
-│   └── assets/icons/                    # SVG 아이콘 파일들
-```
+This repository follows Conventional Commits.
+
+Examples:
+
+- `feat(ui): add agent status badge`
+- `fix(api): guard request approval transition`
+- `docs(readme): rewrite architecture overview`
+
+## Documentation Rule Of Thumb
+
+When updating docs, keep these distinctions explicit:
+
+- `architecture.md`: current implementation
+- `to-be-architecture.md`: target state
+- `README.md`: high-level overview and entry links
+
+Mixing current state and future state in one document is what made the documentation harder to trust before.
+
+## Current Known Friction
+
+Be aware of these active cleanup areas:
+
+- frontend adapter/runtime mismatch
+- incomplete production backend compose path
+- some older comments and docs were previously affected by encoding issues
+
+When writing new docs, prefer short, accurate, current statements over optimistic claims.
+
+## Engineering Principles (Lessons Learned)
+
+These rules exist because we hit the exact failure they prevent.
+Skipping one of them reliably produces the same class of bug again.
+
+### 1. Delta Sync은 반드시 "주기 full snapshot"과 짝지어 구현
+
+**원인 사례**: `container_metrics`는 Delta Sync만 구현되어 있어, idle
+컨테이너처럼 값이 변하지 않는 경우 전송 자체가 끊기고 Backend 캐시 TTL이
+만료되면 UI에서 사라짐. 같은 묶음의 `containers`는 full snapshot
+interval이 있어 문제없었음.
+
+**원칙**
+- 새로운 stream 데이터에 Delta/diff 방식을 쓰려면 **동시에** 주기적인
+  full snapshot 경로를 반드시 페어로 추가한다.
+- Backend 캐시 TTL < full snapshot 주기가 되도록 설정한다 (즉, 캐시가
+  끊기기 전에 항상 한 번은 덮어쓰기가 옴).
+- 코드 리뷰 시 Delta 전송 로직만 보이고 snapshot 경로가 없으면 reject.
+
+### 2. 테스트 시나리오는 "활발한 경우"와 "idle한 경우" 양쪽을 커버
+
+**원인 사례**: server_16(컨테이너 90개 + 실트래픽)은 메트릭이 항상
+변동해서 Delta 경로가 계속 발사 → 버그가 숨음. 갓 생성된 idle
+`test-container`에서 첫 재현.
+
+**원칙**
+- 신기능 테스트 시 최소 2개 환경: **busy**(정상 트래픽), **idle**(갓
+  생성/유휴) 양쪽.
+- "살아있는 서버에서 잘 된다"는 증거를 **충분 조건**으로 삼지 않는다.
+- Phase 종료 체크리스트에 "idle 재현 1회" 넣기.
+
+### 3. 분산 프로세스는 "코드 배포" ≠ "실행 중 프로세스 버전"
+
+**원인 사례**: Agent 184b287을 repo에 merge 했어도, 로컬 PC에서
+그 이전에 띄워진 node 프로세스는 구버전. "Unknown command:
+create_container" 에러. 16번 서버는 재배포되어 OK, 로컬은 안 됐음.
+
+**원칙**
+- 신기능 배포 시 관련 Agent/worker 프로세스를 모두 **재시작**하는 단계를
+  절차에 포함.
+- Agent는 `READY` 이벤트 등으로 **자기 버전/커밋 hash** 를 보고하도록
+  하고, Backend가 필요 시 기대 버전과 비교 경고.
+- 테스트 전 반드시 `last_started_at` / 버전 확인.
+
+### 4. WBS 단위 기능 묶음은 "같은 패턴을 모든 경로에 적용"까지가 완료
+
+같은 WBS 안에 있는 2개 이상 경로가 **한쪽에만** 안전장치를 넣고
+끝나는 것을 허용하지 않는다. 예: `containers` snapshot은 있는데
+`container_metrics` snapshot은 빠진 것.
+
+**원칙**
+- WBS 서브태스크 완료 기준에 "동일 계열 경로 전수 점검" 포함.
+- 리팩토링이 아닌 신기능 추가 시에도 "대칭성 체크" 한 번.
+
+### 5. 완료 체크리스트 (각 WBS 서브태스크 종료 시)
+
+- [ ] busy 서버 + idle 서버 양쪽 재현 테스트
+- [ ] 관련 Agent/worker 프로세스 재시작 확인
+- [ ] Delta가 있다면 full snapshot 페어 존재 확인
+- [ ] 같은 계열 다른 경로와 안전장치 대칭 여부 확인
+- [ ] mailbox/커밋 hash 기록

@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { base } from '$app/paths';
+	import { sendCommand } from '$lib/stores/ws-store';
+	import { adaptNetworkDetail } from '$lib/utils/data-adapter';
 
 	let {
 		open = false,
@@ -27,11 +28,10 @@
 	async function fetchData() {
 		loading = true;
 		try {
-			const res = await fetch(`${base}/api/system/network`);
-			const result = await res.json();
-			if (result.success) data = result.data;
+			const raw = await sendCommand('system_info', { subCommand: 'network_detail' });
+			data = adaptNetworkDetail(raw);
 		} catch (e) {
-			console.error('Failed to fetch network data:', e);
+			console.error('[NetworkDetailModal] sendCommand failed:', e);
 		}
 		loading = false;
 	}

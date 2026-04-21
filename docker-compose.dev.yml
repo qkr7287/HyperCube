@@ -1,0 +1,73 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./backend:/app
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --reload"
+    ports:
+      - "8000:8000"
+    environment:
+      DJANGO_ENV: dev
+      DEBUG: "true"
+      WATCHFILES_FORCE_POLLING: "true"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s = socket.create_connection(('127.0.0.1', 8000), 2); s.close()"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+    networks:
+      - hc-network
+
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./backend:/app
+    command: celery -A config worker -l info --concurrency=2
+    environment:
+      DJANGO_ENV: dev
+      DEBUG: "true"
+    networks:
+      - hc-network
+
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./backend:/app
+    command: celery -A config beat -l info
+    environment:
+      DJANGO_ENV: dev
+      DEBUG: "true"
+    networks:
+      - hc-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: hc-frontend-dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host 0.0.0.0 --port 3000
+    ports:
+      - "3000:3000"
+    environment:
+      API_TARGET: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - hc-network
+
+networks:
+  hc-network:
+    driver: bridge

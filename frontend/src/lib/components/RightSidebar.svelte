@@ -1,6 +1,6 @@
 <script lang="ts">
-	import StatCard from './StatCard.svelte';
 	import ProjectCard from './ProjectCard.svelte';
+	import { resolveGroup } from '$lib/utils/container-grouping';
 
 	interface Container {
 		id: string;
@@ -14,6 +14,7 @@
 
 	interface Project {
 		name: string;
+		source?: string;
 		containers: Container[];
 		color: string;
 		stats: { total: number; running: number; stopped: number; paused: number };
@@ -27,6 +28,9 @@
 		onSelectContainer = (container: Container) => {},
 		viewMode = 'group',
 		onViewModeChange = (mode: string) => {},
+		highlightedContainerIds = null,
+		selectedContainerId = null,
+		onClearFilters = () => {},
 	}: {
 		projects: Project[];
 		containers: Container[];
@@ -35,13 +39,24 @@
 		onSelectContainer: (container: Container) => void;
 		viewMode: string;
 		onViewModeChange: (mode: string) => void;
+		highlightedContainerIds?: Set<string> | null;
+		selectedContainerId?: string | null;
+		onClearFilters?: () => void;
 	} = $props();
 
 	let runningCount = $derived(containers.filter(c => c.state === 'running').length);
 	let stoppedCount = $derived(containers.filter(c => c.state === 'exited').length);
-	let waitingCount = $derived(containers.length - runningCount - stoppedCount);
 
 
+
+	// Group view: filter project cards by group name
+	let groupSearchQuery = $state('');
+
+	let filteredProjects = $derived.by(() => {
+		const q = groupSearchQuery.trim().toLowerCase();
+		if (!q) return projects;
+		return projects.filter((p) => p.name.toLowerCase().includes(q));
+	});
 
 	// List view state
 	let searchQuery = $state('');
@@ -62,7 +77,7 @@
 	}
 
 	function getContainerProject(container: Container): string {
-		return container.labels?.['com.docker.compose.project'] || 'default';
+		return resolveGroup(container).name;
 	}
 
 	function getLastActivity(container: Container): string {
@@ -89,6 +104,13 @@
 
 	let filteredContainers = $derived.by(() => {
 		let result = containers;
+		// 3D에서 Network/Volume hub를 클릭하면 해당 hub의 멤버들만
+		// 리스트에 남긴다. Group 모드에서는 prop이 null로 들어와서
+		// 이 필터는 무시된다.
+		if (highlightedContainerIds) {
+			const ids = highlightedContainerIds;
+			result = result.filter((c) => ids.has(c.id));
+		}
 		if (searchQuery.trim()) {
 			const q = searchQuery.trim().toLowerCase();
 			result = result.filter(c =>
@@ -139,7 +161,7 @@
 	}
 </script>
 
-<aside class="sidebar" class:wide={viewMode === 'list'}>
+<aside class="sidebar" class:list-mode={viewMode === 'list'} class:group-mode={viewMode === 'group'}>
 	<!-- Header -->
 	<div class="sidebar-header">
 		<span class="heading">컨테이너 정보</span>
@@ -158,22 +180,58 @@
 	</div>
 
 	{#if viewMode === 'group'}
-		<!-- Stat Cards -->
-		<div class="stats-row">
-			<StatCard count={runningCount} label="실행중" type="running" />
-			<StatCard count={waitingCount} label="대기중" type="waiting" />
-			<StatCard count={stoppedCount} label="정지중" type="stopped" />
+		<!-- Container Health Summary -->
+		{@const total = containers.length}
+		{@const runPercent = total > 0 ? Math.round((runningCount / total) * 100) : 0}
+		<div class="health-summary">
+			<div class="health-top">
+				<span class="health-fraction">{runningCount} <small>/ {total}</small></span>
+				<span class="health-percent">{runPercent}% running</span>
+			</div>
+			<div class="health-bar">
+				<div class="health-bar-fill" style="width: {runPercent}%"></div>
+			</div>
+			<div class="health-legend">
+				<span class="legend-item running"><span class="dot"></span>실행중 {runningCount}</span>
+				<span class="legend-item stopped"><span class="dot"></span>정지중 {stoppedCount}</span>
+			</div>
+		</div>
+
+		<!-- Group Search -->
+		<div class="search-bar group-search">
+			<svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+			</svg>
+			<input
+				type="text"
+				class="search-input"
+				placeholder="그룹명 검색..."
+				bind:value={groupSearchQuery}
+				onkeydown={(e) => {
+					if (e.key === 'Enter' && groupSearchQuery.trim() === '') onClearFilters();
+				}}
+			/>
+			{#if groupSearchQuery}
+				<button class="search-clear" onclick={() => groupSearchQuery = ''}>
+					<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+						<path d="M18 6L6 18M6 6l12 12"/>
+					</svg>
+				</button>
+			{/if}
 		</div>
 
 		<!-- Project List -->
 		<div class="project-list">
-			{#each projects as project}
+			{#each filteredProjects as project}
 				<ProjectCard
 					{project}
 					selected={selectedProject === project.name}
+					{selectedContainerId}
 					onclick={() => onSelectProject(selectedProject === project.name ? null : project.name)}
 					onContainerClick={onSelectContainer}
 				/>
+			{:else}
+				<div class="group-empty">검색 결과가 없습니다</div>
 			{/each}
 		</div>
 
@@ -187,10 +245,6 @@
 			<div class="list-stat-card">
 				<span class="list-stat-label-en muted">Running</span>
 				<span class="list-stat-value running">실행중: {runningCount}</span>
-			</div>
-			<div class="list-stat-card">
-				<span class="list-stat-label-en muted">Waiting</span>
-				<span class="list-stat-value waiting">대기중: {waitingCount}</span>
 			</div>
 			<div class="list-stat-card">
 				<span class="list-stat-label-en muted">Stopped</span>
@@ -208,6 +262,9 @@
 				class="search-input"
 				placeholder="컨테이너명, 프로젝트명 검색..."
 				bind:value={searchQuery}
+				onkeydown={(e) => {
+					if (e.key === 'Enter' && searchQuery.trim() === '') onClearFilters();
+				}}
 			/>
 			{#if searchQuery}
 				<button class="search-clear" onclick={() => searchQuery = ''}>
@@ -258,7 +315,10 @@
 				</thead>
 				<tbody>
 					{#each sortedContainers as container}
-						<tr>
+						<tr
+							class:row-highlight={highlightedContainerIds?.has(container.id)}
+							class:row-selected={selectedContainerId === container.id}
+						>
 							<td>
 								<span class="status-text" class:status-running={container.state === 'running'} class:status-stopped={container.state === 'exited'}>
 									{getStateLabel(container.state)}
@@ -289,8 +349,8 @@
 
 <style>
 	.sidebar {
-		width: 480px;
-		min-width: 480px;
+		width: 678px;
+		min-width: 678px;
 		background: var(--bg-base);
 		border-left: 1px solid var(--border);
 		padding: 24px;
@@ -298,12 +358,6 @@
 		flex-direction: column;
 		gap: 0;
 		overflow: hidden;
-		transition: width 0.3s ease, min-width 0.3s ease;
-	}
-
-	.sidebar.wide {
-		width: 678px;
-		min-width: 678px;
 	}
 
 	.sidebar-header {
@@ -352,6 +406,68 @@
 		flex-shrink: 0;
 	}
 
+	.health-summary {
+		background: var(--bg-card);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		padding: 14px 16px;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		flex-shrink: 0;
+		margin-bottom: 16px;
+	}
+	.health-top {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+	}
+	.health-fraction {
+		font-size: 20px;
+		font-weight: 700;
+		color: var(--text-primary);
+	}
+	.health-fraction small {
+		font-size: 13px;
+		color: var(--text-muted);
+		font-weight: 500;
+	}
+	.health-percent {
+		font-size: 11px;
+		font-weight: 700;
+		color: var(--accent);
+		letter-spacing: 0.02em;
+	}
+	.health-bar {
+		height: 6px;
+		background: var(--bg-base);
+		border-radius: 3px;
+		overflow: hidden;
+	}
+	.health-bar-fill {
+		height: 100%;
+		background: linear-gradient(90deg, #22c55e, var(--accent));
+		transition: width 0.3s ease;
+	}
+	.health-legend {
+		display: flex;
+		justify-content: space-between;
+		font-size: 11px;
+		color: var(--text-secondary);
+	}
+	.legend-item {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+	}
+	.legend-item .dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+	}
+	.legend-item.running .dot { background: #22c55e; }
+	.legend-item.stopped .dot { background: var(--error); }
+
 	.project-list {
 		display: flex;
 		flex-direction: column;
@@ -360,6 +476,7 @@
 		flex: 1;
 		min-height: 0;
 		padding-bottom: 16px;
+		width: 100%;
 	}
 
 	/* List View Styles */
@@ -475,6 +592,16 @@
 		background: rgba(48, 213, 200, 0.03);
 	}
 
+	.container-table tbody tr.row-highlight {
+		background: rgba(56, 189, 248, 0.08);
+		box-shadow: inset 2px 0 0 var(--accent);
+	}
+
+	.container-table tbody tr.row-selected {
+		background: rgba(48, 213, 200, 0.14);
+		box-shadow: inset 3px 0 0 var(--accent);
+	}
+
 	.status-text {
 		font-size: 14px;
 		font-weight: 500;
@@ -586,6 +713,17 @@
 
 	.search-clear:hover {
 		color: var(--text-primary);
+	}
+
+	.group-search {
+		margin: 0 0 12px 0;
+	}
+
+	.group-empty {
+		text-align: center;
+		color: var(--text-muted);
+		font-size: 12px;
+		padding: 24px 8px;
 	}
 
 	/* Show All Footer (Figma style) */

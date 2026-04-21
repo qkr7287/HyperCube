@@ -1,4 +1,4 @@
-# DCMTool_TS main → DCMTool dev 자동 동기화
+# HyperCube main → DCMTool dev 자동 동기화
 name: Sync to DCMTool
 
 on:
@@ -7,11 +7,11 @@ on:
 
 jobs:
   sync:
-    if: github.repository == 'qkr7287/DCMTool_TS'
+    if: github.repository == 'qkr7287/HyperCube'
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout DCMTool_TS
+      - name: Checkout HyperCube
         uses: actions/checkout@v4
         with:
           fetch-depth: 0

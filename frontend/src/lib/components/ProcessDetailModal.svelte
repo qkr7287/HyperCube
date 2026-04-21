@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { base } from '$app/paths';
+	import { sendCommand } from '$lib/stores/ws-store';
+	import { adaptProcessDetail } from '$lib/utils/data-adapter';
 
 	let {
 		open = false,
@@ -12,30 +13,44 @@
 	let loading = $state(true);
 	let data: any = $state(null);
 
+	let maxMem = $derived(
+		(data?.processes ?? []).reduce(
+			(m: number, p: any) => Math.max(m, p.memory ?? 0),
+			0,
+		)
+	);
+
+	function formatMem(mb: number): string {
+		if (!mb || mb <= 0) return '0 MB';
+		if (mb < 1024) return `${mb.toFixed(1)} MB`;
+		return `${(mb / 1024).toFixed(2)} GB`;
+	}
+
 	function getStatusLabel(status: string): string {
+		// Agent가 전체 단어로 state를 보냄 (running/sleeping/stopped/zombie ...)
 		const map: Record<string, string> = {
-			'R': '실행중', 'S': '대기', 'D': '대기(I/O)',
-			'Z': '좀비', 'T': '정지', 'I': '유휴',
+			running: '실행중', R: '실행중',
+			sleeping: '대기', S: '대기', D: '대기(I/O)', I: '유휴',
+			stopped: '정지', T: '정지',
+			zombie: '좀비', Z: '좀비',
 		};
 		return map[status] || status;
 	}
 
 	function getStatusClass(status: string): string {
-		if (status === 'R') return 'running';
-		if (status === 'S' || status === 'D' || status === 'I') return 'sleeping';
-		if (status === 'Z') return 'zombie';
-		if (status === 'T') return 'stopped';
+		if (status === 'running' || status === 'R') return 'running';
+		if (status === 'zombie' || status === 'Z') return 'zombie';
+		if (status === 'stopped' || status === 'T') return 'stopped';
 		return 'sleeping';
 	}
 
 	async function fetchData() {
 		loading = true;
 		try {
-			const res = await fetch(`${base}/api/system/processes`);
-			const result = await res.json();
-			if (result.success) data = result.data;
+			const raw = await sendCommand('system_info', { subCommand: 'processes' });
+			data = adaptProcessDetail(raw);
 		} catch (e) {
-			console.error('Failed to fetch process data:', e);
+			console.error('[ProcessDetailModal] sendCommand failed:', e);
 		}
 		loading = false;
 	}
@@ -70,47 +85,41 @@
 			{#if loading}
 				<div class="loading-state">프로세스 정보를 불러오는 중...</div>
 			{:else if data}
-				<div class="section-label">프로세스 통계</div>
+				{@const procs = data.processes ?? []}
+				{@const topCpu = procs.length ? procs.reduce((a: any, b: any) => (b.cpu > a.cpu ? b : a)) : null}
+				{@const topMem = procs.length ? procs.reduce((a: any, b: any) => (b.memoryMB > a.memoryMB ? b : a)) : null}
 				<div class="stats-row">
-					<div class="stat-card">
-						<div class="stat-icon total">
-							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
-						</div>
-						<div class="stat-info">
-							<span class="stat-label">총 프로세스</span>
-							<span class="stat-value">{data.totalProcesses ?? 0} <small>개</small></span>
-						</div>
+					<div class="stat-pill">
+						<span class="pill-label">총 프로세스</span>
+						<span class="pill-value">{data.totalProcesses ?? 0}<small>개</small></span>
 					</div>
-					<div class="stat-card">
-						<div class="stat-icon run">
-							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+					{#if topCpu && (topCpu.cpu ?? 0) > 0}
+						<div class="stat-pill" title={topCpu.command || topCpu.name}>
+							<span class="pill-label">Top CPU</span>
+							<span class="pill-value">
+								<span class="pill-name">{topCpu.name}</span>
+								<small class="pill-metric">{(topCpu.cpu).toFixed(1)}%</small>
+							</span>
 						</div>
-						<div class="stat-info">
-							<span class="stat-label">실행중</span>
-							<span class="stat-value">{data.runningProcesses ?? 0} <small>개</small></span>
+					{/if}
+					{#if topMem && (topMem.memoryMB ?? 0) > 0}
+						<div class="stat-pill" title={topMem.command || topMem.name}>
+							<span class="pill-label">Top Memory</span>
+							<span class="pill-value">
+								<span class="pill-name">{topMem.name}</span>
+								<small class="pill-metric">{formatMem(topMem.memoryMB)}</small>
+							</span>
 						</div>
-					</div>
-					<div class="stat-card">
-						<div class="stat-icon sleep">
-							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+					{/if}
+					{#if (data.zombieProcesses ?? 0) > 0}
+						<div class="stat-pill warn" title="종료됐으나 부모가 회수(reap)하지 않은 좀비 프로세스">
+							<span class="pill-label">좀비</span>
+							<span class="pill-value">{data.zombieProcesses}<small>개</small></span>
 						</div>
-						<div class="stat-info">
-							<span class="stat-label">대기중</span>
-							<span class="stat-value">{data.sleepingProcesses ?? 0} <small>개</small></span>
-						</div>
-					</div>
-					<div class="stat-card">
-						<div class="stat-icon zombie">
-							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-						</div>
-						<div class="stat-info">
-							<span class="stat-label">정지중</span>
-							<span class="stat-value">{data.zombieProcesses ?? 0} <small>개</small></span>
-						</div>
-					</div>
+					{/if}
 				</div>
 
-				<div class="section-label">실행중인 프로세스 (상위 {data.processes?.length ?? 0}개)</div>
+				<div class="section-label">프로세스 목록 <small class="hint">CPU 사용률 상위 {data.processes?.length ?? 0}개</small></div>
 				<div class="table-wrapper">
 					<table>
 						<thead>
@@ -139,9 +148,9 @@
 									<td>
 										<div class="bar-cell">
 											<div class="bar-track">
-												<div class="bar-fill mem" style="width: {Math.min(proc.memory, 100)}%"></div>
+												<div class="bar-fill mem" style="width: {maxMem > 0 ? Math.min((proc.memory / maxMem) * 100, 100) : 0}%"></div>
 											</div>
-											<span class="bar-value">{proc.memory.toFixed(1)}%</span>
+											<span class="bar-value">{formatMem(proc.memory)}</span>
 										</div>
 									</td>
 									<td>
@@ -186,24 +195,33 @@
 	.section-label { font-size: 14px; font-weight: 700; color: #64748b; }
 
 	.stats-row {
-		display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+		display: flex; flex-wrap: wrap; gap: 8px;
 	}
-	.stat-card {
-		background: #121720; border-radius: 10px; padding: 16px;
-		display: flex; align-items: center; gap: 12px;
+	.stat-pill {
+		background: #121720; border-radius: 8px; padding: 8px 14px;
+		display: inline-flex; align-items: center; gap: 10px;
+		border: 1px solid transparent; min-width: 0;
 	}
-	.stat-icon {
-		width: 40px; height: 40px; border-radius: 50%;
-		display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+	.stat-pill.warn {
+		border-color: rgba(239,68,68,0.4);
+		background: rgba(239,68,68,0.05);
 	}
-	.stat-icon.total { background: rgba(48,213,200,0.15); color: #30d5c8; }
-	.stat-icon.run { background: rgba(34,197,94,0.15); color: #22c55e; }
-	.stat-icon.sleep { background: rgba(245,158,11,0.15); color: #f59e0b; }
-	.stat-icon.zombie { background: rgba(239,68,68,0.15); color: #ef4444; }
-	.stat-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-	.stat-label { font-size: 12px; color: #64748b; white-space: nowrap; }
-	.stat-value { font-size: 15px; font-weight: 700; color: #cbd5e1; white-space: nowrap; }
-	.stat-value small { font-size: 12px; font-weight: 400; color: #64748b; }
+	.pill-label {
+		font-size: 11px; color: #64748b; font-weight: 600;
+		text-transform: uppercase; letter-spacing: 0.04em;
+		white-space: nowrap;
+	}
+	.pill-value {
+		font-size: 14px; font-weight: 700; color: #cbd5e1;
+		display: inline-flex; align-items: baseline; gap: 6px;
+		min-width: 0;
+	}
+	.pill-value small { font-size: 11px; font-weight: 400; color: #64748b; }
+	.pill-name {
+		max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+	}
+	.pill-metric { font-size: 11px; color: #30d5c8; font-weight: 600; }
+	.hint { font-size: 10px; color: #475569; font-weight: 400; }
 
 	.table-wrapper { overflow-x: auto; }
 	table { width: 100%; border-collapse: collapse; }

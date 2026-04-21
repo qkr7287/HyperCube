@@ -1,12 +1,15 @@
 <script lang="ts">
-	import { base } from '$app/paths';
+	import { sendCommand } from '$lib/stores/ws-store';
+	import { adaptLoginDetail } from '$lib/utils/data-adapter';
 
 	let {
 		open = false,
 		onClose = () => {},
+		uptimeSeconds = 0,
 	}: {
 		open: boolean;
 		onClose: () => void;
+		uptimeSeconds?: number;
 	} = $props();
 
 	let loading = $state(true);
@@ -27,11 +30,10 @@
 	async function fetchData() {
 		loading = true;
 		try {
-			const res = await fetch(`${base}/api/system/logins`);
-			const result = await res.json();
-			if (result.success) data = result.data;
+			const raw = await sendCommand('system_info', { subCommand: 'users' });
+			data = adaptLoginDetail(raw);
 		} catch (e) {
-			console.error('Failed to fetch login data:', e);
+			console.error('[LoginDetailModal] sendCommand failed:', e);
 		}
 		loading = false;
 	}
@@ -92,7 +94,7 @@
 						</div>
 						<div class="stat-info">
 							<span class="stat-label">시스템 가동시간</span>
-							<span class="stat-value">{formatUptime(data.uptime)}</span>
+							<span class="stat-value">{formatUptime(data.uptime || uptimeSeconds)}</span>
 						</div>
 					</div>
 				</div>
