@@ -108,61 +108,57 @@ docker compose up -d                   # fresh DB, fresh migrations
 
 ---
 
-## Dev on server 41 (remote Docker, local editing)
+## Dev on server 63 (remote Docker, local editing)
 
-Run Docker on server 41 so your laptop stays light, but keep editing
-the repo locally and watching the app at `localhost:...`. File sync
-lives in a single Mutagen session; Docker commands run on the server
-via SSH.
+Docker runs on `agics@192.168.0.63:2022`; the checkout lives on your
+Windows PC; a Mutagen session keeps the two sides in lockstep. Your
+editor, git, and browser stay local.
 
 **Why this shape**
-- Local Windows has the authoritative checkout (your editor, git,
-  branches). Mutagen pushes writes up to the server within ms.
-- Docker compose + containers live entirely on `192.168.0.41`. Nothing
+- Local Windows has the authoritative checkout (editor, branches).
+  Mutagen pushes writes up to the server within ~100 ms.
+- Docker compose + containers live entirely on `192.168.0.63`. Nothing
   in your PC's RAM beyond the editor + terminal + browser.
-- Source is visible on the server at `/home/stdt/ts/HyperCube/` for
-  debugging — same bind mounts as local dev.
+- Source is visible on the server at `/home/agics/ts/HyperCube/` — the
+  same bind mounts as pure-local dev.
 
-**Port plan on server 41**
+**Port plan on server 63**
 | purpose | host port | notes |
 |---|---|---|
-| frontend (Vite) | `3090` | `3000` is already taken on 41 |
+| frontend (Vite) | `3000` | free on 63 (collision-free) |
 | backend (uvicorn) | `8000` | free |
 | postgres | `15432` | dev default |
 | redis | `16379` | dev default |
 
-Configure these in `.env.dev` (see below).
+Override any of these via `.env.dev` (`FE_PORT`, `BE_PORT`, `DB_PORT`, `REDIS_PORT`).
 
 ### One-time setup (on your Windows PC)
 
-1. Install Mutagen (CLI only — we're not using Mutagen Compose here):
+1. Install Mutagen (CLI only — not Mutagen Compose):
    ```powershell
    winget install Mutagen.Mutagen
    ```
 
-2. Generate an SSH key if you don't have one yet (or reuse `dcmtool_sync`),
-   then copy its public half into server 41's `root` authorized keys.
-   From a local terminal:
+2. Key-based SSH is already set up (`ssh-ed25519` from
+   `~/.ssh/dcmtool_sync` is installed under `agics@192.168.0.63`).
+   Verify:
    ```bash
-   type ~/.ssh/dcmtool_sync.pub
+   ssh -i ~/.ssh/dcmtool_sync -p 2022 agics@192.168.0.63 whoami
    ```
-   Paste that line at the end of `/root/.ssh/authorized_keys` on 41. From
-   that point on, key-based SSH works and you don't need the password.
+   Should print `agics` without asking for a password.
 
-3. Add an SSH alias so Mutagen and docker compose find the server
-   easily. In `~/.ssh/config`:
+3. Add an SSH alias so Mutagen and compose find the host easily.
+   In `~/.ssh/config`:
    ```
-   Host hc-dev-41
-       HostName 192.168.0.41
-       User root
+   Host hc-dev-63
+       HostName 192.168.0.63
+       User agics
        Port 2022
        IdentityFile ~/.ssh/dcmtool_sync
    ```
 
-4. On the server, create the workspace folder (once):
-   ```bash
-   ssh hc-dev-41 "mkdir -p /home/stdt/ts/HyperCube"
-   ```
+4. On the server, the workspace already exists at `/home/agics/ts`.
+   Mutagen will populate `/home/agics/ts/HyperCube/` on first sync.
 
 5. Create `.env.dev` (local, git-ignored) with dev values. Minimum:
    ```dotenv
@@ -171,15 +167,14 @@ Configure these in `.env.dev` (see below).
    DB_PASSWORD=dev-local-pass
    DJANGO_ENV=dev
    DJANGO_SECRET_KEY=dev-insecure-key
-   FE_PORT=3090
-   # BE_PORT/DB_PORT/REDIS_PORT default to 8000/15432/16379
+   # Defaults: FE_PORT=3000, BE_PORT=8000, DB_PORT=15432, REDIS_PORT=16379
    ```
-   Copy it up to the server too:
+   Copy it up so the first compose run has what it needs (Mutagen
+   keeps it in sync afterwards):
    ```bash
-   scp .env.dev hc-dev-41:/home/stdt/ts/HyperCube/.env.dev
+   ssh hc-dev-63 "mkdir -p /home/agics/ts/HyperCube"
+   scp .env.dev hc-dev-63:/home/agics/ts/HyperCube/.env.dev
    ```
-   (From here, the Mutagen session keeps it in sync automatically — but
-   the server needs a copy for the first compose run.)
 
 ### Start the Mutagen sync session (once per machine)
 
@@ -190,60 +185,59 @@ mutagen sync create \
   --ignore-vcs \
   --ignore="node_modules,build,.svelte-kit,staticfiles,__pycache__,*.pyc,.pytest_cache,.claude,.playwright-mcp,.serena" \
   "C:\Users\agics\Desktop\workspace\01. git\HyperCube" \
-  "hc-dev-41:/home/stdt/ts/HyperCube"
+  "hc-dev-63:/home/agics/ts/HyperCube"
 ```
 
 Check state anytime:
 ```bash
 mutagen sync list
-mutagen sync monitor hypercube    # tail live events
+mutagen sync monitor hypercube    # live event stream
 ```
 
 ### Bring the stack up
 ```bash
-ssh hc-dev-41 "
-  cd /home/stdt/ts/HyperCube &&
+ssh hc-dev-63 "
+  cd /home/agics/ts/HyperCube &&
   docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.dev up -d
 "
 ```
 
-Watch logs:
+Tail logs:
 ```bash
-ssh hc-dev-41 "cd /home/stdt/ts/HyperCube && docker compose logs -f backend"
+ssh hc-dev-63 "cd /home/agics/ts/HyperCube && docker compose logs -f backend"
 ```
 
 ### Access from your PC
 
-Either use the server's address directly:
+Either hit the server directly:
 ```
-http://192.168.0.41:3090/
+http://192.168.0.63:3000/
 ```
 
-Or keep the `localhost:3090` feel with a persistent SSH tunnel:
+Or keep the `localhost:3000` feel with a persistent SSH tunnel:
 ```bash
-ssh hc-dev-41 -L 3090:localhost:3090 -N &
-# then browse http://localhost:3090/
+ssh hc-dev-63 -L 3000:localhost:3000 -N &
+# then browse http://localhost:3000/
 ```
 
 ### Day-to-day
 
 - Save a file locally → Mutagen pushes within ~100 ms → Vite / uvicorn
-  `--reload` picks it up and refreshes.
-- `git` stays on the local PC. You commit as usual; the server never
-  talks to GitHub for dev.
-- To tear down: `ssh hc-dev-41 "cd /home/stdt/ts/HyperCube && docker compose down"`.
-  Mutagen session can stay up; it pauses when idle.
-- To stop the sync session: `mutagen sync terminate hypercube`.
+  `--reload` picks it up and the browser refreshes.
+- `git` stays on your PC. You commit as usual; the server never talks
+  to GitHub for dev.
+- Tear down: `ssh hc-dev-63 "cd /home/agics/ts/HyperCube && docker compose down"`.
+  The Mutagen session can stay up (it idles when nothing changes).
+- Stop the sync session: `mutagen sync terminate hypercube`.
 
 ### Gotchas to remember
-- If Mutagen reports a conflict (`two-way-resolved` handles most, but
-  not all), resolve it with `mutagen sync resolve hypercube`.
-- Server 41 also hosts `hypercube-agent-prod-agent-1` which keeps a WS
-  open to production (server 16). Running dev containers there does
-  **not** interfere with that agent.
+- If Mutagen reports a conflict (`two-way-resolved` covers most, but
+  not all), resolve with `mutagen sync resolve hypercube`.
+- `agics` is in the `docker` group on 63, so `docker compose` runs
+  without `sudo`.
 - Anything you mutate inside the running containers writes back to the
-  bind-mounted filesystem (and then into your local checkout) — great
-  for migrations, dangerous for accidental `python manage.py startapp`.
+  bind-mounted filesystem (and then up into your local checkout) —
+  great for migrations, dangerous for accidental `python manage.py startapp`.
   Stay aware of it.
 
 ---
