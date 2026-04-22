@@ -3,6 +3,7 @@
 	import { sendCommand } from '$lib/stores/ws-store';
 	import { adaptCpuDetail } from '$lib/utils/data-adapter';
 	import LiveSparkline from './LiveSparkline.svelte';
+	import InfoTooltip from './InfoTooltip.svelte';
 
 	let {
 		open = false,
@@ -169,11 +170,15 @@
 				<!-- Live usage trend -->
 				<div class="section-label">
 					CPU 사용률 추이
-					<span class="section-sub">실시간 (최근 60 samples)</span>
+					<span class="section-sub">실시간 · 최근 2분</span>
+					<InfoTooltip
+						placement="right"
+						text="CPU가 얼마나 바쁜지 보여주는 그래프예요. 0% = 한가, 100% = 완전 포화. 80% 이상이 길게 이어지면 서버가 힘들어하는 신호라 작업을 줄이거나 서버를 키워야 할 수 있어요."
+					/>
 				</div>
 				<div class="chart-legend">
 					<span class="legend-dot" style="background:#30d5c8;"></span>
-					<span class="legend-text">Overall CPU Usage (%)</span>
+					<span class="legend-text">전체 CPU 사용률</span>
 					<span class="legend-value">{liveCpuPct}%</span>
 				</div>
 				<div class="chart-frame">
@@ -194,16 +199,16 @@
 						<span>100%</span>
 					</div>
 				</div>
-				<p class="section-desc">
-					모든 논리 스레드의 busy 시간 평균 비율입니다.
-					HyperThreading 환경에서는 <strong>100%가 모든 스레드 가득 찬 상태</strong>,
-					물리 코어 기준 실제 연산 한계는 보통 70~80% 부근에서 포화됩니다.
-					값이 지속적으로 85% 이상이라면 CPU 병목 가능성이 높습니다.
-				</p>
 
 				<!-- Load Average explanation -->
 				{#if data.loadAvg}
-					<div class="section-label">Load Average</div>
+					<div class="section-label">
+						Load Average
+						<InfoTooltip
+							placement="right"
+							text={`최근 1분/5분/15분 동안 평균 몇 개 작업이 CPU를 쓰려고 줄 서 있었는지 보여주는 숫자예요. 내 서버 스레드 수(${cpuSpec?.threads ?? data.cores}개)보다 작으면 여유, 비슷하면 딱 찬 상태, 더 크면 작업이 밀리는 중. 꾸준히 넘으면 서버가 모자라요.`}
+						/>
+					</div>
 					<div class="load-display">
 						<div class="load-cell">
 							<span class="load-label">1 min</span>
@@ -218,28 +223,22 @@
 							<span class="load-num">{data.loadAvg.avg15?.toFixed(2) ?? '—'}</span>
 						</div>
 					</div>
-					<p class="section-desc">
-						대기 중이거나 실행 중인 프로세스 평균 수. 스레드 수 ({cpuSpec?.threads ?? data.cores})를 기준으로
-						값이 해당 수에 근접할수록 "꽉 찼다"는 의미.
-						예: Load 1-min = 12 / 스레드 12개 → 완전 포화.
-					</p>
 				{/if}
 
 				<!-- Per-core heatmap -->
 				<div class="section-label">
 					코어별 사용률 히트맵
 					<span class="section-sub">스레드 {data.perCore?.length ?? 0}개</span>
+					<InfoTooltip
+						placement="right"
+						text="스레드 하나하나가 지금 얼마나 바쁜지 색으로 표시해요. 초록=한가, 노랑=적당, 빨강=꽉 참. 한 칸만 계속 빨강이면 어떤 프로그램이 그 스레드만 쓰고 있는 거라, 부하 분산이 잘 안 되는 상태일 수 있어요."
+					/>
 				</div>
 				<div class="heatmap-legend">
 					<span class="legend-label">Low</span>
 					<div class="legend-gradient"></div>
 					<span class="legend-label">High</span>
 				</div>
-				<p class="section-desc">
-					각 논리 스레드(CPU0, CPU1, …)의 현재 사용률을 색상 강도로 표시합니다.
-					초록 = 여유, 노랑 = 중간, 빨강 = 포화. 특정 스레드만 항상 빨강이면
-					특정 프로세스가 한 코어에 고정돼 있을 수 있습니다.
-				</p>
 				<div class="heatmap-grid" style="grid-template-columns: repeat({Math.min(data.perCore?.length ?? 4, 8)}, 1fr);">
 					{#each (data.perCore || []) as core}
 						<div
@@ -290,7 +289,29 @@
 	.modal-title { font-size: 17px; font-weight: 700; color: #d9d9d9; }
 	.close-btn { background: none; border: none; cursor: pointer; padding: 6px; display: flex; }
 	.close-btn:hover svg { stroke: #cbd5e1; }
-	.modal-content { flex: 1; overflow-y: auto; padding: 28px; display: flex; flex-direction: column; gap: 20px; }
+	.modal-content {
+		flex: 1;
+		overflow-y: auto;
+		padding: 28px;
+		display: flex;
+		flex-direction: column;
+		gap: 20px;
+		/* Firefox */
+		scrollbar-width: thin;
+		scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+	}
+	.modal-content::-webkit-scrollbar { width: 10px; }
+	.modal-content::-webkit-scrollbar-track { background: transparent; }
+	.modal-content::-webkit-scrollbar-thumb {
+		background: rgba(148, 163, 184, 0.3);
+		border: 2px solid transparent;
+		border-radius: 8px;
+		background-clip: padding-box;
+	}
+	.modal-content::-webkit-scrollbar-thumb:hover {
+		background: rgba(48, 213, 200, 0.55);
+		background-clip: padding-box;
+	}
 	.loading-state { text-align: center; color: #64748b; font-size: 14px; padding: 32px; }
 	.section-label {
 		font-size: 14px;
