@@ -6,6 +6,8 @@
   continuous rather than stepped.
 -->
 <script lang="ts">
+	import { untrack } from 'svelte';
+
 	let {
 		value,
 		history = [],
@@ -31,11 +33,19 @@
 	} = $props();
 
 	// Internal ring-buffer when caller doesn't pass history explicitly.
+	// Read untracked inside the effect so we only react to `value`, never to
+	// our own append. Writing back to $state would otherwise re-trigger the
+	// effect indefinitely (Svelte 5 `effect_update_depth_exceeded`).
 	let buffer = $state<number[]>([]);
+	let lastPushed: number | undefined;
 
 	$effect(() => {
-		if (typeof value !== 'number' || Number.isNaN(value)) return;
-		buffer = [...buffer, value].slice(-bufferSize);
+		const v = value;
+		if (typeof v !== 'number' || Number.isNaN(v)) return;
+		if (v === lastPushed) return;
+		lastPushed = v;
+		const prev = untrack(() => buffer);
+		buffer = [...prev, v].slice(-bufferSize);
 	});
 
 	const samples = $derived(history.length > 0 ? history : buffer);
