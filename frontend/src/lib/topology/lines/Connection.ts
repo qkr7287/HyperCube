@@ -347,7 +347,8 @@ export abstract class Connection {
 	private readonly packetGlows: THREE.Sprite[] = [];
 	private readonly packetGlowMats: THREE.SpriteMaterial[] = [];
 	private packetSpeed = 0.25;
-	private packetTravelDistance = 0;
+	// Store flow as a normalized phase so layout length changes do not make packets jump backward.
+	private packetTravelPhase = 0;
 	private packetBaseSize = 8;
 	private tunnelEnabled = false;
 	private energyLineEnabled = false;
@@ -368,6 +369,7 @@ export abstract class Connection {
 	private readonly lastTunnelB = new THREE.Vector3();
 	private tunnelGeometryDirty = true;
 	private static readonly TUNNEL_REBUILD_THRESHOLD_SQ = 0.14 * 0.14;
+	private static readonly MAX_ANIMATION_DT = 1 / 30;
 	private readonly temp = {
 		dir: new THREE.Vector3(),
 		normal: new THREE.Vector3(),
@@ -579,8 +581,9 @@ export abstract class Connection {
 	}
 
 	tick(dt: number): void {
-		this.pulseTime += dt;
-		const smoothing = 1 - Math.exp(-dt * (this.targetTrafficLevel > this.visibleTrafficLevel ? 6 : 1.75));
+		const frameDt = Connection.sanitizeDt(dt);
+		this.pulseTime += frameDt;
+		const smoothing = 1 - Math.exp(-frameDt * (this.targetTrafficLevel > this.visibleTrafficLevel ? 6 : 1.75));
 		this.visibleTrafficLevel = THREE.MathUtils.lerp(
 			this.visibleTrafficLevel,
 			this.targetTrafficLevel,
@@ -599,7 +602,7 @@ export abstract class Connection {
 			}
 			this.hidePackets();
 			this.updateTunnelStyle(0, pulse);
-			this.onTick(0, pulse, dt);
+			this.onTick(0, pulse, frameDt);
 			return;
 		}
 
@@ -628,7 +631,7 @@ export abstract class Connection {
 				if (this.material instanceof THREE.LineDashedMaterial) {
 					this.material.dashOffset = -this.pulseTime * (0.45 + displayLevel * 0.95);
 				}
-				this.updatePackets(displayLevel, 2, 0.42, dt);
+				this.updatePackets(displayLevel, 2, 0.42, frameDt);
 				this.updateTunnelStyle(0, pulse);
 				break;
 			}
@@ -643,7 +646,7 @@ export abstract class Connection {
 					displayLevel,
 					TUNNEL_PRESETS[this.tunnelStyle].packetCount,
 					TUNNEL_PRESETS[this.tunnelStyle].packetSpacing,
-					dt
+					frameDt
 				);
 				this.updateTunnelStyle(displayLevel, pulse);
 				break;
@@ -674,12 +677,17 @@ export abstract class Connection {
 				if (this.material instanceof THREE.LineDashedMaterial) {
 					this.material.dashOffset = -this.pulseTime * (0.62 + displayLevel * 1.35);
 				}
-				this.updatePackets(displayLevel, 1, 0.5, dt);
+				this.updatePackets(displayLevel, 1, 0.5, frameDt);
 				this.updateTunnelStyle(0, pulse);
 				break;
 			}
 		}
-		this.onTick(displayLevel, pulse, dt);
+		this.onTick(displayLevel, pulse, frameDt);
+	}
+
+	private static sanitizeDt(dt: number): number {
+		if (!Number.isFinite(dt) || dt <= 0) return 0;
+		return Math.min(dt, Connection.MAX_ANIMATION_DT);
 	}
 
 	// Fixed packet visual constants (previously 'dualTone' preset, now
@@ -740,8 +748,8 @@ export abstract class Connection {
 			Math.max(1, lengthFactor * 0.9);
 		const speedUnitsPerSec =
 			THREE.MathUtils.lerp(26, 96, trafficDensity) * fxPreset.speedMul;
-		this.packetTravelDistance =
-			(this.packetTravelDistance + dt * this.packetSpeed * speedUnitsPerSec) % totalLength;
+		this.packetTravelPhase =
+			(this.packetTravelPhase + (dt * this.packetSpeed * speedUnitsPerSec) / totalLength) % 1;
 		for (let packetIndex = 0; packetIndex < this.packets.length; packetIndex += 1) {
 			const packet = this.packets[packetIndex];
 			const packetMat = this.packetMats[packetIndex];
@@ -755,8 +763,7 @@ export abstract class Connection {
 				continue;
 			}
 
-			const distanceAlong =
-				(this.packetTravelDistance + packetIndex * effectiveSpacing * totalLength) % totalLength;
+			const distanceAlong = ((this.packetTravelPhase + packetIndex * effectiveSpacing) % 1) * totalLength;
 			let idx = 0;
 			while (idx < distances.length - 2 && distances[idx + 1] < distanceAlong) idx += 1;
 			const segmentStart = distances[idx];
