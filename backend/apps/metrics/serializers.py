@@ -10,6 +10,11 @@ class SystemMetricsHistorySerializer(serializers.ModelSerializer):
     processes_total = serializers.SerializerMethodField()
     processes_running = serializers.SerializerMethodField()
     logins_total = serializers.SerializerMethodField()
+    # GPU array carried through so the sidebar sparkline + GPU detail modal
+    # can chart per-GPU usage/memory/temperature without paying for the full
+    # raw_data payload. List of {index, vendor, model, memoryTotal, memoryUsed,
+    # usage, temperature} — `[]` when the host has no discrete GPU.
+    gpu = serializers.SerializerMethodField()
 
     class Meta:
         model = SystemMetricsHistory
@@ -28,6 +33,7 @@ class SystemMetricsHistorySerializer(serializers.ModelSerializer):
             "processes_total",
             "processes_running",
             "logins_total",
+            "gpu",
             "recorded_at",
         ]
 
@@ -45,6 +51,10 @@ class SystemMetricsHistorySerializer(serializers.ModelSerializer):
 
     def get_logins_total(self, obj):
         return (self._raw(obj).get("logins") or {}).get("total")
+
+    def get_gpu(self, obj):
+        gpu = self._raw(obj).get("gpu")
+        return gpu if isinstance(gpu, list) else []
 
 
 class SystemMetricsHistoryDetailSerializer(SystemMetricsHistorySerializer):

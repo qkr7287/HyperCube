@@ -2,16 +2,21 @@
   Small "?" help icon with a hover-triggered explanation bubble.
   Drops in next to any label. Text is short, plain-language, and
   appears without a click so the layout stays clean.
+
+  Default placement is `bottom-start` — bubble drops below the glyph
+  and anchors at its left edge. That keeps the bubble inside modals
+  whose header is near the top of the viewport (where `top` would
+  clip the bubble off-screen) and dodges the right-edge clip too.
 -->
 <script lang="ts">
 	let {
 		text,
 		label = '설명',
-		placement = 'top',
+		placement = 'bottom-start',
 	}: {
 		text: string;
 		label?: string;
-		placement?: 'top' | 'bottom' | 'left' | 'right';
+		placement?: 'top' | 'bottom' | 'left' | 'right' | 'bottom-start' | 'bottom-end' | 'top-start' | 'top-end';
 	} = $props();
 </script>
 
@@ -84,10 +89,30 @@
 		left: 50%;
 		transform: translate(-50%, -2px);
 	}
+	.info-bubble[data-placement='top-start'] {
+		bottom: calc(100% + 8px);
+		left: 0;
+		transform: translate(0, -2px);
+	}
+	.info-bubble[data-placement='top-end'] {
+		bottom: calc(100% + 8px);
+		right: 0;
+		transform: translate(0, -2px);
+	}
 	.info-bubble[data-placement='bottom'] {
 		top: calc(100% + 8px);
 		left: 50%;
 		transform: translate(-50%, 2px);
+	}
+	.info-bubble[data-placement='bottom-start'] {
+		top: calc(100% + 8px);
+		left: 0;
+		transform: translate(0, 2px);
+	}
+	.info-bubble[data-placement='bottom-end'] {
+		top: calc(100% + 8px);
+		right: 0;
+		transform: translate(0, 2px);
 	}
 	.info-bubble[data-placement='left'] {
 		right: calc(100% + 10px);
@@ -109,9 +134,21 @@
 	.info-tip:focus-visible .info-bubble[data-placement='top'] {
 		transform: translate(-50%, 0);
 	}
+	.info-tip:hover .info-bubble[data-placement='top-start'],
+	.info-tip:focus-visible .info-bubble[data-placement='top-start'],
+	.info-tip:hover .info-bubble[data-placement='top-end'],
+	.info-tip:focus-visible .info-bubble[data-placement='top-end'] {
+		transform: translate(0, 0);
+	}
 	.info-tip:hover .info-bubble[data-placement='bottom'],
 	.info-tip:focus-visible .info-bubble[data-placement='bottom'] {
 		transform: translate(-50%, 0);
+	}
+	.info-tip:hover .info-bubble[data-placement='bottom-start'],
+	.info-tip:focus-visible .info-bubble[data-placement='bottom-start'],
+	.info-tip:hover .info-bubble[data-placement='bottom-end'],
+	.info-tip:focus-visible .info-bubble[data-placement='bottom-end'] {
+		transform: translate(0, 0);
 	}
 	.info-tip:hover .info-bubble[data-placement='left'],
 	.info-tip:focus-visible .info-bubble[data-placement='left'] {

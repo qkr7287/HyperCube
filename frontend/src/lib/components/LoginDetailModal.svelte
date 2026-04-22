@@ -1,19 +1,69 @@
 <script lang="ts">
 	import { sendCommand } from '$lib/stores/ws-store';
-	import { adaptLoginDetail } from '$lib/utils/data-adapter';
+	import { adaptLoginDetail, adaptLoginHistory, type LoginHistory } from '$lib/utils/data-adapter';
+	import MetricTrendChart from './MetricTrendChart.svelte';
+	import InfoTooltip from './InfoTooltip.svelte';
 
 	let {
 		open = false,
+		systemInfo = null,
+		agentId = '',
+		accessToken = '',
 		onClose = () => {},
 		uptimeSeconds = 0,
 	}: {
 		open: boolean;
+		systemInfo?: any;
+		agentId?: string;
+		accessToken?: string;
 		onClose: () => void;
 		uptimeSeconds?: number;
 	} = $props();
 
+	let liveLoginTotal = $derived(systemInfo?.logins?.total ?? 0);
+
 	let loading = $state(true);
 	let data: any = $state(null);
+
+	// "누가 언제 접속했다 나갔는지" — `users_history` subCommand.
+	// Agent that doesn't yet support this command responds with an error;
+	// we surface that as `historyNotSupported` so the UI shows a friendly
+	// notice instead of a generic error.
+	let history: LoginHistory | null = $state(null);
+	let historyLoading = $state(false);
+	let historyNotSupported = $state(false);
+
+	function formatStart(iso: string): string {
+		if (!iso) return '-';
+		const d = new Date(iso);
+		if (Number.isNaN(d.getTime())) return iso;
+		const pad = (n: number) => n.toString().padStart(2, '0');
+		return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+	}
+
+	function formatDuration(seconds: number | null, active: boolean): string {
+		if (active) return '접속 중';
+		if (seconds == null) return '-';
+		if (seconds < 60) return `${seconds}초`;
+		const mins = Math.floor(seconds / 60);
+		if (mins < 60) return `${mins}분`;
+		const hours = Math.floor(mins / 60);
+		const remMins = mins % 60;
+		if (hours < 24) return remMins > 0 ? `${hours}시간 ${remMins}분` : `${hours}시간`;
+		const days = Math.floor(hours / 24);
+		const remHours = hours % 24;
+		return remHours > 0 ? `${days}일 ${remHours}시간` : `${days}일`;
+	}
+
+	function endReasonLabel(reason?: string): string {
+		switch (reason) {
+			case 'crash': return '비정상 종료';
+			case 'shutdown': return '시스템 종료';
+			case 'reboot': return '재부팅';
+			case 'logout':
+			default: return '정상 로그아웃';
+		}
+	}
 
 	function formatUptime(seconds: number): string {
 		if (!seconds || seconds <= 0) return '0초';
@@ -38,6 +88,28 @@
 		loading = false;
 	}
 
+	async function fetchHistory() {
+		historyLoading = true;
+		historyNotSupported = false;
+		try {
+			const raw = await sendCommand('system_info', {
+				subCommand: 'users_history',
+				limit: 100,
+			});
+			history = adaptLoginHistory(raw);
+		} catch (e: any) {
+			// Agent doesn't know this subCommand yet → typical error string
+			// from the backend: "Invalid subCommand: users_history. Valid: ..."
+			const msg = String(e?.message ?? e ?? '');
+			if (/invalid\s*subcommand/i.test(msg) || /unknown/i.test(msg)) {
+				historyNotSupported = true;
+			} else {
+				console.error('[LoginDetailModal] users_history failed:', e);
+			}
+		}
+		historyLoading = false;
+	}
+
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') onClose();
 	}
@@ -45,6 +117,7 @@
 	$effect(() => {
 		if (open) {
 			fetchData();
+			fetchHistory();
 			document.addEventListener('keydown', handleKeydown);
 		} else {
 			document.removeEventListener('keydown', handleKeydown);
@@ -65,6 +138,25 @@
 		</div>
 
 		<div class="modal-content">
+			<div class="section-label">
+				로그인 사용자 수 추이
+				<InfoTooltip
+					placement="bottom-start"
+					text="서버에 동시에 로그인되어 있던 사용자 수가 시간에 따라 어떻게 바뀌었는지 보여줘요. 평소보다 갑자기 많아지거나 새벽에 늘어나면 누가 이상한 시간에 접속했는지 확인해 볼 수 있어요."
+				/>
+				<span class="section-current">현재 {liveLoginTotal}명</span>
+			</div>
+			<MetricTrendChart
+				{agentId}
+				{accessToken}
+				metricField="logins_total"
+				liveValue={liveLoginTotal}
+				label="로그인 사용자 수"
+				color="#facc15"
+				unit="count"
+				defaultRange="1h"
+			/>
+
 			{#if loading}
 				<div class="loading-state">로그인 정보를 불러오는 중...</div>
 			{:else if data}
@@ -138,6 +230,67 @@
 					</div>
 				{/if}
 			{/if}
+
+			<div class="section-label">
+				로그인 히스토리
+				<InfoTooltip
+					placement="bottom-start"
+					text="과거에 누가 이 서버에 접속했다 나갔는지의 기록이에요 (wtmp). 비정상 종료(crash)나 이상한 시간대 접속을 찾을 때 유용해요."
+				/>
+				{#if history && !history.unavailable}
+					<span class="section-current">
+						{history.sessions.length}건{history.truncated ? ` (전체 ${history.totalSessions}건 중 최근)` : ''}
+					</span>
+				{/if}
+			</div>
+			{#if historyLoading}
+				<div class="loading-state">로그인 히스토리를 불러오는 중...</div>
+			{:else if historyNotSupported}
+				<div class="notice-card">
+					이 Agent는 아직 <code>users_history</code> 명령을 지원하지 않아요. Agent 업데이트 후 다시 확인해 주세요.
+				</div>
+			{:else if history?.unavailable}
+				<div class="notice-card">
+					{history.reason || 'wtmp 파일이 마운트되지 않아 히스토리를 읽을 수 없어요.'}
+				</div>
+			{:else if history && history.sessions.length > 0}
+				<div class="table-wrapper">
+					<table>
+						<thead>
+							<tr>
+								<th>사용자</th>
+								<th>터미널</th>
+								<th>IP 주소</th>
+								<th>로그인 시간</th>
+								<th>지속</th>
+								<th>종료 사유</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each history.sessions as s}
+								<tr>
+									<td class="mono">{s.user || '-'}</td>
+									<td>{s.terminal || '-'}</td>
+									<td class="mono">{s.host || '-'}</td>
+									<td>{formatStart(s.startTime)}</td>
+									<td>{formatDuration(s.durationSeconds, s.active)}</td>
+									<td>
+										{#if s.active}
+											<span class="status-badge active">접속 중</span>
+										{:else}
+											<span class="status-badge reason" class:crash={s.endReason === 'crash'}>
+												{endReasonLabel(s.endReason)}
+											</span>
+										{/if}
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{:else}
+				<div class="notice-card muted">기록된 로그인 히스토리가 없어요.</div>
+			{/if}
 		</div>
 	</div>
 </div>
@@ -151,7 +304,7 @@
 		backdrop-filter: blur(4px);
 	}
 	.modal {
-		width: 860px; max-height: 85vh;
+		width: min(1080px, 94vw); max-height: 90vh;
 		background: #0d1117; border: 1px solid #30d5c8;
 		border-radius: 12px; display: flex;
 		flex-direction: column; overflow: hidden;
@@ -163,9 +316,42 @@
 	.modal-title { font-size: 17px; font-weight: 700; color: #d9d9d9; }
 	.close-btn { background: none; border: none; cursor: pointer; padding: 6px; display: flex; }
 	.close-btn:hover svg { stroke: #cbd5e1; }
-	.modal-content { flex: 1; overflow-y: auto; padding: 28px; display: flex; flex-direction: column; gap: 28px; }
+	.modal-content {
+		flex: 1;
+		overflow-y: auto;
+		overflow-x: hidden;
+		padding: 28px;
+		display: flex;
+		flex-direction: column;
+		gap: 28px;
+		scrollbar-width: thin;
+		scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+	}
+	.modal-content::-webkit-scrollbar { width: 10px; }
+	.modal-content::-webkit-scrollbar-track { background: transparent; }
+	.modal-content::-webkit-scrollbar-thumb {
+		background: rgba(148, 163, 184, 0.3);
+		border: 2px solid transparent;
+		border-radius: 8px;
+		background-clip: padding-box;
+	}
+	.modal-content::-webkit-scrollbar-thumb:hover {
+		background: rgba(48, 213, 200, 0.55);
+		background-clip: padding-box;
+	}
+	/* Stop flex from compressing tables when total content exceeds the modal
+	   height — without this, the "현재 로그인된 사용자" wrapper gets squashed
+	   to ~9px and hides behind the next section. */
+	.modal-content > * { flex-shrink: 0; }
 	.loading-state { text-align: center; color: #64748b; font-size: 14px; padding: 32px; }
-	.section-label { font-size: 14px; font-weight: 700; color: #64748b; }
+	.section-label {
+		font-size: 14px; font-weight: 700; color: #64748b;
+		display: flex; align-items: baseline; gap: 10px;
+	}
+	.section-current {
+		margin-left: auto; font-size: 13px; font-weight: 700;
+		color: #facc15; font-variant-numeric: tabular-nums;
+	}
 
 	.stats-row {
 		display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
@@ -202,6 +388,23 @@
 	}
 	.status-badge.active { color: #30d5c8; background: rgba(48,213,200,0.1); }
 	.status-badge.inactive { color: #ef4444; background: rgba(239,68,68,0.1); }
+	.status-badge.reason { color: #94a3b8; background: rgba(148,163,184,0.12); }
+	.status-badge.reason.crash { color: #ef4444; background: rgba(239,68,68,0.12); }
+
+	.notice-card {
+		padding: 16px 18px; border-radius: 10px;
+		background: rgba(250,204,21,0.06);
+		border: 1px solid rgba(250,204,21,0.25);
+		color: #cbd5e1; font-size: 13px; line-height: 1.55;
+	}
+	.notice-card.muted {
+		background: #121720; border-color: rgba(100,116,139,0.2); color: #64748b;
+	}
+	.notice-card code {
+		font-family: monospace; font-size: 12px;
+		padding: 1px 6px; border-radius: 4px;
+		background: rgba(148,163,184,0.12); color: #e2e8f0;
+	}
 
 	.empty-state {
 		display: flex; flex-direction: column; align-items: center;

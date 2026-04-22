@@ -32,6 +32,7 @@
 	let {
 		agentId,
 		metricField,
+		metricExtractor = null,
 		liveValue,
 		label,
 		color = '#30d5c8',
@@ -42,8 +43,13 @@
 		extraQuery = '',
 	}: {
 		agentId: string;
-		/** field name in the backend metrics response (cpu_usage, memory_usage, etc.). */
+		/** field name in the backend metrics response (cpu_usage, memory_usage, etc.).
+		 *  Ignored when `metricExtractor` is provided. */
 		metricField: string;
+		/** Extract a scalar out of a row when the data isn't a flat column —
+		 *  e.g. GPU charts pull `row.gpu[index].usage`. Return null/NaN to
+		 *  skip that row. */
+		metricExtractor?: ((row: any) => number | null | undefined) | null;
 		/** current live value from WS systemInfo. Each change appends to the chart. */
 		liveValue: number;
 		label: string;
@@ -109,8 +115,17 @@
 			const rows: any[] = payload?.data ?? payload?.results ?? payload ?? [];
 			// Backend returns oldest→newest when limit is set (see paginate override).
 			const kept = downsample(rows);
-			values = kept.map((r) => Number(r?.[metricField] ?? 0));
-			labels = kept.map((r) => formatClockLabel(r?.recorded_at, forRange));
+			const read = metricExtractor
+				? (r: any) => {
+					const v = metricExtractor(r);
+					return typeof v === 'number' && !Number.isNaN(v) ? v : NaN;
+				}
+				: (r: any) => Number(r?.[metricField] ?? 0);
+			const paired = kept
+				.map((r) => [read(r), formatClockLabel(r?.recorded_at, forRange)] as const)
+				.filter(([v]) => !Number.isNaN(v));
+			values = paired.map(([v]) => v as number);
+			labels = paired.map(([, l]) => l);
 			loadedKey = `${agentId}|${forRange}`;
 		} catch (err) {
 			console.error('[MetricTrendChart] history fetch failed', err);
@@ -325,10 +340,12 @@
 		display: flex;
 		flex-direction: column;
 		gap: 10px;
+		min-width: 0;
 	}
 
 	.tabs {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 6px;
 		align-items: center;
 	}

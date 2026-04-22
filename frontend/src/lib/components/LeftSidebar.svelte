@@ -7,7 +7,10 @@
 	import iconNetwork from '$lib/assets/icons/sidebar-network.svg';
 	import iconLogins from '$lib/assets/icons/sidebar-logins.svg';
 	import iconProcess from '$lib/assets/icons/sidebar-process.svg';
+	import iconGpu from '$lib/assets/icons/sidebar-gpu.svg';
 	import LiveSparkline from './LiveSparkline.svelte';
+	import { base } from '$app/paths';
+	import type { GpuMetric } from '$lib/utils/data-adapter';
 
 	interface SystemInfo {
 		hostname: string;
@@ -29,6 +32,7 @@
 		network?: { connections?: number; interfaces?: string[] };
 		logins?: { total?: number; active?: number };
 		processes?: { total?: number; running?: number };
+		gpu?: GpuMetric[];
 	}
 
 	interface AgentOption {
@@ -42,6 +46,7 @@
 		totalContainers = 0,
 		agents = [],
 		selectedServerId = '',
+		accessToken = '',
 		onSwitchServer = (_id: string) => {},
 		onOpenCpu = () => {},
 		onOpenMemory = () => {},
@@ -49,11 +54,13 @@
 		onOpenNetwork = () => {},
 		onOpenLogin = () => {},
 		onOpenProcess = () => {},
+		onOpenGpu = () => {},
 	}: {
 		systemInfo: SystemInfo | null;
 		totalContainers: number;
 		agents?: AgentOption[];
 		selectedServerId?: string;
+		accessToken?: string;
 		onSwitchServer?: (id: string) => void;
 		onOpenCpu: () => void;
 		onOpenMemory: () => void;
@@ -61,7 +68,67 @@
 		onOpenNetwork: () => void;
 		onOpenLogin: () => void;
 		onOpenProcess: () => void;
+		onOpenGpu?: () => void;
 	} = $props();
+
+	// Sidebar sparklines seed themselves from the same 10-minute window that
+	// the detail modals use, so the previews match the chart-in-modal shape
+	// the moment the page loads (instead of starting blank and filling slowly).
+	type Seeded = { t: number; v: number }[];
+	let seedCpu = $state<Seeded>([]);
+	let seedMem = $state<Seeded>([]);
+	let seedDisk = $state<Seeded>([]);
+	let seedNet = $state<Seeded>([]);
+	let seedProc = $state<Seeded>([]);
+	let seedLogins = $state<Seeded>([]);
+	let seedGpu = $state<Seeded>([]);
+
+	async function seedSparklines(agentId: string, token: string) {
+		if (!agentId || !token) return;
+		try {
+			const qs = new URLSearchParams({ agent: agentId, range: '10m', limit: '120' });
+			const res = await fetch(`${base}/api/metrics/system/?${qs.toString()}`, {
+				headers: { Authorization: `Bearer ${token}` },
+			});
+			if (!res.ok) return;
+			const json = await res.json();
+			// Backend wraps list responses as {success, data: [...]} via the
+			// common renderer; when a limit is present the `data` is a flat
+			// array, otherwise it's a paginated `{results: [...]}`.
+			const rows: any[] = Array.isArray(json)
+				? json
+				: Array.isArray(json?.data)
+				  ? json.data
+				  : (json?.data?.results ?? json?.results ?? []);
+			const pick = (key: string): Seeded =>
+				rows
+					.map((r) => ({ t: Date.parse(r.recorded_at), v: Number(r[key]) }))
+					.filter((s) => !Number.isNaN(s.t) && !Number.isNaN(s.v))
+					.sort((a, b) => a.t - b.t);
+			seedCpu = pick('cpu_usage');
+			seedMem = pick('memory_usage');
+			seedDisk = pick('disk_usage');
+			seedNet = pick('network_connections');
+			seedProc = pick('processes_total');
+			seedLogins = pick('logins_total');
+			// GPU seed reads row.gpu[0].usage (array lives inside the list
+			// payload thanks to the `gpu` SerializerMethodField). Rows without
+			// a GPU drop out of the sparkline window.
+			seedGpu = rows
+				.map((r) => {
+					const g = Array.isArray(r.gpu) ? r.gpu[0] : null;
+					return { t: Date.parse(r.recorded_at), v: Number(g?.usage ?? NaN) };
+				})
+				.filter((s) => !Number.isNaN(s.t) && !Number.isNaN(s.v))
+				.sort((a, b) => a.t - b.t);
+		} catch (e) {
+			console.error('[LeftSidebar] seedSparklines failed:', e);
+		}
+	}
+
+	$effect(() => {
+		seedSparklines(selectedServerId, accessToken);
+	});
 
 	let switcherOpen = $state(false);
 	let currentAgent = $derived(agents.find((a) => a.id === selectedServerId) ?? null);
@@ -175,6 +242,13 @@
 			{@const cpuPct = Math.round(systemInfo.cpu.usage ?? 0)}
 			{@const netCount = systemInfo.network?.connections ?? 0}
 			{@const procCount = systemInfo.processes?.total ?? 0}
+			{@const loginCount = systemInfo.logins?.total ?? 0}
+			{@const gpuList = systemInfo.gpu ?? []}
+			{@const primaryGpu = gpuList[0] ?? null}
+			{@const gpuPct = primaryGpu ? Math.round(primaryGpu.usage ?? 0) : 0}
+			{@const gpuSpec = primaryGpu
+				? (gpuList.length > 1 ? `${primaryGpu.model} · +${gpuList.length - 1}` : primaryGpu.model)
+				: ''}
 
 			<div class="info-group">
 				<div class="group-label">Resources</div>
@@ -187,7 +261,7 @@
 						<span class="metric-value">{cpuPct}%</span>
 					</div>
 					<div class="metric-chart">
-						<LiveSparkline value={cpuPct} stroke="#30d5c8" fill="rgba(48,213,200,0.16)" />
+						<LiveSparkline value={cpuPct} initialHistory={seedCpu} stroke="#30d5c8" fill="rgba(48,213,200,0.16)" />
 					</div>
 				</div>
 
@@ -199,7 +273,7 @@
 						<span class="metric-value">{memPct}%</span>
 					</div>
 					<div class="metric-chart">
-						<LiveSparkline value={memPct} stroke="#8b5cf6" fill="rgba(139,92,246,0.18)" />
+						<LiveSparkline value={memPct} initialHistory={seedMem} stroke="#8b5cf6" fill="rgba(139,92,246,0.18)" />
 					</div>
 				</div>
 
@@ -211,9 +285,23 @@
 						<span class="metric-value">{diskPct}%</span>
 					</div>
 					<div class="metric-chart">
-						<LiveSparkline value={diskPct} stroke="#f59e0b" fill="rgba(245,158,11,0.18)" />
+						<LiveSparkline value={diskPct} initialHistory={seedDisk} stroke="#f59e0b" fill="rgba(245,158,11,0.18)" />
 					</div>
 				</div>
+
+				{#if primaryGpu}
+					<div class="metric-card clickable" onclick={onOpenGpu} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenGpu()}>
+						<div class="metric-head">
+							<img src={iconGpu} alt="" class="icon" />
+							<span class="metric-name">GPU</span>
+							<span class="metric-spec" title={gpuSpec}>{gpuSpec}</span>
+							<span class="metric-value">{gpuPct}%</span>
+						</div>
+						<div class="metric-chart">
+							<LiveSparkline value={gpuPct} initialHistory={seedGpu} stroke="#22d3ee" fill="rgba(34,211,238,0.16)" />
+						</div>
+					</div>
+				{/if}
 			</div>
 
 			<div class="info-group">
@@ -227,16 +315,20 @@
 						<span class="metric-value">{netCount}</span>
 					</div>
 					<div class="metric-chart">
-						<LiveSparkline value={netCount} min={0} max={Math.max(netCount * 1.4, 10)} stroke="#4ade80" fill="rgba(74,222,128,0.15)" />
+						<LiveSparkline value={netCount} initialHistory={seedNet} min={0} max={Math.max(netCount * 1.4, 10)} stroke="#4ade80" fill="rgba(74,222,128,0.15)" />
 					</div>
 				</div>
 
-				<div class="info-row clickable" onclick={onOpenLogin} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenLogin()}>
-					<div class="info-label-group">
+				<div class="metric-card clickable" onclick={onOpenLogin} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenLogin()}>
+					<div class="metric-head">
 						<img src={iconLogins} alt="" class="icon" />
-						<span class="label">Logins</span>
+						<span class="metric-name">Logins</span>
+						<span class="metric-spec">users</span>
+						<span class="metric-value">{loginCount}</span>
 					</div>
-					<span class="value">{systemInfo.logins?.total ?? 0}</span>
+					<div class="metric-chart">
+						<LiveSparkline value={loginCount} initialHistory={seedLogins} min={0} max={Math.max(loginCount + 2, 5)} stroke="#facc15" fill="rgba(250,204,21,0.14)" />
+					</div>
 				</div>
 
 				<div class="metric-card clickable" onclick={onOpenProcess} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenProcess()}>
@@ -247,7 +339,7 @@
 						<span class="metric-value">{procCount}</span>
 					</div>
 					<div class="metric-chart">
-						<LiveSparkline value={procCount} min={0} max={Math.max(procCount * 1.3, 100)} stroke="#f87171" fill="rgba(248,113,113,0.14)" />
+						<LiveSparkline value={procCount} initialHistory={seedProc} min={0} max={Math.max(procCount * 1.3, 100)} stroke="#f87171" fill="rgba(248,113,113,0.14)" />
 					</div>
 				</div>
 			</div>
@@ -391,21 +483,6 @@
 		align-items: center;
 		gap: 10px;
 		min-height: 32px;
-	}
-
-	.info-row.clickable {
-		cursor: pointer;
-		border-radius: 8px;
-		padding: 6px 10px;
-		margin: -6px -10px;
-		transition: background 0.15s ease;
-	}
-
-	.info-row.clickable:hover {
-		background: rgba(48, 213, 200, 0.08);
-	}
-	.info-row.clickable:hover .icon {
-		filter: drop-shadow(0 0 6px rgba(48, 213, 200, 0.45));
 	}
 
 	.info-label-group {

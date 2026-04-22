@@ -22,6 +22,7 @@
 	import CpuDetailModal from '$lib/components/CpuDetailModal.svelte';
 	import MemoryDetailModal from '$lib/components/MemoryDetailModal.svelte';
 	import DiskDetailModal from '$lib/components/DiskDetailModal.svelte';
+	import GpuDetailModal from '$lib/components/GpuDetailModal.svelte';
 	import logoHypercube from '$lib/assets/logo_hypercube.png';
 	import { buildNetworkTrafficIndex, type TopologyNetworkTrafficIndex } from '$lib/topology/traffic-adapter';
 	import { resolveGroup, groupContainersByStack } from '$lib/utils/container-grouping';
@@ -82,6 +83,7 @@
 	let networkModalOpen = false;
 	let loginModalOpen = false;
 	let processModalOpen = false;
+	let gpuModalOpen = false;
 
 	// ----- Auth + Server Selection -----
 	let accessToken = '';
@@ -537,6 +539,7 @@
 		totalContainers={containers.length}
 		{agents}
 		{selectedServerId}
+		{accessToken}
 		onSwitchServer={selectServer}
 		onOpenCpu={() => { cpuModalOpen = true; }}
 		onOpenMemory={() => { memoryModalOpen = true; }}
@@ -544,6 +547,7 @@
 		onOpenNetwork={() => { networkModalOpen = true; }}
 		onOpenLogin={() => { loginModalOpen = true; }}
 		onOpenProcess={() => { processModalOpen = true; }}
+		onOpenGpu={() => { gpuModalOpen = true; }}
 	/>
 
 	<!-- Center: 3D Topology (새 OOP topology layer, Phase 1) -->
@@ -663,6 +667,9 @@
 
 <LoginDetailModal
 	open={loginModalOpen}
+	{systemInfo}
+	agentId={selectedServerId}
+	{accessToken}
 	onClose={() => { loginModalOpen = false; }}
 	uptimeSeconds={systemInfo?.uptime ?? 0}
 />
@@ -673,6 +680,14 @@
 	agentId={selectedServerId}
 	{accessToken}
 	onClose={() => { processModalOpen = false; }}
+/>
+
+<GpuDetailModal
+	open={gpuModalOpen}
+	{systemInfo}
+	agentId={selectedServerId}
+	{accessToken}
+	onClose={() => { gpuModalOpen = false; }}
 />
 </div>
 {/if}

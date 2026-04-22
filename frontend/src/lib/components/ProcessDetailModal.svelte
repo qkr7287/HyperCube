@@ -95,7 +95,7 @@
 			<div class="section-label">
 				프로세스 수 추이
 				<InfoTooltip
-					placement="right"
+					placement="bottom-start"
 					text="서버 위에 돌아가는 모든 프로세스 총 개수의 시간 변화예요. 평소에는 비슷한 수치로 유지되고, 새 컨테이너가 뜨면 살짝 올라가요. 갑자기 튀는 구간은 배포/빌드/백업 작업을 의심해 볼 수 있어요."
 				/>
 				<span class="section-current">현재 {liveProcessTotal}</span>

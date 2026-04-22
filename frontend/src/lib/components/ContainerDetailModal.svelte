@@ -586,7 +586,7 @@
 							<div class="metrics-card-header">
 								<span class="metrics-card-title">CPU Usage</span>
 								<InfoTooltip
-									placement="right"
+									placement="bottom-start"
 									text="이 컨테이너가 호스트 CPU를 얼마나 쓰고 있는지예요. 100%면 단일 코어 한 개를 가득 쓰는 중이고, 다중 코어면 100%를 넘을 수도 있어요. 오래 높게 머물면 로직이 과부하라는 신호예요."
 								/>
 								<span class="metrics-current cpu">{cpuPct.toFixed(2)}%</span>
@@ -608,7 +608,7 @@
 							<div class="metrics-card-header">
 								<span class="metrics-card-title">Memory Usage</span>
 								<InfoTooltip
-									placement="right"
+									placement="bottom-start"
 									text="컨테이너에 할당된 메모리 중 실제 사용하는 비율이에요. 100%에 가까우면 OOM (메모리 부족으로 컨테이너가 죽을 위험)이 생길 수 있어요."
 								/>
 								<span class="metrics-current memory">{memPct.toFixed(1)}%</span>
@@ -632,7 +632,7 @@
 							<div class="metrics-card-header">
 								<span class="metrics-card-title muted">Network Traffic</span>
 								<InfoTooltip
-									placement="right"
+									placement="bottom-start"
 									text="컨테이너가 주고받은 네트워크 총량 (누적). Inbound는 받은 데이터, Outbound는 보낸 데이터예요. 숫자가 꾸준히 커지면 계속 트래픽이 오가는 중이고, 평평하면 통신이 없거나 적은 상태예요."
 								/>
 							</div>
@@ -658,7 +658,7 @@
 							<div class="metrics-card-header">
 								<span class="metrics-card-title muted">Disk I/O</span>
 								<InfoTooltip
-									placement="right"
+									placement="bottom-start"
 									text="컨테이너가 디스크를 읽고 쓴 누적 양. READ는 읽은 데이터, WRITE는 쓴 데이터예요. 숫자가 꾸준히 올라가면 지금 디스크 접근 중이고, 멈춰 있으면 I/O가 없는 상태예요."
 								/>
 							</div>
@@ -868,6 +868,7 @@
 	.modal-content {
 		flex: 1;
 		overflow-y: auto;
+		overflow-x: hidden;
 		padding: 24px;
 		display: flex;
 		flex-direction: column;
@@ -996,7 +997,9 @@
 	/* Metrics Tab */
 	.metrics-grid-top, .metrics-grid-bottom {
 		display: grid;
-		grid-template-columns: 1fr 1fr;
+		/* minmax(0, 1fr) lets columns actually shrink below intrinsic width —
+		   without it, charts/tab rows force horizontal scroll in the modal. */
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 		gap: 24px;
 	}
 
@@ -1007,13 +1010,18 @@
 		display: flex;
 		flex-direction: column;
 		gap: 4px;
+		min-width: 0;
 	}
 
 	.metrics-card-header {
 		display: flex;
-		justify-content: space-between;
 		align-items: center;
+		gap: 6px;
+		margin-bottom: 10px;
 	}
+
+	/* Push "current value" cell to the far right; title + ? sit together on the left. */
+	.metrics-card-header > .metrics-current { margin-left: auto; }
 
 	.metrics-card-title { font-size: 13px; font-weight: 700; color: #cbd5e1; }
 	.metrics-card-title.muted { color: #64748b; }

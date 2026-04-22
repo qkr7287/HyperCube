@@ -76,7 +76,7 @@
 			<div class="section-label">
 				네트워크 연결 수 추이
 				<InfoTooltip
-					placement="right"
+					placement="bottom-start"
 					text="지금 서버가 열어두고 있는 TCP 연결 개수예요. 평소 대비 갑자기 치솟으면 외부에서 요청이 몰렸거나 어떤 프로그램이 연결을 정리하지 않고 쌓고 있는 상황일 수 있어요."
 				/>
 				<span class="section-current">현재 {liveConns}</span>

@@ -98,7 +98,7 @@
 			<div class="section-label">
 				메모리 사용률 추이
 				<InfoTooltip
-					placement="right"
+					placement="bottom-start"
 					text="서버 메모리(RAM)가 얼마나 차 있는지 시간 순서로 보여줘요. 숫자가 꾸준히 올라만 가고 내려오지 않으면 어떤 프로그램이 메모리를 계속 쥐고 있는 거라 재시작이 필요할 수 있어요. 90% 이상 오래 머물면 서버가 느려지기 직전이에요."
 				/>
 				<span class="section-current">현재 {usagePercent}%</span>

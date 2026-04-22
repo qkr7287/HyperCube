@@ -19,6 +19,25 @@ export function formatBytes(bytes: number | undefined | null): string {
 
 // ----- System Metrics -----
 
+/**
+ * Single GPU sample shipped by the Agent in every system_metrics payload.
+ * All values come directly from nvidia-smi (or systeminformation.graphics fallback).
+ *
+ * - `memoryTotal` / `memoryUsed` are **bytes** (Agent converts MiB→bytes).
+ * - `usage` is 0–100 (%).
+ * - `temperature` is °C and may be absent on fallback-only drivers.
+ * - Servers without a discrete GPU send `gpu: []`.
+ */
+export interface GpuMetric {
+	index: number;
+	vendor: string;
+	model: string;
+	memoryTotal: number;
+	memoryUsed: number;
+	usage: number;
+	temperature?: number;
+}
+
 export interface SystemInfo {
 	hostname: string;
 	os: string;
@@ -41,6 +60,7 @@ export interface SystemInfo {
 	logins: { total: number; active: number };
 	processes: { total: number; running: number };
 	docker: { version: string; containers: number; images: number; driver?: string; storage?: any };
+	gpu: GpuMetric[];
 }
 
 export function transformSystemMetrics(msg: any): SystemInfo {
@@ -53,6 +73,7 @@ export function transformSystemMetrics(msg: any): SystemInfo {
 	const docker = d.docker ?? {};
 	const logins = d.logins ?? {};
 	const procs = d.processes ?? {};
+	const gpu = Array.isArray(d.gpu) ? d.gpu : [];
 
 	const memTotal = typeof mem.total === 'number' ? mem.total : 0;
 	const memUsed = typeof mem.used === 'number' ? mem.used : 0;
@@ -125,6 +146,18 @@ export function transformSystemMetrics(msg: any): SystemInfo {
 			driver: docker.driver,
 			storage: docker.storage,
 		},
+		gpu: gpu
+			.filter((g: any) => g && typeof g === 'object')
+			.map((g: any): GpuMetric => ({
+				index: typeof g.index === 'number' ? g.index : 0,
+				vendor: typeof g.vendor === 'string' ? g.vendor : 'Unknown',
+				model: typeof g.model === 'string' ? g.model : 'Unknown GPU',
+				memoryTotal: typeof g.memoryTotal === 'number' ? g.memoryTotal : 0,
+				memoryUsed: typeof g.memoryUsed === 'number' ? g.memoryUsed : 0,
+				usage: typeof g.usage === 'number' ? g.usage : 0,
+				temperature: typeof g.temperature === 'number' ? g.temperature : undefined,
+			}))
+			.sort((a, b) => a.index - b.index),
 	};
 }
 
@@ -177,6 +210,13 @@ export function mergeSystemInfo(prev: SystemInfo, incoming: SystemInfo): SystemI
 			driver: incoming.docker.driver || prev.docker.driver,
 			storage: incoming.docker.storage || prev.docker.storage,
 		},
+		// GPU: keep the last non-empty snapshot we've seen. Delta Sync ticks
+		// that didn't change anything drop the `gpu` key entirely, which the
+		// transformer then surfaces as `[]`. Blindly overwriting would wipe
+		// the sidebar card between delta frames. A genuine "GPU removed"
+		// transition only happens on hardware change → Agent restart, at
+		// which point the store is cleared on reconnect anyway.
+		gpu: incoming.gpu.length > 0 ? incoming.gpu : prev.gpu,
 	};
 }
 
@@ -356,5 +396,56 @@ export function adaptLoginDetail(d: any): any {
 			loginTime: [u.date, u.time].filter(Boolean).join(' ') || u.loginTime || '',
 			active: true,
 		})),
+	};
+}
+
+/**
+ * Agent `users_history` response → frontend shape.
+ *
+ * Pass-through adapter that normalizes the shape without reformatting
+ * timestamps — components format for display. `unavailable` is kept so
+ * the UI can distinguish "not mounted / not supported" from "empty".
+ */
+export interface LoginHistorySession {
+	user: string;
+	terminal: string;
+	host: string;
+	startTime: string;
+	endTime: string | null;
+	durationSeconds: number | null;
+	active: boolean;
+	endReason?: 'logout' | 'crash' | 'shutdown' | 'reboot';
+}
+
+export interface LoginHistory {
+	sessions: LoginHistorySession[];
+	totalSessions: number;
+	truncated: boolean;
+	source: string;
+	unavailable: boolean;
+	reason?: string;
+}
+
+export function adaptLoginHistory(d: any): LoginHistory | null {
+	if (!d) return null;
+	const rawSessions: any[] = Array.isArray(d.sessions) ? d.sessions : [];
+	return {
+		sessions: rawSessions.map((s) => ({
+			user: s.user ?? '',
+			terminal: s.terminal ?? '',
+			host: s.host ?? '',
+			startTime: s.startTime ?? '',
+			endTime: s.endTime ?? null,
+			durationSeconds:
+				typeof s.durationSeconds === 'number' ? s.durationSeconds : null,
+			active: !!s.active,
+			endReason: s.endReason,
+		})),
+		totalSessions:
+			typeof d.totalSessions === 'number' ? d.totalSessions : rawSessions.length,
+		truncated: !!d.truncated,
+		source: d.source ?? 'wtmp',
+		unavailable: !!d.unavailable,
+		reason: d.reason,
 	};
 }

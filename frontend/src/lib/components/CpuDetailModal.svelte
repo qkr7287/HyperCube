@@ -148,7 +148,7 @@
 				<div class="section-label">
 					CPU 사용률 추이
 					<InfoTooltip
-						placement="right"
+						placement="bottom-start"
 						text="CPU가 얼마나 바쁜지 보여주는 그래프예요. 0% = 한가, 100% = 완전 포화. 80% 이상이 길게 이어지면 서버가 힘들어하는 신호라 작업을 줄이거나 서버를 키워야 할 수 있어요."
 					/>
 					<span class="section-current">현재 {liveCpuPct}%</span>
@@ -169,7 +169,7 @@
 					<div class="section-label">
 						Load Average
 						<InfoTooltip
-							placement="right"
+							placement="bottom-start"
 							text={`최근 1분/5분/15분 동안 평균 몇 개 작업이 CPU를 쓰려고 줄 서 있었는지 보여주는 숫자예요. 내 서버 스레드 수(${cpuSpec?.threads ?? data.cores}개)보다 작으면 여유, 비슷하면 딱 찬 상태, 더 크면 작업이 밀리는 중. 꾸준히 넘으면 서버가 모자라요.`}
 						/>
 					</div>
@@ -194,7 +194,7 @@
 					코어별 사용률 히트맵
 					<span class="section-sub">스레드 {data.perCore?.length ?? 0}개</span>
 					<InfoTooltip
-						placement="right"
+						placement="bottom-start"
 						text="스레드 하나하나가 지금 얼마나 바쁜지 색으로 표시해요. 초록=한가, 노랑=적당, 빨강=꽉 참. 한 칸만 계속 빨강이면 어떤 프로그램이 그 스레드만 쓰고 있는 거라, 부하 분산이 잘 안 되는 상태일 수 있어요."
 					/>
 				</div>

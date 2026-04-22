@@ -98,7 +98,7 @@
 			<div class="section-label">
 				디스크 사용률 추이
 				<InfoTooltip
-					placement="right"
+					placement="bottom-start"
 					text="디스크(SSD/HDD)가 얼마나 차 있는지 시간 순서로 보여줘요. 90% 넘으면 공간 부족 경고, 꾸준히 올라가기만 하면 로그나 임시 파일이 계속 쌓이는 중이라 정리가 필요할 수 있어요."
 				/>
 				<span class="section-current">현재 {usagePercent}%</span>
