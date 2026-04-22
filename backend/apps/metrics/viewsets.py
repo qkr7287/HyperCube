@@ -1,3 +1,6 @@
+from datetime import timedelta
+
+from django.utils import timezone
 from django_filters import rest_framework as filters
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.mixins import ListModelMixin, RetrieveModelMixin
@@ -13,6 +16,18 @@ from .serializers import (
     SystemMetricsHistoryDetailSerializer,
     SystemMetricsHistorySerializer,
 )
+
+# Convenience shorthand → duration. Matches the frontend range tabs.
+RANGE_SHORTHAND = {
+    "1m": timedelta(minutes=1),
+    "5m": timedelta(minutes=5),
+    "10m": timedelta(minutes=10),
+    "30m": timedelta(minutes=30),
+    "1h": timedelta(hours=1),
+    "6h": timedelta(hours=6),
+    "24h": timedelta(hours=24),
+    "7d": timedelta(days=7),
+}
 
 
 class SystemMetricsFilter(filters.FilterSet):
@@ -55,6 +70,13 @@ class SystemMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+
+        # `?range=1h` shorthand rolls into from_time/to_time; it overrides any
+        # explicit from_time so the client never has to compute wall-clock.
+        range_key = self.request.query_params.get("range")
+        if range_key and range_key in RANGE_SHORTHAND:
+            qs = qs.filter(recorded_at__gte=timezone.now() - RANGE_SHORTHAND[range_key])
+
         user = self.request.user
         if getattr(user, "role", None) == "admin":
             return qs
@@ -63,6 +85,21 @@ class SystemMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet):
             requester=user
         ).values_list("agent_id", flat=True)
         return qs.filter(agent_id__in=owned_agent_ids)
+
+    def list(self, request, *args, **kwargs):
+        # `?limit=N` is a chart-friendly shortcut: return the N most-recent
+        # samples ordered oldest→newest, skipping DRF pagination entirely.
+        limit = request.query_params.get("limit")
+        if limit:
+            try:
+                n = max(1, min(int(limit), 2000))
+                qs = self.filter_queryset(self.get_queryset()).order_by("-recorded_at")[:n]
+                rows = list(qs)[::-1]
+                from rest_framework.response import Response
+                return Response(self.get_serializer(rows, many=True).data)
+            except (TypeError, ValueError):
+                pass
+        return super().list(request, *args, **kwargs)
 
     def get_serializer_class(self):
         if self.action == "retrieve":

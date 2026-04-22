@@ -630,6 +630,8 @@
 <CpuDetailModal
 	open={cpuModalOpen}
 	{systemInfo}
+	agentId={selectedServerId}
+	{accessToken}
 	onClose={() => { cpuModalOpen = false; }}
 />
 

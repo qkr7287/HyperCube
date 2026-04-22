@@ -5,6 +5,11 @@ from .models import ContainerMetricsHistory, SystemMetricsHistory
 
 class SystemMetricsHistorySerializer(serializers.ModelSerializer):
     agent_hostname = serializers.CharField(source="agent.hostname", read_only=True)
+    # raw_data JSON 에서 꺼내오는 파생 필드들 — 컬럼 추가 없이 차트용으로 노출.
+    network_connections = serializers.SerializerMethodField()
+    processes_total = serializers.SerializerMethodField()
+    processes_running = serializers.SerializerMethodField()
+    logins_total = serializers.SerializerMethodField()
 
     class Meta:
         model = SystemMetricsHistory
@@ -19,8 +24,27 @@ class SystemMetricsHistorySerializer(serializers.ModelSerializer):
             "disk_usage",
             "network_rx",
             "network_tx",
+            "network_connections",
+            "processes_total",
+            "processes_running",
+            "logins_total",
             "recorded_at",
         ]
+
+    def _raw(self, obj):
+        return obj.raw_data or {}
+
+    def get_network_connections(self, obj):
+        return (self._raw(obj).get("network") or {}).get("connections")
+
+    def get_processes_total(self, obj):
+        return (self._raw(obj).get("processes") or {}).get("total")
+
+    def get_processes_running(self, obj):
+        return (self._raw(obj).get("processes") or {}).get("running")
+
+    def get_logins_total(self, obj):
+        return (self._raw(obj).get("logins") or {}).get("total")
 
 
 class SystemMetricsHistoryDetailSerializer(SystemMetricsHistorySerializer):

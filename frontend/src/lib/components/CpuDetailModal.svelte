@@ -2,60 +2,25 @@
 	import { untrack } from 'svelte';
 	import { sendCommand } from '$lib/stores/ws-store';
 	import { adaptCpuDetail } from '$lib/utils/data-adapter';
-	import UserMetricChart from './UserMetricChart.svelte';
+	import MetricTrendChart from './MetricTrendChart.svelte';
 	import InfoTooltip from './InfoTooltip.svelte';
 
 	let {
 		open = false,
 		systemInfo = null,
+		agentId = '',
+		accessToken = '',
 		onClose = () => {},
 	}: {
 		open: boolean;
 		systemInfo: any;
+		agentId?: string;
+		accessToken?: string;
 		onClose: () => void;
 	} = $props();
 
-	// Pull live CPU % straight off the WS-fed systemInfo prop so the
-	// trend chart updates on every agent tick (no extra polling).
 	const liveCpuPct = $derived(Math.round(systemInfo?.cpu?.usage ?? 0));
 	const cpuSpec = $derived(systemInfo?.cpu ?? null);
-
-	// Rolling buffer for the usage trend — limited to the last ~2 minutes.
-	const MAX_POINTS = 60;
-	let cpuHistory = $state<number[]>([]);
-	let cpuLabels = $state<string[]>([]);
-	let lastSample: number | undefined;
-
-	$effect(() => {
-		if (!open) return;
-		const v = liveCpuPct;
-		if (typeof v !== 'number' || Number.isNaN(v)) return;
-		if (v === lastSample && cpuHistory.length > 0) return;
-		lastSample = v;
-		const now = new Date();
-		const label = `${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
-		const prevVals = untrack(() => cpuHistory);
-		const prevLabels = untrack(() => cpuLabels);
-		cpuHistory = [...prevVals, v].slice(-MAX_POINTS);
-		cpuLabels = [...prevLabels, label].slice(-MAX_POINTS);
-	});
-
-	$effect(() => {
-		if (!open) {
-			cpuHistory = [];
-			cpuLabels = [];
-			lastSample = undefined;
-		}
-	});
-
-	const cpuChartDatasets = $derived([
-		{
-			label: '전체 CPU 사용률 (%)',
-			color: '#30d5c8',
-			values: cpuHistory,
-			fill: true,
-		},
-	]);
 
 	let loading = $state(true);
 	let data: any = $state(null);
@@ -179,19 +144,25 @@
 					{/if}
 				</div>
 
-				<!-- Live usage trend -->
+				<!-- Live usage trend with history + range tabs -->
 				<div class="section-label">
 					CPU 사용률 추이
-					<span class="section-sub">실시간 · 최근 2분</span>
 					<InfoTooltip
 						placement="right"
 						text="CPU가 얼마나 바쁜지 보여주는 그래프예요. 0% = 한가, 100% = 완전 포화. 80% 이상이 길게 이어지면 서버가 힘들어하는 신호라 작업을 줄이거나 서버를 키워야 할 수 있어요."
 					/>
 					<span class="section-current">현재 {liveCpuPct}%</span>
 				</div>
-				<div class="chart-wrap">
-					<UserMetricChart labels={cpuLabels} datasets={cpuChartDatasets} yFormat="percent" />
-				</div>
+				<MetricTrendChart
+					{agentId}
+					{accessToken}
+					metricField="cpu_usage"
+					liveValue={liveCpuPct}
+					label="CPU 사용률 (%)"
+					color="#30d5c8"
+					unit="percent"
+					defaultRange="10m"
+				/>
 
 				<!-- Load Average explanation -->
 				{#if data.loadAvg}
@@ -349,24 +320,12 @@
 		color: #c4b5fd;
 	}
 
-	/* Live trend chart */
 	.section-current {
 		margin-left: auto;
 		font-size: 13px;
 		font-weight: 700;
 		color: #30d5c8;
 		font-variant-numeric: tabular-nums;
-	}
-	.chart-wrap {
-		background: #0f172a;
-		border: 1px solid rgba(148, 163, 184, 0.12);
-		border-radius: 12px;
-		padding: 14px 14px 10px 14px;
-		height: 220px;
-	}
-	.chart-wrap :global(canvas) {
-		width: 100% !important;
-		height: 100% !important;
 	}
 
 	/* Load average display */
