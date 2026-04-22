@@ -15,9 +15,10 @@ logger = logging.getLogger(__name__)
 def flush_metrics_to_db():
     """Redis에 캐시된 최신 메트릭을 PostgreSQL에 bulk insert.
 
-    Celery Beat이 30초마다 실행한다. server:active_ids SET을 읽어 활성
-    Agent 목록을 얻고, 각 Agent의 최신 system / container metrics를 한 번에
-    Insert한다. Agent가 끊어진 경우 TTL로 자연스럽게 정리된다.
+    Celery Beat이 5초마다 실행한다 (config/settings/base.py에서 설정).
+    server:active_ids SET을 읽어 활성 Agent 목록을 얻고, 각 Agent의 최신
+    system / container metrics를 한 번에 Insert한다. Agent가 끊어진 경우
+    TTL로 자연스럽게 정리된다.
     """
     from apps.agents.models import Agent
     from apps.common.redis_client import get_redis_client

@@ -176,7 +176,10 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_BEAT_SCHEDULE = {
     "flush-metrics-to-db": {
         "task": "apps.metrics.tasks.flush_metrics_to_db",
-        "schedule": 30.0,
+        # 5s cadence so the 1분/10분 trend charts actually have a dozen+
+        # points. DB cost scales linearly (6× the rows vs 30s); at 3 agents
+        # that's ~360k rows/week, well inside Postgres comfort.
+        "schedule": 5.0,
     },
     "cleanup-old-metrics": {
         "task": "apps.metrics.tasks.cleanup_old_metrics",
