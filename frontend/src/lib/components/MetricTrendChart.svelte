@@ -38,6 +38,8 @@
 		unit = 'percent',
 		defaultRange = '10m',
 		accessToken = '',
+		endpoint = '/api/metrics/system/',
+		extraQuery = '',
 	}: {
 		agentId: string;
 		/** field name in the backend metrics response (cpu_usage, memory_usage, etc.). */
@@ -49,6 +51,9 @@
 		unit?: Unit;
 		defaultRange?: RangeKey;
 		accessToken?: string;
+		endpoint?: string;
+		/** extra query string fragment (no leading &) — e.g. "container_id=abc" */
+		extraQuery?: string;
 	} = $props();
 
 	const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
@@ -94,8 +99,9 @@
 		loading = true;
 		try {
 			const limit = forRange === '7d' || forRange === '24h' ? 500 : 240;
+			const extra = extraQuery ? `&${extraQuery}` : '';
 			const res = await fetch(
-				`${base}/api/metrics/system/?agent=${encodeURIComponent(agentId)}&range=${forRange}&limit=${limit}&ordering=recorded_at`,
+				`${base}${endpoint}?agent=${encodeURIComponent(agentId)}&range=${forRange}&limit=${limit}&ordering=recorded_at${extra}`,
 				{ headers: { Authorization: `Bearer ${accessToken}` } },
 			);
 			if (!res.ok) return;

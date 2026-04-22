@@ -624,6 +624,8 @@
 
 <ContainerDetailModal
 	container={selectedContainer}
+	agentId={selectedServerId}
+	{accessToken}
 	onClose={closeContainerDetail}
 />
 

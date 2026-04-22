@@ -126,6 +126,11 @@ class ContainerMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet
 
     def get_queryset(self):
         qs = super().get_queryset()
+
+        range_key = self.request.query_params.get("range")
+        if range_key and range_key in RANGE_SHORTHAND:
+            qs = qs.filter(recorded_at__gte=timezone.now() - RANGE_SHORTHAND[range_key])
+
         user = self.request.user
         if getattr(user, "role", None) == "admin":
             return qs
@@ -134,6 +139,19 @@ class ContainerMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet
             requester=user
         ).values_list("container_id", flat=True)
         return qs.filter(container_id__in=owned_container_ids)
+
+    def list(self, request, *args, **kwargs):
+        limit = request.query_params.get("limit")
+        if limit:
+            try:
+                n = max(1, min(int(limit), 2000))
+                qs = self.filter_queryset(self.get_queryset()).order_by("-recorded_at")[:n]
+                rows = list(qs)[::-1]
+                from rest_framework.response import Response
+                return Response(self.get_serializer(rows, many=True).data)
+            except (TypeError, ValueError):
+                pass
+        return super().list(request, *args, **kwargs)
 
     def get_serializer_class(self):
         if self.action == "retrieve":

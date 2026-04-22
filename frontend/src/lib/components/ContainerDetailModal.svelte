@@ -3,6 +3,8 @@
 	import { sendCommand, containerMetricsStore } from '$lib/stores/ws-store';
 	import { adaptContainerInspect } from '$lib/utils/data-adapter';
 	import { Chart, LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend } from 'chart.js';
+	import MetricTrendChart from './MetricTrendChart.svelte';
+	import InfoTooltip from './InfoTooltip.svelte';
 
 	Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend);
 
@@ -20,10 +22,14 @@
 
 	let {
 		container = null,
+		agentId = '',
+		accessToken = '',
 		onClose = () => {},
 		onStateChange = () => {},
 	}: {
 		container: Container | null;
+		agentId?: string;
+		accessToken?: string;
 		onClose: () => void;
 		onStateChange: () => void;
 	} = $props();
@@ -569,64 +575,101 @@
 				<!-- METRICS TAB -->
 				{#if containerState !== 'running'}
 					<div class="loading-state">컨테이너가 실행 중이 아닙니다.</div>
-				{:else if !metricsData}
-					<div class="loading-state">메트릭 로딩 중...</div>
 				{:else}
+					{@const cpuPct = Number(metricsData?.cpu?.usage ?? 0)}
+					{@const memPct = Number(metricsData?.memory?.percent ?? 0)}
+					{@const netRxBytes = Number(metricsData?.network?.rx ?? 0)}
+					{@const netTxBytes = Number(metricsData?.network?.tx ?? 0)}
+
 					<div class="metrics-grid-top">
 						<div class="metrics-card">
 							<div class="metrics-card-header">
 								<span class="metrics-card-title">CPU Usage</span>
-								<span class="metrics-current cpu">{metricsData.cpu?.usage?.toFixed(2) || '0.00'}%</span>
+								<InfoTooltip
+									placement="right"
+									text="이 컨테이너가 호스트 CPU를 얼마나 쓰고 있는지예요. 100%면 단일 코어 한 개를 가득 쓰는 중이고, 다중 코어면 100%를 넘을 수도 있어요. 오래 높게 머물면 로직이 과부하라는 신호예요."
+								/>
+								<span class="metrics-current cpu">{cpuPct.toFixed(2)}%</span>
 							</div>
-							<div class="chart-area-canvas">
-								<canvas bind:this={cpuCanvas}></canvas>
-							</div>
+							<MetricTrendChart
+								{agentId}
+								{accessToken}
+								endpoint="/api/metrics/container/"
+								extraQuery={`container_id=${container?.id ?? ''}`}
+								metricField="cpu_usage"
+								liveValue={cpuPct}
+								label="컨테이너 CPU 사용률 (%)"
+								color="#30d5c8"
+								unit="percent"
+								defaultRange="10m"
+							/>
 						</div>
 						<div class="metrics-card">
 							<div class="metrics-card-header">
 								<span class="metrics-card-title">Memory Usage</span>
-								<span class="metrics-current memory">{formatMemoryMB(metricsData.memory?.usage || 0)} MB</span>
+								<InfoTooltip
+									placement="right"
+									text="컨테이너에 할당된 메모리 중 실제 사용하는 비율이에요. 100%에 가까우면 OOM (메모리 부족으로 컨테이너가 죽을 위험)이 생길 수 있어요."
+								/>
+								<span class="metrics-current memory">{memPct.toFixed(1)}%</span>
 							</div>
-							<div class="chart-area-canvas">
-								<canvas bind:this={memCanvas}></canvas>
-							</div>
+							<MetricTrendChart
+								{agentId}
+								{accessToken}
+								endpoint="/api/metrics/container/"
+								extraQuery={`container_id=${container?.id ?? ''}`}
+								metricField="memory_percent"
+								liveValue={memPct}
+								label="컨테이너 메모리 사용률 (%)"
+								color="#8b5cf6"
+								unit="percent"
+								defaultRange="10m"
+							/>
 						</div>
 					</div>
 					<div class="metrics-grid-bottom">
 						<div class="metrics-card">
 							<div class="metrics-card-header">
 								<span class="metrics-card-title muted">Network Traffic</span>
+								<InfoTooltip
+									placement="right"
+									text="컨테이너가 주고받은 네트워크 총량 (누적). Inbound는 받은 데이터, Outbound는 보낸 데이터예요. 숫자가 꾸준히 커지면 계속 트래픽이 오가는 중이고, 평평하면 통신이 없거나 적은 상태예요."
+								/>
 							</div>
 							<div class="network-stats">
 								<div class="network-col">
 									<span class="network-label">Inbound</span>
 									<div class="network-value-row">
-										<span class="network-big">{formatBytes(metricsData.network?.rx || 0)}</span>
+										<span class="network-big">{formatBytes(netRxBytes)}</span>
 									</div>
-									<div class="network-bar-track"><div class="network-bar" style="width: {Math.min((metricsData.network?.rx || 0) / ((metricsData.network?.rx || 0) + (metricsData.network?.tx || 0) + 1) * 100, 100)}%; background: #30d5c8;"></div></div>
+									<div class="network-bar-track"><div class="network-bar" style="width: {Math.min(netRxBytes / (netRxBytes + netTxBytes + 1) * 100, 100)}%; background: #30d5c8;"></div></div>
 								</div>
 								<div class="network-divider"></div>
 								<div class="network-col">
 									<span class="network-label">Outbound</span>
 									<div class="network-value-row">
-										<span class="network-big">{formatBytes(metricsData.network?.tx || 0)}</span>
+										<span class="network-big">{formatBytes(netTxBytes)}</span>
 									</div>
-									<div class="network-bar-track"><div class="network-bar" style="width: {Math.min((metricsData.network?.tx || 0) / ((metricsData.network?.rx || 0) + (metricsData.network?.tx || 0) + 1) * 100, 100)}%; background: #bc13fe;"></div></div>
+									<div class="network-bar-track"><div class="network-bar" style="width: {Math.min(netTxBytes / (netRxBytes + netTxBytes + 1) * 100, 100)}%; background: #bc13fe;"></div></div>
 								</div>
 							</div>
 						</div>
 						<div class="metrics-card">
 							<div class="metrics-card-header">
 								<span class="metrics-card-title muted">Disk I/O</span>
+								<InfoTooltip
+									placement="right"
+									text="컨테이너가 디스크를 읽고 쓴 누적 양. READ는 읽은 데이터, WRITE는 쓴 데이터예요. 숫자가 꾸준히 올라가면 지금 디스크 접근 중이고, 멈춰 있으면 I/O가 없는 상태예요."
+								/>
 							</div>
 							<div class="disk-stats">
 								<div class="disk-row">
 									<span class="disk-label">READ</span>
-									<span class="disk-value">{formatBytes(metricsData.disk?.read || 0)}</span>
+									<span class="disk-value">{formatBytes(metricsData?.disk?.read || 0)}</span>
 								</div>
 								<div class="disk-row">
 									<span class="disk-label">WRITE</span>
-									<span class="disk-value">{formatBytes(metricsData.disk?.write || 0)}</span>
+									<span class="disk-value">{formatBytes(metricsData?.disk?.write || 0)}</span>
 								</div>
 							</div>
 						</div>
