@@ -26,6 +26,24 @@ def _issue_token() -> str:
     return f"agent_{secrets.token_urlsafe(32)}"
 
 
+def _client_ip(request) -> str | None:
+    """Prefer the reverse-proxy forwarded client IP, fall back to REMOTE_ADDR.
+
+    Agents running inside Docker report their container-bridge address
+    (e.g. 172.21.0.2) as their own IP, which is useless for operators.
+    The TCP peer the backend actually sees is the real host (post-NAT),
+    so we let that win over anything the agent self-declares.
+    """
+    xff = request.META.get("HTTP_X_FORWARDED_FOR")
+    if xff:
+        # "client, proxy1, proxy2" — take the original client
+        return xff.split(",")[0].strip()
+    return (
+        request.META.get("HTTP_X_REAL_IP")
+        or request.META.get("REMOTE_ADDR")
+    )
+
+
 @extend_schema_view(
     list=extend_schema(
         summary="Agent 목록 조회",
@@ -96,30 +114,52 @@ class AgentViewSet(ModelViewSet):
 
         - hostname 중복 시 기존 Agent를 그대로 반환 (idempotent, 기존 token 유지)
         - 신규 등록 시 status=approved, token 즉시 발급, approved_at 기록
+        - ip_address는 agent가 자체 보고한 값을 쓰지 않고, 백엔드가 관측한
+          실제 TCP peer (필요 시 X-Forwarded-For)를 권위 있는 값으로 사용한다.
+          Agent가 Docker bridge 내부 IP(172.x/192.168.192.x 등)를 보고하는
+          경우가 많아서 운영자에게 유용한 정보가 아니기 때문.
         """
+        observed_ip = _client_ip(request)
+
         hostname = request.data.get("hostname")
         if hostname:
             existing = Agent.objects.filter(hostname=hostname).first()
             if existing:
+                changed_fields = []
                 # 과거에 pending/rejected였던 항목도 이번 등록을 계기로 자동 승인.
                 if existing.status != Agent.Status.APPROVED or not existing.token:
                     existing.status = Agent.Status.APPROVED
                     existing.approved_at = existing.approved_at or timezone.now()
                     if not existing.token:
                         existing.token = _issue_token()
-                    existing.save(update_fields=["status", "approved_at", "token"])
+                    changed_fields.extend(["status", "approved_at", "token"])
+                if observed_ip and existing.ip_address != observed_ip:
+                    existing.ip_address = observed_ip
+                    changed_fields.append("ip_address")
+                if changed_fields:
+                    existing.save(update_fields=changed_fields)
                 return Response(
                     AgentSerializer(existing).data,
                     status=status.HTTP_200_OK,
                 )
 
-        serializer = self.get_serializer(data=request.data)
+        # Inject the backend-observed IP into the payload so validation
+        # succeeds even when the agent omits `ip_address` (it now does).
+        payload = {k: v for k, v in request.data.items()}
+        if observed_ip and not payload.get("ip_address"):
+            payload["ip_address"] = observed_ip
+
+        serializer = self.get_serializer(data=payload)
         serializer.is_valid(raise_exception=True)
-        agent = serializer.save(
-            status=Agent.Status.APPROVED,
-            token=_issue_token(),
-            approved_at=timezone.now(),
-        )
+        save_kwargs = {
+            "status": Agent.Status.APPROVED,
+            "token": _issue_token(),
+            "approved_at": timezone.now(),
+        }
+        # Trust what we observed over what the client sent.
+        if observed_ip:
+            save_kwargs["ip_address"] = observed_ip
+        agent = serializer.save(**save_kwargs)
         return Response(
             AgentSerializer(agent).data,
             status=status.HTTP_201_CREATED,

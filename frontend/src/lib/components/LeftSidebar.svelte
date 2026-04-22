@@ -78,29 +78,6 @@
 		return () => document.removeEventListener('click', handleDocClick);
 	});
 
-	function getHealthPercent(info: SystemInfo): number {
-		const cpuHealth = Math.max(0, 100 - info.cpu.usage);
-		const memHealth = Math.max(0, 100 - info.memory.usage);
-		const diskHealth = Math.max(0, 100 - info.disk.usage);
-		return Math.round((cpuHealth + memHealth + diskHealth) / 3);
-	}
-
-	function healthTone(pct: number): string {
-		if (pct >= 75) return 'tone-good';
-		if (pct >= 45) return 'tone-warn';
-		return 'tone-bad';
-	}
-
-	function formatUptime(seconds: number | undefined): string {
-		const s = Math.floor(seconds ?? 0);
-		if (s <= 0) return '—';
-		const days = Math.floor(s / 86400);
-		const hours = Math.floor((s % 86400) / 3600);
-		const mins = Math.floor((s % 3600) / 60);
-		if (days > 0) return `${days}d ${hours}h`;
-		if (hours > 0) return `${hours}h ${mins}m`;
-		return `${mins}m`;
-	}
 </script>
 
 <aside class="sidebar">
@@ -224,24 +201,6 @@
 		{/if}
 	</div>
 
-	<div class="spacer"></div>
-
-	{#if systemInfo}
-		{@const healthPct = getHealthPercent(systemInfo)}
-		<div class="health-card">
-			<div class="health-header">
-				<span class="health-label">Health Status</span>
-				<span class="health-percent {healthTone(healthPct)}">{healthPct}%</span>
-			</div>
-			<div class="health-bar-track">
-				<div class="health-bar-fill" style="width: {healthPct}%"></div>
-			</div>
-			<div class="health-footer">
-				<span class="health-caption">Stable</span>
-				<span class="health-uptime">{formatUptime(systemInfo.uptime)}</span>
-			</div>
-		</div>
-	{/if}
 </aside>
 
 <style>
@@ -430,80 +389,6 @@
 		font-weight: 500;
 		color: var(--text-secondary);
 		max-width: 180px;
-	}
-
-	.spacer {
-		flex: 1;
-		min-height: 0;
-	}
-
-	.health-card {
-		background: linear-gradient(180deg, rgba(19, 27, 40, 0.94), rgba(13, 17, 23, 0.96));
-		border: 1px solid rgba(148, 163, 184, 0.1);
-		border-radius: var(--radius-md);
-		padding: 14px 16px;
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-	}
-
-	.health-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-	}
-
-	.health-label {
-		font-size: 10px;
-		font-weight: 700;
-		letter-spacing: 0.16em;
-		text-transform: uppercase;
-		color: rgba(148, 163, 184, 0.78);
-	}
-
-	.health-percent {
-		font-size: 15px;
-		font-weight: 700;
-		letter-spacing: 0.01em;
-	}
-	.health-percent.tone-good { color: #4ade80; }
-	.health-percent.tone-warn { color: #facc15; }
-	.health-percent.tone-bad  { color: #f87171; }
-
-	.health-bar-track {
-		height: 6px;
-		background: rgba(15, 23, 42, 0.75);
-		border: 1px solid rgba(148, 163, 184, 0.08);
-		border-radius: var(--radius-full);
-		overflow: hidden;
-	}
-
-	.health-bar-fill {
-		height: 100%;
-		background: linear-gradient(90deg, #f87171 0%, #facc15 50%, #4ade80 100%);
-		border-radius: var(--radius-full);
-		transition: width 0.5s ease;
-		box-shadow: 0 0 8px rgba(250, 204, 21, 0.28);
-	}
-
-	.health-footer {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		font-size: 11px;
-	}
-
-	.health-caption {
-		color: var(--text-secondary);
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		font-weight: 600;
-	}
-
-	.health-uptime {
-		color: var(--accent);
-		font-weight: 600;
-		font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
 	}
 
 	.loading {

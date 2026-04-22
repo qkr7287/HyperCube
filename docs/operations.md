@@ -242,6 +242,131 @@ ssh hc-dev-63 -L 3000:localhost:3000 -N &
 
 ---
 
+## Agent network mode (run on host network)
+
+**Policy — production + dev on Linux hosts**: the HyperCube agent must
+be launched with `network_mode: host` in its docker-compose. This is
+not a Docker quirk — it's a deliberate choice aligned with standard
+host-monitoring agents (Datadog, Prometheus node_exporter, cAdvisor).
+
+### Why
+The agent's job is to report its host's CPU, memory, disk, Docker, and
+TCP state. When it runs in an isolated bridge network, two things go
+wrong:
+
+1. **Wrong IP**. `os.networkInterfaces()` inside the container returns
+   the container's bridge IP (`172.x` or `192.168.192.x`), never the
+   host's LAN IP. The agent therefore cannot report a useful
+   `ip_address`, and the backend's `_client_ip()` observation only
+   recovers the real host IP when the agent connects **across hosts**
+   (the SNAT hop gives the backend the host IP). For same-host setups
+   (backend + agent both on the same Linux box) every TCP peer the
+   backend sees is a docker-bridge internal IP, so `agents.ip_address`
+   ends up as e.g. `172.24.0.1`. The sidebar IP field mirrors this.
+2. **Blind host monitoring**. Metrics like `ss -tan`, `/proc/net/tcp`,
+   open-file counts, and login sessions live in the host's network
+   namespace. A bridged container can't see them faithfully.
+
+`network_mode: host` fixes both problems by putting the agent in the
+host's network namespace.
+
+### Required `docker-compose` shape
+
+```yaml
+services:
+  agent:
+    image: ghcr.io/qkr7287/hypercube-agent:<tag>
+    network_mode: host            # <-- mandatory on Linux
+    environment:
+      BACKEND_URL: ws://192.168.0.16:3334
+      AGENT_HOSTNAME: server_63_prod
+      # AGENT_ADVERTISE_IP: 192.168.0.63   # see fallback below
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+```
+
+Things to remove when migrating to host mode:
+- any `networks:` blocks
+- any `ports:` mapping (meaningless once the container shares the host
+  stack)
+
+### Fallback for Docker Desktop (Windows / macOS)
+`network_mode: host` is unreliable on Docker Desktop — the "host" is
+the Linux VM, not the developer's Mac/Windows machine. Developer
+workstations running the agent should skip host mode and instead set
+an explicit env override:
+
+```yaml
+services:
+  agent:
+    environment:
+      BACKEND_URL: ws://host.docker.internal:3334
+      AGENT_ADVERTISE_IP: 10.0.10.123   # your LAN IP, manually
+```
+
+Agent implementations should honor `AGENT_ADVERTISE_IP` when present and
+forward it through whatever channel the backend expects (currently:
+noop, since backend trusts observed IP). For Docker Desktop use, the
+operator either accepts "IP shown = backend's observation" or wires the
+advertised value through. This is a rare case — Linux servers are the
+norm.
+
+### Backend side (no change required)
+`backend/apps/agents/viewsets.py` already derives `ip_address` from the
+forwarded client IP (`_client_ip()` prefers `X-Forwarded-For`, then
+`X-Real-IP`, then `REMOTE_ADDR`). `AgentViewSet.create()` uses that in
+both the idempotent re-registration path and the fresh registration
+path. The registration payload shape is unchanged; agents continue to
+omit `ip_address` intentionally.
+
+### nginx requirement
+`nginx/nginx.conf` must forward the client IP. The current config
+already sets these on every proxied location:
+```
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+```
+If this ever regresses, every agent registration will fall back to
+`REMOTE_ADDR`, which on a bridge network is the upstream docker proxy
+rather than the real client.
+
+### Acceptance tests
+
+When an agent migrates to `network_mode: host`, verify all three:
+
+1. **Same-host (Linux)** — deploy the agent on the same host that runs
+   the backend (e.g. both on server 63). Restart the agent container;
+   inspect the DB:
+   ```bash
+   docker compose exec -T backend python manage.py shell -c \
+     "from apps.agents.models import Agent; \
+      a = Agent.objects.get(hostname='server_63_dev'); \
+      print(a.ip_address)"
+   ```
+   → expect `192.168.0.63`, not `172.x.x.x`.
+
+2. **Cross-host (no regression)** — agent on server 41, backend on
+   server 16. After re-register:
+   ```bash
+   # on the backend host
+   docker compose exec -T backend python manage.py shell -c \
+     "from apps.agents.models import Agent; \
+      a = Agent.objects.get(hostname='server_41_prod'); \
+      print(a.ip_address)"
+   ```
+   → expect `192.168.0.41` (regression check — host-mode must not
+   break cross-host registration).
+
+3. **Frontend sidebar** — log into the UI, select each server in turn,
+   confirm the `IP` row shows the correct LAN IP (`192.168.0.x`) and
+   never a Docker bridge range (`172.x`, `192.168.192.x`).
+
+If any of the three fails, revert host-mode for that deployment and
+re-investigate before rolling forward.
+
+---
+
 ## Known quirks / limitations
 
 | Area | Quirk | Impact |
