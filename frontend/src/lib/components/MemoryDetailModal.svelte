@@ -1,15 +1,22 @@
 <script lang="ts">
+	import MetricTrendChart from './MetricTrendChart.svelte';
+	import InfoTooltip from './InfoTooltip.svelte';
+
 	let {
 		open = false,
 		systemInfo = null,
+		agentId = '',
+		accessToken = '',
 		onClose = () => {},
 	}: {
 		open: boolean;
 		systemInfo: any;
+		agentId?: string;
+		accessToken?: string;
 		onClose: () => void;
 	} = $props();
 
-	let usagePercent = $derived(systemInfo?.memory?.usage ?? 0);
+	let usagePercent = $derived(Math.round(systemInfo?.memory?.usage ?? 0));
 
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') onClose();
@@ -87,6 +94,25 @@
 					<span class="gauge-free">{systemInfo.memory?.free ?? '0G'} 여유</span>
 				</div>
 			</div>
+
+			<div class="section-label">
+				메모리 사용률 추이
+				<InfoTooltip
+					placement="right"
+					text="서버 메모리(RAM)가 얼마나 차 있는지 시간 순서로 보여줘요. 숫자가 꾸준히 올라만 가고 내려오지 않으면 어떤 프로그램이 메모리를 계속 쥐고 있는 거라 재시작이 필요할 수 있어요. 90% 이상 오래 머물면 서버가 느려지기 직전이에요."
+				/>
+				<span class="section-current">현재 {usagePercent}%</span>
+			</div>
+			<MetricTrendChart
+				{agentId}
+				{accessToken}
+				metricField="memory_usage"
+				liveValue={usagePercent}
+				label="메모리 사용률 (%)"
+				color="#8b5cf6"
+				unit="percent"
+				defaultRange="10m"
+			/>
 		</div>
 	</div>
 </div>
@@ -112,8 +138,44 @@
 	.modal-title { font-size: 17px; font-weight: 700; color: #d9d9d9; }
 	.close-btn { background: none; border: none; cursor: pointer; padding: 6px; display: flex; }
 	.close-btn:hover svg { stroke: #cbd5e1; }
-	.modal-content { flex: 1; overflow-y: auto; padding: 28px; display: flex; flex-direction: column; gap: 24px; }
-	.section-label { font-size: 14px; font-weight: 700; color: #64748b; }
+	.modal-content {
+		flex: 1;
+		overflow-y: auto;
+		padding: 28px;
+		display: flex;
+		flex-direction: column;
+		gap: 24px;
+		scrollbar-width: thin;
+		scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+	}
+	.modal-content::-webkit-scrollbar { width: 10px; }
+	.modal-content::-webkit-scrollbar-track { background: transparent; }
+	.modal-content::-webkit-scrollbar-thumb {
+		background: rgba(148, 163, 184, 0.3);
+		border: 2px solid transparent;
+		border-radius: 8px;
+		background-clip: padding-box;
+	}
+	.modal-content::-webkit-scrollbar-thumb:hover {
+		background: rgba(48, 213, 200, 0.55);
+		background-clip: padding-box;
+	}
+
+	.section-label {
+		font-size: 14px;
+		font-weight: 700;
+		color: #64748b;
+		display: flex;
+		align-items: baseline;
+		gap: 10px;
+	}
+	.section-current {
+		margin-left: auto;
+		font-size: 13px;
+		font-weight: 700;
+		color: #8b5cf6;
+		font-variant-numeric: tabular-nums;
+	}
 
 	.stats-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 	.stat-card {

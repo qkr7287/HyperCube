@@ -1,14 +1,24 @@
 <script lang="ts">
 	import { sendCommand } from '$lib/stores/ws-store';
 	import { adaptNetworkDetail } from '$lib/utils/data-adapter';
+	import MetricTrendChart from './MetricTrendChart.svelte';
+	import InfoTooltip from './InfoTooltip.svelte';
 
 	let {
 		open = false,
+		systemInfo = null,
+		agentId = '',
+		accessToken = '',
 		onClose = () => {},
 	}: {
 		open: boolean;
+		systemInfo?: any;
+		agentId?: string;
+		accessToken?: string;
 		onClose: () => void;
 	} = $props();
+
+	let liveConns = $derived(systemInfo?.network?.connections ?? 0);
 
 	let loading = $state(true);
 	let data: any = $state(null);
@@ -63,6 +73,25 @@
 		</div>
 
 		<div class="modal-content">
+			<div class="section-label">
+				네트워크 연결 수 추이
+				<InfoTooltip
+					placement="right"
+					text="지금 서버가 열어두고 있는 TCP 연결 개수예요. 평소 대비 갑자기 치솟으면 외부에서 요청이 몰렸거나 어떤 프로그램이 연결을 정리하지 않고 쌓고 있는 상황일 수 있어요."
+				/>
+				<span class="section-current">현재 {liveConns}</span>
+			</div>
+			<MetricTrendChart
+				{agentId}
+				{accessToken}
+				metricField="network_connections"
+				liveValue={liveConns}
+				label="TCP 연결 수"
+				color="#4ade80"
+				unit="count"
+				defaultRange="10m"
+			/>
+
 			{#if loading}
 				<div class="loading-state">네트워크 정보를 불러오는 중...</div>
 			{:else if data}
@@ -184,9 +213,45 @@
 	.modal-title { font-size: 17px; font-weight: 700; color: #d9d9d9; }
 	.close-btn { background: none; border: none; cursor: pointer; padding: 6px; display: flex; }
 	.close-btn:hover svg { stroke: #cbd5e1; }
-	.modal-content { flex: 1; overflow-y: auto; padding: 28px; display: flex; flex-direction: column; gap: 28px; }
+	.modal-content {
+		flex: 1;
+		overflow-y: auto;
+		padding: 28px;
+		display: flex;
+		flex-direction: column;
+		gap: 28px;
+		scrollbar-width: thin;
+		scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+	}
+	.modal-content::-webkit-scrollbar { width: 10px; }
+	.modal-content::-webkit-scrollbar-track { background: transparent; }
+	.modal-content::-webkit-scrollbar-thumb {
+		background: rgba(148, 163, 184, 0.3);
+		border: 2px solid transparent;
+		border-radius: 8px;
+		background-clip: padding-box;
+	}
+	.modal-content::-webkit-scrollbar-thumb:hover {
+		background: rgba(48, 213, 200, 0.55);
+		background-clip: padding-box;
+	}
+
 	.loading-state { text-align: center; color: #64748b; font-size: 14px; padding: 32px; }
-	.section-label { font-size: 14px; font-weight: 700; color: #64748b; }
+	.section-label {
+		font-size: 14px;
+		font-weight: 700;
+		color: #64748b;
+		display: flex;
+		align-items: baseline;
+		gap: 10px;
+	}
+	.section-current {
+		margin-left: auto;
+		font-size: 13px;
+		font-weight: 700;
+		color: #4ade80;
+		font-variant-numeric: tabular-nums;
+	}
 
 	.stats-row {
 		display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;

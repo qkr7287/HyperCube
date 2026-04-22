@@ -115,6 +115,10 @@
 
 	function appendLive(v: number | undefined) {
 		if (typeof v !== 'number' || Number.isNaN(v)) return;
+		// Skip the "no data yet" stub (e.g. systemInfo.memory.usage before the
+		// first WS tick). Without this, a leading 0 drags the Y-axis floor down
+		// and the chart zooms out to 0–100% even when the real series sits at 94%.
+		if (unit === 'percent' && v === 0 && values.length === 0) return;
 		if (v === lastLive && values.length > 0) return;
 		lastLive = v;
 		const now = new Date();
@@ -138,11 +142,14 @@
 		// descriptor guard (state_descriptors_fixed).
 		const labelsCopy = [...labels];
 		const valuesCopy = [...values];
+		const bounds = computeYBounds(valuesCopy, unit);
+		// Destroy + recreate every time. Chart.js's in-place option mutation
+		// is unreliable for re-applying scale bounds (beginAtZero / min / max /
+		// stepSize all interact in surprising ways), so we just throw away the
+		// instance on each data change. The dataset is small, redraws are cheap.
 		if (chart) {
-			chart.data.labels = labelsCopy;
-			chart.data.datasets[0].data = valuesCopy as any;
-			chart.update('none');
-			return;
+			chart.destroy();
+			chart = null;
 		}
 		chart = new Chart(canvasEl, {
 			type: 'line',
@@ -195,12 +202,17 @@
 						grid: { color: 'rgba(100,116,139,0.08)' },
 					},
 					y: {
-						min: unit === 'percent' ? 0 : undefined,
-						max: unit === 'percent' ? 100 : undefined,
+						type: 'linear',
+						beginAtZero: false,
+						min: bounds.min,
+						max: bounds.max,
+						suggestedMin: bounds.min,
+						suggestedMax: bounds.max,
 						ticks: {
 							color: '#64748b',
 							font: { size: 10 },
 							stepSize: unit === 'percent' ? 10 : undefined,
+							autoSkip: false,
 							callback: (v) => {
 								if (unit === 'percent') return `${v}%`;
 								if (unit === 'bytes') return formatBytes(Number(v));
@@ -212,6 +224,31 @@
 				},
 			},
 		});
+	}
+
+	/**
+	 * Choose Y-axis bounds that actually focus on the data.
+	 *
+	 * - Percent series snap to 10-unit grid lines, stay pinned at [0, 100]
+	 *   limits, and expand to show ±10pt of padding around the live range.
+	 *   So quiet CPU stays zoomed to 0–30%, but a spike to 92% still reads
+	 *   against a 70–100% backdrop.
+	 * - Non-percent series (counts / bytes) let Chart.js auto-pick.
+	 */
+	function computeYBounds(values: number[], u: Unit): { min?: number; max?: number } {
+		if (u !== 'percent') return {};
+		const nums = values.filter((v) => typeof v === 'number' && !Number.isNaN(v));
+		if (nums.length === 0) return { min: 0, max: 10 };
+		let dmin = Math.min(...nums);
+		let dmax = Math.max(...nums);
+		// Padding: ±10 percentage points, rounded to the nearest 10.
+		const pad = 10;
+		let lo = Math.max(0, Math.floor((dmin - pad) / 10) * 10);
+		let hi = Math.min(100, Math.ceil((dmax + pad) / 10) * 10);
+		// Always show at least a 20-point window so tiny variation stays legible.
+		if (hi - lo < 20) hi = Math.min(100, lo + 20);
+		if (hi - lo < 20) lo = Math.max(0, hi - 20);
+		return { min: lo, max: hi };
 	}
 
 	function formatBytes(bytes: number): string {

@@ -638,17 +638,24 @@
 <MemoryDetailModal
 	open={memoryModalOpen}
 	{systemInfo}
+	agentId={selectedServerId}
+	{accessToken}
 	onClose={() => { memoryModalOpen = false; }}
 />
 
 <DiskDetailModal
 	open={diskModalOpen}
 	{systemInfo}
+	agentId={selectedServerId}
+	{accessToken}
 	onClose={() => { diskModalOpen = false; }}
 />
 
 <NetworkDetailModal
 	open={networkModalOpen}
+	{systemInfo}
+	agentId={selectedServerId}
+	{accessToken}
 	onClose={() => { networkModalOpen = false; }}
 />
 
@@ -660,6 +667,9 @@
 
 <ProcessDetailModal
 	open={processModalOpen}
+	{systemInfo}
+	agentId={selectedServerId}
+	{accessToken}
 	onClose={() => { processModalOpen = false; }}
 />
 </div>
