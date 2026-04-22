@@ -314,21 +314,27 @@ norm.
 
 ### Backend side (no change required)
 `backend/apps/agents/viewsets.py` already derives `ip_address` from the
-forwarded client IP (`_client_ip()` prefers `X-Forwarded-For`, then
-`X-Real-IP`, then `REMOTE_ADDR`). `AgentViewSet.create()` uses that in
-both the idempotent re-registration path and the fresh registration
-path. The registration payload shape is unchanged; agents continue to
-omit `ip_address` intentionally.
+forwarded client IP (`_client_ip()` prefers nginx's overwritten
+`X-Real-IP`, then `REMOTE_ADDR`, with `X-Forwarded-For` only as a final
+fallback). `AgentViewSet.create()` uses that in both the idempotent
+re-registration path and the fresh registration path. The registration
+payload shape is unchanged; agents continue to omit `ip_address`
+intentionally.
 
 ### nginx requirement
-`nginx/nginx.conf` must forward the client IP. The current config
-already sets these on every proxied location:
+`nginx/nginx.conf` must forward the client IP. The backend treats
+`X-Real-IP` as the authoritative reverse-proxy observation because nginx
+overwrites it with `$remote_addr`. `X-Forwarded-For` is useful for
+diagnostics but may include client-supplied values when
+`$proxy_add_x_forwarded_for` is used, so it is only a fallback.
+
+The current config already sets these on every proxied location:
 ```
 proxy_set_header X-Real-IP $remote_addr;
 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 ```
-If this ever regresses, every agent registration will fall back to
-`REMOTE_ADDR`, which on a bridge network is the upstream docker proxy
+If `X-Real-IP` ever regresses, every agent registration will fall back
+to `REMOTE_ADDR`, which on a bridge network is the upstream docker proxy
 rather than the real client.
 
 ### Acceptance tests

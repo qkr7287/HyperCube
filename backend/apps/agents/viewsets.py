@@ -1,4 +1,5 @@
 import json
+from ipaddress import ip_address
 import secrets
 from datetime import timedelta
 
@@ -27,21 +28,28 @@ def _issue_token() -> str:
 
 
 def _client_ip(request) -> str | None:
-    """Prefer the reverse-proxy forwarded client IP, fall back to REMOTE_ADDR.
+    """Prefer nginx's observed client IP over client-controlled headers."""
+    candidates = [
+        request.META.get("HTTP_X_REAL_IP"),
+        request.META.get("REMOTE_ADDR"),
+    ]
 
-    Agents running inside Docker report their container-bridge address
-    (e.g. 172.21.0.2) as their own IP, which is useless for operators.
-    The TCP peer the backend actually sees is the real host (post-NAT),
-    so we let that win over anything the agent self-declares.
-    """
     xff = request.META.get("HTTP_X_FORWARDED_FOR")
     if xff:
-        # "client, proxy1, proxy2" — take the original client
-        return xff.split(",")[0].strip()
-    return (
-        request.META.get("HTTP_X_REAL_IP")
-        or request.META.get("REMOTE_ADDR")
-    )
+        # Fallback only. nginx also sends X-Real-IP, which is safer because it
+        # overwrites any client-supplied value with nginx's observed peer.
+        candidates.append(xff.split(",")[0].strip())
+
+    for value in candidates:
+        if not value:
+            continue
+        value = str(value).strip()
+        try:
+            ip_address(value)
+        except ValueError:
+            continue
+        return value
+    return None
 
 
 @extend_schema_view(
@@ -200,5 +208,4 @@ class AgentViewSet(ModelViewSet):
         body = payload.get("data") or {}
         body["timestamp"] = payload.get("timestamp")
         return Response(body)
-
 

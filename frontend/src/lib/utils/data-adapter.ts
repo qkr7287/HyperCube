@@ -23,7 +23,18 @@ export interface SystemInfo {
 	hostname: string;
 	os: string;
 	uptime: number;  // seconds
-	cpu: { cores: number; model: string; usage: number };
+	cpu: {
+		// Physical hardware topology (static).
+		cores: number;            // physical cores, summed across sockets
+		threads: number;          // logical CPUs = OS-visible threads
+		sockets: number;          // physical sockets (1 on typical desktop/VM, 2+ on dual-socket servers)
+		isHybrid: boolean;        // true on Intel 12th-gen+ P/E hybrids, Apple Silicon, etc.
+		performanceCores: number; // = cores when !isHybrid
+		efficiencyCores: number;  // 0 when !isHybrid
+		model: string;            // e.g. "Intel Xeon Silver 4210 × 2"
+		// Dynamic.
+		usage: number;            // % aggregate, thread-weighted
+	};
 	memory: { total: string; used: string; free: string; usage: number };
 	disk: { total: string; used: string; free: string; usage: number };
 	network: { connections: number; interfaces: string[] };
@@ -51,12 +62,35 @@ export function transformSystemMetrics(msg: any): SystemInfo {
 	const diskUsed = typeof disk.used === 'number' ? disk.used : 0;
 	const diskFree = typeof disk.free === 'number' ? disk.free : diskTotal - diskUsed;
 
+	// CPU topology — tolerate legacy agents that only send `cores`
+	// (which historically was the thread count).
+	const legacyCoresAsThreads = cpu.cores ?? 0;
+	const threads = typeof cpu.threads === 'number' && cpu.threads > 0
+		? cpu.threads
+		: legacyCoresAsThreads;
+	const physicalCores = typeof cpu.cores === 'number' && typeof cpu.threads === 'number'
+		// new-style: both present → cores is already physical cores
+		? cpu.cores
+		// legacy: only cores present (really threads) → we don't know physical
+		: 0;
+	const sockets = typeof cpu.sockets === 'number' && cpu.sockets > 0 ? cpu.sockets : 1;
+	const isHybrid = Boolean(cpu.isHybrid);
+	const performanceCores = typeof cpu.performanceCores === 'number'
+		? cpu.performanceCores
+		: (isHybrid ? 0 : physicalCores);
+	const efficiencyCores = typeof cpu.efficiencyCores === 'number' ? cpu.efficiencyCores : 0;
+
 	return {
 		hostname: d.hostname ?? '',
 		os: d.os ?? '',
 		uptime: typeof d.uptime === 'number' ? d.uptime : 0,
 		cpu: {
-			cores: cpu.cores ?? 0,
+			cores: physicalCores,
+			threads,
+			sockets,
+			isHybrid,
+			performanceCores,
+			efficiencyCores,
 			model: cpu.model ?? '',
 			usage: cpu.usage ?? 0,
 		},
@@ -104,6 +138,11 @@ export function mergeSystemInfo(prev: SystemInfo, incoming: SystemInfo): SystemI
 		uptime: incoming.uptime || prev.uptime,
 		cpu: {
 			cores: incoming.cpu.cores || prev.cpu.cores,
+			threads: incoming.cpu.threads || prev.cpu.threads,
+			sockets: incoming.cpu.sockets || prev.cpu.sockets,
+			isHybrid: incoming.cpu.isHybrid || prev.cpu.isHybrid,
+			performanceCores: incoming.cpu.performanceCores || prev.cpu.performanceCores,
+			efficiencyCores: incoming.cpu.efficiencyCores || prev.cpu.efficiencyCores,
 			model: incoming.cpu.model || prev.cpu.model,
 			usage: incoming.cpu.usage || prev.cpu.usage,
 		},

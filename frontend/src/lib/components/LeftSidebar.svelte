@@ -7,12 +7,22 @@
 	import iconNetwork from '$lib/assets/icons/sidebar-network.svg';
 	import iconLogins from '$lib/assets/icons/sidebar-logins.svg';
 	import iconProcess from '$lib/assets/icons/sidebar-process.svg';
+	import LiveSparkline from './LiveSparkline.svelte';
 
 	interface SystemInfo {
 		hostname: string;
 		os: string;
 		uptime?: number;
-		cpu: { cores: number; model: string; usage: number };
+		cpu: {
+			cores: number;
+			threads?: number;
+			sockets?: number;
+			isHybrid?: boolean;
+			performanceCores?: number;
+			efficiencyCores?: number;
+			model: string;
+			usage: number;
+		};
 		memory: { total: string; used: string; free: string; usage: number };
 		disk: { total: string; used: string; free: string; usage: number };
 		docker: { version: string; containers: number; images: number };
@@ -78,6 +88,30 @@
 		return () => document.removeEventListener('click', handleDocClick);
 	});
 
+	function formatCpuSpec(cpu: SystemInfo['cpu']): string {
+		const cores = cpu.cores ?? 0;
+		const threads = cpu.threads ?? cores;
+		const sockets = cpu.sockets ?? 1;
+		const hybrid = !!cpu.isHybrid;
+
+		// Hybrid CPU (Intel 12+ / Apple Silicon): emphasise P+E breakdown.
+		if (hybrid) {
+			const p = cpu.performanceCores ?? 0;
+			const e = cpu.efficiencyCores ?? 0;
+			return `${p}P + ${e}E · ${threads}T`;
+		}
+
+		// Legacy agent: only `cores` field, physical count unknown.
+		if (!cores && threads) return `${threads} threads`;
+
+		// Multi-socket server: call it out.
+		if (sockets > 1) {
+			return `${sockets}× ${cores / sockets}c · ${cores} cores · ${threads}T`;
+		}
+
+		return `${cores} cores · ${threads}T`;
+	}
+
 </script>
 
 <aside class="sidebar">
@@ -135,41 +169,66 @@
 				</div>
 			</div>
 
+			{@const cpuSpec = formatCpuSpec(systemInfo.cpu)}
+			{@const memPct = Math.round(systemInfo.memory.usage ?? 0)}
+			{@const diskPct = Math.round(systemInfo.disk.usage ?? 0)}
+			{@const cpuPct = Math.round(systemInfo.cpu.usage ?? 0)}
+			{@const netCount = systemInfo.network?.connections ?? 0}
+			{@const procCount = systemInfo.processes?.total ?? 0}
+
 			<div class="info-group">
 				<div class="group-label">Resources</div>
-				<div class="info-row clickable" onclick={onOpenCpu} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenCpu()}>
-					<div class="info-label-group">
+
+				<div class="metric-card clickable" onclick={onOpenCpu} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenCpu()}>
+					<div class="metric-head">
 						<img src={iconCpu} alt="" class="icon" />
-						<span class="label">CPU Cores</span>
+						<span class="metric-name">CPU</span>
+						<span class="metric-spec" title={systemInfo.cpu.model}>{cpuSpec}</span>
+						<span class="metric-value">{cpuPct}%</span>
 					</div>
-					<span class="value">{systemInfo.cpu.cores}</span>
+					<div class="metric-chart">
+						<LiveSparkline value={cpuPct} stroke="#30d5c8" fill="rgba(48,213,200,0.16)" />
+					</div>
 				</div>
 
-				<div class="info-row clickable" onclick={onOpenMemory} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenMemory()}>
-					<div class="info-label-group">
+				<div class="metric-card clickable" onclick={onOpenMemory} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenMemory()}>
+					<div class="metric-head">
 						<img src={iconMemory} alt="" class="icon" />
-						<span class="label">Memory</span>
+						<span class="metric-name">Memory</span>
+						<span class="metric-spec">{systemInfo.memory.total}</span>
+						<span class="metric-value">{memPct}%</span>
 					</div>
-					<span class="value">{systemInfo.memory.total}</span>
+					<div class="metric-chart">
+						<LiveSparkline value={memPct} stroke="#8b5cf6" fill="rgba(139,92,246,0.18)" />
+					</div>
 				</div>
 
-				<div class="info-row clickable" onclick={onOpenDisk} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenDisk()}>
-					<div class="info-label-group">
+				<div class="metric-card clickable" onclick={onOpenDisk} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenDisk()}>
+					<div class="metric-head">
 						<img src={iconDisk} alt="" class="icon" />
-						<span class="label">Disk Total</span>
+						<span class="metric-name">Disk</span>
+						<span class="metric-spec">{systemInfo.disk.total}</span>
+						<span class="metric-value">{diskPct}%</span>
 					</div>
-					<span class="value">{systemInfo.disk.total}</span>
+					<div class="metric-chart">
+						<LiveSparkline value={diskPct} stroke="#f59e0b" fill="rgba(245,158,11,0.18)" />
+					</div>
 				</div>
 			</div>
 
 			<div class="info-group">
 				<div class="group-label">Activity</div>
-				<div class="info-row clickable" onclick={onOpenNetwork} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenNetwork()}>
-					<div class="info-label-group">
+
+				<div class="metric-card clickable" onclick={onOpenNetwork} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenNetwork()}>
+					<div class="metric-head">
 						<img src={iconNetwork} alt="" class="icon" />
-						<span class="label">Network</span>
+						<span class="metric-name">Network</span>
+						<span class="metric-spec">conns</span>
+						<span class="metric-value">{netCount}</span>
 					</div>
-					<span class="value">{systemInfo.network?.connections ?? '-'}</span>
+					<div class="metric-chart">
+						<LiveSparkline value={netCount} min={0} max={Math.max(netCount * 1.4, 10)} stroke="#4ade80" fill="rgba(74,222,128,0.15)" />
+					</div>
 				</div>
 
 				<div class="info-row clickable" onclick={onOpenLogin} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenLogin()}>
@@ -180,12 +239,16 @@
 					<span class="value">{systemInfo.logins?.total ?? 0}</span>
 				</div>
 
-				<div class="info-row clickable" onclick={onOpenProcess} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenProcess()}>
-					<div class="info-label-group">
+				<div class="metric-card clickable" onclick={onOpenProcess} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenProcess()}>
+					<div class="metric-head">
 						<img src={iconProcess} alt="" class="icon" />
-						<span class="label">Process Total</span>
+						<span class="metric-name">Processes</span>
+						<span class="metric-spec">total</span>
+						<span class="metric-value">{procCount}</span>
 					</div>
-					<span class="value">{systemInfo.processes?.total ?? '-'}</span>
+					<div class="metric-chart">
+						<LiveSparkline value={procCount} min={0} max={Math.max(procCount * 1.3, 100)} stroke="#f87171" fill="rgba(248,113,113,0.14)" />
+					</div>
 				</div>
 			</div>
 		{:else}
@@ -389,6 +452,75 @@
 		font-weight: 500;
 		color: var(--text-secondary);
 		max-width: 180px;
+	}
+
+	/* ---------- Metric card (CPU/Memory/Disk/Network/Processes) ---------- */
+	.metric-card {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		padding: 8px 10px 6px;
+		margin: -2px -10px;
+		border-radius: 10px;
+		background: rgba(15, 23, 42, 0.55);
+		border: 1px solid rgba(148, 163, 184, 0.08);
+		cursor: pointer;
+		transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+	}
+
+	.metric-card:hover {
+		background: rgba(48, 213, 200, 0.07);
+		border-color: rgba(48, 213, 200, 0.18);
+		transform: translateY(-1px);
+	}
+	.metric-card:hover .icon {
+		filter: drop-shadow(0 0 6px rgba(48, 213, 200, 0.5));
+	}
+
+	.metric-head {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		min-width: 0;
+	}
+
+	.metric-head .icon {
+		width: 16px;
+		height: 16px;
+		flex-shrink: 0;
+		opacity: 0.9;
+	}
+
+	.metric-name {
+		font-size: 12px;
+		font-weight: 700;
+		color: var(--text-primary);
+		letter-spacing: 0.02em;
+	}
+
+	.metric-spec {
+		flex: 1;
+		min-width: 0;
+		font-size: 10px;
+		color: rgba(148, 163, 184, 0.72);
+		text-align: left;
+		margin-left: 4px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.metric-value {
+		font-size: 13px;
+		font-weight: 700;
+		color: var(--text-primary);
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+
+	.metric-chart {
+		width: 100%;
+		height: 28px;
 	}
 
 	.loading {

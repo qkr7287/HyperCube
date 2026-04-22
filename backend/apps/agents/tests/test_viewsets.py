@@ -39,6 +39,49 @@ class AgentViewSetTest(APITestCase):
         self.assertTrue(body["token"].startswith("agent_"))
         self.assertIsNotNone(body["approved_at"])
 
+    def test_register_uses_observed_ip_when_agent_omits_ip_address(self):
+        response = self.client.post(
+            "/api/agents/",
+            {"hostname": "observed-host"},
+            format="json",
+            REMOTE_ADDR="192.168.0.63",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        body = response.json()["data"]
+        self.assertEqual(body["ip_address"], "192.168.0.63")
+
+    def test_register_prefers_x_real_ip_over_spoofed_x_forwarded_for(self):
+        response = self.client.post(
+            "/api/agents/",
+            {"hostname": "xff-spoof-host"},
+            format="json",
+            HTTP_X_FORWARDED_FOR="203.0.113.99, 192.168.0.63",
+            HTTP_X_REAL_IP="192.168.0.63",
+            REMOTE_ADDR="172.24.0.5",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        body = response.json()["data"]
+        self.assertEqual(body["ip_address"], "192.168.0.63")
+
+    def test_register_existing_agent_updates_observed_ip(self):
+        first = self.client.post(
+            "/api/agents/",
+            {"hostname": "moving-host"},
+            format="json",
+            REMOTE_ADDR="192.168.0.41",
+        )
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+
+        second = self.client.post(
+            "/api/agents/",
+            {"hostname": "moving-host"},
+            format="json",
+            REMOTE_ADDR="192.168.0.63",
+        )
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        body = second.json()["data"]
+        self.assertEqual(body["ip_address"], "192.168.0.63")
+
     def test_register_idempotent_on_duplicate_hostname(self):
         first = self.client.post(
             "/api/agents/",
