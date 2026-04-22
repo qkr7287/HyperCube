@@ -594,8 +594,8 @@
 							<MetricTrendChart
 								{agentId}
 								{accessToken}
-								endpoint="/api/metrics/container/"
-								extraQuery={`container_id=${container?.id ?? ''}`}
+								endpoint="/api/metrics/containers/"
+								extraQuery={`container_id=${container?.shortId ?? (container?.id ?? '').slice(0, 12)}`}
 								metricField="cpu_usage"
 								liveValue={cpuPct}
 								label="컨테이너 CPU 사용률 (%)"
@@ -616,8 +616,8 @@
 							<MetricTrendChart
 								{agentId}
 								{accessToken}
-								endpoint="/api/metrics/container/"
-								extraQuery={`container_id=${container?.id ?? ''}`}
+								endpoint="/api/metrics/containers/"
+								extraQuery={`container_id=${container?.shortId ?? (container?.id ?? '').slice(0, 12)}`}
 								metricField="memory_percent"
 								liveValue={memPct}
 								label="컨테이너 메모리 사용률 (%)"
@@ -790,8 +790,8 @@
 	}
 
 	.modal {
-		width: 768px;
-		max-height: 90vh;
+		width: min(1100px, 92vw);
+		max-height: 92vh;
 		background: #0d1117;
 		border: 1px solid #30d5c8;
 		border-radius: 12px;
@@ -800,8 +800,10 @@
 		overflow: hidden;
 	}
 
-	.modal-metrics { width: 896px; }
-	.modal-logs { width: 1024px; }
+	/* Metrics tab gets the full real estate so the two charts side-by-side
+	   still have room for the range tab row + Y-axis labels. */
+	.modal-metrics { width: min(1280px, 95vw); }
+	.modal-logs { width: min(1200px, 94vw); }
 
 	/* Header */
 	.modal-header {
