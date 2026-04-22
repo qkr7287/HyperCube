@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import { sendCommand } from '$lib/stores/ws-store';
 	import { adaptCpuDetail } from '$lib/utils/data-adapter';
+	import LiveSparkline from './LiveSparkline.svelte';
 
 	let {
 		open = false,
@@ -12,6 +13,28 @@
 		systemInfo: any;
 		onClose: () => void;
 	} = $props();
+
+	// Pull live CPU % straight off the WS-fed systemInfo prop so the
+	// trend chart updates on every agent tick (no extra polling).
+	const liveCpuPct = $derived(Math.round(systemInfo?.cpu?.usage ?? 0));
+	const cpuSpec = $derived(systemInfo?.cpu ?? null);
+
+	function formatSpecLine(spec: any): string {
+		if (!spec) return '—';
+		const cores = spec.cores ?? 0;
+		const threads = spec.threads ?? cores;
+		const sockets = spec.sockets ?? 1;
+		if (spec.isHybrid) {
+			const p = spec.performanceCores ?? 0;
+			const e = spec.efficiencyCores ?? 0;
+			return `${p}P + ${e}E / ${threads} threads`;
+		}
+		if (!cores && threads) return `${threads} threads`;
+		if (sockets > 1) {
+			return `${sockets} sockets × ${cores / sockets} cores / ${threads} threads`;
+		}
+		return `${cores} cores / ${threads} threads`;
+	}
 
 	let loading = $state(true);
 	let data: any = $state(null);
@@ -107,8 +130,12 @@
 							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="7" x2="22" y2="7"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="17" x2="22" y2="17"/></svg>
 						</div>
 						<div class="stat-info">
-							<span class="stat-label">코어 수</span>
-							<span class="stat-value">{data.cores} <small>cores</small></span>
+							<span class="stat-label">코어 / 스레드</span>
+							{#if cpuSpec && cpuSpec.cores}
+								<span class="stat-value">{cpuSpec.cores}<small>C</small> / {cpuSpec.threads ?? data.cores}<small>T</small></span>
+							{:else}
+								<span class="stat-value">{data.cores} <small>threads</small></span>
+							{/if}
 						</div>
 					</div>
 					<div class="stat-card">
@@ -122,19 +149,97 @@
 					</div>
 				</div>
 
-				<!-- Model -->
+				<!-- Model + topology spec -->
 				<div class="model-row">
 					<span class="model-label">Processor</span>
 					<span class="model-text">{data.model}</span>
 				</div>
+				{#if cpuSpec}
+					<div class="spec-row">
+						<span class="spec-pill">{formatSpecLine(cpuSpec)}</span>
+						{#if (cpuSpec.sockets ?? 1) > 1}
+							<span class="spec-pill">{cpuSpec.sockets} sockets</span>
+						{/if}
+						{#if cpuSpec.isHybrid}
+							<span class="spec-pill hybrid">Hybrid (P + E)</span>
+						{/if}
+					</div>
+				{/if}
 
-				<!-- Heatmap -->
-				<div class="section-label">코어별 사용률 히트맵</div>
+				<!-- Live usage trend -->
+				<div class="section-label">
+					CPU 사용률 추이
+					<span class="section-sub">실시간 (최근 60 samples)</span>
+				</div>
+				<div class="chart-legend">
+					<span class="legend-dot" style="background:#30d5c8;"></span>
+					<span class="legend-text">Overall CPU Usage (%)</span>
+					<span class="legend-value">{liveCpuPct}%</span>
+				</div>
+				<div class="chart-frame">
+					<LiveSparkline
+						value={liveCpuPct}
+						min={0}
+						max={100}
+						width={720}
+						height={140}
+						bufferSize={120}
+						stroke="#30d5c8"
+						fill="rgba(48,213,200,0.18)"
+						smoothMs={1000}
+					/>
+					<div class="chart-axis">
+						<span>0%</span>
+						<span>50%</span>
+						<span>100%</span>
+					</div>
+				</div>
+				<p class="section-desc">
+					모든 논리 스레드의 busy 시간 평균 비율입니다.
+					HyperThreading 환경에서는 <strong>100%가 모든 스레드 가득 찬 상태</strong>,
+					물리 코어 기준 실제 연산 한계는 보통 70~80% 부근에서 포화됩니다.
+					값이 지속적으로 85% 이상이라면 CPU 병목 가능성이 높습니다.
+				</p>
+
+				<!-- Load Average explanation -->
+				{#if data.loadAvg}
+					<div class="section-label">Load Average</div>
+					<div class="load-display">
+						<div class="load-cell">
+							<span class="load-label">1 min</span>
+							<span class="load-num">{data.loadAvg.avg1?.toFixed(2) ?? '—'}</span>
+						</div>
+						<div class="load-cell">
+							<span class="load-label">5 min</span>
+							<span class="load-num">{data.loadAvg.avg5?.toFixed(2) ?? '—'}</span>
+						</div>
+						<div class="load-cell">
+							<span class="load-label">15 min</span>
+							<span class="load-num">{data.loadAvg.avg15?.toFixed(2) ?? '—'}</span>
+						</div>
+					</div>
+					<p class="section-desc">
+						대기 중이거나 실행 중인 프로세스 평균 수. 스레드 수 ({cpuSpec?.threads ?? data.cores})를 기준으로
+						값이 해당 수에 근접할수록 "꽉 찼다"는 의미.
+						예: Load 1-min = 12 / 스레드 12개 → 완전 포화.
+					</p>
+				{/if}
+
+				<!-- Per-core heatmap -->
+				<div class="section-label">
+					코어별 사용률 히트맵
+					<span class="section-sub">스레드 {data.perCore?.length ?? 0}개</span>
+				</div>
 				<div class="heatmap-legend">
 					<span class="legend-label">Low</span>
 					<div class="legend-gradient"></div>
 					<span class="legend-label">High</span>
 				</div>
+				<p class="section-desc">
+					각 논리 스레드(CPU0, CPU1, …)의 현재 사용률을 색상 강도로 표시합니다.
+					초록 = 여유, 노랑 = 중간, 빨강 = 포화. 특정 스레드만 항상 빨강이면
+					특정 프로세스가 한 코어에 고정돼 있을 수 있습니다.
+				</p>
 				<div class="heatmap-grid" style="grid-template-columns: repeat({Math.min(data.perCore?.length ?? 4, 8)}, 1fr);">
 					{#each (data.perCore || []) as core}
 						<div
@@ -187,7 +292,129 @@
 	.close-btn:hover svg { stroke: #cbd5e1; }
 	.modal-content { flex: 1; overflow-y: auto; padding: 28px; display: flex; flex-direction: column; gap: 20px; }
 	.loading-state { text-align: center; color: #64748b; font-size: 14px; padding: 32px; }
-	.section-label { font-size: 14px; font-weight: 700; color: #64748b; }
+	.section-label {
+		font-size: 14px;
+		font-weight: 700;
+		color: #64748b;
+		display: flex;
+		align-items: baseline;
+		gap: 10px;
+	}
+	.section-sub {
+		font-size: 11px;
+		font-weight: 500;
+		color: #475569;
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+	}
+
+	.section-desc {
+		margin: 0;
+		font-size: 12px;
+		line-height: 1.55;
+		color: #94a3b8;
+		background: rgba(15, 23, 42, 0.6);
+		border-left: 3px solid rgba(48, 213, 200, 0.5);
+		padding: 10px 14px;
+		border-radius: 0 6px 6px 0;
+	}
+	.section-desc strong {
+		color: #cbd5e1;
+		font-weight: 600;
+	}
+
+	/* Topology pill row */
+	.spec-row {
+		display: flex;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+	.spec-pill {
+		font-size: 12px;
+		color: #cbd5e1;
+		background: #1f2937;
+		border: 1px solid #334155;
+		border-radius: 999px;
+		padding: 4px 12px;
+		font-weight: 600;
+	}
+	.spec-pill.hybrid {
+		background: rgba(139, 92, 246, 0.14);
+		border-color: rgba(139, 92, 246, 0.5);
+		color: #c4b5fd;
+	}
+
+	/* Live trend chart */
+	.chart-legend {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 0 4px;
+	}
+	.legend-dot {
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		flex-shrink: 0;
+	}
+	.legend-text {
+		font-size: 12px;
+		color: #cbd5e1;
+	}
+	.legend-value {
+		margin-left: auto;
+		font-size: 13px;
+		font-weight: 700;
+		color: #30d5c8;
+		font-variant-numeric: tabular-nums;
+	}
+	.chart-frame {
+		position: relative;
+		background: #0f172a;
+		border: 1px solid rgba(148, 163, 184, 0.12);
+		border-radius: 12px;
+		padding: 14px 48px 28px 48px;
+	}
+	.chart-axis {
+		position: absolute;
+		left: 12px;
+		top: 12px;
+		bottom: 12px;
+		display: flex;
+		flex-direction: column;
+		justify-content: space-between;
+		font-size: 10px;
+		color: #475569;
+		font-variant-numeric: tabular-nums;
+	}
+
+	/* Load average display */
+	.load-display {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 10px;
+	}
+	.load-cell {
+		background: #121720;
+		border-radius: 10px;
+		padding: 12px 14px;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+	.load-label {
+		font-size: 10px;
+		color: #64748b;
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		font-weight: 600;
+	}
+	.load-num {
+		font-size: 20px;
+		font-weight: 700;
+		color: #cbd5e1;
+		font-variant-numeric: tabular-nums;
+	}
 
 	.stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 	.stat-card {

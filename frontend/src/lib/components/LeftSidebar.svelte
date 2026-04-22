@@ -98,7 +98,7 @@
 		if (hybrid) {
 			const p = cpu.performanceCores ?? 0;
 			const e = cpu.efficiencyCores ?? 0;
-			return `${p}P + ${e}E · ${threads}T`;
+			return `${p}P + ${e}E / ${threads} threads`;
 		}
 
 		// Legacy agent: only `cores` field, physical count unknown.
@@ -106,10 +106,10 @@
 
 		// Multi-socket server: call it out.
 		if (sockets > 1) {
-			return `${sockets}× ${cores / sockets}c · ${cores} cores · ${threads}T`;
+			return `${sockets}× ${cores / sockets} cores / ${threads} threads`;
 		}
 
-		return `${cores} cores · ${threads}T`;
+		return `${cores} cores / ${threads} threads`;
 	}
 
 </script>
