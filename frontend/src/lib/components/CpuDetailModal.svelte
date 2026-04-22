@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import { sendCommand } from '$lib/stores/ws-store';
 	import { adaptCpuDetail } from '$lib/utils/data-adapter';
-	import LiveSparkline from './LiveSparkline.svelte';
+	import UserMetricChart from './UserMetricChart.svelte';
 	import InfoTooltip from './InfoTooltip.svelte';
 
 	let {
@@ -20,22 +20,42 @@
 	const liveCpuPct = $derived(Math.round(systemInfo?.cpu?.usage ?? 0));
 	const cpuSpec = $derived(systemInfo?.cpu ?? null);
 
-	function formatSpecLine(spec: any): string {
-		if (!spec) return '—';
-		const cores = spec.cores ?? 0;
-		const threads = spec.threads ?? cores;
-		const sockets = spec.sockets ?? 1;
-		if (spec.isHybrid) {
-			const p = spec.performanceCores ?? 0;
-			const e = spec.efficiencyCores ?? 0;
-			return `${p}P + ${e}E / ${threads} threads`;
+	// Rolling buffer for the usage trend — limited to the last ~2 minutes.
+	const MAX_POINTS = 60;
+	let cpuHistory = $state<number[]>([]);
+	let cpuLabels = $state<string[]>([]);
+	let lastSample: number | undefined;
+
+	$effect(() => {
+		if (!open) return;
+		const v = liveCpuPct;
+		if (typeof v !== 'number' || Number.isNaN(v)) return;
+		if (v === lastSample && cpuHistory.length > 0) return;
+		lastSample = v;
+		const now = new Date();
+		const label = `${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+		const prevVals = untrack(() => cpuHistory);
+		const prevLabels = untrack(() => cpuLabels);
+		cpuHistory = [...prevVals, v].slice(-MAX_POINTS);
+		cpuLabels = [...prevLabels, label].slice(-MAX_POINTS);
+	});
+
+	$effect(() => {
+		if (!open) {
+			cpuHistory = [];
+			cpuLabels = [];
+			lastSample = undefined;
 		}
-		if (!cores && threads) return `${threads} threads`;
-		if (sockets > 1) {
-			return `${sockets} sockets × ${cores / sockets} cores / ${threads} threads`;
-		}
-		return `${cores} cores / ${threads} threads`;
-	}
+	});
+
+	const cpuChartDatasets = $derived([
+		{
+			label: '전체 CPU 사용률 (%)',
+			color: '#30d5c8',
+			values: cpuHistory,
+			fill: true,
+		},
+	]);
 
 	let loading = $state(true);
 	let data: any = $state(null);
@@ -150,22 +170,14 @@
 					</div>
 				</div>
 
-				<!-- Model + topology spec -->
+				<!-- Model -->
 				<div class="model-row">
 					<span class="model-label">Processor</span>
 					<span class="model-text">{data.model}</span>
+					{#if cpuSpec?.isHybrid}
+						<span class="spec-pill hybrid">Hybrid (P + E)</span>
+					{/if}
 				</div>
-				{#if cpuSpec}
-					<div class="spec-row">
-						<span class="spec-pill">{formatSpecLine(cpuSpec)}</span>
-						{#if (cpuSpec.sockets ?? 1) > 1}
-							<span class="spec-pill">{cpuSpec.sockets} sockets</span>
-						{/if}
-						{#if cpuSpec.isHybrid}
-							<span class="spec-pill hybrid">Hybrid (P + E)</span>
-						{/if}
-					</div>
-				{/if}
 
 				<!-- Live usage trend -->
 				<div class="section-label">
@@ -175,29 +187,10 @@
 						placement="right"
 						text="CPU가 얼마나 바쁜지 보여주는 그래프예요. 0% = 한가, 100% = 완전 포화. 80% 이상이 길게 이어지면 서버가 힘들어하는 신호라 작업을 줄이거나 서버를 키워야 할 수 있어요."
 					/>
+					<span class="section-current">현재 {liveCpuPct}%</span>
 				</div>
-				<div class="chart-legend">
-					<span class="legend-dot" style="background:#30d5c8;"></span>
-					<span class="legend-text">전체 CPU 사용률</span>
-					<span class="legend-value">{liveCpuPct}%</span>
-				</div>
-				<div class="chart-frame">
-					<LiveSparkline
-						value={liveCpuPct}
-						min={0}
-						max={100}
-						width={720}
-						height={140}
-						bufferSize={120}
-						stroke="#30d5c8"
-						fill="rgba(48,213,200,0.18)"
-						smoothMs={1000}
-					/>
-					<div class="chart-axis">
-						<span>0%</span>
-						<span>50%</span>
-						<span>100%</span>
-					</div>
+				<div class="chart-wrap">
+					<UserMetricChart labels={cpuLabels} datasets={cpuChartDatasets} yFormat="percent" />
 				</div>
 
 				<!-- Load Average explanation -->
@@ -344,69 +337,36 @@
 		font-weight: 600;
 	}
 
-	/* Topology pill row */
-	.spec-row {
-		display: flex;
-		gap: 8px;
-		flex-wrap: wrap;
-	}
-	.spec-pill {
-		font-size: 12px;
-		color: #cbd5e1;
-		background: #1f2937;
-		border: 1px solid #334155;
-		border-radius: 999px;
-		padding: 4px 12px;
-		font-weight: 600;
-	}
+	/* Hybrid pill inline with model name */
 	.spec-pill.hybrid {
+		margin-left: auto;
+		font-size: 11px;
+		padding: 3px 10px;
+		border-radius: 999px;
+		font-weight: 600;
 		background: rgba(139, 92, 246, 0.14);
-		border-color: rgba(139, 92, 246, 0.5);
+		border: 1px solid rgba(139, 92, 246, 0.5);
 		color: #c4b5fd;
 	}
 
 	/* Live trend chart */
-	.chart-legend {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding: 0 4px;
-	}
-	.legend-dot {
-		width: 10px;
-		height: 10px;
-		border-radius: 50%;
-		flex-shrink: 0;
-	}
-	.legend-text {
-		font-size: 12px;
-		color: #cbd5e1;
-	}
-	.legend-value {
+	.section-current {
 		margin-left: auto;
 		font-size: 13px;
 		font-weight: 700;
 		color: #30d5c8;
 		font-variant-numeric: tabular-nums;
 	}
-	.chart-frame {
-		position: relative;
+	.chart-wrap {
 		background: #0f172a;
 		border: 1px solid rgba(148, 163, 184, 0.12);
 		border-radius: 12px;
-		padding: 14px 48px 28px 48px;
+		padding: 14px 14px 10px 14px;
+		height: 220px;
 	}
-	.chart-axis {
-		position: absolute;
-		left: 12px;
-		top: 12px;
-		bottom: 12px;
-		display: flex;
-		flex-direction: column;
-		justify-content: space-between;
-		font-size: 10px;
-		color: #475569;
-		font-variant-numeric: tabular-nums;
+	.chart-wrap :global(canvas) {
+		width: 100% !important;
+		height: 100% !important;
 	}
 
 	/* Load average display */
