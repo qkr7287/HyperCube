@@ -877,9 +877,14 @@ export class Topology {
 	focusContainer(id: string): void {
 		const node = this.containers.get(id);
 		if (!node) return;
-		this.applyFocus(id, new Set([id]), node.position);
-		this.animator?.fitSphere(node.position, 18);
+		// Container click no longer detaches the clicked node from its group.
+		// The previous `applyFocus` pinned the node and scattered everything
+		// else, which pulled one crate out of the convex hull — visually
+		// confusing and not what the click was conveying. We keep the
+		// camera dolly + selection (HUD + tooltip) but let the physics
+		// layout keep running untouched.
 		this.selectionTarget = node;
+		this.animator?.fitSphere(node.position, 18);
 	}
 
 	focusHub(id: string, _type: HubType): void {
