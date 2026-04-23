@@ -74,11 +74,14 @@
 			firstSpans: false,
 			variants: Array(6).fill('compact') as Variant[],
 		};
+		// count 7, 9 는 cols=4/5 라 span 카드가 너무 좁아(~460/365px) full/medium
+		// 의 multi-col extras 가 쪼개져 글자·chip 이 깨짐. span 대신 전부 compact
+		// 균등 배치 — 빈 cell 1개는 감수.
 		if (count === 7) return {
 			cols: 4,
 			rows: 2,
-			firstSpans: true,
-			variants: ['full', ...Array(6).fill('compact')] as Variant[],
+			firstSpans: false,
+			variants: Array(7).fill('compact') as Variant[],
 		};
 		if (count === 8) return {
 			cols: 4,
@@ -89,8 +92,8 @@
 		if (count === 9) return {
 			cols: 5,
 			rows: 2,
-			firstSpans: true,
-			variants: ['full', ...Array(8).fill('compact')] as Variant[],
+			firstSpans: false,
+			variants: Array(9).fill('compact') as Variant[],
 		};
 		return {
 			cols: 5,
