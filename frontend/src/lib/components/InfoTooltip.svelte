@@ -64,11 +64,11 @@
 	.info-bubble {
 		position: absolute;
 		z-index: 60;
-		max-width: 280px;
-		min-width: 200px;
+		max-width: 300px;
+		min-width: 220px;
 		padding: 10px 12px;
 		font-size: 12px;
-		line-height: 1.5;
+		line-height: 1.55;
 		color: #e2e8f0;
 		background: rgba(13, 17, 23, 0.98);
 		border: 1px solid rgba(48, 213, 200, 0.35);
@@ -78,7 +78,7 @@
 		pointer-events: none;
 		transform: translateY(-2px);
 		transition: opacity 0.15s ease, transform 0.15s ease;
-		white-space: normal;
+		white-space: pre-line;
 		text-align: left;
 		font-weight: 400;
 		letter-spacing: 0.01em;

@@ -19,9 +19,9 @@
 	} = $props();
 
 	let pending = $state(0);
+	let menuOpen = $state(false);
 	const unsub = pendingRequestCount.subscribe((n) => (pending = n));
 
-	// 헤더 mount 시 pending 갯수 REST로 1회 조회 (이후 WS 이벤트로 증감)
 	async function refreshPending() {
 		if (!browser) return;
 		const token = localStorage.getItem('hc_access_token');
@@ -34,7 +34,7 @@
 			const json = await res.json();
 			pendingRequestCount.set(json.data?.count ?? 0);
 		} catch {
-			/* ignore */
+			/* Best-effort badge refresh. */
 		}
 	}
 
@@ -42,27 +42,30 @@
 	onDestroy(unsub);
 
 	let currentPath = $derived($page.url.pathname);
-	function isActive(prefix: string): boolean {
-		if (prefix === '/') return currentPath === '/' || currentPath.startsWith('/?') ;
-		return currentPath.startsWith(prefix);
+
+	function isActive(match: string): boolean {
+		if (match === '/') return currentPath === '/';
+		return currentPath.startsWith(match);
 	}
 
 	const navItems = [
-		{ href: `${base}/`, label: '메인', match: '/' },
-		{ href: `${base}/admin/requests`, label: '승인', match: '/admin/requests', badge: () => pending },
+		{ href: `${base}/admin/dashboard`, label: '전체 서버 모니터링', match: '/admin/dashboard' },
+		{ href: `${base}/admin/requests`, label: '서버 승인', match: '/admin/requests', badge: () => pending },
 		{ href: `${base}/admin/templates`, label: '템플릿', match: '/admin/templates' },
+		{ href: `${base}/`, label: '3D 상세 모니터링', match: '/' },
 	];
 
-	let menuOpen = $state(false);
 	function toggleMenu(e: MouseEvent) {
 		e.stopPropagation();
 		menuOpen = !menuOpen;
 	}
+
 	function handleDocClick(e: MouseEvent) {
 		if (!menuOpen) return;
-		const t = e.target as HTMLElement;
-		if (!t.closest('.user-menu')) menuOpen = false;
+		const target = e.target as HTMLElement;
+		if (!target.closest('.user-menu')) menuOpen = false;
 	}
+
 	$effect(() => {
 		document.addEventListener('click', handleDocClick);
 		return () => document.removeEventListener('click', handleDocClick);
@@ -70,18 +73,19 @@
 </script>
 
 <header class="admin-header">
-	<div class="brand" onclick={() => goto(`${base}/`)} role="button" tabindex="0"
-		onkeydown={(e) => e.key === 'Enter' && goto(`${base}/`)}>
+	<div
+		class="brand"
+		onclick={() => goto(`${base}/admin/dashboard`)}
+		role="button"
+		tabindex="0"
+		onkeydown={(e) => e.key === 'Enter' && goto(`${base}/admin/dashboard`)}
+	>
 		<img class="brand-logo" src={logoHypercube} alt="HyperCube" />
 	</div>
 
-	<nav class="nav">
+	<nav class="nav" aria-label="Admin navigation">
 		{#each navItems as item (item.href)}
-			<a
-				href={item.href}
-				class="nav-link"
-				class:active={isActive(item.match)}
-			>
+			<a href={item.href} class="nav-link" class:active={isActive(item.match)}>
 				{item.label}
 				{#if item.badge && item.badge() > 0}
 					<span class="nav-badge">{item.badge()}</span>
@@ -93,12 +97,13 @@
 	<div class="right-cluster">
 		<AgentStatusBadge totalKnown={totalAgents} />
 		<div class="user-menu">
-			<button class="user-btn" onclick={toggleMenu}>
-				{username || 'user'} <span class="chev" class:open={menuOpen}>▾</span>
+			<button class="user-btn" type="button" onclick={toggleMenu}>
+				<span>{username || 'admin'}</span>
+				<span class="chev" class:open={menuOpen}>⌄</span>
 			</button>
 			{#if menuOpen}
 				<div class="user-dropdown">
-					<button class="user-item" onclick={onLogout}>로그아웃</button>
+					<button class="user-item" type="button" onclick={onLogout}>Logout</button>
 				</div>
 			{/if}
 		</div>
@@ -112,42 +117,38 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		gap: 16px;
 		padding: 0 20px;
 		background: var(--bg-card);
 		border-bottom: 1px solid var(--border);
 	}
-
 	.brand {
 		cursor: pointer;
 		user-select: none;
-	}
-	.brand-text {
-		font-size: 16px;
-		font-weight: 800;
-		color: var(--accent);
-		letter-spacing: 0.02em;
+		flex-shrink: 0;
 	}
 	.brand-logo {
 		display: block;
 		height: 22px;
 		width: auto;
 	}
-
 	.nav {
 		display: flex;
 		gap: 4px;
+		min-width: 0;
 	}
 	.nav-link {
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
-		padding: 7px 14px;
+		padding: 7px 13px;
 		font-size: 13px;
-		font-weight: 500;
+		font-weight: 650;
 		color: var(--text-secondary);
 		text-decoration: none;
 		border-radius: var(--radius-md);
 		transition: color 0.12s, background 0.12s;
+		white-space: nowrap;
 	}
 	.nav-link:hover {
 		color: var(--text-primary);
@@ -168,16 +169,15 @@
 		background: var(--error);
 		color: white;
 		font-size: 10px;
-		font-weight: 700;
+		font-weight: 800;
 		border-radius: 9px;
 	}
-
 	.right-cluster {
 		display: flex;
 		align-items: center;
 		gap: 14px;
+		flex-shrink: 0;
 	}
-
 	.user-menu {
 		position: relative;
 	}
@@ -191,14 +191,20 @@
 		cursor: pointer;
 		display: inline-flex;
 		align-items: center;
-		gap: 4px;
+		gap: 6px;
 		font-family: inherit;
+		max-width: 180px;
 	}
 	.user-btn:hover {
 		border-color: var(--accent);
 	}
+	.user-btn span:first-child {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
 	.chev {
-		font-size: 10px;
+		font-size: 12px;
 		transition: transform 0.15s;
 	}
 	.chev.open {
@@ -230,5 +236,15 @@
 	}
 	.user-item:hover {
 		background: var(--bg-tab);
+	}
+	@media (max-width: 820px) {
+		.admin-header {
+			padding: 0 12px;
+			gap: 10px;
+		}
+		.nav-link {
+			padding: 7px 9px;
+			font-size: 12px;
+		}
 	}
 </style>
