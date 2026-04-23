@@ -1,8 +1,18 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import MetricHelp from './MetricHelp.svelte';
 	import MetricSparkline from './MetricSparkline.svelte';
-	import { formatClock, formatPercent, formatRate, rangePollLabel, type RangeKey } from '$lib/utils/fleet-format';
+	import { formatClock, formatCompact, formatPercent, formatRate, rangePollLabel, type RangeKey } from '$lib/utils/fleet-format';
 	import type { FleetHistoryPoint, FleetSummary } from '$lib/stores/fleet-store';
+
+	// fleet-store의 POLL_INTERVAL_MS와 동일해야 progress bar 정확도 유지.
+	const POLL_INTERVAL_MS: Record<RangeKey, number> = {
+		'1m': 10000,
+		'5m': 30000,
+		'1h': 60000,
+		'24h': 600000,
+		'7d': 3600000,
+	};
 
 	let {
 		summary,
@@ -40,6 +50,21 @@
 		if (value >= crit) return 'danger';
 		if (value >= warn) return 'warn';
 		return 'normal';
+	}
+
+	// 다음 poll까지 남은 시간을 1초마다 tick — progress bar·카운트다운용.
+	let now = $state(Date.now());
+	const tick = setInterval(() => (now = Date.now()), 1000);
+	onDestroy(() => clearInterval(tick));
+
+	let pollMs = $derived(POLL_INTERVAL_MS[range]);
+	let elapsed = $derived(lastUpdated ? Math.max(0, now - lastUpdated.getTime()) : 0);
+	let progress = $derived(Math.min(100, (elapsed / pollMs) * 100));
+	let countdownSec = $derived(Math.max(0, Math.ceil((pollMs - elapsed) / 1000)));
+	function formatCountdown(sec: number): string {
+		if (sec < 60) return `${sec}초`;
+		if (sec < 3600) return `${Math.floor(sec / 60)}분 ${sec % 60}초`;
+		return `${Math.floor(sec / 3600)}시간 ${Math.floor((sec % 3600) / 60)}분`;
 	}
 
 	let cpuLevel = $derived(severity(metrics?.cpu_max ?? 0, 70, 90));
@@ -120,8 +145,8 @@
 
 	<div class="kpi">
 		<span class="label">컨테이너 <MetricHelp text="모든 서버에서 실행 중·기타·이상 상태 컨테이너 합계입니다. 초록 막대는 실행 비율, 빨간 막대는 문제 비율입니다." /></span>
-		<strong class="value">{containerRunning}</strong>
-		<span class="sub">실행 · 기타 {Number(containers.non_running ?? 0)} · 이상 {containerProblem}</span>
+		<strong class="value compact" title={`실행 중 ${Number(containerRunning).toLocaleString('en-US')} 컨테이너`}>{formatCompact(containerRunning)}</strong>
+		<span class="sub">실행 · 기타 {formatCompact(containers.non_running)} · 이상 {formatCompact(containerProblem)}</span>
 		<div class="container-bar" aria-hidden={containerTotal === 0}>
 			<span class="seg running" style={`width: ${runningPct}%`}></span>
 			<span class="seg problem" style={`width: ${problemPct}%`}></span>
@@ -133,13 +158,15 @@
 		<div class="pl-row">
 			<div class="pl-col">
 				<span class="pl-label">프로세스</span>
-				<strong class="value">{ops?.processes_total ?? 0}</strong>
-				<span class="pl-avg">평균 {Number(ops?.processes_avg ?? 0).toFixed(0)}</span>
+				<strong class="value compact" title={`총 ${Number(ops?.processes_total ?? 0).toLocaleString('en-US')} 프로세스`}>
+					{formatCompact(ops?.processes_total)}
+				</strong>
+				<span class="pl-avg">평균 {formatCompact(Math.round(Number(ops?.processes_avg ?? 0)))}</span>
 			</div>
 			<div class="pl-divider"></div>
 			<div class="pl-col">
 				<span class="pl-label">로그인</span>
-				<strong class="value">{ops?.logins_total ?? 0}</strong>
+				<strong class="value compact">{formatCompact(ops?.logins_total)}</strong>
 				<span class="pl-avg">평균 {Number(ops?.logins_avg ?? 0).toFixed(1)}</span>
 			</div>
 		</div>
@@ -163,6 +190,17 @@
 		<span class="label">{loading ? '갱신 중' : connected ? '자동 갱신' : '연결 끊김'}</span>
 		<strong class="clock">{lastUpdated ? formatClock(lastUpdated.toISOString()) : '-'}</strong>
 		<span class="sub">{rangePollLabel(range)}</span>
+
+		<!-- 나머지 공간을 채우는 progress — 다음 poll까지 경과/남은 시간 시각화 -->
+		<div class="refresh-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(progress)}>
+			<div class="progress-track">
+				<div class="progress-fill" style={`width: ${progress}%;`}></div>
+			</div>
+			<div class="progress-meta">
+				<span>{connected && !loading ? `다음 갱신 ${formatCountdown(countdownSec)}` : loading ? '불러오는 중' : '대기 중'}</span>
+				<span class="progress-pct">{Math.round(progress)}%</span>
+			</div>
+		</div>
 	</div>
 </section>
 
@@ -177,7 +215,10 @@
 		--font-xl: clamp(22px, 1.5vw, 32px);
 
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(clamp(145px, 10.5vw, 230px), 1fr));
+		/* KPI 9~10개를 FHD(1920) 한 줄에 담아야 해서 minmax 하한을 낮춤.
+		   1920에서 9.2vw ≈ 176px → 10개 × 176 + gap < 1900. QHD/4K는 clamp 상한에
+		   걸려 1fr 로 균등 분배됨. */
+		grid-template-columns: repeat(auto-fit, minmax(clamp(140px, 9.2vw, 210px), 1fr));
 		gap: clamp(6px, 0.5vw, 12px);
 		flex-shrink: 0;
 	}
@@ -465,5 +506,46 @@
 		font-size: var(--font-md);
 		font-weight: 700;
 		font-variant-numeric: tabular-nums;
+	}
+
+	/* 자동 갱신 타일이 다른 KPI (sparkline 있는) 와 높이·비율 맞추도록, 남는 공간을
+	   progress bar + countdown 으로 채움. flex 레이아웃이라 strong·sub 아래 자동 확장. */
+	.refresh-progress {
+		margin-top: auto;
+		padding-top: clamp(4px, 0.35vw, 8px);
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+	.progress-track {
+		position: relative;
+		width: 100%;
+		height: clamp(5px, 0.45vh, 9px);
+		background: rgba(148, 163, 184, 0.14);
+		border-radius: var(--kpi-radius);
+		overflow: hidden;
+	}
+	.progress-fill {
+		height: 100%;
+		background: linear-gradient(90deg, #34d399, #30d5c8);
+		border-radius: inherit;
+		transition: width 0.9s linear;
+	}
+	.kpi-refresh.loading .progress-fill {
+		background: linear-gradient(90deg, #fbbf24, #f59e0b);
+	}
+	.kpi-refresh.disconnected .progress-fill {
+		background: rgba(100, 116, 139, 0.5);
+	}
+	.progress-meta {
+		display: flex;
+		justify-content: space-between;
+		font-size: calc(var(--font-xs) - 1px);
+		color: var(--text-muted);
+		font-weight: 600;
+	}
+	.progress-pct {
+		font-variant-numeric: tabular-nums;
+		color: var(--text-secondary);
 	}
 </style>

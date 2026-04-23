@@ -18,6 +18,9 @@ function randomWalk(count: number, start: number, step = 4, min = 0, max = 100):
 	return out;
 }
 
+// 5가지 health 상태를 각 1대씩 생성해서 전부 가시화.
+export const EACH_STATUS_ORDER: Health[] = ['critical', 'warning', 'stale', 'offline', 'healthy'];
+
 function pickHealth(i: number, total: number): Health {
 	// Distribute statuses: a few critical/warning/stale at start, rest healthy.
 	if (total <= 3) return i === 0 ? 'critical' : 'healthy';
@@ -103,11 +106,16 @@ function reasonsFor(health: Health, mem: number, cpu: number, disk: number): str
 	return [];
 }
 
-export function buildSimulatedAgents(count: number, offset = 0): FleetAgentRow[] {
+export function buildSimulatedAgents(
+	count: number,
+	offset = 0,
+	forceStatuses?: Health[],
+): FleetAgentRow[] {
 	const out: FleetAgentRow[] = [];
 	const sparkLength = 24;
-	for (let i = 0; i < count; i += 1) {
-		const health = pickHealth(i, count);
+	const total = forceStatuses?.length ?? count;
+	for (let i = 0; i < total; i += 1) {
+		const health = forceStatuses ? forceStatuses[i] : pickHealth(i, count);
 		const idx = i + offset + 1;
 		const m = metricsFor(health);
 		const containers = containerDist(health);
@@ -132,22 +140,38 @@ export function buildSimulatedAgents(count: number, offset = 0): FleetAgentRow[]
 			health_reasons: reasonsFor(health, m.mem, m.cpu, m.disk),
 			latest: health === 'offline'
 				? null
-				: {
-						timestamp: new Date(Date.now() - (health === 'stale' ? 65000 : 8000)).toISOString(),
-						cpu_usage: Math.round(m.cpu * 10) / 10,
-						memory_usage: Math.round(m.mem * 10) / 10,
-						memory_used: memoryUsed,
-						memory_total: memoryTotal,
-						disk_usage: Math.round(m.disk * 10) / 10,
-						network_rx_rate: rx,
-						network_tx_rate: tx,
-						processes_total: processesTotal,
-						processes_running: processesRunning,
-						logins_total: Math.round(randomBetween(0, 6)),
-						gpu_usage: hasGpu ? Math.round(m.gpu * 10) / 10 : 0,
-						gpu_temperature: hasGpu ? Math.round(randomBetween(38, 82)) : null,
-						gpu_count: hasGpu ? (Math.random() > 0.7 ? 2 : 1) : 0,
-					},
+				: (() => {
+						const cpuCores = Math.random() > 0.5 ? 12 : 8;
+						const diskTotal = Math.round(randomBetween(120, 2000)) * 1024 * 1024 * 1024;
+						const diskUsed = Math.round((m.disk / 100) * diskTotal);
+						const gpuCount = hasGpu ? (Math.random() > 0.7 ? 2 : 1) : 0;
+						const gpuMemTotalOne = 8 * 1024 * 1024 * 1024;
+						const gpuMemTotal = hasGpu ? gpuMemTotalOne * gpuCount : 0;
+						const gpuMemUsed = hasGpu ? Math.round((m.gpu / 100) * gpuMemTotal) : 0;
+						return {
+							timestamp: new Date(Date.now() - (health === 'stale' ? 65000 : 8000)).toISOString(),
+							cpu_usage: Math.round(m.cpu * 10) / 10,
+							cpu_cores: cpuCores,
+							cpu_threads: cpuCores,
+							cpu_load_avg_1m: Math.round(m.cpu / 100 * cpuCores * 100) / 100,
+							memory_usage: Math.round(m.mem * 10) / 10,
+							memory_used: memoryUsed,
+							memory_total: memoryTotal,
+							disk_usage: Math.round(m.disk * 10) / 10,
+							disk_used: diskUsed,
+							disk_total: diskTotal,
+							network_rx_rate: rx,
+							network_tx_rate: tx,
+							processes_total: processesTotal,
+							processes_running: processesRunning,
+							logins_total: Math.round(randomBetween(0, 6)),
+							gpu_usage: hasGpu ? Math.round(m.gpu * 10) / 10 : 0,
+							gpu_temperature: hasGpu ? Math.round(randomBetween(38, 82)) : null,
+							gpu_memory_used: hasGpu ? gpuMemUsed : null,
+							gpu_memory_total: hasGpu ? gpuMemTotal : null,
+							gpu_count: gpuCount,
+						};
+					})(),
 			containers,
 			sparkline: {
 				cpu: randomWalk(sparkLength, m.cpu, 6),

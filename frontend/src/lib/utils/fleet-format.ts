@@ -1,3 +1,23 @@
+// 큰 숫자를 KPI 타일 너비 안에 들어가도록 축약.
+// < 1만 → 천 단위 콤마 (1,367). < 100만 → K (12.3K / 820K). 그 이상 → M (1.2M).
+// 프로세스·로그인·컨테이너 합계 등 자릿수 변동 큰 값 전용.
+export function formatCompact(value?: number | null): string {
+	const n = Number(value ?? 0);
+	if (!Number.isFinite(n)) return '0';
+	const abs = Math.abs(n);
+	if (abs < 10_000) return n.toLocaleString('en-US');
+	if (abs < 1_000_000) {
+		const k = n / 1000;
+		return `${k >= 100 ? Math.round(k) : k.toFixed(1).replace(/\.0$/, '')}K`;
+	}
+	if (abs < 1_000_000_000) {
+		const m = n / 1_000_000;
+		return `${m >= 100 ? Math.round(m) : m.toFixed(1).replace(/\.0$/, '')}M`;
+	}
+	const b = n / 1_000_000_000;
+	return `${b.toFixed(1).replace(/\.0$/, '')}B`;
+}
+
 export function formatPercent(value?: number | null, digits = 1): string {
 	const next = Number(value ?? 0);
 	return `${Number.isFinite(next) ? next.toFixed(digits) : '0.0'}%`;
@@ -65,23 +85,25 @@ export function freshnessLabel(ageSeconds?: number | null): string {
 
 export type RangeKey = '1m' | '5m' | '1h' | '24h' | '7d';
 
+// Range는 "bucket(샘플링) 간격"을 의미. rangeLabel은 차트가 보여주는 전체 시간 창
+// (bucket × 표시 point 수)을 한국어로 압축.
 export function rangeLabel(range: RangeKey): string {
 	return ({
-		'1m': '최근 1분',
-		'5m': '최근 5분',
-		'1h': '최근 1시간',
-		'24h': '최근 24시간',
-		'7d': '최근 7일',
+		'1m': '최근 30분',
+		'5m': '최근 2시간',
+		'1h': '최근 24시간',
+		'24h': '최근 7일',
+		'7d': '최근 4주',
 	} as Record<RangeKey, string>)[range];
 }
 
 export function rangeBucketLabel(range: RangeKey): string {
 	return ({
-		'1m': '5초 간격',
-		'5m': '15초 간격',
-		'1h': '60초 간격',
-		'24h': '5분 간격',
-		'7d': '30분 간격',
+		'1m': '1분 간격',
+		'5m': '5분 간격',
+		'1h': '1시간 간격',
+		'24h': '1일 간격',
+		'7d': '1주 간격',
 	} as Record<RangeKey, string>)[range];
 }
 
@@ -116,7 +138,7 @@ const SHORT_REASON_MAP: Array<[RegExp | string, string]> = [
 	[/^Memory >= (\d+)%$/, '메모리 $1%↑'],
 	[/^Disk >= (\d+)%$/, '디스크 $1%↑'],
 	[/^GPU >= (\d+)%$/, 'GPU $1%↑'],
-	['Dead container detected', '컨테이너 중단'],
+	['Dead container detected', '컨테이너 비정상'],
 	['Restarting container detected', '컨테이너 재시작'],
 ];
 
@@ -131,12 +153,14 @@ export function shortReason(reason: string): string {
 	return reason;
 }
 
+// Poll 주기 라벨은 range 키와 같은 축약 표기(1m, 5m, 1h, 24h, 7d) 사용.
+// ex) range=1h (1시간 bucket) → poll 주기 1m = 1분마다 최신값 pull.
 export function rangePollLabel(range: RangeKey): string {
 	return ({
-		'1m': '10초 주기 갱신',
-		'5m': '30초 주기 갱신',
-		'1h': '1분 주기 갱신',
-		'24h': '5분 주기 갱신',
-		'7d': '30분 주기 갱신',
+		'1m': '10s 주기 갱신',
+		'5m': '30s 주기 갱신',
+		'1h': '1m 주기 갱신',
+		'24h': '10m 주기 갱신',
+		'7d': '1h 주기 갱신',
 	} as Record<RangeKey, string>)[range];
 }

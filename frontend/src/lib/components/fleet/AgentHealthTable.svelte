@@ -90,8 +90,18 @@
 	};
 
 	function handleMonitor(event: MouseEvent, agentId: string) {
+		event.preventDefault();
 		event.stopPropagation();
+		event.stopImmediatePropagation?.();
 		onOpen3d?.(agentId);
+	}
+
+	function handleRowClick(event: MouseEvent, agentId: string) {
+		// tr onclick은 기본 select. 하지만 내부에 있는 .monitor-btn 이나 다른
+		// button / link 클릭일 땐 select를 무시해서 버튼이 제 역할을 하도록 함.
+		const target = event.target as HTMLElement | null;
+		if (target?.closest('button, a, .monitor-btn')) return;
+		onSelect(agentId);
 	}
 
 	function procText(row: FleetAgentRow): string {
@@ -224,7 +234,7 @@
 						<tr
 							class="{row.health}"
 							class:selected={selectedId === row.agent.id}
-							onclick={() => onSelect(row.agent.id)}
+							onclick={(e) => handleRowClick(e, row.agent.id)}
 						>
 							<td class="c-state">
 								<span class="health {row.health}">{healthLabel(row.health)}</span>
@@ -326,7 +336,15 @@
 							</td>
 							<td class="c-action">
 								{#if onOpen3d}
-									<button type="button" class="monitor-btn" onclick={(e) => handleMonitor(e, row.agent.id)} title="3D 토폴로지 뷰에서 상세 모니터링">
+									{@const isSim = row.agent.id.startsWith('sim-')}
+									<button
+										type="button"
+										class="monitor-btn"
+										class:disabled={isSim}
+										disabled={isSim}
+										onclick={(e) => handleMonitor(e, row.agent.id)}
+										title={isSim ? '시뮬레이션 서버는 3D 뷰로 연결할 실제 토폴로지가 없습니다' : '3D 토폴로지 뷰에서 상세 모니터링'}
+									>
 										<span aria-hidden="true">◆</span>
 										<span>상세</span>
 									</button>
@@ -342,6 +360,9 @@
 
 <style>
 	.table-panel {
+		/* monitor-btn 이 FleetAgentCard와 동일 토큰을 쓰도록 로컬 선언 — 카드와 테이블
+		   버튼이 같은 치수/발색을 유지하는 것이 목표. */
+		--font-xs: clamp(10px, 0.62vw, 13px);
 		min-width: 0;
 		background: var(--bg-card);
 		border: 1px solid var(--border);
@@ -500,27 +521,21 @@
 		cursor: pointer;
 		box-shadow: inset 3px 0 0 var(--state-color, rgba(100, 116, 139, 0.35));
 	}
-	tbody tr.healthy {
-		--state-color: #34d399;
-	}
-	tbody tr.warning {
-		--state-color: #f59e0b;
-	}
-	tbody tr.critical {
-		--state-color: #ef4444;
-	}
-	tbody tr.stale {
-		--state-color: #a78bfa;
-	}
-	tbody tr.offline {
-		--state-color: #64748b;
-	}
+	/* 좌측 바 색 = health chip 색상과 정확히 일치 — 한 눈에 상태 인식하기 쉽게. */
+	tbody tr.healthy  { --state-color: #34d399; }
+	tbody tr.warning  { --state-color: #fbbf24; } /* amber 400 */
+	tbody tr.critical { --state-color: #f87171; } /* red 400 */
+	tbody tr.stale    { --state-color: #a78bfa; } /* violet 400 */
+	tbody tr.offline  { --state-color: #94a3b8; } /* slate 400 */
 	tbody tr:hover {
 		background: var(--bg-tab);
 	}
 	tbody tr.selected {
+		/* 좌측 3px 막대는 상태색 유지 — selected라고 해도 상태 정보가 더 중요.
+		   선택 표시는 배경 tint만으로 충분. */
 		background: rgba(48, 213, 200, 0.08);
-		--state-color: var(--accent);
+		outline: 1px solid rgba(48, 213, 200, 0.3);
+		outline-offset: -1px;
 	}
 	.health {
 		display: inline-flex;
@@ -530,11 +545,12 @@
 		font-weight: 800;
 		letter-spacing: 0.3px;
 	}
-	.health.healthy { color: #34d399; background: rgba(52, 211, 153, 0.14); }
-	.health.warning { color: #fbbf24; background: rgba(251, 191, 36, 0.14); }
+	/* chip 색상은 좌측 바 색상과 1:1 매칭. stale은 보라(violet), offline만 slate 회색. */
+	.health.healthy  { color: #34d399; background: rgba(52, 211, 153, 0.14); }
+	.health.warning  { color: #fbbf24; background: rgba(251, 191, 36, 0.14); }
 	.health.critical { color: #f87171; background: rgba(248, 113, 113, 0.14); }
-	.health.stale,
-	.health.offline { color: #94a3b8; background: rgba(148, 163, 184, 0.14); }
+	.health.stale    { color: #a78bfa; background: rgba(167, 139, 250, 0.14); }
+	.health.offline  { color: #94a3b8; background: rgba(148, 163, 184, 0.14); }
 
 	td strong {
 		display: block;
@@ -546,7 +562,10 @@
 	td strong.dim {
 		color: var(--text-muted);
 	}
-	td span,
+	/* monitor-btn 내부 span은 버튼 스타일(teal), .health 는 상태별 색상을 유지해야
+	   해서 이 회색 muted 규칙에서 제외. 안 그러면 "상세"가 회색으로, "주의/위험/
+	   오프라인" chip 텍스트도 회색으로 죽어 보임. */
+	td span:not(.monitor-btn span):not(.monitor-btn *):not(.health),
 	td .subtle {
 		display: block;
 		margin-top: 2px;
@@ -695,22 +714,34 @@
 	.monitor-btn {
 		display: inline-flex;
 		align-items: center;
-		gap: 3px;
-		height: 26px;
-		padding: 0 9px;
-		border: 1px solid rgba(48, 213, 200, 0.42);
+		gap: 4px;
+		/* 카드 쪽 monitor-btn과 완전히 동일한 치수·발색 — 통일성 보장. */
+		height: clamp(22px, 1.8vw, 32px);
+		padding: 0 clamp(7px, 0.55vw, 14px);
+		border: 1px solid rgba(48, 213, 200, 0.6);
 		border-radius: var(--radius-sm);
-		background: rgba(48, 213, 200, 0.12);
+		/* 선택된 tr의 청록 틴트 위에서도 일관된 발색을 위해 솔리드 바탕 + 청록 오버레이를 합성. */
+		background: linear-gradient(rgba(48, 213, 200, 0.18), rgba(48, 213, 200, 0.18)), var(--bg-card);
 		color: var(--accent);
 		font-family: inherit;
-		font-size: 11px;
+		font-size: var(--font-xs);
 		font-weight: 800;
+		letter-spacing: 0.2px;
+		white-space: nowrap;
 		cursor: pointer;
 		transition: background 0.12s ease, border-color 0.12s ease;
 	}
-	.monitor-btn:hover {
-		background: rgba(48, 213, 200, 0.22);
-		border-color: rgba(48, 213, 200, 0.6);
+	.monitor-btn:hover:not(.disabled) {
+		background: linear-gradient(rgba(48, 213, 200, 0.3), rgba(48, 213, 200, 0.3)), var(--bg-card);
+		border-color: rgba(48, 213, 200, 0.8);
+	}
+	.monitor-btn.disabled,
+	.monitor-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+		background: rgba(100, 116, 139, 0.1);
+		color: var(--text-muted);
+		border-color: rgba(100, 116, 139, 0.3);
 	}
 
 	.empty {

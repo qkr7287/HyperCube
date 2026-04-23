@@ -10,6 +10,13 @@ class SystemMetricsHistorySerializer(serializers.ModelSerializer):
     processes_total = serializers.SerializerMethodField()
     processes_running = serializers.SerializerMethodField()
     logins_total = serializers.SerializerMethodField()
+    # CPU / Disk 상세 — fleet 카드 피크 셀에서 "% + 실제 값" 표시용.
+    # Agent의 system.collect 결과를 raw_data.cpu / raw_data.disk에서 파싱.
+    cpu_cores = serializers.SerializerMethodField()
+    cpu_threads = serializers.SerializerMethodField()
+    cpu_load_avg_1m = serializers.SerializerMethodField()
+    disk_used = serializers.SerializerMethodField()
+    disk_total = serializers.SerializerMethodField()
     # GPU array carried through so the sidebar sparkline + GPU detail modal
     # can chart per-GPU usage/memory/temperature without paying for the full
     # raw_data payload. List of {index, vendor, model, memoryTotal, memoryUsed,
@@ -23,10 +30,15 @@ class SystemMetricsHistorySerializer(serializers.ModelSerializer):
             "agent",
             "agent_hostname",
             "cpu_usage",
+            "cpu_cores",
+            "cpu_threads",
+            "cpu_load_avg_1m",
             "memory_usage",
             "memory_used",
             "memory_total",
             "disk_usage",
+            "disk_used",
+            "disk_total",
             "network_rx",
             "network_tx",
             "network_connections",
@@ -51,6 +63,24 @@ class SystemMetricsHistorySerializer(serializers.ModelSerializer):
 
     def get_logins_total(self, obj):
         return (self._raw(obj).get("logins") or {}).get("total")
+
+    def get_cpu_cores(self, obj):
+        return (self._raw(obj).get("cpu") or {}).get("cores")
+
+    def get_cpu_threads(self, obj):
+        # Agent가 threads를 안 보내는 경우도 있어 cores로 폴백.
+        cpu = self._raw(obj).get("cpu") or {}
+        return cpu.get("threads") or cpu.get("cores")
+
+    def get_cpu_load_avg_1m(self, obj):
+        # Agent에 load_avg_1m이 추가되면 자동 노출. 없으면 null.
+        return (self._raw(obj).get("cpu") or {}).get("load_avg_1m")
+
+    def get_disk_used(self, obj):
+        return (self._raw(obj).get("disk") or {}).get("used")
+
+    def get_disk_total(self, obj):
+        return (self._raw(obj).get("disk") or {}).get("total")
 
     def get_gpu(self, obj):
         gpu = self._raw(obj).get("gpu")

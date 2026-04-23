@@ -34,10 +34,15 @@ type SystemMetricRow = {
 	agent: string;
 	agent_hostname: string;
 	cpu_usage: number;
+	cpu_cores?: number | null;
+	cpu_threads?: number | null;
+	cpu_load_avg_1m?: number | null;
 	memory_usage: number;
 	memory_used: number;
 	memory_total: number;
 	disk_usage: number;
+	disk_used?: number | null;
+	disk_total?: number | null;
 	network_rx: number;
 	network_tx: number;
 	processes_total?: number | null;
@@ -96,10 +101,15 @@ export type FleetAgentRow = {
 	latest: {
 		timestamp: string | null;
 		cpu_usage: number;
+		cpu_cores: number | null;
+		cpu_threads: number | null;
+		cpu_load_avg_1m: number | null;
 		memory_usage: number;
 		memory_used: number;
 		memory_total: number;
 		disk_usage: number;
+		disk_used: number | null;
+		disk_total: number | null;
 		network_rx_rate: number;
 		network_tx_rate: number;
 		processes_total: number | null;
@@ -107,6 +117,8 @@ export type FleetAgentRow = {
 		logins_total: number | null;
 		gpu_usage: number;
 		gpu_temperature: number | null;
+		gpu_memory_used: number | null;
+		gpu_memory_total: number | null;
 		gpu_count: number;
 	} | null;
 	containers: Record<string, number>;
@@ -170,18 +182,45 @@ export const fleetError = writable('');
 export const fleetConnected = writable(false);
 export const lastFleetUpdate = writable<Date | null>(null);
 
-const RANGE_LIMITS: Record<TimeRange, number> = { '1m': 200, '5m': 800, '1h': 2000, '24h': 4000, '7d': 8000 };
-const HISTORY_LIMITS: Record<TimeRange, number> = { '1m': 30, '5m': 60, '1h': 240, '24h': 500, '7d': 600 };
-const BUCKET_SECONDS: Record<TimeRange, number> = { '1m': 5, '5m': 15, '1h': 60, '24h': 300, '7d': 1800 };
-const POLL_INTERVAL_MS: Record<TimeRange, number> = {
-	'1m': 10000,
-	'5m': 30000,
-	'1h': 60000,
-	'24h': 300000,
-	'7d': 1800000,
+// Bucket size == the range label (user-facing). "1m 범위 = 1분 단위 버킷".
+// Chart displays SPARKLINE_POINTS buckets wide, so the actual time window
+// visible is BUCKET_SECONDS × SPARKLINE_POINTS.
+const BUCKET_SECONDS: Record<TimeRange, number> = {
+	'1m': 60,       // 1분 bucket
+	'5m': 300,      // 5분 bucket
+	'1h': 3600,     // 1시간 bucket
+	'24h': 86400,   // 1일 bucket
+	'7d': 604800,   // 1주 bucket
 };
-// Backend only exposes 5m / 1h / 24h ranges; map new ranges to closest supported.
-const API_RANGE: Record<TimeRange, string> = { '1m': '5m', '5m': '5m', '1h': '1h', '24h': '24h', '7d': '24h' };
+// 차트에 표시할 bucket 개수. BUCKET × POINTS = 표시 창(window).
+// ex) 1m × 30 = 30분 창, 1h × 24 = 24시간 창.
+export const SPARKLINE_POINTS: Record<TimeRange, number> = {
+	'1m': 30,   // 30 min window
+	'5m': 24,   // 2 h window
+	'1h': 24,   // 24 h window
+	'24h': 7,   // 7 days (backend 최대치)
+	'7d': 4,    // 4 weeks (실제로는 retention 기간에 따라 축소될 수 있음)
+};
+// Backend retention에 맞춘 raw data 요청 범위. bucket × points 보다 조금 더 넉넉히.
+const API_RANGE: Record<TimeRange, string> = {
+	'1m': '30m',
+	'5m': '6h',
+	'1h': '24h',
+	'24h': '7d',
+	'7d': '7d',
+};
+// raw row 상한. bucket 집계 전 원본 데이터 개수.
+const RANGE_LIMITS: Record<TimeRange, number> = { '1m': 500, '5m': 2000, '1h': 4000, '24h': 8000, '7d': 15000 };
+// Per-agent 상세 history에서 사용할 bucket 개수.
+const HISTORY_LIMITS: Record<TimeRange, number> = { '1m': 30, '5m': 24, '1h': 24, '24h': 7, '7d': 4 };
+// Poll 주기 — bucket 크기에 맞춰 점점 느리게. 너무 자주 polling 하면 백엔드 부담.
+const POLL_INTERVAL_MS: Record<TimeRange, number> = {
+	'1m': 10000,     // 10s
+	'5m': 30000,     // 30s
+	'1h': 60000,     // 1 min
+	'24h': 600000,   // 10 min
+	'7d': 3600000,   // 1 hr
+};
 const AGENT_COLORS = ['#30d5c8', '#f87171', '#60a5fa', '#fbbf24', '#a78bfa', '#34d399', '#fb7185', '#38bdf8', '#c084fc', '#2dd4bf'];
 const HEALTH_ORDER: Record<FleetHealth, number> = {
 	critical: 0,
@@ -305,16 +344,14 @@ function buildRows(agents: AgentApiRow[], containers: ContainerApiRow[], metrics
 			const containerSummary = containersByAgent.get(agent.id) ?? emptyContainerSummary();
 			const [health, reasons] = classifyHealth(agent, latest, containerSummary);
 
-			const rxSeries = agentMetrics.map((row, idx, arr) => {
-				if (idx === 0) return 0;
-				const [rx] = networkRate(arr[idx - 1], row);
-				return rx;
+			// rx/tx rate는 인접 snapshot 간 delta로 계산해 별도 배열에 담고,
+			// bucketSparkline이 시각 기준으로 정렬하도록 rate-carrying row를 넘긴다.
+			const rateRows = agentMetrics.map((row, idx, arr) => {
+				const [rx, tx] = idx === 0 ? [0, 0] : networkRate(arr[idx - 1], row);
+				return { ...row, __rx_rate: rx, __tx_rate: tx } as SystemMetricRow & { __rx_rate: number; __tx_rate: number };
 			});
-			const txSeries = agentMetrics.map((row, idx, arr) => {
-				if (idx === 0) return 0;
-				const [, tx] = networkRate(arr[idx - 1], row);
-				return tx;
-			});
+			const bucketSec = BUCKET_SECONDS[range];
+			const points = SPARKLINE_POINTS[range];
 			return {
 				agent,
 				health,
@@ -322,12 +359,12 @@ function buildRows(agents: AgentApiRow[], containers: ContainerApiRow[], metrics
 				latest,
 				containers: containerSummary,
 				sparkline: {
-					cpu: downsample(agentMetrics.map((m) => num(m.cpu_usage)), 24),
-					memory: downsample(agentMetrics.map((m) => num(m.memory_usage)), 24),
-					disk: downsample(agentMetrics.map((m) => num(m.disk_usage)), 24),
-					gpu: downsample(agentMetrics.map((m) => gpuUsage(m.gpu)), 24),
-					rx: downsample(rxSeries, 24),
-					tx: downsample(txSeries, 24),
+					cpu: bucketSparkline(agentMetrics, bucketSec, points, (m) => num(m.cpu_usage)),
+					memory: bucketSparkline(agentMetrics, bucketSec, points, (m) => num(m.memory_usage)),
+					disk: bucketSparkline(agentMetrics, bucketSec, points, (m) => num(m.disk_usage)),
+					gpu: bucketSparkline(agentMetrics, bucketSec, points, (m) => gpuUsage(m.gpu)),
+					rx: bucketSparkline(rateRows, bucketSec, points, (m) => (m as any).__rx_rate ?? 0),
+					tx: bucketSparkline(rateRows, bucketSec, points, (m) => (m as any).__tx_rate ?? 0),
 				},
 			};
 		})
@@ -368,17 +405,25 @@ function groupMetrics(metrics: SystemMetricRow[]): Map<string, SystemMetricRow[]
 function latestFromHistory(rows: SystemMetricRow[]): FleetAgentRow['latest'] {
 	const latest = rows.at(-1);
 	if (!latest) return null;
-	const previous = rows.at(-2);
-	const [rx, tx] = networkRate(previous, latest);
+	// "갑자기 0" 버그 원인: 직전 row의 network_rx가 우연히 0이면 networkRate의
+	// zero-guard가 발동해 rate=0을 반환함. 최근 N개 row를 거꾸로 훑어 prev/curr 둘
+	// 다 유효한 delta를 찾으면 그 rate를 latest로 사용 — 한 포인트의 노이즈에
+	// 카드 전체가 0으로 보이는 상황을 방지.
+	const [rx, tx] = resolveLatestNetworkRate(rows);
 	const gpuStats = gpuSummary(latest.gpu);
 
 	return {
 		timestamp: latest.recorded_at,
 		cpu_usage: num(latest.cpu_usage),
+		cpu_cores: latest.cpu_cores ?? null,
+		cpu_threads: latest.cpu_threads ?? null,
+		cpu_load_avg_1m: latest.cpu_load_avg_1m ?? null,
 		memory_usage: num(latest.memory_usage),
 		memory_used: num(latest.memory_used),
 		memory_total: num(latest.memory_total),
 		disk_usage: num(latest.disk_usage),
+		disk_used: latest.disk_used ?? null,
+		disk_total: latest.disk_total ?? null,
 		network_rx_rate: rx,
 		network_tx_rate: tx,
 		processes_total: latest.processes_total ?? null,
@@ -386,6 +431,8 @@ function latestFromHistory(rows: SystemMetricRow[]): FleetAgentRow['latest'] {
 		logins_total: latest.logins_total ?? null,
 		gpu_usage: gpuStats.usage,
 		gpu_temperature: gpuStats.temperature,
+		gpu_memory_used: gpuStats.memoryUsed,
+		gpu_memory_total: gpuStats.memoryTotal,
 		gpu_count: gpuStats.count,
 	};
 }
@@ -629,9 +676,43 @@ function emptyContainerSummary(): Record<string, number> {
 function networkRate(previous: SystemMetricRow | undefined, current: SystemMetricRow): [number, number] {
 	if (!previous) return [0, 0];
 	const seconds = Math.max(1, (new Date(current.recorded_at).getTime() - new Date(previous.recorded_at).getTime()) / 1000);
-	const rx = Math.max(0, num(current.network_rx) - num(previous.network_rx)) / seconds;
-	const tx = Math.max(0, num(current.network_tx) - num(previous.network_tx)) / seconds;
+	const prevRx = num(previous.network_rx);
+	const prevTx = num(previous.network_tx);
+	const currRx = num(current.network_rx);
+	const currTx = num(current.network_tx);
+	// Agent 재시작 / 카운터 리셋 시 curr < prev 가 되면 Math.max로 0 반환.
+	// 이전 샘플이 0이고 현재가 크게 뛰면 "첫 누적치 박제" 의심 — 해당 구간만 0.
+	const rx = prevRx === 0 && currRx > 0 ? 0 : Math.max(0, currRx - prevRx) / seconds;
+	const tx = prevTx === 0 && currTx > 0 ? 0 : Math.max(0, currTx - prevTx) / seconds;
 	return [rx, tx];
+}
+
+// 카드에 표시할 "현재 rate"는 마지막 한 pair가 아니라 최근 N개 row 중 유효한 delta를
+// 찾아서 쓴다. 이유: Backend의 한 row가 rx=0으로 기록되면 networkRate의 zero-guard
+// 가 발동해 0이 반환됨 → UI가 "갑자기 0"으로 깜박이는 문제. 뒤에서부터 훑어 첫
+// 양수 rate pair를 만나면 그 값을 써, 단발성 노이즈에 영향받지 않게 함.
+function resolveLatestNetworkRate(rows: SystemMetricRow[]): [number, number] {
+	if (rows.length < 2) return [0, 0];
+	// Backend가 DB/Redis merge 타이밍 때문에 완전히 같은 recorded_at 을 가진 중복 row
+	// 를 반환하는 경우가 있음 (16번 서버 관찰됨). 중복 pair는 delta 계산이 무의미하므로
+	// 시간차와 byte 진전 모두 있는 pair를 뒤에서부터 찾는다.
+	const curr = rows.at(-1)!;
+	const currRx = num(curr.network_rx);
+	const currTx = num(curr.network_tx);
+	const currT = new Date(curr.recorded_at).getTime();
+	for (let i = rows.length - 2; i >= 0; i -= 1) {
+		const prev = rows[i];
+		const prevT = new Date(prev.recorded_at).getTime();
+		if (currT - prevT < 1000) continue; // 동일 timestamp 중복 skip
+		const prevRx = num(prev.network_rx);
+		const prevTx = num(prev.network_tx);
+		if (prevRx > 0 && currRx >= prevRx && prevTx > 0 && currTx >= prevTx) {
+			return networkRate(prev, curr);
+		}
+		// 카운터 리셋 감지 — 더 거슬러 올라가도 유효한 pair 없을 확률 높음. 중단.
+		if (currRx < prevRx || currTx < prevTx) break;
+	}
+	return [0, 0];
 }
 
 function metricAge(timestamp?: string | null): number | null {
@@ -665,15 +746,75 @@ function gpuUsage(gpu?: GpuMetric[] | null): number {
 	return gpuSummary(gpu).usage;
 }
 
-function gpuSummary(gpu?: GpuMetric[] | null): { usage: number; temperature: number | null; count: number } {
+function gpuSummary(gpu?: GpuMetric[] | null): {
+	usage: number;
+	temperature: number | null;
+	memoryUsed: number | null;
+	memoryTotal: number | null;
+	count: number;
+} {
 	const rows = Array.isArray(gpu) ? gpu : [];
 	const usages = rows.map((item) => num(item.usage)).filter((value) => value > 0);
 	const temps = rows.map((item) => num(item.temperature)).filter((value) => value > 0);
+	// GPU 메모리는 전체 장치 합계로 집계 (사용자는 서버 전체 VRAM 관점으로 보고 싶어함).
+	const memUsed = rows.reduce((sum, item) => sum + num(item.memoryUsed), 0);
+	const memTotal = rows.reduce((sum, item) => sum + num(item.memoryTotal), 0);
 	return {
 		usage: avg(usages),
 		temperature: temps.length ? max(temps) : null,
+		memoryUsed: memTotal > 0 ? memUsed : null,
+		memoryTotal: memTotal > 0 ? memTotal : null,
 		count: rows.length,
 	};
+}
+
+/**
+ * 고정 크기 슬라이딩 윈도우 sparkline 생성.
+ *
+ * 시계열을 `bucketSec` 단위로 묶어 `pointCount` 개수의 버킷 배열을 만든다.
+ * - 배열 인덱스는 현재 시각에 정렬됨 (마지막 요소 = 최신 버킷).
+ * - 시간이 한 bucket만큼 흐르면 다음 poll 때 배열이 한 칸 왼쪽으로 slide.
+ *   (oldest 떨어져나가고 새 bucket이 오른쪽에 추가)
+ *
+ * Chart.js는 같은 인덱스의 값 변화를 애니메이션하므로, 이 방식이 "물 흐르듯"
+ * 이어지는 streaming 효과의 핵심이다. 각 poll 마다 downsample로 재샘플링하면
+ * 인덱스 ↔ 시각 정합이 깨져서 통째로 redraw되는 느낌이 남.
+ */
+function bucketSparkline(
+	rows: SystemMetricRow[],
+	bucketSec: number,
+	pointCount: number,
+	valueFn: (row: SystemMetricRow) => number,
+): number[] {
+	const now = Math.floor(Date.now() / 1000);
+	const latestBucket = Math.floor(now / bucketSec) * bucketSec;
+	const sums = new Array(pointCount).fill(0);
+	const counts = new Array(pointCount).fill(0);
+
+	for (const row of rows) {
+		const t = Math.floor(new Date(row.recorded_at).getTime() / 1000);
+		const bucket = Math.floor(t / bucketSec) * bucketSec;
+		const offset = (latestBucket - bucket) / bucketSec;
+		const index = pointCount - 1 - offset;
+		if (index < 0 || index >= pointCount) continue;
+		const v = valueFn(row);
+		if (!Number.isFinite(v)) continue;
+		sums[index] += v;
+		counts[index] += 1;
+	}
+
+	const out = new Array(pointCount).fill(0);
+	// 빈 bucket은 직전 값으로 forward-fill → 차트에 gap이 생기지 않음.
+	let lastKnown = 0;
+	for (let i = 0; i < pointCount; i += 1) {
+		if (counts[i] > 0) {
+			out[i] = sums[i] / counts[i];
+			lastKnown = out[i];
+		} else {
+			out[i] = lastKnown;
+		}
+	}
+	return out;
 }
 
 function downsample<T>(values: T[], keep: number): T[] {

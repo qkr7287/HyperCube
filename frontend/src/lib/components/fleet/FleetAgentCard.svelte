@@ -27,9 +27,18 @@
 	let hasGpu = $derived((agent.latest?.gpu_count ?? 0) > 0);
 	let memoryTotal = $derived(agent.latest?.memory_total ?? 0);
 	let memoryUsed = $derived(agent.latest?.memory_used ?? 0);
-	let processesTotal = $derived(agent.latest?.processes_total ?? 0);
-	let processesRunning = $derived(agent.latest?.processes_running ?? 0);
+	// null = Backend serializer가 필드 노출 안 함 (예: 구버전 배포). 0과 구별해서
+	// "-" 로 보여줘야 "정말 0 개"인지 "아직 안 내려오는지"를 구분할 수 있다.
+	let processesTotal = $derived(agent.latest?.processes_total ?? null);
+	let processesRunning = $derived(agent.latest?.processes_running ?? null);
+	let loginsTotal = $derived(agent.latest?.logins_total ?? null);
 	let gpuTemp = $derived(agent.latest?.gpu_temperature);
+	let gpuMemUsed = $derived(agent.latest?.gpu_memory_used ?? 0);
+	let gpuMemTotal = $derived(agent.latest?.gpu_memory_total ?? 0);
+	let cpuCores = $derived(agent.latest?.cpu_threads ?? agent.latest?.cpu_cores ?? 0);
+	let diskUsed = $derived(agent.latest?.disk_used ?? 0);
+	let diskTotal = $derived(agent.latest?.disk_total ?? 0);
+	let loadAvg1m = $derived(agent.latest?.cpu_load_avg_1m);
 	let networkTotal = $derived((agent.latest?.network_rx_rate ?? 0) + (agent.latest?.network_tx_rate ?? 0));
 
 	function severity(value: number, warn: number, crit: number): 'normal' | 'warn' | 'danger' {
@@ -52,16 +61,23 @@
 		tx: '#fbbf24',
 	};
 
+	// Docker 실제 상태: running / paused / restarting / exited / dead
+	// "stopped"는 Docker native 상태가 아니고 "exited"의 동의어로 쓰이므로 둘을 "종료"로 통합.
+	// "dead"는 복구 불가 상태이므로 "비정상"으로 구분 표기.
+	let exitedCombined = $derived(Number(agent.containers.exited ?? 0) + Number(agent.containers.stopped ?? 0));
 	let ctSegments = $derived([
 		{ key: 'running', label: '실행', color: '#22c55e', value: Number(agent.containers.running ?? 0) },
 		{ key: 'paused', label: '일시정지', color: '#60a5fa', value: Number(agent.containers.paused ?? 0) },
-		{ key: 'stopped', label: '정지', color: '#64748b', value: Number(agent.containers.stopped ?? 0) },
-		{ key: 'exited', label: '종료', color: '#a78bfa', value: Number(agent.containers.exited ?? 0) },
 		{ key: 'restarting', label: '재시작', color: '#fbbf24', value: Number(agent.containers.restarting ?? 0) },
-		{ key: 'dead', label: '중단', color: '#ef4444', value: Number(agent.containers.dead ?? 0) },
+		{ key: 'exited', label: '종료', color: '#a78bfa', value: exitedCombined },
+		{ key: 'dead', label: '비정상', color: '#ef4444', value: Number(agent.containers.dead ?? 0) },
 	].filter((seg) => seg.value > 0));
 	let ctTotal = $derived(Number(agent.containers.total ?? 0));
-	let procRatio = $derived(processesTotal > 0 ? Math.round((processesRunning / processesTotal) * 100) : 0);
+	let procRatio = $derived(
+		processesTotal && processesRunning != null && processesTotal > 0
+			? Math.round((processesRunning / processesTotal) * 100)
+			: null,
+	);
 
 	function peak(values: number[]): number {
 		if (!values?.length) return 0;
@@ -78,11 +94,69 @@
 		'7d': '7일',
 	};
 
+	function cpuSub(): string {
+		const parts: string[] = [];
+		if (cpuCores > 0) {
+			const usedCores = (peak(cpuSeries) / 100) * cpuCores;
+			parts.push(`${usedCores.toFixed(1)} / ${cpuCores}코어`);
+		}
+		if (loadAvg1m != null && Number.isFinite(loadAvg1m)) {
+			parts.push(`load ${loadAvg1m.toFixed(2)}`);
+		}
+		return parts.join(' · ');
+	}
+
+	function diskSub(): string {
+		if (diskTotal > 0) {
+			return `${formatBytes(diskUsed)} / ${formatBytes(diskTotal)}`;
+		}
+		return '루트(/) 파티션';
+	}
+
+	function gpuSub(): string {
+		if (!hasGpu) return '';
+		const parts: string[] = [];
+		parts.push(`${agent.latest?.gpu_count ?? 0}장`);
+		if (gpuMemTotal > 0) {
+			parts.push(`${formatBytes(gpuMemUsed)} / ${formatBytes(gpuMemTotal)}`);
+		}
+		if (gpuTemp != null) parts.push(`${gpuTemp}°C`);
+		return parts.join(' · ');
+	}
+
 	let peaks = $derived([
-		{ key: 'cpu', label: 'CPU', color: CHART_COLORS.cpu, value: peak(cpuSeries), level: severity(peak(cpuSeries), 70, 90) },
-		{ key: 'mem', label: '메모리', color: CHART_COLORS.memory, value: peak(memorySeries), level: severity(peak(memorySeries), 75, 90) },
-		{ key: 'dsk', label: '디스크', color: CHART_COLORS.disk, value: peak(diskSeries), level: severity(peak(diskSeries), 80, 90) },
-		{ key: 'gpu', label: 'GPU', color: CHART_COLORS.gpu, value: peak(gpuSeries), level: severity(peak(gpuSeries), 80, 95) },
+		{
+			key: 'cpu',
+			label: 'CPU',
+			color: CHART_COLORS.cpu,
+			value: peak(cpuSeries),
+			sub: cpuSub(),
+			level: severity(peak(cpuSeries), 70, 90),
+		},
+		{
+			key: 'mem',
+			label: '메모리',
+			color: CHART_COLORS.memory,
+			value: peak(memorySeries),
+			sub: memoryTotal > 0 ? `${formatBytes((peak(memorySeries) / 100) * memoryTotal)} / ${formatBytes(memoryTotal)}` : '',
+			level: severity(peak(memorySeries), 75, 90),
+		},
+		{
+			key: 'dsk',
+			label: '디스크',
+			color: CHART_COLORS.disk,
+			value: peak(diskSeries),
+			sub: diskSub(),
+			level: severity(peak(diskSeries), 80, 90),
+		},
+		{
+			key: 'gpu',
+			label: 'GPU',
+			color: CHART_COLORS.gpu,
+			value: peak(gpuSeries),
+			sub: gpuSub(),
+			level: severity(peak(gpuSeries), 80, 95),
+		},
 	].filter((p) => p.key !== 'gpu' || hasGpu));
 
 	let containerDetails = $derived.by(() => {
@@ -90,10 +164,9 @@
 		return [
 			{ key: 'running', label: '실행', value: Number(agent.containers.running ?? 0), color: '#22c55e' },
 			{ key: 'paused', label: '일시정지', value: Number(agent.containers.paused ?? 0), color: '#60a5fa' },
-			{ key: 'stopped', label: '정지', value: Number(agent.containers.stopped ?? 0), color: '#64748b' },
-			{ key: 'exited', label: '종료', value: Number(agent.containers.exited ?? 0), color: '#a78bfa' },
 			{ key: 'restarting', label: '재시작', value: Number(agent.containers.restarting ?? 0), color: '#fbbf24' },
-			{ key: 'dead', label: '중단', value: Number(agent.containers.dead ?? 0), color: '#ef4444' },
+			{ key: 'exited', label: '종료', value: exitedCombined, color: '#a78bfa' },
+			{ key: 'dead', label: '비정상', value: Number(agent.containers.dead ?? 0), color: '#ef4444' },
 		].map((item) => ({
 			...item,
 			ratio: total > 0 ? (item.value / total) * 100 : 0,
@@ -141,36 +214,53 @@
 	<header class="card-head">
 		<div class="title">
 			<span class="title-line">
+				{#if agent.agent.is_active}
+					<span
+						class="live-dot"
+						aria-hidden="true"
+						title="Agent 실시간 연결 중"
+					></span>
+				{/if}
 				<strong title={agent.agent.hostname}>{agent.agent.hostname}</strong>
 				<span class="ip-inline">{agent.agent.ip_address}</span>
 				{#if variant === 'compact'}
 					<MetricHelp text={"각 막대 = 리소스 사용률(%)\n0% = 거의 안 씀, 100% = 완전 사용 중\n\n위험 임계\n• CPU 90% / 메모리 90%\n• 디스크 90% / GPU 95%"} />
 				{/if}
-			</span>
-			<span class="meta">
-				<span class="health-tag {agent.health}">{healthLabel(agent.health)}</span>
-				{#if variant !== 'compact'}
-					<span
-						class="age"
-						title={"마지막 메트릭이 수신된 시점입니다.\n\n왜 서버마다 다를까?\n• Agent의 전송 주기 (5~15초)\n• 네트워크 지연\n• 조회 시점과의 어긋남\n\n15초 이내는 정상(실시간), 60초 초과는 지연으로 표시됩니다."}
-					>메트릭 {formatRelative(agent.latest?.timestamp)}</span>
-				{/if}
-				{#if agent.health_reasons.length > 0}
-					<span
-						class="reason-chip"
-						title={agent.health_reasons.map(humanizeReason).join(' · ')}
-					>
-						{shortReason(agent.health_reasons[0])}
-						{#if agent.health_reasons.length > 1}
-							<b>+{agent.health_reasons.length - 1}</b>
-						{/if}
-					</span>
-				{/if}
+				<!-- 메타(상태 · 메트릭 시각 · reason chip) 를 hostname/IP 우측으로 붙임.
+				     좁아지면 flex-wrap 으로 다음 줄에 떨어지지만 공간 있는 동안은 한 줄. -->
+				<span class="meta">
+					<span class="health-tag {agent.health}">{healthLabel(agent.health)}</span>
+					{#if variant !== 'compact'}
+						<span
+							class="age"
+							title={"마지막 메트릭이 수신된 시점입니다.\n\n왜 서버마다 다를까?\n• Agent의 전송 주기 (5~15초)\n• 네트워크 지연\n• 조회 시점과의 어긋남\n\n15초 이내는 정상(실시간), 60초 초과는 지연으로 표시됩니다."}
+						>메트릭 {formatRelative(agent.latest?.timestamp)}</span>
+					{/if}
+					{#if agent.health_reasons.length > 0}
+						<span
+							class="reason-chip"
+							title={agent.health_reasons.map(humanizeReason).join(' · ')}
+						>
+							{shortReason(agent.health_reasons[0])}
+							{#if agent.health_reasons.length > 1}
+								<b>+{agent.health_reasons.length - 1}</b>
+							{/if}
+						</span>
+					{/if}
+				</span>
 			</span>
 		</div>
 		<div class="head-actions">
 			{#if onOpen3d}
-				<button type="button" class="monitor-btn" onclick={handleMonitor} title="이 서버를 3D 토폴로지 뷰에서 상세 모니터링">
+				{@const isSim = agent.agent.id.startsWith('sim-')}
+				<button
+					type="button"
+					class="monitor-btn"
+					class:disabled={isSim}
+					disabled={isSim}
+					onclick={handleMonitor}
+					title={isSim ? '시뮬레이션 서버는 3D 뷰로 연결할 실제 토폴로지가 없습니다' : '이 서버를 3D 토폴로지 뷰에서 상세 모니터링'}
+				>
 					<span aria-hidden="true">◆</span>
 					<span class="monitor-label">상세</span>
 				</button>
@@ -199,7 +289,7 @@
 			<div class="compact-foot">
 				<span class="ct-chip running" title="실행 중 컨테이너"><b>{agent.containers.running ?? 0}</b> 실행</span>
 				<span class="ct-chip other" title="정지·종료·일시정지 컨테이너"><b>{agent.containers.non_running ?? 0}</b> 기타</span>
-				<span class="ct-chip problem" class:active={(agent.containers.problem ?? 0) > 0} title="재시작·중단 상태의 컨테이너">
+				<span class="ct-chip problem" class:active={(agent.containers.problem ?? 0) > 0} title="재시작·비정상(dead) 상태의 컨테이너">
 					<b>{agent.containers.problem ?? 0}</b> 이상
 				</span>
 				<span class="age-small" title="최신 메트릭 수신 시점">{formatRelative(agent.latest?.timestamp)}</span>
@@ -289,7 +379,10 @@
 				<div class="extra-col">
 					<div class="row-label">
 						<span>컨테이너 분포</span>
-						<MetricHelp text={"컨테이너 상태 분포\n\n6가지 상태\n• 실행 · 일시정지 · 정지\n• 종료 · 재시작 · 중단\n\n재시작/중단은 즉시 확인 필요"} />
+						<MetricHelp
+							placement="top-start"
+							text={"컨테이너 상태 분포 (Docker 기준)\n\n• 실행 — 정상 동작 중\n• 일시정지 — docker pause 상태\n• 재시작 — 재시작 진행 중 (주의)\n• 종료 — exited / stopped 통합 (정상 종료)\n• 비정상 — dead, 복구 불가 (즉시 확인)\n\n재시작·비정상 상태는 즉시 확인이 필요합니다."}
+						/>
 						<span class="row-count">총 {ctTotal}개</span>
 					</div>
 					{#if ctTotal > 0}
@@ -316,17 +409,23 @@
 				</div>
 
 				<div class="extra-col">
-					<div class="row-label">프로세스 · 네트워크 · 에이전트</div>
+					<div class="row-label">
+						<span>프로세스 · 네트워크 · 에이전트</span>
+						<MetricHelp
+							placement="top-start"
+							text={"서버 운영 상태 요약\n\n• 프로세스 — OS 전체 프로세스 수 (실행/총 개수)\n• 로그인 — 현재 접속 중인 활성 세션 수\n• 네트워크 — RX(수신) + TX(송신) 초당 처리량\n• 에이전트 — HyperCube Agent 연결 상태\n\n마지막 응답은 Agent→Backend WS 핑 시각입니다."}
+						/>
+					</div>
 					<div class="spec-grid">
 						<div class="spec">
 							<span class="spec-label">프로세스</span>
-							<strong>{processesTotal}</strong>
-							<span class="spec-sub">실행 {processesRunning} · {procRatio}%</span>
+							<strong>{processesTotal ?? '-'}</strong>
+							<span class="spec-sub">{processesRunning != null ? `실행 ${processesRunning}${procRatio != null ? ` · ${procRatio}%` : ''}` : '데이터 없음'}</span>
 						</div>
 						<div class="spec">
 							<span class="spec-label">로그인</span>
-							<strong>{agent.latest?.logins_total ?? 0}</strong>
-							<span class="spec-sub">활성 세션</span>
+							<strong>{loginsTotal ?? '-'}</strong>
+							<span class="spec-sub">{loginsTotal != null ? '활성 세션' : '데이터 없음'}</span>
 						</div>
 						<div class="spec">
 							<span class="spec-label">네트워크</span>
@@ -335,7 +434,12 @@
 						</div>
 						<div class="spec">
 							<span class="spec-label">에이전트</span>
-							<strong class="small" class:off={!agent.agent.is_active}>{agent.agent.is_active ? '온라인' : '오프라인'}</strong>
+							<strong class="small agent-status" class:off={!agent.agent.is_active}>
+								{#if agent.agent.is_active}
+									<span class="live-dot" aria-hidden="true"></span>
+								{/if}
+								{agent.agent.is_active ? '실시간' : '오프라인'}
+							</strong>
 							<span class="spec-sub">마지막 응답 {formatRelative(agent.agent.last_seen_at)}</span>
 						</div>
 					</div>
@@ -343,14 +447,22 @@
 
 				<div class="extra-col">
 					<div class="row-label">
-						최근 {rangeLabelMap[range] ?? ''} 피크값
-						<MetricHelp text={"조회 범위 동안 기록된 최대 사용률.\n\n현재값이 낮더라도 피크가 높으면\n과거에 과부하가 있었다는 신호."} />
+						<span>최근 {rangeLabelMap[range] ?? ''} 피크값</span>
+						<MetricHelp
+							placement="top-end"
+							text={"조회 범위 동안 기록된 최고 사용률과 실제 값.\n\n• CPU — 피크% + 사용 코어 수 (피크% × 논리 코어)\n  (Agent가 load avg 전송 시 1분 load도 표시)\n• 메모리 — 피크% + 추정 사용량 GB (피크% × 전체 RAM)\n• 디스크 — 피크% + 현재 사용 GB / 전체 GB (루트 파티션)\n• GPU — 피크% + 장치 수 · VRAM 사용량 · 온도\n\n현재값이 낮아도 피크가 높으면\n과거 과부하 흔적이 있다는 신호입니다."}
+						/>
 					</div>
 					<div class="peak-grid">
 						{#each peaks as p}
 							<div class="peak-cell" data-level={p.level}>
-								<span class="peak-label" style={`color: ${p.color};`}>{p.label}</span>
-								<strong class="peak-value">{formatPercent(p.value, 0)}</strong>
+								<div class="peak-head">
+									<span class="peak-label" style={`color: ${p.color};`}>{p.label}</span>
+									<strong class="peak-value">{formatPercent(p.value, 0)}</strong>
+								</div>
+								{#if p.sub}
+									<span class="peak-sub">{p.sub}</span>
+								{/if}
 								<div class="peak-track">
 									<span class="peak-fill" style={`width: ${Math.min(100, p.value)}%; background: ${p.color};`}></span>
 								</div>
@@ -442,10 +554,16 @@
 		gap: 3px;
 	}
 	.title-line {
-		display: inline-flex;
-		align-items: baseline;
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
 		gap: 8px;
 		min-width: 0;
+		width: 100%;
+	}
+	/* hostname / IP 뒤에 meta 를 밀어 우측 정렬. row 공간 좁으면 아래로 wrap. */
+	.title-line .meta {
+		margin-left: auto;
 	}
 	.ip-inline {
 		color: var(--text-muted);
@@ -520,9 +638,10 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
-		border: 1px solid rgba(48, 213, 200, 0.42);
+		border: 1px solid rgba(48, 213, 200, 0.6);
 		border-radius: var(--radius-sm);
-		background: rgba(48, 213, 200, 0.12);
+		/* 카드의 gradient(critical/warning) 배경 위에서도 일관되게 보이도록 합성 배경 사용. */
+		background: linear-gradient(rgba(48, 213, 200, 0.18), rgba(48, 213, 200, 0.18)), var(--bg-card);
 		color: var(--accent);
 		font-family: inherit;
 		font-size: var(--font-xs);
@@ -532,9 +651,17 @@
 		transition: background 0.12s ease, border-color 0.12s ease;
 		white-space: nowrap;
 	}
-	.monitor-btn:hover {
-		background: rgba(48, 213, 200, 0.22);
-		border-color: rgba(48, 213, 200, 0.6);
+	.monitor-btn:hover:not(.disabled) {
+		background: linear-gradient(rgba(48, 213, 200, 0.3), rgba(48, 213, 200, 0.3)), var(--bg-card);
+		border-color: rgba(48, 213, 200, 0.8);
+	}
+	.monitor-btn.disabled,
+	.monitor-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+		background: rgba(100, 116, 139, 0.1);
+		color: var(--text-muted);
+		border-color: rgba(100, 116, 139, 0.3);
 	}
 
 	.reason-chip {
@@ -595,6 +722,11 @@
 		display: flex;
 		flex-direction: column;
 		gap: 3px;
+		/* overflow visible — 툴팁 말풍선이 카드 영역 밖으로 나갈 때 잘리지 않도록 */
+		overflow: visible;
+		position: relative;
+	}
+	.metric .chart {
 		overflow: hidden;
 	}
 	.metric[data-level='warn'] {
@@ -627,14 +759,16 @@
 	}
 	.m-value {
 		color: var(--text-primary);
-		font-size: var(--font-lg);
+		/* 그래프 위 퍼센트 숫자 — 기존 --font-lg (18~26px) 에서 한 단계 축소.
+		   카드 높이를 크게 잡지 않고도 차트에 가용 높이를 더 넘겨주기 위함. */
+		font-size: clamp(15px, 1vw, 21px);
 		font-weight: 700;
 		line-height: 1.05;
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
 	}
 	.m-value.small {
-		font-size: var(--font-md);
+		font-size: clamp(12px, 0.8vw, 16px);
 	}
 	.m-sub {
 		color: var(--text-muted);
@@ -650,14 +784,15 @@
 		margin-top: auto;
 	}
 	.card.variant-medium .chart {
-		min-height: clamp(36px, 4.5vh, 70px);
+		/* 그래프가 위아래 여유 없이 잘리는 현상 해결 — min-height 상·하한 ↑. */
+		min-height: clamp(52px, 6vh, 110px);
 		flex: 1 1 auto;
 	}
 	.card.variant-medium .metric {
-		min-height: clamp(80px, 9vh, 140px);
+		min-height: clamp(90px, 10vh, 160px);
 	}
 	.card.variant-full .chart {
-		min-height: clamp(40px, 6vh, 96px);
+		min-height: clamp(64px, 8vh, 140px);
 	}
 	.chart :global(svg) {
 		width: 100%;
@@ -746,23 +881,36 @@
 		gap: var(--card-gap);
 	}
 	.peak-grid {
+		flex: 1;
+		min-height: 0;
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
+		grid-auto-rows: minmax(0, 1fr);
 		gap: 6px;
 	}
 	.peak-cell {
-		padding: 5px 8px;
+		min-width: 0;
+		min-height: 0;
+		padding: 6px 8px;
 		background: rgba(13, 17, 23, 0.45);
 		border-radius: var(--radius-sm);
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
+		justify-content: space-between;
+		gap: 3px;
 	}
 	.peak-cell[data-level='warn'] .peak-value {
 		color: #fbbf24;
 	}
 	.peak-cell[data-level='danger'] .peak-value {
 		color: #f87171;
+	}
+	.peak-head {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		gap: 4px;
+		min-width: 0;
 	}
 	.peak-label {
 		font-size: calc(var(--font-xs) - 1px);
@@ -775,6 +923,15 @@
 		font-weight: 700;
 		font-variant-numeric: tabular-nums;
 		line-height: 1;
+	}
+	.peak-sub {
+		color: var(--text-muted);
+		font-size: calc(var(--font-xs) - 2px);
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.peak-track {
 		height: 4px;
@@ -854,6 +1011,9 @@
 		flex-direction: column;
 		gap: 6px;
 		min-height: 0;
+		/* 툴팁이 카드 경계 밖으로 나갈 수 있도록 overflow visible 유지 */
+		overflow: visible;
+		position: relative;
 	}
 	.row-label {
 		display: flex;
@@ -916,18 +1076,23 @@
 		padding: 6px 0;
 	}
 	.spec-grid {
+		flex: 1;
+		min-height: 0;
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
+		grid-auto-rows: minmax(0, 1fr);
 		gap: 5px;
 	}
 	.spec {
 		min-width: 0;
-		padding: 5px 7px;
+		min-height: 0;
+		padding: 6px 8px;
 		background: rgba(13, 17, 23, 0.45);
 		border-radius: var(--radius-sm);
 		display: flex;
 		flex-direction: column;
-		gap: 1px;
+		justify-content: space-between;
+		gap: 2px;
 	}
 	.spec-label {
 		color: var(--text-muted);
@@ -946,6 +1111,29 @@
 	}
 	.spec strong.off {
 		color: #f87171;
+	}
+	.spec strong.agent-status {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		color: #34d399;
+	}
+	.spec strong.agent-status.off {
+		color: #f87171;
+	}
+	.live-dot {
+		display: inline-block;
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: #34d399;
+		box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7);
+		animation: live-pulse 1.6s ease-out infinite;
+	}
+	@keyframes live-pulse {
+		0%   { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55); }
+		70%  { box-shadow: 0 0 0 6px rgba(52, 211, 153, 0); }
+		100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
 	}
 	.spec-sub {
 		color: var(--text-muted);

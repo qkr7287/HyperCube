@@ -26,20 +26,23 @@
 	import AgentHealthTable from '$lib/components/fleet/AgentHealthTable.svelte';
 	import TimeRangeSelector from '$lib/components/fleet/TimeRangeSelector.svelte';
 	import MetricHelp from '$lib/components/fleet/MetricHelp.svelte';
-	import { buildSimulatedAgents } from '$lib/utils/fleet-simulate';
+	import { buildSimulatedAgents, EACH_STATUS_ORDER } from '$lib/utils/fleet-simulate';
 
 	let range = $state<TimeRange>('1h');
 	let selectedAgentId = $state<string | null>(null);
 
+	// ?sim=each  → 상태별 1대씩 (critical/warning/stale/offline/healthy) 5대 생성.
+	// ?sim=<숫자> → pickHealth 분포로 N대 생성 (기존 방식).
+	let simMode = $derived($page.url.searchParams.get('sim') ?? '');
 	let simCount = $derived.by(() => {
-		const raw = $page.url.searchParams.get('sim');
-		if (!raw) return 0;
-		const parsed = parseInt(raw, 10);
+		if (!simMode || simMode === 'each') return 0;
+		const parsed = parseInt(simMode, 10);
 		if (!Number.isFinite(parsed) || parsed <= 0) return 0;
 		return Math.min(parsed, 200);
 	});
 
 	let simAgents = $derived.by(() => {
+		if (simMode === 'each') return buildSimulatedAgents(0, 0, EACH_STATUS_ORDER);
 		const n = simCount;
 		return n > 0 ? buildSimulatedAgents(n) : [];
 	});
@@ -117,9 +120,14 @@
 		<div class="error-box">대시보드를 갱신하지 못했습니다. {$fleetError}</div>
 	{/if}
 
-	{#if simCount > 0}
+	{#if simAgents.length > 0}
 		<div class="sim-banner">
-			<span>가상 서버 <b>{simCount}</b>대를 시뮬레이션 중입니다. 실제 서버 <b>{$fleetAgents.length}</b>대와 함께 표시됩니다. (URL <code>?sim={simCount}</code>)</span>
+			<span>
+				가상 서버 <b>{simAgents.length}</b>대를 시뮬레이션 중입니다.
+				{#if simMode === 'each'}(상태별 더미 — critical/warning/stale/offline/healthy){/if}
+				실제 서버 <b>{$fleetAgents.length}</b>대와 함께 표시됩니다.
+				(URL <code>?sim={simMode}</code>)
+			</span>
 			<a href="?" title="시뮬레이션 종료">시뮬레이션 종료</a>
 		</div>
 	{/if}
@@ -158,11 +166,14 @@
 		overflow: hidden;
 	}
 	.rotator-area {
-		flex: 1.2 1 0;
+		/* 카드 영역이 테이블보다 더 크게 — 카드 내부 그래프가 잘리는 걸 방지하려면
+		   세로 여유가 필요. 1.2 → 1.55 로 늘려서 카드 한 장당 확보되는 높이 ↑. */
+		flex: 1.55 1 0;
+		min-height: 0;
 	}
 	.table-area {
 		flex: 1 1 0;
-		min-height: 220px;
+		min-height: 200px;
 	}
 	.page-head {
 		display: flex;

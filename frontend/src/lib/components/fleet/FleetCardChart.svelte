@@ -34,30 +34,36 @@
 		showAxes?: boolean;
 	} = $props();
 
-	const BUCKET_SEC: Record<RangeKey, number> = { '1m': 5, '5m': 15, '1h': 60, '24h': 300, '7d': 1800 };
+	// Bucket = range 라벨 (1m 범위 = 1분 단위). buildTimeLabels는 현재 시각부터
+	// 거꾸로 bucket 크기씩 빼서 라벨을 만든다. fleet-store의 BUCKET_SECONDS와 반드시 일치.
+	const BUCKET_SEC: Record<RangeKey, number> = { '1m': 60, '5m': 300, '1h': 3600, '24h': 86400, '7d': 604800 };
 
 	function buildTimeLabels(count: number): string[] {
 		if (count === 0) return [];
 		const interval = BUCKET_SEC[range] * 1000;
 		const now = Date.now();
+		const latestBucketStart = Math.floor(now / interval) * interval;
 		const labels: string[] = [];
 		for (let i = 0; i < count; i += 1) {
-			const at = now - (count - 1 - i) * interval;
+			const at = latestBucketStart - (count - 1 - i) * interval;
 			const d = new Date(at);
 			if (range === '7d') {
 				const mo = String(d.getMonth() + 1).padStart(2, '0');
 				const day = String(d.getDate()).padStart(2, '0');
-				const hh = String(d.getHours()).padStart(2, '0');
-				labels.push(`${mo}/${day} ${hh}h`);
+				labels.push(`${mo}/${day}`);
 			} else if (range === '24h') {
+				const mo = String(d.getMonth() + 1).padStart(2, '0');
+				const day = String(d.getDate()).padStart(2, '0');
+				labels.push(`${mo}/${day}`);
+			} else if (range === '1h') {
+				const hh = String(d.getHours()).padStart(2, '0');
+				labels.push(`${hh}h`);
+			} else if (range === '5m') {
 				const hh = String(d.getHours()).padStart(2, '0');
 				const mm = String(d.getMinutes()).padStart(2, '0');
 				labels.push(`${hh}:${mm}`);
-			} else if (range === '1m') {
-				const mm = String(d.getMinutes()).padStart(2, '0');
-				const ss = String(d.getSeconds()).padStart(2, '0');
-				labels.push(`${mm}:${ss}`);
 			} else {
+				// 1m
 				const hh = String(d.getHours()).padStart(2, '0');
 				const mm = String(d.getMinutes()).padStart(2, '0');
 				labels.push(`${hh}:${mm}`);
@@ -137,17 +143,18 @@
 			options: {
 				responsive: true,
 				maintainAspectRatio: false,
-				animation: {
-					duration: 1400,
-					easing: 'easeInOutQuart',
-				},
+				// 첫 렌더는 덜 튀게 (400ms), 이후 streaming update는 transitions.active로 처리.
+				animation: { duration: 400, easing: 'easeOutQuart' },
+				// 같은 index의 값이 animated 될 때 — 이 설정이 물 흐르듯 느낌의 핵심.
+				// 각 bucket point가 이전 poll 때의 값에서 새 값으로 부드럽게 이어진다.
 				animations: {
-					x: { duration: 1400, easing: 'easeInOutQuart' },
-					y: { duration: 1000, easing: 'easeOutQuart' },
-					numbers: { duration: 1400, easing: 'easeInOutQuart' },
+					y: { duration: 900, easing: 'easeInOutCubic' },
+					// x는 고정 label slot이라 애니메이션 불필요.
+					x: { duration: 0 },
+					numbers: { duration: 900, easing: 'easeInOutCubic' },
 				},
 				transitions: {
-					active: { animation: { duration: 1400, easing: 'easeInOutQuart' } },
+					active: { animation: { duration: 900, easing: 'easeInOutCubic' } },
 				},
 				interaction: { mode: 'index', intersect: false },
 				plugins: {
@@ -218,19 +225,21 @@
 		if (!chart) return;
 		const datasets = chart.data.datasets;
 		const targetLength = maxLabels(list);
-		// Keep label count stable to force chart.js to animate each point in place,
-		// creating a left-flowing stream when new values are appended.
+		// Label count는 stable 하게 유지 — fleet-store의 bucketSparkline이 항상
+		// 같은 크기의 배열을 뱉으므로, 시간이 흐르면 "oldest bucket이 떨어지고
+		// 새 bucket이 오른쪽에 붙는" 슬라이드 효과가 자연스럽게 생긴다.
 		chart.data.labels = buildTimeLabels(targetLength);
 
 		for (let i = 0; i < list.length; i += 1) {
 			const item = list[i];
 			if (!datasets[i]) continue;
 			const current = (datasets[i].data as number[]) ?? [];
-			const incoming = [...item.values];
-			// Align lengths so each point animates to its neighbor's previous position
-			// (point N is now at position N-1, producing a scroll-left effect).
-			while (current.length < incoming.length) current.unshift(incoming[0] ?? 0);
-			while (current.length > incoming.length) current.shift();
+			const incoming = item.values;
+			// 같은 참조를 유지한 채 길이 맞추고 값만 바꾼다 — Chart.js가 index 기준
+			// y값 전이 애니메이션(transitions.active)을 걸어줌.
+			if (current.length !== incoming.length) {
+				current.length = incoming.length;
+			}
 			for (let j = 0; j < incoming.length; j += 1) current[j] = incoming[j];
 			datasets[i].data = current;
 		}
