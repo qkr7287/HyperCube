@@ -47,7 +47,11 @@
 		return n > 0 ? buildSimulatedAgents(n) : [];
 	});
 
+	// ?only=sim → 실제 fleet 숨기고 가상 서버만 (count=1 테스트용 등).
+	let onlySim = $derived($page.url.searchParams.get('only') === 'sim');
+
 	let displayedAgents = $derived.by(() => {
+		if (onlySim) return simAgents;
 		if (simAgents.length === 0) return $fleetAgents;
 		return [...$fleetAgents, ...simAgents];
 	});
@@ -157,23 +161,24 @@
 
 		box-sizing: border-box;
 		width: 100%;
-		height: calc(100vh - 48px);
+		/* 고정 viewport 높이 제약 제거 — 테이블이 길어지면 페이지 전체가 스크롤되도록. */
+		min-height: calc(100vh - 48px);
 		padding: var(--dash-pad);
 		color: var(--text-primary);
 		display: flex;
 		flex-direction: column;
 		gap: var(--dash-gap);
-		overflow: hidden;
 	}
 	.rotator-area {
-		/* 카드 영역이 테이블보다 더 크게 — 카드 내부 그래프가 잘리는 걸 방지하려면
-		   세로 여유가 필요. 1.2 → 1.55 로 늘려서 카드 한 장당 확보되는 높이 ↑. */
-		flex: 1.55 1 0;
+		/* rotator 는 viewport 의 고정 비율. medium 카드가 2 row (count=3/4/5) 에서
+		   세로 공간 필요 → 48vh 로 복원 (44vh 는 content 가 잘림). */
+		flex: 0 0 auto;
+		height: clamp(280px, 48vh, 580px);
 		min-height: 0;
 	}
 	.table-area {
-		flex: 1 1 0;
-		min-height: 200px;
+		/* 내부 스크롤 대신 테이블 전체 높이가 자연스럽게 늘어남 → 페이지 스크롤로 이동. */
+		flex: 0 0 auto;
 	}
 	.page-head {
 		display: flex;

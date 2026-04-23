@@ -803,18 +803,30 @@ function bucketSparkline(
 		counts[index] += 1;
 	}
 
-	const out = new Array(pointCount).fill(0);
-	// 빈 bucket은 직전 값으로 forward-fill → 차트에 gap이 생기지 않음.
-	let lastKnown = 0;
+	const out: (number | null)[] = new Array(pointCount).fill(null);
+	// 1단계: 실제 값이 있는 bucket 채움. forward-fill 은 직전 값 이어받되,
+	// 초기값 0 으로 시작하면 Agent 가 최근에만 데이터를 보낼 때 과거 bucket 이
+	// 모두 0 으로 깔리는 문제 → 초기엔 null 유지.
+	let lastKnown: number | null = null;
 	for (let i = 0; i < pointCount; i += 1) {
 		if (counts[i] > 0) {
 			out[i] = sums[i] / counts[i];
-			lastKnown = out[i];
-		} else {
+			lastKnown = out[i] as number;
+		} else if (lastKnown !== null) {
 			out[i] = lastKnown;
 		}
 	}
-	return out;
+	// 2단계: 앞쪽 null (첫 실제 값 이전 bucket) 은 첫 실제 값으로 backward-fill.
+	// 이래야 "데이터 없음" 을 0 이 아닌 현재값 수평선 으로 그려서 오인을 방지.
+	let firstReal: number | null = null;
+	for (const v of out) if (v !== null) { firstReal = v; break; }
+	if (firstReal !== null) {
+		for (let i = 0; i < pointCount; i += 1) if (out[i] === null) out[i] = firstReal;
+	} else {
+		// 아예 데이터 없는 에이전트 → 전부 0 (차트가 평평한 baseline).
+		for (let i = 0; i < pointCount; i += 1) out[i] = 0;
+	}
+	return out as number[];
 }
 
 function downsample<T>(values: T[], keep: number): T[] {

@@ -161,16 +161,20 @@
 
 	let containerDetails = $derived.by(() => {
 		const total = Number(agent.containers.total ?? 0);
+		// value > 0 인 상태만 표시 — 0 행을 포함하면 span 카드(세로 공간 적은 full)
+		// 에서 extras 가 넘쳐서 다른 요소(피크·ops)가 잘림. 의미 있는 상태만.
 		return [
 			{ key: 'running', label: '실행', value: Number(agent.containers.running ?? 0), color: '#22c55e' },
 			{ key: 'paused', label: '일시정지', value: Number(agent.containers.paused ?? 0), color: '#60a5fa' },
 			{ key: 'restarting', label: '재시작', value: Number(agent.containers.restarting ?? 0), color: '#fbbf24' },
 			{ key: 'exited', label: '종료', value: exitedCombined, color: '#a78bfa' },
 			{ key: 'dead', label: '비정상', value: Number(agent.containers.dead ?? 0), color: '#ef4444' },
-		].map((item) => ({
-			...item,
-			ratio: total > 0 ? (item.value / total) * 100 : 0,
-		}));
+		]
+			.filter((item) => item.value > 0)
+			.map((item) => ({
+				...item,
+				ratio: total > 0 ? (item.value / total) * 100 : 0,
+			}));
 	});
 
 	// compact variant: metric rows (CPU/MEM/DSK/GPU only - all percent-based)
@@ -226,8 +230,8 @@
 				{#if variant === 'compact'}
 					<MetricHelp text={"각 막대 = 리소스 사용률(%)\n0% = 거의 안 씀, 100% = 완전 사용 중\n\n위험 임계\n• CPU 90% / 메모리 90%\n• 디스크 90% / GPU 95%"} />
 				{/if}
-				<!-- 메타(상태 · 메트릭 시각 · reason chip) 를 hostname/IP 우측으로 붙임.
-				     좁아지면 flex-wrap 으로 다음 줄에 떨어지지만 공간 있는 동안은 한 줄. -->
+				<!-- 메타(상태·메트릭 시각) 만 헤더에 표시. reason chip 은 좁은 카드에서
+				     어거지로 밀리던 문제로 각 variant 하단 컨테이너 line 쪽으로 이동. -->
 				<span class="meta">
 					<span class="health-tag {agent.health}">{healthLabel(agent.health)}</span>
 					{#if variant !== 'compact'}
@@ -235,17 +239,6 @@
 							class="age"
 							title={"마지막 메트릭이 수신된 시점입니다.\n\n왜 서버마다 다를까?\n• Agent의 전송 주기 (5~15초)\n• 네트워크 지연\n• 조회 시점과의 어긋남\n\n15초 이내는 정상(실시간), 60초 초과는 지연으로 표시됩니다."}
 						>메트릭 {formatRelative(agent.latest?.timestamp)}</span>
-					{/if}
-					{#if agent.health_reasons.length > 0}
-						<span
-							class="reason-chip"
-							title={agent.health_reasons.map(humanizeReason).join(' · ')}
-						>
-							{shortReason(agent.health_reasons[0])}
-							{#if agent.health_reasons.length > 1}
-								<b>+{agent.health_reasons.length - 1}</b>
-							{/if}
-						</span>
 					{/if}
 				</span>
 			</span>
@@ -292,11 +285,99 @@
 				<span class="ct-chip problem" class:active={(agent.containers.problem ?? 0) > 0} title="재시작·비정상(dead) 상태의 컨테이너">
 					<b>{agent.containers.problem ?? 0}</b> 이상
 				</span>
+				{#if agent.health_reasons.length > 0}
+					<span
+						class="reason-chip"
+						title={agent.health_reasons.map(humanizeReason).join(' · ')}
+					>
+						{shortReason(agent.health_reasons[0])}
+						{#if agent.health_reasons.length > 1}
+							<b>+{agent.health_reasons.length - 1}</b>
+						{/if}
+					</span>
+				{/if}
 				<span class="age-small" title="최신 메트릭 수신 시점">{formatRelative(agent.latest?.timestamp)}</span>
 			</div>
 		</div>
+	{:else if variant === 'medium'}
+		<!-- medium = compact bar-rows + 오른쪽 컨테이너 분포 & 프로세스/네트워크/에이전트.
+		     "최소 데이터(bar rows) + 오른쪽 확장 정보" 의도. 세로 공간이 작아도 잘리지
+		     않게 고정 높이 대신 flex 로 자연 흐름. -->
+		<div class="medium-body">
+			<div class="medium-left">
+				<div class="bar-rows">
+					{#each compactRows as row}
+						<div
+							class="bar-row"
+							data-level={row.level}
+							title={`${row.label} 사용률 ${formatPercent(row.value, 1)}`}
+						>
+							<span class="br-label">{row.label}</span>
+							<div class="br-track">
+								<span class="br-fill" style={`width: ${Math.min(100, row.value)}%; background: ${row.color};`}></span>
+							</div>
+							<span class="br-value">{formatPercent(row.value, 0)}</span>
+						</div>
+					{/each}
+				</div>
+			</div>
+			<aside class="medium-right">
+				<!-- 3 section: 컨테이너 · 피크값 · 운영. 각 ~30px 로 카드 세로 공간 채움. -->
+				<div class="medium-row">
+					<span class="medium-row-label">컨테이너</span>
+					<div class="medium-row-content">
+						<span class="ct-chip running"><b>{agent.containers.running ?? 0}</b> 실행</span>
+						<span class="ct-chip other"><b>{agent.containers.non_running ?? 0}</b> 기타</span>
+						<span class="ct-chip problem" class:active={(agent.containers.problem ?? 0) > 0}>
+							<b>{agent.containers.problem ?? 0}</b> 이상
+						</span>
+						{#if ctTotal > 0}
+							<div class="ct-bar-mini" aria-hidden="true">
+								{#each ctSegments as seg}
+									<span style={`flex: ${seg.value}; background: ${seg.color};`} title={`${seg.label} ${seg.value}개`}></span>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				</div>
+				<div class="medium-row">
+					<span class="medium-row-label">피크</span>
+					<div class="medium-row-content medium-peaks">
+						{#each peaks as p}
+							<span class="peak-mini" data-level={p.level}>
+								<i style={`color: ${p.color};`}>{p.label}</i>
+								<b>{formatPercent(p.value, 0)}</b>
+							</span>
+						{/each}
+					</div>
+				</div>
+				<div class="medium-row">
+					<span class="medium-row-label">운영</span>
+					<div class="medium-row-content medium-ops">
+						<span class="ops-item"><i>PROC</i> <b>{processesTotal ?? '-'}</b></span>
+						<span class="ops-item"><i>LOGIN</i> <b>{loginsTotal ?? '-'}</b></span>
+						<span class="ops-item"><i>NET</i> <b>{formatRate(networkTotal)}</b></span>
+						<span class="ops-item agent-inline" class:off={!agent.agent.is_active}>
+							{#if agent.agent.is_active}<span class="live-dot" aria-hidden="true"></span>{/if}
+							{agent.agent.is_active ? '실시간' : '오프'}
+						</span>
+						{#if agent.health_reasons.length > 0}
+							<span
+								class="reason-chip ops-reason"
+								title={agent.health_reasons.map(humanizeReason).join(' · ')}
+							>
+								{shortReason(agent.health_reasons[0])}
+								{#if agent.health_reasons.length > 1}
+									<b>+{agent.health_reasons.length - 1}</b>
+								{/if}
+							</span>
+						{/if}
+					</div>
+				</div>
+			</aside>
+		</div>
 	{:else}
-		<div class="metrics" class:grid4={variant === 'full'} class:grid2x2={variant === 'medium'}>
+		<div class="metrics grid4">
 			<div class="metric" data-level={cpuLevel}>
 				<div class="m-head">
 					<span class="m-label">
@@ -374,8 +455,7 @@
 			{/if}
 		</div>
 
-		{#if variant === 'full'}
-			<section class="extra">
+		<section class="extra">
 				<div class="extra-col">
 					<div class="row-label">
 						<span>컨테이너 분포</span>
@@ -384,6 +464,17 @@
 							text={"컨테이너 상태 분포 (Docker 기준)\n\n• 실행 — 정상 동작 중\n• 일시정지 — docker pause 상태\n• 재시작 — 재시작 진행 중 (주의)\n• 종료 — exited / stopped 통합 (정상 종료)\n• 비정상 — dead, 복구 불가 (즉시 확인)\n\n재시작·비정상 상태는 즉시 확인이 필요합니다."}
 						/>
 						<span class="row-count">총 {ctTotal}개</span>
+						{#if agent.health_reasons.length > 0}
+							<span
+								class="reason-chip"
+								title={agent.health_reasons.map(humanizeReason).join(' · ')}
+							>
+								{shortReason(agent.health_reasons[0])}
+								{#if agent.health_reasons.length > 1}
+									<b>+{agent.health_reasons.length - 1}</b>
+								{/if}
+							</span>
+						{/if}
 					</div>
 					{#if ctTotal > 0}
 						<div class="ct-bar" aria-hidden="true">
@@ -470,20 +561,7 @@
 						{/each}
 					</div>
 				</div>
-			</section>
-		{:else}
-			<footer class="card-foot">
-				<div class="ct-line">
-					<span class="ct-label">컨테이너</span>
-					<strong>{ctTotal}</strong>
-					<span class="ct-chip running"><b>{agent.containers.running ?? 0}</b> 실행</span>
-					<span class="ct-chip other"><b>{agent.containers.non_running ?? 0}</b> 기타</span>
-					<span class="ct-chip problem" class:active={(agent.containers.problem ?? 0) > 0}>
-						<b>{agent.containers.problem ?? 0}</b> 이상
-					</span>
-				</div>
-			</footer>
-		{/if}
+		</section>
 	{/if}
 </div>
 
@@ -516,6 +594,9 @@
 		gap: var(--card-gap);
 		position: relative;
 		transition: border-color 0.12s ease, background 0.12s ease;
+		/* 툴팁(.info-bubble position:absolute)이 카드 밖에 표시되므로 overflow: visible.
+		   카드 content 자체가 넘치지 않도록 내부 .compact-body / .medium-body / .extra 에
+		   overflow:hidden 을 걸어 처리. */
 	}
 	.card.variant-compact {
 		--card-pad: clamp(8px, 0.55vw, 14px);
@@ -544,7 +625,8 @@
 		display: flex;
 		justify-content: space-between;
 		gap: var(--card-gap);
-		align-items: flex-start;
+		/* 버튼과 제목 라인 높이가 어긋나던 문제 → 세로 중앙 정렬. */
+		align-items: center;
 	}
 	.title {
 		min-width: 0;
@@ -633,8 +715,10 @@
 		font-variant-numeric: tabular-nums;
 	}
 	.monitor-btn {
-		height: clamp(22px, 1.8vw, 32px);
-		padding: 0 clamp(7px, 0.55vw, 14px);
+		/* 제목 라인과 비슷한 높이로 축소. 기존 clamp(22,1.8vw,32) 가 제목보다 커서
+		   헤더가 버튼 크기에 맞춰 늘어나 보이던 문제 해결. */
+		height: clamp(20px, 1.35vw, 26px);
+		padding: 0 clamp(6px, 0.45vw, 11px);
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
@@ -667,14 +751,17 @@
 	.reason-chip {
 		display: inline-flex;
 		align-items: center;
-		gap: 4px;
-		padding: 2px 7px;
+		gap: 3px;
+		padding: 1px 6px;
 		border-radius: var(--radius-sm);
 		background: rgba(239, 68, 68, 0.14);
 		color: #fca5a5;
 		border: 1px solid rgba(239, 68, 68, 0.22);
+		/* 기본 본문 폰트보다 한 단계 작은 chip — 자리 많이 안 먹도록. */
+		font-size: calc(var(--font-xs) - 1px);
 		font-weight: 700;
 		white-space: nowrap;
+		line-height: 1.3;
 	}
 	.reason-chip b {
 		font-weight: 800;
@@ -707,11 +794,7 @@
 		grid-auto-flow: column;
 		flex: 1;
 	}
-	.metrics.grid2x2 {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		grid-auto-rows: minmax(0, 1fr);
-		flex: 1;
-	}
+	/* medium variant 는 별도 레이아웃 — metrics grid 를 안 씀. grid2x2 규칙 불필요. */
 	.metric {
 		min-width: 0;
 		min-height: 0;
@@ -783,16 +866,233 @@
 		min-height: 0;
 		margin-top: auto;
 	}
-	.card.variant-medium .chart {
-		/* 그래프가 위아래 여유 없이 잘리는 현상 해결 — min-height 상·하한 ↑. */
-		min-height: clamp(52px, 6vh, 110px);
+	/* medium variant 전용 레이아웃 — "compact bar rows + 오른쪽 확장 정보". */
+	.medium-body {
+		flex: 1;
+		min-height: 0;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+		gap: clamp(10px, 0.8vw, 18px);
+		/* 카드 세로가 부족하면 내부 clip — 카드 자체는 overflow visible (툴팁). */
+		overflow: hidden;
+	}
+	.medium-left {
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+	}
+	.card.variant-medium .bar-rows {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: clamp(4px, 0.35vw, 8px);
+		justify-content: center;
+	}
+	.medium-right {
+		display: flex;
+		flex-direction: column;
+		/* 3 row 를 상·중·하 로 고루 분산 — 위아래 빈 여백 최소화. */
+		justify-content: space-evenly;
+		gap: clamp(2px, 0.25vw, 6px);
+		min-height: 0;
+		padding-left: clamp(8px, 0.6vw, 14px);
+		border-left: 1px solid var(--border);
+		overflow: hidden;
+	}
+	.medium-row {
+		display: flex;
+		align-items: center;
+		gap: clamp(6px, 0.5vw, 12px);
+		min-width: 0;
+	}
+	.medium-row-label {
+		flex: 0 0 auto;
+		color: var(--text-muted);
+		font-size: calc(var(--font-xs) - 2px);
+		font-weight: 800;
+		letter-spacing: 0.3px;
+		min-width: 40px;
+	}
+	.medium-row-content {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		gap: clamp(5px, 0.45vw, 10px);
+		min-width: 0;
+		flex-wrap: nowrap;
+	}
+	.ct-bar-mini {
+		flex: 1;
+		display: flex;
+		height: 6px;
+		border-radius: var(--radius-full);
+		overflow: hidden;
+		background: rgba(100, 116, 139, 0.18);
+		min-width: 40px;
+	}
+	.ct-bar-mini > span {
+		height: 100%;
+	}
+	.medium-ops {
+		gap: clamp(8px, 0.7vw, 16px);
+	}
+	.medium-peaks {
+		gap: clamp(6px, 0.55vw, 14px);
+	}
+	.peak-mini {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 4px;
+		padding: 2px 6px;
+		background: rgba(13, 17, 23, 0.4);
+		border-radius: var(--radius-sm);
+		font-size: var(--font-xs);
+	}
+	.peak-mini i {
+		font-style: normal;
+		font-size: calc(var(--font-xs) - 2px);
+		font-weight: 800;
+		letter-spacing: 0.3px;
+	}
+	.peak-mini b {
+		color: var(--text-primary);
+		font-weight: 800;
+		font-variant-numeric: tabular-nums;
+	}
+	.peak-mini[data-level='warn'] b { color: #fbbf24; }
+	.peak-mini[data-level='danger'] b { color: #f87171; }
+	.ops-item {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		font-size: var(--font-xs);
+		font-weight: 700;
+		color: var(--text-primary);
+		white-space: nowrap;
+	}
+	.ops-item i {
+		color: var(--text-muted);
+		font-style: normal;
+		font-size: calc(var(--font-xs) - 2px);
+		font-weight: 800;
+		letter-spacing: 0.3px;
+	}
+	.ops-item b {
+		font-weight: 800;
+		font-variant-numeric: tabular-nums;
+	}
+	.ops-item.agent-inline {
+		color: #34d399;
+	}
+	.ops-item.agent-inline.off {
+		color: #f87171;
+	}
+	.medium-section {
+		display: flex;
+		flex-direction: column;
+		gap: clamp(4px, 0.35vw, 8px);
+		min-height: 0;
+	}
+	.medium-section-title {
+		color: var(--text-muted);
+		font-size: var(--font-xs);
+		font-weight: 800;
+		letter-spacing: 0.3px;
+	}
+	.medium-ct-chips {
+		display: inline-flex;
+		gap: 6px;
+		flex-wrap: wrap;
+	}
+	.medium-spec-grid {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: clamp(4px, 0.35vw, 8px) clamp(8px, 0.6vw, 14px);
+	}
+	/* 4 spec 을 한 줄에 모아 세로 공간 절약. flex row 로 1줄 강제. */
+	.medium-inline-grid {
+		display: flex;
+		flex-wrap: nowrap;
+		gap: clamp(6px, 0.6vw, 14px);
+		align-items: center;
+	}
+	.medium-inline {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		min-width: 0;
 		flex: 1 1 auto;
 	}
-	.card.variant-medium .metric {
-		min-height: clamp(90px, 10vh, 160px);
+	.medium-inline-label {
+		color: var(--text-muted);
+		font-size: calc(var(--font-xs) - 2px);
+		font-weight: 700;
+		letter-spacing: 0.3px;
+	}
+	.medium-inline strong {
+		color: var(--text-primary);
+		font-size: var(--font-sm);
+		font-weight: 800;
+		font-variant-numeric: tabular-nums;
+		line-height: 1.1;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.medium-inline .agent-status-small {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		color: #34d399;
+	}
+	.medium-inline .agent-status-small.off {
+		color: #f87171;
+	}
+	.medium-spec {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		min-width: 0;
+	}
+	.medium-spec-label {
+		color: var(--text-muted);
+		font-size: calc(var(--font-xs) - 1px);
+		font-weight: 700;
+	}
+	.medium-spec strong {
+		color: var(--text-primary);
+		font-size: var(--font-sm);
+		font-weight: 800;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.medium-spec-sub {
+		color: var(--text-muted);
+		font-size: calc(var(--font-xs) - 2px);
+		font-weight: 600;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.medium-spec .agent-status-small {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		color: #34d399;
+	}
+	.medium-spec .agent-status-small.off {
+		color: #f87171;
+	}
+	.ops-reason {
+		margin-left: auto;
 	}
 	.card.variant-full .chart {
-		min-height: clamp(64px, 8vh, 140px);
+		min-height: clamp(36px, 4vh, 90px);
+	}
+	.card.variant-full .metric {
+		min-height: clamp(80px, 9vh, 160px);
 	}
 	.chart :global(svg) {
 		width: 100%;
@@ -807,26 +1107,33 @@
 		display: flex;
 		flex-direction: column;
 		gap: clamp(5px, 0.4vw, 10px);
+		/* 카드 세로가 content 보다 작을 때 bar-rows 가 shrink 되어도 content 고유
+		   크기가 남음. compact-body 안쪽 clip 해서 카드 밖으로 튀지 않게. */
+		overflow: hidden;
 	}
 	.bar-rows {
 		display: grid;
-		gap: clamp(4px, 0.35vw, 8px);
+		gap: clamp(3px, 0.3vw, 7px);
 		grid-auto-rows: minmax(0, 1fr);
 		flex: 1;
 		min-height: 0;
-		align-content: center;
+		/* row 가 content 보다 작아져야 할 때 overflow 없이 scale down. */
+		overflow: hidden;
 	}
 	.bar-row {
 		display: grid;
 		grid-template-columns: 34px 1fr 50px;
 		align-items: center;
 		gap: 8px;
+		min-height: 0;
+		line-height: 1;
 	}
 	.br-label {
 		color: var(--text-muted);
 		font-size: calc(var(--font-xs) - 1px);
 		font-weight: 800;
 		letter-spacing: 0.3px;
+		line-height: 1.1;
 	}
 	.br-track {
 		height: 8px;
@@ -849,6 +1156,7 @@
 		font-variant-numeric: tabular-nums;
 		text-align: right;
 		white-space: nowrap;
+		line-height: 1.1;
 	}
 	.bar-row[data-level='warn'] .br-value {
 		color: #fbbf24;
@@ -879,6 +1187,9 @@
 		display: grid;
 		grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
 		gap: var(--card-gap);
+		min-height: 0;
+		/* span 카드처럼 세로 좁을 때 extras 내용이 카드 밖으로 튀지 않도록 clip. */
+		overflow: hidden;
 	}
 	.peak-grid {
 		flex: 1;

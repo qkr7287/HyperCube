@@ -369,7 +369,6 @@
 		border-radius: var(--radius-md);
 		padding: 10px 10px 4px;
 		min-height: 0;
-		height: 100%;
 		display: flex;
 		flex-direction: column;
 	}
@@ -432,10 +431,11 @@
 		width: 200px;
 	}
 	.table-wrap {
-		flex: 1;
-		overflow-x: hidden;
-		overflow-y: auto;
-		min-height: 0;
+		/* 내부 세로·가로 스크롤 모두 제거. CSS spec 상 한 축만 visible 이면 자동으로
+		   auto로 승격되므로 둘 다 visible 로 지정해야 스크롤바가 안 생김. 테이블이
+		   길어지면 페이지 전체 스크롤(admin-body)이 담당. */
+		flex: none;
+		overflow: visible;
 	}
 	table {
 		width: 100%;
@@ -716,8 +716,8 @@
 		align-items: center;
 		gap: 4px;
 		/* 카드 쪽 monitor-btn과 완전히 동일한 치수·발색 — 통일성 보장. */
-		height: clamp(22px, 1.8vw, 32px);
-		padding: 0 clamp(7px, 0.55vw, 14px);
+		height: clamp(20px, 1.35vw, 26px);
+		padding: 0 clamp(6px, 0.45vw, 11px);
 		border: 1px solid rgba(48, 213, 200, 0.6);
 		border-radius: var(--radius-sm);
 		/* 선택된 tr의 청록 틴트 위에서도 일관된 발색을 위해 솔리드 바탕 + 청록 오버레이를 합성. */

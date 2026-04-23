@@ -54,16 +54,19 @@
 	};
 
 	function calcGrid(count: number): GridLayout {
+		// firstSpans 가 true 인 경우 첫 카드는 row 2개 차지 → 세로로 긴 공간 확보 →
+		// full variant 로 승격. 그래야 "2대일 때와 같은 느낌"으로 metrics + extra 섹션
+		// (컨테이너 분포 · 피크값 · 프로세스/네트워크/에이전트) 모두 노출.
 		if (count <= 0) return { cols: 1, rows: 1, firstSpans: false, variants: ['full'] };
 		if (count === 1) return { cols: 1, rows: 1, firstSpans: false, variants: ['full'] };
 		if (count === 2) return { cols: 2, rows: 1, firstSpans: false, variants: ['full', 'full'] };
-		if (count === 3) return { cols: 2, rows: 2, firstSpans: true, variants: ['medium', 'compact', 'compact'] };
+		if (count === 3) return { cols: 2, rows: 2, firstSpans: true, variants: ['full', 'medium', 'medium'] };
 		if (count === 4) return { cols: 2, rows: 2, firstSpans: false, variants: ['medium', 'medium', 'medium', 'medium'] };
 		if (count === 5) return {
 			cols: 3,
 			rows: 2,
 			firstSpans: true,
-			variants: ['medium', 'compact', 'compact', 'compact', 'compact'],
+			variants: ['full', 'medium', 'medium', 'medium', 'medium'],
 		};
 		if (count === 6) return {
 			cols: 3,
@@ -75,7 +78,7 @@
 			cols: 4,
 			rows: 2,
 			firstSpans: true,
-			variants: ['medium', ...Array(6).fill('compact')] as Variant[],
+			variants: ['full', ...Array(6).fill('compact')] as Variant[],
 		};
 		if (count === 8) return {
 			cols: 4,
@@ -87,7 +90,7 @@
 			cols: 5,
 			rows: 2,
 			firstSpans: true,
-			variants: ['medium', ...Array(8).fill('compact')] as Variant[],
+			variants: ['full', ...Array(8).fill('compact')] as Variant[],
 		};
 		return {
 			cols: 5,
