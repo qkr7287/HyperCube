@@ -9,6 +9,7 @@
 		PointElement,
 		Tooltip,
 		Filler,
+		type Plugin,
 	} from 'chart.js';
 	import MetricHelp from './MetricHelp.svelte';
 
@@ -22,12 +23,20 @@
 		series,
 		unit = 'percent',
 		help = '',
+		topNames = [],
+		soloLabel = null,
+		extraPlugins = [],
+		rightPadding = 0,
 	}: {
 		title: string;
 		labels: string[];
 		series: Series[];
 		unit?: 'percent' | 'rate';
 		help?: string;
+		topNames?: string[];
+		soloLabel?: string | null;
+		extraPlugins?: Plugin[];
+		rightPadding?: number;
 	} = $props();
 
 	let canvas: HTMLCanvasElement | null = null;
@@ -51,6 +60,7 @@
 		let peak = 0;
 		for (const item of series) {
 			if (item.hidden) continue;
+			if (soloLabel && item.label !== soloLabel) continue;
 			for (const value of item.values) {
 				if (value > peak) peak = value;
 			}
@@ -58,19 +68,38 @@
 		return peak;
 	}
 
+	function isHighlighted(label: string): boolean {
+		if (soloLabel) return label === soloLabel;
+		if (topNames.length === 0) return true;
+		return topNames.includes(label);
+	}
+
+	function dimColor(color: string): string {
+		if (color.startsWith('#') && color.length === 7) {
+			return color + '22';
+		}
+		return color;
+	}
+
 	function buildDatasets() {
-		return series.map((item) => ({
-			label: item.label,
-			data: [...item.values],
-			borderColor: item.color,
-			backgroundColor: `${item.color}24`,
-			borderWidth: 2,
-			pointRadius: 0,
-			pointHoverRadius: 3,
-			tension: 0.32,
-			fill: false,
-			hidden: item.hidden ?? false,
-		}));
+		return series.map((item) => {
+			const highlighted = isHighlighted(item.label);
+			const forceHidden = Boolean(soloLabel) && item.label !== soloLabel;
+			const color = highlighted ? item.color : dimColor(item.color);
+			return {
+				label: item.label,
+				data: [...item.values],
+				borderColor: color,
+				backgroundColor: `${color}18`,
+				borderWidth: highlighted ? 2.2 : 1,
+				pointRadius: 0,
+				pointHoverRadius: highlighted ? 3 : 0,
+				tension: 0.32,
+				fill: false,
+				hidden: (item.hidden ?? false) || forceHidden,
+				order: highlighted ? 0 : 1,
+			};
+		});
 	}
 
 	function render() {
@@ -81,25 +110,35 @@
 				labels: [...labels],
 				datasets: buildDatasets(),
 			},
+			plugins: extraPlugins,
 			options: {
 				responsive: true,
 				maintainAspectRatio: false,
 				animation: { duration: 200 },
 				interaction: { mode: 'index', intersect: false },
+				layout: rightPadding > 0 ? { padding: { right: rightPadding } } : undefined,
 				plugins: {
-					legend: {
-						display: series.length > 1,
-						labels: { color: '#94a3b8', boxWidth: 10, font: { size: 10 } },
-					},
+					legend: { display: false },
 					tooltip: {
 						backgroundColor: 'rgba(13,17,23,0.96)',
 						borderColor: 'rgba(48,213,200,0.35)',
 						borderWidth: 1,
+						filter: (item: any) => {
+							const label = item.dataset.label ?? '';
+							if (soloLabel) return label === soloLabel;
+							if (topNames.length === 0) return true;
+							return topNames.includes(label);
+						},
 						callbacks: {
-							label: (ctx) => `${ctx.dataset.label}: ${formatValue(Number(ctx.parsed.y ?? 0))}`,
+							label: (ctx: any) => `${ctx.dataset.label}: ${formatValue(Number(ctx.parsed.y ?? 0))}`,
 						},
 					},
-				},
+					rightEdgeLabels: {
+						enabled: topNames.length > 0,
+						topNames: new Set(topNames),
+						format: formatValue,
+					},
+				} as any,
 				scales: {
 					x: {
 						grid: { color: 'rgba(100,116,139,0.08)' },
@@ -130,6 +169,25 @@
 		}
 		chart.data.labels = [...labels];
 		chart.data.datasets = buildDatasets();
+		if (chart.options.plugins) {
+			(chart.options.plugins as any).rightEdgeLabels = {
+				enabled: topNames.length > 0,
+				topNames: new Set(topNames),
+				format: formatValue,
+			};
+			(chart.options.plugins as any).tooltip = {
+				...((chart.options.plugins as any).tooltip ?? {}),
+				filter: (item: any) => {
+					const label = item.dataset.label ?? '';
+					if (soloLabel) return label === soloLabel;
+					if (topNames.length === 0) return true;
+					return topNames.includes(label);
+				},
+			};
+		}
+		if (chart.options.layout) {
+			(chart.options.layout as any).padding = rightPadding > 0 ? { right: rightPadding } : undefined;
+		}
 		if (unit === 'rate' && chart.options.scales?.y) {
 			(chart.options.scales.y as any).suggestedMax = Math.max(peakValue() * 1.15, 1024);
 		}
@@ -139,6 +197,8 @@
 	$effect(() => {
 		labels;
 		series;
+		topNames;
+		soloLabel;
 		sync();
 	});
 
