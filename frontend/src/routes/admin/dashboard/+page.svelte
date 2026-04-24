@@ -3,7 +3,6 @@
 	import { browser } from '$app/environment';
 	import { base } from '$app/paths';
 	import { goto } from '$app/navigation';
-	import { page } from '$app/stores';
 	import {
 		fleetAgents,
 		fleetConnected,
@@ -26,39 +25,15 @@
 	import AgentHealthTable from '$lib/components/fleet/AgentHealthTable.svelte';
 	import TimeRangeSelector from '$lib/components/fleet/TimeRangeSelector.svelte';
 	import MetricHelp from '$lib/components/fleet/MetricHelp.svelte';
-	import { buildSimulatedAgents, EACH_STATUS_ORDER } from '$lib/utils/fleet-simulate';
 
 	let range = $state<TimeRange>('1h');
 	let selectedAgentId = $state<string | null>(null);
 
-	// ?sim=each  → 상태별 1대씩 (critical/warning/stale/offline/healthy) 5대 생성.
-	// ?sim=<숫자> → pickHealth 분포로 N대 생성 (기존 방식).
-	let simMode = $derived($page.url.searchParams.get('sim') ?? '');
-	let simCount = $derived.by(() => {
-		if (!simMode || simMode === 'each') return 0;
-		const parsed = parseInt(simMode, 10);
-		if (!Number.isFinite(parsed) || parsed <= 0) return 0;
-		return Math.min(parsed, 200);
-	});
-
-	let simAgents = $derived.by(() => {
-		if (simMode === 'each') return buildSimulatedAgents(0, 0, EACH_STATUS_ORDER);
-		const n = simCount;
-		return n > 0 ? buildSimulatedAgents(n) : [];
-	});
-
-	// ?only=sim → 실제 fleet 숨기고 가상 서버만 (count=1 테스트용 등).
-	let onlySim = $derived($page.url.searchParams.get('only') === 'sim');
-
-	let displayedAgents = $derived.by(() => {
-		if (onlySim) return simAgents;
-		if (simAgents.length === 0) return $fleetAgents;
-		return [...$fleetAgents, ...simAgents];
-	});
+	let displayedAgents = $derived($fleetAgents);
 
 	function selectAgent(agentId: string) {
 		selectedAgentId = agentId;
-		if (!agentId.startsWith('sim-')) loadSelectedAgent(agentId);
+		loadSelectedAgent(agentId);
 	}
 
 	async function changeRange(next: TimeRange) {
@@ -67,7 +42,6 @@
 	}
 
 	function open3d(agentId: string) {
-		if (agentId.startsWith('sim-')) return;
 		if (browser) localStorage.setItem('hc_selected_server', agentId);
 		goto(`${base}/`);
 	}
@@ -81,7 +55,7 @@
 		if (selectedAgentId && list.some((row: FleetAgentRow) => row.agent.id === selectedAgentId)) return;
 		const firstAgentId = list[0].agent.id;
 		selectedAgentId = firstAgentId;
-		if (!firstAgentId.startsWith('sim-')) loadSelectedAgent(firstAgentId);
+		loadSelectedAgent(firstAgentId);
 	});
 
 	onMount(() => {
@@ -122,18 +96,6 @@
 
 	{#if $fleetError}
 		<div class="error-box">대시보드를 갱신하지 못했습니다. {$fleetError}</div>
-	{/if}
-
-	{#if simAgents.length > 0}
-		<div class="sim-banner">
-			<span>
-				가상 서버 <b>{simAgents.length}</b>대를 시뮬레이션 중입니다.
-				{#if simMode === 'each'}(상태별 더미 — critical/warning/stale/offline/healthy){/if}
-				실제 서버 <b>{$fleetAgents.length}</b>대와 함께 표시됩니다.
-				(URL <code>?sim={simMode}</code>)
-			</span>
-			<a href="?" title="시뮬레이션 종료">시뮬레이션 종료</a>
-		</div>
 	{/if}
 
 	<FleetStatusBar
@@ -262,37 +224,6 @@
 		background: rgba(239, 68, 68, 0.08);
 		color: #fecaca;
 		font-size: 12px;
-	}
-	.sim-banner {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		gap: 10px;
-		padding: 8px 12px;
-		border: 1px solid rgba(167, 139, 250, 0.35);
-		border-radius: var(--radius-md);
-		background: rgba(167, 139, 250, 0.08);
-		color: #ddd6fe;
-		font-size: 12px;
-		font-weight: 700;
-	}
-	.sim-banner b {
-		color: var(--text-primary);
-	}
-	.sim-banner code {
-		padding: 1px 5px;
-		background: rgba(13, 17, 23, 0.6);
-		border-radius: 4px;
-		font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-		color: #c4b5fd;
-	}
-	.sim-banner a {
-		color: #a78bfa;
-		text-decoration: none;
-		font-weight: 800;
-	}
-	.sim-banner a:hover {
-		text-decoration: underline;
 	}
 	.rotator-area,
 	.table-area {
