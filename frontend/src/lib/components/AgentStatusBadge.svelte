@@ -27,19 +27,22 @@
 	let offline = $derived(Math.max(0, totalKnown - active));
 
 	function togglePanel(e: MouseEvent) {
+		e.preventDefault();
 		e.stopPropagation();
 		panelOpen = !panelOpen;
 	}
 
-	function handleDocClick(e: MouseEvent) {
+	function handleDocMousedown(e: MouseEvent) {
 		if (!panelOpen) return;
-		const target = e.target as HTMLElement;
+		const target = e.target as HTMLElement | null;
+		if (!target) return;
 		if (!target.closest('.status-badge-wrap')) panelOpen = false;
 	}
 
+	// mousedown 을 쓰면 click 이벤트 순서 문제 (Svelte 5 effect 마운트 타이밍) 회피.
 	$effect(() => {
-		document.addEventListener('click', handleDocClick);
-		return () => document.removeEventListener('click', handleDocClick);
+		document.addEventListener('mousedown', handleDocMousedown);
+		return () => document.removeEventListener('mousedown', handleDocMousedown);
 	});
 
 	function formatTime(iso: string): string {
@@ -151,7 +154,8 @@
 		border-radius: var(--radius-md);
 		box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
 		padding: 12px;
-		z-index: 100;
+		/* 대시보드 다른 요소에 가려지지 않도록 확실히 위로. */
+		z-index: 9999;
 	}
 	.panel-title {
 		font-size: 12px;
