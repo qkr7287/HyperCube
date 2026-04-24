@@ -322,45 +322,22 @@
 				</div>
 			</div>
 			<aside class="medium-right">
-				<!-- 3 section: 컨테이너 · 피크값 · 운영. 각 ~30px 로 카드 세로 공간 채움. -->
+				<!-- 3 section: 컨테이너 · 피크값 · 운영. 각 ~30px 로 카드 세로 공간 채움.
+				     label 은 생략 (공간 절약). 섹션별 첫 요소로 맥락 전달. -->
 				<div class="medium-row">
-					<span class="medium-row-label">컨테이너</span>
 					<div class="medium-row-content">
 						<span class="ct-chip running"><b>{agent.containers.running ?? 0}</b> 실행</span>
 						<span class="ct-chip other"><b>{agent.containers.non_running ?? 0}</b> 기타</span>
 						<span class="ct-chip problem" class:active={(agent.containers.problem ?? 0) > 0}>
 							<b>{agent.containers.problem ?? 0}</b> 이상
 						</span>
-						{#if ctTotal > 0}
+						{#if ctTotal > 0 && agent.health_reasons.length === 0}
 							<div class="ct-bar-mini" aria-hidden="true">
 								{#each ctSegments as seg}
 									<span style={`flex: ${seg.value}; background: ${seg.color};`} title={`${seg.label} ${seg.value}개`}></span>
 								{/each}
 							</div>
 						{/if}
-					</div>
-				</div>
-				<div class="medium-row">
-					<span class="medium-row-label">피크</span>
-					<div class="medium-row-content medium-peaks">
-						{#each peaks as p}
-							<span class="peak-mini" data-level={p.level}>
-								<i style={`color: ${p.color};`}>{p.label}</i>
-								<b>{formatPercent(p.value, 0)}</b>
-							</span>
-						{/each}
-					</div>
-				</div>
-				<div class="medium-row">
-					<span class="medium-row-label">운영</span>
-					<div class="medium-row-content medium-ops">
-						<span class="ops-item"><i>PROC</i> <b>{processesTotal ?? '-'}</b></span>
-						<span class="ops-item"><i>LOGIN</i> <b>{loginsTotal ?? '-'}</b></span>
-						<span class="ops-item"><i>NET</i> <b>{formatRate(networkTotal)}</b></span>
-						<span class="ops-item agent-inline" class:off={!agent.agent.is_active}>
-							{#if agent.agent.is_active}<span class="live-dot" aria-hidden="true"></span>{/if}
-							{agent.agent.is_active ? '실시간' : '오프'}
-						</span>
 						{#if agent.health_reasons.length > 0}
 							<span
 								class="reason-chip ops-reason"
@@ -372,6 +349,25 @@
 								{/if}
 							</span>
 						{/if}
+					</div>
+				</div>
+				<div class="medium-row">
+					<div class="medium-row-content medium-peaks">
+						{#each peaks as p}
+							<span class="peak-mini" data-level={p.level}>
+								<i style={`color: ${p.color};`}>{p.label}</i>
+								<b>{formatPercent(p.value, 0)}</b>
+							</span>
+						{/each}
+					</div>
+				</div>
+				<div class="medium-row">
+					<div class="medium-row-content medium-ops">
+						<!-- agent 실시간 상태는 카드 헤더의 live-dot 이 이미 표시 → 중복 제거.
+						     reason-chip 은 상단 컨테이너 row 로 이동. -->
+						<span class="ops-item"><i>PROC</i> <b>{processesTotal ?? '-'}</b></span>
+						<span class="ops-item"><i>LOGIN</i> <b>{loginsTotal ?? '-'}</b></span>
+						<span class="ops-item"><i>NET</i> <b>{formatRate(networkTotal)}</b></span>
 					</div>
 				</div>
 			</aside>
@@ -390,7 +386,7 @@
 					<FleetCardChart
 						series={{ values: cpuSeries, color: CHART_COLORS.cpu, label: 'CPU' }}
 						{range}
-						showAxes={variant !== 'medium' ? true : true}
+						showAxes={false}
 					/>
 				</div>
 			</div>
@@ -410,6 +406,7 @@
 					<FleetCardChart
 						series={{ values: memorySeries, color: CHART_COLORS.memory, label: '메모리' }}
 						{range}
+						showAxes={false}
 					/>
 				</div>
 			</div>
@@ -426,6 +423,7 @@
 					<FleetCardChart
 						series={{ values: diskSeries, color: CHART_COLORS.disk, label: '디스크' }}
 						{range}
+						showAxes={false}
 					/>
 				</div>
 			</div>
@@ -449,6 +447,7 @@
 						<FleetCardChart
 							series={{ values: gpuSeries, color: CHART_COLORS.gpu, label: 'GPU' }}
 							{range}
+							showAxes={false}
 						/>
 					</div>
 				</div>
@@ -464,17 +463,6 @@
 							text={"컨테이너 상태 분포 (Docker 기준)\n\n• 실행 — 정상 동작 중\n• 일시정지 — docker pause 상태\n• 재시작 — 재시작 진행 중 (주의)\n• 종료 — exited / stopped 통합 (정상 종료)\n• 비정상 — dead, 복구 불가 (즉시 확인)\n\n재시작·비정상 상태는 즉시 확인이 필요합니다."}
 						/>
 						<span class="row-count">총 {ctTotal}개</span>
-						{#if agent.health_reasons.length > 0}
-							<span
-								class="reason-chip"
-								title={agent.health_reasons.map(humanizeReason).join(' · ')}
-							>
-								{shortReason(agent.health_reasons[0])}
-								{#if agent.health_reasons.length > 1}
-									<b>+{agent.health_reasons.length - 1}</b>
-								{/if}
-							</span>
-						{/if}
 					</div>
 					{#if ctTotal > 0}
 						<div class="ct-bar" aria-hidden="true">
@@ -501,11 +489,22 @@
 
 				<div class="extra-col">
 					<div class="row-label">
-						<span>프로세스 · 네트워크 · 에이전트</span>
+						<span>운영 현황</span>
 						<MetricHelp
 							placement="top-start"
 							text={"서버 운영 상태 요약\n\n• 프로세스 — OS 전체 프로세스 수 (실행/총 개수)\n• 로그인 — 현재 접속 중인 활성 세션 수\n• 네트워크 — RX(수신) + TX(송신) 초당 처리량\n• 에이전트 — HyperCube Agent 연결 상태\n\n마지막 응답은 Agent→Backend WS 핑 시각입니다."}
 						/>
+						{#if agent.health_reasons.length > 0}
+							<span
+								class="reason-chip"
+								title={agent.health_reasons.map(humanizeReason).join(' · ')}
+							>
+								{shortReason(agent.health_reasons[0])}
+								{#if agent.health_reasons.length > 1}
+									<b>+{agent.health_reasons.length - 1}</b>
+								{/if}
+							</span>
+						{/if}
 					</div>
 					<div class="spec-grid">
 						<div class="spec">
@@ -538,7 +537,7 @@
 
 				<div class="extra-col">
 					<div class="row-label">
-						<span>최근 {rangeLabelMap[range] ?? ''} 피크값</span>
+						<span>{rangeLabelMap[range] ?? ''} 피크</span>
 						<MetricHelp
 							placement="top-end"
 							text={"조회 범위 동안 기록된 최고 사용률과 실제 값.\n\n• CPU — 피크% + 사용 코어 수 (피크% × 논리 코어)\n  (Agent가 load avg 전송 시 1분 load도 표시)\n• 메모리 — 피크% + 추정 사용량 GB (피크% × 전체 RAM)\n• 디스크 — 피크% + 현재 사용 GB / 전체 GB (루트 파티션)\n• GPU — 피크% + 장치 수 · VRAM 사용량 · 온도\n\n현재값이 낮아도 피크가 높으면\n과거 과부하 흔적이 있다는 신호입니다."}
@@ -922,13 +921,15 @@
 		flex-wrap: nowrap;
 	}
 	.ct-bar-mini {
-		flex: 1;
+		/* reason-chip 과 함께 있을 때 bar 가 공간 양보하도록 flex-shrink 허용 +
+		   min-width 최소값 더 낮춤. */
+		flex: 1 1 30px;
 		display: flex;
 		height: 6px;
 		border-radius: var(--radius-full);
 		overflow: hidden;
 		background: rgba(100, 116, 139, 0.18);
-		min-width: 40px;
+		min-width: 20px;
 	}
 	.ct-bar-mini > span {
 		height: 100%;
@@ -947,6 +948,8 @@
 		background: rgba(13, 17, 23, 0.4);
 		border-radius: var(--radius-sm);
 		font-size: var(--font-xs);
+		white-space: nowrap;
+		flex: 0 0 auto;
 	}
 	.peak-mini i {
 		font-style: normal;
@@ -1087,6 +1090,8 @@
 	}
 	.ops-reason {
 		margin-left: auto;
+		/* 좁은 medium 컨테이너 row 에서도 chip 이 안 잘리게 shrink 금지. */
+		flex: 0 0 auto;
 	}
 	.card.variant-full .chart {
 		min-height: clamp(36px, 4vh, 90px);
@@ -1197,18 +1202,18 @@
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		grid-auto-rows: minmax(0, 1fr);
-		gap: 6px;
+		gap: 4px;
 	}
 	.peak-cell {
 		min-width: 0;
 		min-height: 0;
-		padding: 6px 8px;
+		padding: 4px 6px;
 		background: rgba(13, 17, 23, 0.45);
 		border-radius: var(--radius-sm);
 		display: flex;
 		flex-direction: column;
-		justify-content: space-between;
-		gap: 3px;
+		justify-content: center;
+		gap: 2px;
 	}
 	.peak-cell[data-level='warn'] .peak-value {
 		color: #fbbf24;
@@ -1261,17 +1266,19 @@
 		flex: 1;
 		display: flex;
 		flex-direction: column;
-		justify-content: space-between;
-		gap: 4px;
+		justify-content: center;
+		gap: 3px;
 		min-height: 0;
 	}
 	.ct-row {
 		display: grid;
-		grid-template-columns: 8px 56px 1fr 48px;
+		/* 좁은 span 카드 대응 — dot + label + track + count 가 한 줄에 fit. */
+		grid-template-columns: 6px clamp(30px, 3vw, 50px) 1fr clamp(30px, 3vw, 48px);
 		align-items: center;
-		gap: 8px;
-		font-size: var(--font-xs);
+		gap: 5px;
+		font-size: calc(var(--font-xs) - 1px);
 		font-weight: 700;
+		line-height: 1.1;
 	}
 	.ct-row.zero {
 		opacity: 0.45;
@@ -1314,13 +1321,13 @@
 	}
 	.extra-col {
 		min-width: 0;
-		padding: clamp(6px, 0.5vw, 10px);
+		padding: clamp(5px, 0.4vw, 9px);
 		background: var(--bg-base);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-sm);
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
+		gap: 4px;
 		min-height: 0;
 		/* 툴팁이 카드 경계 밖으로 나갈 수 있도록 overflow visible 유지 */
 		overflow: visible;
@@ -1331,9 +1338,13 @@
 		align-items: center;
 		gap: 4px;
 		color: var(--text-muted);
-		font-size: var(--font-xs);
+		/* 좁은 span 카드에서 제목 + 보조 chip 이 한 줄에 들어가도록 축소. */
+		font-size: calc(var(--font-xs) - 1px);
 		font-weight: 800;
 		letter-spacing: 0.3px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.row-count {
 		margin-left: auto;
@@ -1392,18 +1403,18 @@
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		grid-auto-rows: minmax(0, 1fr);
-		gap: 5px;
+		gap: 4px;
 	}
 	.spec {
 		min-width: 0;
 		min-height: 0;
-		padding: 6px 8px;
+		padding: 4px 6px;
 		background: rgba(13, 17, 23, 0.45);
 		border-radius: var(--radius-sm);
 		display: flex;
 		flex-direction: column;
-		justify-content: space-between;
-		gap: 2px;
+		justify-content: center;
+		gap: 1px;
 	}
 	.spec-label {
 		color: var(--text-muted);
@@ -1488,6 +1499,10 @@
 		background: rgba(13, 17, 23, 0.55);
 		color: var(--text-secondary);
 		font-weight: 700;
+		/* 좁은 공간에서 "실행" · "기타" 같은 2글자 label 이 글자 단위로 wrap 되는
+		   것 방지 — chip 자체는 shrink 금지, 글자는 한 줄 유지. */
+		white-space: nowrap;
+		flex: 0 0 auto;
 	}
 	.ct-chip b {
 		color: var(--text-primary);
