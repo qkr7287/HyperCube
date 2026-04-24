@@ -32,18 +32,9 @@
 		panelOpen = !panelOpen;
 	}
 
-	function handleDocMousedown(e: MouseEvent) {
-		if (!panelOpen) return;
-		const target = e.target as HTMLElement | null;
-		if (!target) return;
-		if (!target.closest('.status-badge-wrap')) panelOpen = false;
+	function closePanel() {
+		panelOpen = false;
 	}
-
-	// mousedown 을 쓰면 click 이벤트 순서 문제 (Svelte 5 effect 마운트 타이밍) 회피.
-	$effect(() => {
-		document.addEventListener('mousedown', handleDocMousedown);
-		return () => document.removeEventListener('mousedown', handleDocMousedown);
-	});
 
 	function formatTime(iso: string): string {
 		try {
@@ -74,7 +65,10 @@
 
 	{#if panelOpen}
 		<div class="status-panel">
-			<div class="panel-title">최근 상태 변화</div>
+			<div class="panel-head">
+				<div class="panel-title">최근 상태 변화</div>
+				<button class="panel-close" onclick={closePanel} aria-label="닫기">✕</button>
+			</div>
 			{#if recent.length === 0}
 				<div class="empty">아직 이벤트가 없습니다.</div>
 			{:else}
@@ -157,11 +151,33 @@
 		/* 대시보드 다른 요소에 가려지지 않도록 확실히 위로. */
 		z-index: 9999;
 	}
+	.panel-head {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 8px;
+	}
 	.panel-title {
 		font-size: 12px;
 		font-weight: 700;
 		color: var(--text-secondary);
-		margin-bottom: 8px;
+	}
+	.panel-close {
+		width: 20px;
+		height: 20px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		border: 0;
+		background: transparent;
+		color: var(--text-muted);
+		cursor: pointer;
+		font-size: 13px;
+		border-radius: 4px;
+	}
+	.panel-close:hover {
+		background: var(--bg-tab);
+		color: var(--text-primary);
 	}
 	.empty {
 		font-size: 12px;

@@ -97,6 +97,37 @@ export function seedActiveAgents(ids: string[]) {
 	activeAgentIds.set(new Set(ids));
 }
 
+/**
+ * 페이지 첫 진입 시 statusEvents 스토어를 seed 한다.
+ * 라이브 WS 이벤트만 쌓으면 이미 offline 인 agent 의 전환 시점을 놓쳐서
+ * "1/2 인데 최근 상태 변화는 없음" 처럼 빠진 것처럼 보임.
+ * is_active === false 인 agent 는 last_seen_at 시각으로 offline 전환이 이미
+ * 일어났다는 걸 유도해 synthetic 이벤트로 넣는다.
+ */
+export function seedStatusEvents(
+	agents: Array<{ id: string; hostname: string; is_active: boolean; last_seen_at: string | null }>,
+) {
+	const synth: AgentStatusEvent[] = agents
+		.filter((a) => !a.is_active && a.last_seen_at)
+		.map((a) => {
+			const ts = new Date(a.last_seen_at as string).getTime();
+			return {
+				type: 'agent_status_change',
+				status: 'offline' as const,
+				server_id: a.id,
+				hostname: a.hostname,
+				last_seen_at: a.last_seen_at as string,
+				previous_offline_seconds: null,
+				// receivedAt 을 "마지막으로 관측된 시각" 으로 근사 — 정확한 전환 시각은
+				// Backend 에서 별도 제공하지 않는 한 알 수 없음.
+				receivedAt: Number.isFinite(ts) ? ts : Date.now(),
+			};
+		})
+		.sort((a, b) => b.receivedAt - a.receivedAt)
+		.slice(0, MAX_EVENTS);
+	statusEvents.set(synth);
+}
+
 function handleEvent(msg: any) {
 	if (msg?.type === 'agent_status_change') {
 		const evt: AgentStatusEvent = {
