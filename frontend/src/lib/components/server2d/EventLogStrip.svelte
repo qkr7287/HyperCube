@@ -127,7 +127,8 @@
 
 	.body {
 		overflow: auto;
-		max-height: 180px;
+		flex: 1;
+		min-height: 0;
 		border: 1px solid rgba(100, 116, 139, 0.16);
 		border-radius: 8px;
 		background: rgba(15, 23, 42, 0.42);

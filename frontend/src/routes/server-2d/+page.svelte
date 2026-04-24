@@ -1726,7 +1726,7 @@
 	.kpi-gauge-row {
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
+		gap: 7px;
 		padding: 8px 14px 0;
 		flex: 0 0 auto;
 	}
@@ -1734,14 +1734,6 @@
 	.kpi-wrap,
 	.gauge-wrap {
 		min-width: 0;
-	}
-
-	@media (min-width: 1600px) {
-		.kpi-gauge-row {
-			display: grid;
-			grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.4fr);
-			gap: 10px;
-		}
 	}
 
 	.dashboard {
@@ -2011,7 +2003,7 @@
 
 	.bottom-grid {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr);
+		grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.3fr) minmax(0, 1.1fr);
 		gap: 8px;
 		min-height: 0;
 		overflow: hidden;

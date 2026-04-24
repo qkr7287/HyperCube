@@ -10,7 +10,7 @@
 	let {
 		entries = [] as LegendEntry[],
 		format = (value: number) => `${value.toFixed(1)}%`,
-		maxChips = 6,
+		maxChips = 3,
 	}: {
 		entries?: LegendEntry[];
 		format?: (value: number) => string;
@@ -57,10 +57,11 @@
 <style>
 	.legend {
 		display: flex;
-		flex-wrap: wrap;
+		flex-wrap: nowrap;
 		align-items: center;
-		gap: 4px;
+		gap: 3px;
 		min-width: 0;
+		overflow: hidden;
 	}
 
 	.chip {
@@ -98,7 +99,7 @@
 
 	.chip b {
 		font-weight: 800;
-		max-width: 110px;
+		max-width: 80px;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;

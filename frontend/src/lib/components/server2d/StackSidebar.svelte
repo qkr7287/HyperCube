@@ -130,11 +130,6 @@
 								<i class="bar"><u></u></i>
 								<small class="value">{formatValue(stack)}</small>
 							</div>
-							<div class="all-metrics">
-								<span><b>CPU</b>{stack.cpuAvg.toFixed(1)}%</span>
-								<span><b>MEM</b>{stack.memoryAvg.toFixed(1)}%</span>
-								<span><b>NET</b>{formatRate(stack.networkAvg)}</span>
-							</div>
 						</button>
 					{/each}
 					{#if pageItems.length === 0}
@@ -223,9 +218,9 @@
 
 	.item {
 		display: grid;
-		grid-template-rows: auto auto auto;
-		gap: 5px;
-		padding: 9px 11px 10px;
+		grid-template-rows: auto auto;
+		gap: 4px;
+		padding: 7px 11px 8px;
 		border: 1px solid rgba(100, 116, 139, 0.2);
 		border-radius: 8px;
 		background: rgba(15, 23, 42, 0.58);

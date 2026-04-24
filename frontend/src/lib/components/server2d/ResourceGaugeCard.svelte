@@ -1,6 +1,5 @@
 <script lang="ts">
 	import MetricSparkline from '$lib/components/fleet/MetricSparkline.svelte';
-	import InfoTooltip from '$lib/components/InfoTooltip.svelte';
 
 	type Severity = 'ok' | 'warn' | 'hot' | 'dim';
 
@@ -38,10 +37,11 @@
 	class:disabled
 	onclick={disabled || !onOpen ? undefined : onOpen}
 	aria-label={`${label} 상세 보기`}
+	title={tooltip || label}
 	disabled={disabled || !onOpen}
 >
 	<div class="head">
-		<span class="label">{label}{#if tooltip}<InfoTooltip text={tooltip} placement="bottom-end" />{/if}</span>
+		<span class="label">{label}</span>
 		<strong class="value">{display}</strong>
 	</div>
 	<div class="bar"><b style={`width:${clamped}%`}></b></div>
@@ -54,9 +54,9 @@
 <style>
 	.gauge {
 		display: grid;
-		grid-template-rows: auto auto 1fr;
-		gap: 4px;
-		padding: 7px 10px 8px;
+		grid-template-rows: auto auto auto;
+		gap: 3px;
+		padding: 6px 10px 7px;
 		border: 1px solid var(--border);
 		border-radius: 9px;
 		background: rgba(15, 23, 42, 0.55);
@@ -83,6 +83,7 @@
 		align-items: baseline;
 		justify-content: space-between;
 		gap: 8px;
+		min-width: 0;
 	}
 
 	.label {
@@ -92,6 +93,7 @@
 		display: inline-flex;
 		align-items: center;
 		letter-spacing: 0.02em;
+		flex: 0 0 auto;
 	}
 
 	.value {
@@ -99,6 +101,11 @@
 		font-weight: 900;
 		color: var(--text-primary);
 		line-height: 1.05;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		min-width: 0;
+		text-align: right;
 	}
 
 	.bar {

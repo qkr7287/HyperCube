@@ -126,14 +126,14 @@
 <style>
 	.donut-card {
 		display: grid;
-		grid-template-rows: auto minmax(0, 1fr) auto;
-		gap: 6px;
+		grid-template-rows: minmax(0, 1fr) auto;
+		gap: 4px;
 		min-width: 0;
 		min-height: 0;
-		padding: 8px 10px;
-		border: 1px solid rgba(100, 116, 139, 0.14);
-		border-radius: 8px;
-		background: rgba(15, 23, 42, 0.42);
+		padding: 0;
+		border: 0;
+		border-radius: 0;
+		background: transparent;
 	}
 
 	.title {
@@ -146,7 +146,7 @@
 		position: relative;
 		width: 100%;
 		height: 100%;
-		min-height: 120px;
+		min-height: 0;
 	}
 
 	canvas {
@@ -167,7 +167,7 @@
 
 	.center-label strong {
 		color: var(--text-primary);
-		font-size: 20px;
+		font-size: clamp(14px, 3.2vw, 22px);
 		font-weight: 900;
 		line-height: 1;
 	}
@@ -179,27 +179,26 @@
 	}
 
 	.legend {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 2px 8px;
-		font-size: 10px;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 3px 8px;
+		font-size: 9px;
 	}
 
 	.row {
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
+		gap: 4px;
 		color: var(--text-secondary);
 	}
 
 	.row i {
-		width: 8px;
-		height: 8px;
+		width: 7px;
+		height: 7px;
 		border-radius: 2px;
 	}
 
 	.row span {
-		flex: 1;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;

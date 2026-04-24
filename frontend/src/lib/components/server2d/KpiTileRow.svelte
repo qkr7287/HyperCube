@@ -1,5 +1,4 @@
 <script lang="ts">
-	import InfoTooltip from '$lib/components/InfoTooltip.svelte';
 	import { view, type Server2dStateFilter } from '$lib/stores/server2d-view.svelte';
 
 	let {
@@ -45,9 +44,9 @@
 		class="kpi all"
 		class:active={view.stateFilter === 'all'}
 		onclick={() => toggleFilter('all')}
-		title="모든 컨테이너 보기"
+		title="전체 컨테이너 수. 중지·일시정지·문제 포함. 클릭하면 모든 상태 표시."
 	>
-		<span>전체 <InfoTooltip text="서버에서 관찰된 컨테이너 총 개수입니다. 중지·일시정지·문제 포함 전체." placement="bottom-start" /></span>
+		<span>전체</span>
 		<strong>{total}</strong>
 	</button>
 	<button
@@ -55,9 +54,9 @@
 		class="kpi running"
 		class:active={view.stateFilter === 'running'}
 		onclick={() => toggleFilter('running')}
-		title="실행 중 컨테이너만 보기"
+		title="정상 동작 중. 클릭 = 실행 상태만 필터."
 	>
-		<span>실행 <InfoTooltip text="정상적으로 동작 중인 컨테이너입니다. 클릭하면 하단 Stack Explorer가 실행 상태만 필터합니다." placement="bottom-start" /></span>
+		<span>실행</span>
 		<strong>{running}</strong>
 	</button>
 	<button
@@ -65,9 +64,9 @@
 		class="kpi paused"
 		class:active={view.stateFilter === 'paused'}
 		onclick={() => toggleFilter('paused')}
-		title="일시정지 컨테이너만 보기"
+		title="docker pause로 멈춤. 프로세스는 살아있음. 클릭 = 일시정지만 필터."
 	>
-		<span>일시정지 <InfoTooltip text="docker pause로 멈춰 있는 상태입니다. 프로세스는 살아있지만 동작하지 않습니다." placement="bottom-start" /></span>
+		<span>일시정지</span>
 		<strong>{paused}</strong>
 	</button>
 	<button
@@ -75,9 +74,9 @@
 		class="kpi problem"
 		class:active={view.stateFilter === 'problem'}
 		onclick={() => toggleFilter('problem')}
-		title="문제 컨테이너만 보기"
+		title="재시작 루프 또는 비정상 종료. 먼저 확인 필요. 클릭 = 문제만 필터."
 	>
-		<span>문제 <InfoTooltip text="재시작 루프 또는 비정상 종료된 컨테이너입니다. 먼저 확인이 필요합니다." placement="bottom-start" /></span>
+		<span>문제</span>
 		<strong>{problem}</strong>
 	</button>
 	<button
@@ -85,22 +84,22 @@
 		class="kpi stopped"
 		class:active={view.stateFilter === 'stopped'}
 		onclick={() => toggleFilter('stopped')}
-		title="중지 컨테이너만 보기"
+		title="정상적으로 중지. 문제 컨테이너와 구분. 클릭 = 중지만 필터."
 	>
-		<span>중지 <InfoTooltip text="정상적으로 중지된 컨테이너입니다. 문제와 구분됩니다." placement="bottom-start" /></span>
+		<span>중지</span>
 		<strong>{stopped}</strong>
 	</button>
 
-	<div class="kpi passive">
-		<span>트래픽 <InfoTooltip text="모든 컨테이너 네트워크의 현재 송수신 속도 합계입니다." placement="bottom-end" /></span>
+	<div class="kpi passive" title="모든 컨테이너 네트워크의 현재 송수신 속도 합계">
+		<span>트래픽</span>
 		<strong>{formatRate(networkRate)}</strong>
 	</div>
-	<div class="kpi passive">
-		<span>이미지 <InfoTooltip text="서버에 저장된 Docker 이미지 개수입니다." placement="bottom-end" /></span>
+	<div class="kpi passive" title="서버에 저장된 Docker 이미지 개수">
+		<span>이미지</span>
 		<strong>{imageCount}</strong>
 	</div>
-	<div class="kpi passive">
-		<span>Docker <InfoTooltip text="Docker 엔진 버전입니다." placement="bottom-end" /></span>
+	<div class="kpi passive" title="Docker 엔진 버전">
+		<span>Docker</span>
 		<strong class="version">{dockerVersion}</strong>
 	</div>
 </div>
@@ -114,10 +113,11 @@
 	}
 
 	.kpi {
-		display: grid;
-		align-content: center;
-		gap: 2px;
-		padding: 6px 10px;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		padding: 7px 11px;
 		border: 1px solid var(--border);
 		border-radius: 9px;
 		background: rgba(15, 23, 42, 0.55);
@@ -150,18 +150,20 @@
 		color: var(--text-muted);
 		font-size: 11px;
 		font-weight: 800;
-		display: inline-flex;
-		align-items: center;
 		letter-spacing: 0.02em;
+		flex: 0 0 auto;
+		white-space: nowrap;
 	}
 
 	.kpi strong {
-		font-size: 18px;
-		line-height: 1.05;
+		font-size: 20px;
+		line-height: 1;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		font-weight: 900;
+		text-align: right;
+		min-width: 0;
 	}
 
 	.kpi.all strong { color: #e2e8f0; }
@@ -171,7 +173,7 @@
 	.kpi.stopped strong { color: #94a3b8; }
 
 	.version {
-		font-size: 16px !important;
+		font-size: 15px !important;
 	}
 
 	@media (max-width: 1100px) {

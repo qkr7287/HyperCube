@@ -64,15 +64,15 @@
 	}
 
 	function formatRate(value: number): string {
-		if (!Number.isFinite(value) || value <= 0) return '0 B/s';
-		const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+		if (!Number.isFinite(value) || value <= 0) return '0';
+		const units = ['B', 'K', 'M', 'G'];
 		let next = value;
 		let idx = 0;
 		while (next >= 1024 && idx < units.length - 1) {
 			next /= 1024;
 			idx += 1;
 		}
-		return `${next.toFixed(next >= 10 || idx === 0 ? 0 : 1)} ${units[idx]}`;
+		return `${next.toFixed(next >= 10 || idx === 0 ? 0 : 1)}${units[idx]}`;
 	}
 
 	function matchesStateFilter(state: string, filter: Server2dStateFilter): boolean {
@@ -166,16 +166,18 @@
 							>
 								<div class="stack-bar"></div>
 								<div class="card-head">
-									<i class={`dot ${stateClass(cell.state)}`}></i>
-									<strong>{cell.name}</strong>
+									<div class="card-identity">
+										<i class={`dot ${stateClass(cell.state)}`}></i>
+										<strong>{cell.name}</strong>
+									</div>
+									<small class={`state ${stateClass(cell.state)}`}>{stateLabel(cell.state)}</small>
 								</div>
 								<small class="stack-tag">{cell.stack}</small>
 								<div class="metrics">
-									<em><b>CPU</b>{cell.cpu.toFixed(1)}%</em>
-									<em><b>MEM</b>{cell.memory.toFixed(1)}%</em>
-									<em><b>NET</b>{formatRate(cell.network)}</em>
+									<em><b>CPU</b><u>{cell.cpu.toFixed(1)}%</u></em>
+									<em><b>MEM</b><u>{cell.memory.toFixed(1)}%</u></em>
+									<em><b>NET</b><u>{formatRate(cell.network)}</u></em>
 								</div>
-								<small class={`state ${stateClass(cell.state)}`}>{stateLabel(cell.state)}</small>
 							</button>
 						{/each}
 					</div>
@@ -272,8 +274,8 @@
 	.card {
 		position: relative;
 		display: grid;
-		gap: 4px;
-		padding: 8px 10px 9px 13px;
+		gap: 3px;
+		padding: 6px 9px 7px 12px;
 		border: 1px solid rgba(100, 116, 139, 0.18);
 		border-radius: 8px;
 		background: rgba(15, 23, 42, 0.6);
@@ -306,6 +308,14 @@
 
 	.card-head {
 		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 6px;
+		min-width: 0;
+	}
+
+	.card-identity {
+		display: inline-flex;
 		align-items: center;
 		gap: 6px;
 		min-width: 0;
@@ -347,25 +357,39 @@
 
 	.metrics em {
 		font-style: normal;
-		display: grid;
-		gap: 0;
-		padding: 3px 5px;
+		display: inline-flex;
+		align-items: baseline;
+		gap: 3px;
+		padding: 3px 6px;
 		border-radius: 5px;
 		background: rgba(2, 6, 23, 0.5);
 		font-size: 10px;
 		font-weight: 800;
+		min-width: 0;
 	}
 
 	.metrics b {
 		color: var(--text-muted);
-		font-size: 8px;
+		font-size: 9px;
 		font-weight: 800;
+		flex: 0 0 auto;
+	}
+
+	.metrics u {
+		text-decoration: none;
+		color: var(--text-primary);
+		font-size: 10px;
+		font-weight: 800;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.state {
 		font-size: 10px;
 		font-weight: 800;
 		text-align: right;
+		flex: 0 0 auto;
 	}
 
 	.state.running { color: #34d399; }
