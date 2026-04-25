@@ -102,8 +102,8 @@
 	}
 
 	.chip.active {
-		box-shadow: 0 0 0 2px var(--chip-color, #64748b);
-		transform: translateY(-1px);
+		box-shadow: inset 0 0 0 1px var(--chip-color, #64748b);
+		filter: brightness(1.15) saturate(1.1);
 	}
 
 	.chip.dim {
