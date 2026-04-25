@@ -83,9 +83,9 @@
 	};
 
 	function bubbleRadius(count: number, maxCount: number): number {
-		if (count <= 0) return 4;
-		const min = 6;
-		const max = 26;
+		if (count <= 0) return 3;
+		const min = 4;
+		const max = 12;
 		const ratio = Math.sqrt(count / Math.max(1, maxCount));
 		return Math.max(min, Math.min(max, min + (max - min) * ratio));
 	}
