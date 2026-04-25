@@ -68,6 +68,25 @@
 		return peak;
 	}
 
+	function percentAxisMax(): number {
+		const peak = peakValue();
+		if (peak <= 0) return 5;
+		const padded = peak * 1.2;
+		const stops = [2, 5, 10, 15, 20, 30, 40, 50, 60, 80, 100];
+		for (const stop of stops) {
+			if (padded <= stop) return stop;
+		}
+		return 100;
+	}
+
+	function rateAxisMax(): number {
+		const peak = peakValue();
+		if (peak <= 0) return 1024;
+		const padded = peak * 1.2;
+		const magnitude = Math.pow(10, Math.floor(Math.log10(padded)));
+		return Math.ceil(padded / magnitude) * magnitude;
+	}
+
 	function isHighlighted(label: string): boolean {
 		if (soloLabel) return label === soloLabel;
 		if (topNames.length === 0) return true;
@@ -146,8 +165,7 @@
 					},
 					y: {
 						beginAtZero: true,
-						max: unit === 'percent' ? 100 : undefined,
-						suggestedMax: unit === 'rate' ? Math.max(peakValue() * 1.15, 1024) : undefined,
+						max: unit === 'percent' ? percentAxisMax() : rateAxisMax(),
 						grid: { color: 'rgba(100,116,139,0.12)' },
 						ticks: {
 							color: '#64748b',
@@ -188,8 +206,8 @@
 		if (chart.options.layout) {
 			(chart.options.layout as any).padding = rightPadding > 0 ? { right: rightPadding } : undefined;
 		}
-		if (unit === 'rate' && chart.options.scales?.y) {
-			(chart.options.scales.y as any).suggestedMax = Math.max(peakValue() * 1.15, 1024);
+		if (chart.options.scales?.y) {
+			(chart.options.scales.y as any).max = unit === 'percent' ? percentAxisMax() : rateAxisMax();
 		}
 		chart.update('none');
 	}
