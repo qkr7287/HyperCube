@@ -64,6 +64,7 @@
 				maintainAspectRatio: false,
 				cutout: '66%',
 				animation: { duration: 260 },
+				layout: { padding: 6 },
 				plugins: {
 					legend: { display: false },
 					tooltip: {
@@ -122,10 +123,12 @@
 		grid-template-rows: minmax(0, 1fr);
 		min-width: 0;
 		min-height: 0;
+		height: 100%;
 		padding: 0;
 		border: 0;
 		border-radius: 0;
 		background: transparent;
+		overflow: hidden;
 	}
 
 	.title {
@@ -146,10 +149,12 @@
 
 	.canvas-square {
 		position: relative;
-		width: min(100%, 100cqh);
+		height: 100%;
+		width: auto;
 		aspect-ratio: 1 / 1;
 		max-width: 100%;
 		max-height: 100%;
+		margin: 0 auto;
 	}
 
 	canvas {

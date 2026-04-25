@@ -34,13 +34,26 @@
 
 	const soloed = $derived(view.soloStack);
 
+	function computeAxisMax(values: number[]): number {
+		const dataMax = Math.max(0, ...values);
+		if (dataMax <= 0) return 30;
+		const padded = dataMax * 1.08 + 4;
+		const stepped = Math.ceil(padded / 10) * 10;
+		return Math.max(20, Math.min(100, stepped));
+	}
+
+	const xMax = $derived(computeAxisMax(stacks.map((s) => s.cpu)));
+	const yMax = $derived(computeAxisMax(stacks.map((s) => s.memory)));
+
 	const quadrantPlugin: Plugin = {
 		id: 'bubbleQuadrants',
 		beforeDraw(chart) {
 			const { ctx, chartArea, scales } = chart;
 			if (!chartArea || !scales.x || !scales.y) return;
-			const midX = scales.x.getPixelForValue(50);
-			const midY = scales.y.getPixelForValue(50);
+			const xHalf = (scales.x.max ?? 100) / 2;
+			const yHalf = (scales.y.max ?? 100) / 2;
+			const midX = scales.x.getPixelForValue(xHalf);
+			const midY = scales.y.getPixelForValue(yHalf);
 			ctx.save();
 			ctx.fillStyle = 'rgba(248, 113, 113, 0.06)';
 			ctx.fillRect(midX, chartArea.top, chartArea.right - midX, midY - chartArea.top);
@@ -150,21 +163,21 @@
 						},
 					},
 				},
-				layout: { padding: { top: 6, right: 8, bottom: 0, left: 0 } },
+				layout: { padding: { top: 4, right: 8, bottom: 2, left: 2 } },
 				scales: {
 					x: {
 						min: 0,
-						max: 100,
+						max: xMax,
 						title: { display: false },
 						grid: { color: 'rgba(100, 116, 139, 0.08)' },
-						ticks: { color: '#64748b', stepSize: 25, font: { size: 9 }, padding: 2 },
+						ticks: { color: '#64748b', maxTicksLimit: 5, font: { size: 9 }, padding: 1 },
 					},
 					y: {
 						min: 0,
-						max: 100,
+						max: yMax,
 						title: { display: false },
 						grid: { color: 'rgba(100, 116, 139, 0.12)' },
-						ticks: { color: '#64748b', stepSize: 25, font: { size: 9 }, padding: 2 },
+						ticks: { color: '#64748b', maxTicksLimit: 5, font: { size: 9 }, padding: 1 },
 					},
 				},
 			},
@@ -175,12 +188,17 @@
 		if (!canvas) return;
 		if (!chart) return render();
 		chart.data = buildData();
+		const scales = chart.options.scales as any;
+		if (scales?.x) scales.x.max = xMax;
+		if (scales?.y) scales.y.max = yMax;
 		chart.update('none');
 	}
 
 	$effect(() => {
 		stacks;
 		soloed;
+		xMax;
+		yMax;
 		sync();
 	});
 

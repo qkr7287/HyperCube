@@ -104,10 +104,12 @@
 
 	.canvas-square {
 		position: relative;
+		height: 100%;
+		width: auto;
 		aspect-ratio: 1 / 1;
 		max-width: 100%;
 		max-height: 100%;
-		width: 100%;
+		margin: 0 auto;
 	}
 
 	canvas {

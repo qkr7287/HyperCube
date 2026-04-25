@@ -7,12 +7,24 @@
 		pageSize = 8,
 		intervalMs = 6500,
 		paused = false,
+		userPaused = false,
+		onTogglePause,
+		pauseLabel = '자동 슬라이드',
+		hideBar = false,
+		compactBar = false,
+		resetSignal = 0,
 		children,
 	}: {
 		items?: T[];
 		pageSize?: number;
 		intervalMs?: number;
 		paused?: boolean;
+		userPaused?: boolean;
+		onTogglePause?: () => void;
+		pauseLabel?: string;
+		hideBar?: boolean;
+		compactBar?: boolean;
+		resetSignal?: number;
 		children: Snippet<[T[], number, number]>;
 	} = $props();
 
@@ -33,7 +45,8 @@
 	});
 	const pageCount = $derived(pages.length);
 	const activeItems = $derived(pages[Math.min(pageIndex, pageCount - 1)] ?? []);
-	const shouldRotate = $derived(!paused && !hovered && pageCount > 1);
+	const shouldRotate = $derived(!paused && !hovered && !userPaused && pageCount > 1);
+	const showBar = $derived(!hideBar && (pageCount > 1 || Boolean(onTogglePause)));
 
 	function advance() {
 		if (pageCount <= 1) return;
@@ -74,13 +87,19 @@
 	});
 
 	$effect(() => {
+		resetSignal;
+		pageIndex = 0;
+		progress = 0;
+	});
+
+	$effect(() => {
 		intervalMs;
 		startTimer();
 		return stopTimer;
 	});
 
 	$effect(() => {
-		if (paused || hovered) {
+		if (paused || hovered || userPaused) {
 			progress = 0;
 		}
 	});
@@ -102,26 +121,59 @@
 		{@render children(activeItems, pageIndex, pageCount)}
 	</div>
 
-	{#if pageCount > 1}
-		<div class="carousel-bar">
-			<div class="dots" role="tablist" aria-label="페이지 선택">
-				{#each Array(pageCount) as _, idx (idx)}
-					<button
-						type="button"
-						role="tab"
-						aria-selected={idx === pageIndex}
-						class="dot"
-						class:active={idx === pageIndex}
-						onclick={() => goto(idx)}
-					></button>
-				{/each}
-			</div>
-			<div class="progress" aria-hidden="true">
-				<i style={`width:${shouldRotate ? progress.toFixed(1) : 0}%`}></i>
-			</div>
-			<small class="count">
-				{pageIndex + 1} / {pageCount}
-			</small>
+	{#if showBar}
+		<div class="carousel-bar" class:is-paused={userPaused}>
+			{#if onTogglePause}
+				<button
+					type="button"
+					class="pause-btn"
+					class:paused={userPaused}
+					title={userPaused ? `${pauseLabel} 재개` : `${pauseLabel} 일시정지`}
+					aria-label={userPaused ? '재개' : '일시정지'}
+					onclick={onTogglePause}
+				>
+					{#if userPaused}
+						<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" aria-hidden="true">
+							<polygon points="6,4 20,12 6,20" />
+						</svg>
+						<span>재생</span>
+					{:else}
+						<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" aria-hidden="true">
+							<rect x="6" y="4" width="4" height="16" rx="1" />
+							<rect x="14" y="4" width="4" height="16" rx="1" />
+						</svg>
+						<span>정지</span>
+					{/if}
+				</button>
+			{/if}
+			{#if pageCount > 1}
+				{#if !compactBar}
+					<div class="dots" role="tablist" aria-label="페이지 선택">
+						{#each Array(pageCount) as _, idx (idx)}
+							<button
+								type="button"
+								role="tab"
+								aria-selected={idx === pageIndex}
+								class="dot"
+								class:active={idx === pageIndex}
+								onclick={() => goto(idx)}
+							></button>
+						{/each}
+					</div>
+				{/if}
+				<div class="progress" aria-hidden="true" class:idle={!shouldRotate}>
+					<i style={`width:${shouldRotate ? progress.toFixed(1) : userPaused ? 100 : 0}%`}></i>
+				</div>
+				{#if !compactBar}
+					<small class="count">
+						{pageIndex + 1} / {pageCount}
+					</small>
+				{/if}
+			{:else if onTogglePause}
+				<div class="status-text">
+					{userPaused ? '일시정지됨' : '자동 재생 중'}
+				</div>
+			{/if}
 		</div>
 	{/if}
 </div>
@@ -163,6 +215,56 @@
 		border-top: 1px dashed rgba(100, 116, 139, 0.25);
 		flex: 0 0 auto;
 		background: inherit;
+	}
+
+	.carousel-bar.is-paused {
+		border-top-color: rgba(251, 191, 36, 0.5);
+	}
+
+	.pause-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 5px;
+		height: 22px;
+		padding: 0 9px 0 8px;
+		border: 1px solid rgba(248, 113, 113, 0.5);
+		border-radius: 999px;
+		background: rgba(248, 113, 113, 0.16);
+		color: #f87171;
+		font-size: 10px;
+		font-weight: 800;
+		letter-spacing: 0.02em;
+		cursor: pointer;
+		flex: 0 0 auto;
+		white-space: nowrap;
+		transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
+	}
+
+	.pause-btn:hover {
+		background: rgba(248, 113, 113, 0.26);
+		transform: translateY(-1px);
+	}
+
+	.pause-btn.paused {
+		background: rgba(52, 211, 153, 0.2);
+		border-color: rgba(52, 211, 153, 0.6);
+		color: #34d399;
+		box-shadow: 0 0 12px rgba(52, 211, 153, 0.35);
+		animation: paused-glow 1.6s ease-in-out infinite;
+	}
+
+	.pause-btn.paused:hover {
+		background: rgba(52, 211, 153, 0.3);
+	}
+
+	@keyframes paused-glow {
+		0%, 100% { box-shadow: 0 0 12px rgba(52, 211, 153, 0.3); }
+		50% { box-shadow: 0 0 18px rgba(52, 211, 153, 0.55); }
+	}
+
+	.pause-btn span {
+		line-height: 1;
 	}
 
 	.dots {
@@ -208,11 +310,30 @@
 		transition: width 80ms linear;
 	}
 
+	.progress.idle i {
+		background: repeating-linear-gradient(
+			-45deg,
+			rgba(251, 191, 36, 0.4) 0,
+			rgba(251, 191, 36, 0.4) 4px,
+			rgba(251, 191, 36, 0.15) 4px,
+			rgba(251, 191, 36, 0.15) 8px
+		);
+	}
+
 	.count {
 		color: var(--text-muted);
 		font-size: 10px;
 		font-weight: 800;
 		min-width: 44px;
 		text-align: right;
+	}
+
+	.status-text {
+		flex: 1;
+		color: var(--text-muted);
+		font-size: 10px;
+		font-weight: 800;
+		text-align: right;
+		letter-spacing: 0.02em;
 	}
 </style>

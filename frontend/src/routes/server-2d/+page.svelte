@@ -79,6 +79,7 @@
 		cpu: number;
 		memory: number;
 		network: number;
+		gpu: number;
 	};
 	type ContainerTrend = {
 		cpu: number[];
@@ -105,10 +106,15 @@
 
 	const stackColors = ['#30d5c8', '#60a5fa', '#a78bfa', '#fbbf24', '#fb7185', '#34d399', '#f97316', '#38bdf8', '#c084fc', '#eab308'];
 	const DEMO_SERVER_ID = '__demo_dense__';
-	const DEMO_STACKS = ['gateway', 'api', 'worker', 'database', 'cache', 'observability', 'queue', 'ai-pipeline'];
-	const DEMO_IMAGES = ['nginx:1.25', 'node:20-alpine', 'python:3.12', 'postgres:16', 'redis:7', 'prometheus:latest', 'rabbitmq:3', 'cuda-worker:12'];
+	const DEMO_STACKS = [
+		'gateway', 'api', 'worker', 'database', 'cache', 'observability',
+		'queue', 'ai-pipeline', 'auth', 'billing', 'search', 'storage',
+		'notifications', 'analytics', 'cdn', 'scheduler', 'logging', 'tracing',
+		'ml-train', 'media-encode',
+	];
+	const DEMO_IMAGES = ['nginx:1.25', 'node:20-alpine', 'python:3.12', 'postgres:16', 'redis:7', 'prometheus:latest', 'rabbitmq:3', 'cuda-worker:12', 'go:1.22', 'elasticsearch:8'];
 	const DEMO_STATES = ['running', 'running', 'running', 'running', 'running', 'running', 'paused', 'restarting', 'exited'];
-	const DEMO_CONTAINER_COUNT = 72;
+	const DEMO_CONTAINER_COUNT = 280;
 	const DEMO_AGENT: Agent = {
 		id: DEMO_SERVER_ID,
 		hostname: 'DEMO-DENSE-SERVER',
@@ -177,6 +183,7 @@
 				cpu: metricCpu(metric),
 				memory: metricMemory(metric),
 				network: metricNetwork(metric),
+				gpu: metricGpu(metric),
 			};
 		}),
 	);
@@ -298,6 +305,7 @@
 						cpu: trend?.cpuAvg ?? row.cpu,
 						memory: trend?.memoryAvg ?? row.memory,
 						network: trend?.networkAvg ?? row.network,
+						gpu: row.gpu,
 						container: row.container,
 					};
 				}),
@@ -750,6 +758,10 @@
 		return Number(metric?.network?.rx_rate_bps ?? 0) + Number(metric?.network?.tx_rate_bps ?? 0);
 	}
 
+	function metricGpu(metric: any): number {
+		return Number(metric?.gpu?.usage ?? metric?.gpu_usage ?? 0);
+	}
+
 	function displayName(container: any): string {
 		return container.names?.[0]?.replace('/', '') || container.name || container.shortId || container.id?.slice(0, 12) || '-';
 	}
@@ -1052,6 +1064,10 @@
 			const memory = clampPercent(28 + (index % 8) * 7 + Math.cos(seed / 10_500 + index) * 11);
 			const rx = (90_000 + index * 36_000 + Math.abs(wave) * 180_000) * (index % 6 === 0 ? 4 : 1);
 			const tx = (50_000 + index * 28_000 + Math.abs(Math.cos(wave)) * 130_000) * (index % 7 === 0 ? 3 : 1);
+			const usesGpu = ['ai-pipeline', 'ml-train', 'media-encode', 'analytics'].includes(
+				DEMO_STACKS[index % DEMO_STACKS.length],
+			);
+			const gpuUsage = usesGpu ? clampPercent(35 + (index % 7) * 9 + wave * 14) : 0;
 			metrics.set(container.id, {
 				containerId: container.id,
 				cpu: { usage: cpu },
@@ -1060,6 +1076,9 @@
 				memory_percent: memory,
 				network: { rx_rate_bps: rx, tx_rate_bps: tx },
 				network_stats: [{ network_name: container.networks[0], rx_rate_bps: rx, tx_rate_bps: tx }],
+				gpu: usesGpu
+					? { usage: gpuUsage, memory_used: 1024 + (index % 8) * 800, memory_total: 24_576, indices: [index % 2] }
+					: undefined,
 			});
 		}
 
@@ -1219,7 +1238,11 @@
 		<section class="sub-topbar">
 			<div class="server-id">
 				<span class={`health-dot ${health}`}></span>
-				<strong class="hostname">{systemInfo?.hostname || selectedAgent?.hostname || '서버 대기'}</strong>
+				<select class="server-select" value={selectedServerId} onchange={(event) => selectServer(event.currentTarget.value)} aria-label="서버 선택">
+					{#each agents as agent (agent.id)}
+						<option value={agent.id}>{agent.hostname}</option>
+					{/each}
+				</select>
 				<span class={`status-pill ${health}`}>{healthLabel(health)}</span>
 				<small>{selectedAgent?.ip_address ?? '-'}</small>
 				<small>· {isDemoServer ? '데모' : $wsConnected ? 'LIVE' : 'OFFLINE'}</small>
@@ -1227,22 +1250,16 @@
 				<small>· 가동 {formatUptime(systemInfo?.uptime)}</small>
 			</div>
 			<div class="topbar-ctrls">
-				<select value={selectedServerId} onchange={(event) => selectServer(event.currentTarget.value)} aria-label="서버 선택">
-					{#each agents as agent (agent.id)}
-						<option value={agent.id}>{agent.hostname}</option>
-					{/each}
-				</select>
 				<div class="range-inline">
 					<span>추이 범위</span>
 					<TimeRangeSelector value={selectedRange} onChange={changeRange} />
-					<small>{rangeConfig.points}p · {rangeConfig.bucketLabel} · {rangeConfig.pollLabel}</small>
+					<small>{rangeConfig.pollLabel}</small>
 				</div>
 				<span class={`status-chip ${historyLoading ? 'loading' : historyError ? 'error' : 'ok'}`}>
 					{historyLoading ? '갱신 중' : historyError ? '실패' : formatClock(historyPolledAt)}
 				</span>
 				<button type="button" onclick={refreshConnection}>새로고침</button>
 				<button type="button" onclick={open3d}>3D 상세</button>
-				<button type="button" onclick={goToServerPicker}>서버 변경</button>
 			</div>
 		</section>
 
@@ -1404,7 +1421,7 @@
 						<EventLogStrip
 							events={eventRows}
 							pageSize={4}
-							intervalMs={6000}
+							intervalMs={10000}
 							onSelect={(container) => { selectedContainer = container; }}
 						/>
 					</div>
@@ -1590,6 +1607,35 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		letter-spacing: 0.02em;
+	}
+
+	.server-select {
+		appearance: none;
+		-webkit-appearance: none;
+		background: rgba(15, 23, 42, 0.6) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2330d5c8'><path d='M7 10l5 5 5-5z'/></svg>") no-repeat right 8px center;
+		background-size: 16px;
+		border: 1px solid rgba(48, 213, 200, 0.4);
+		border-radius: 8px;
+		color: var(--text-primary);
+		font-size: 15px;
+		font-weight: 900;
+		letter-spacing: 0.02em;
+		padding: 4px 30px 4px 12px;
+		height: 30px;
+		max-width: 300px;
+		cursor: pointer;
+		transition: border-color 0.15s ease, background-color 0.15s ease;
+	}
+
+	.server-select:hover {
+		border-color: rgba(48, 213, 200, 0.7);
+		background-color: rgba(48, 213, 200, 0.08);
+	}
+
+	.server-select:focus {
+		outline: none;
+		border-color: rgba(48, 213, 200, 0.8);
+		box-shadow: 0 0 0 2px rgba(48, 213, 200, 0.18);
 	}
 
 	.server-id small {
@@ -1881,7 +1927,7 @@
 
 	.snapshot-grid {
 		display: grid;
-		grid-template-columns: minmax(0, 0.85fr) minmax(0, 0.85fr) minmax(0, 1fr) minmax(0, 1.4fr);
+		grid-template-columns: minmax(0, 0.78fr) minmax(0, 0.78fr) minmax(0, 0.95fr) minmax(0, 1.85fr);
 		grid-template-rows: minmax(0, 1fr);
 		gap: 8px;
 		min-height: 0;

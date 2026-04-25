@@ -25,10 +25,18 @@
 		view.soloStack = null;
 	}
 
-	const topEntries = $derived(
-		[...entries].sort((a, b) => b.value - a.value).slice(0, maxChips),
-	);
 	const soloed = $derived(view.soloStack);
+	const topEntries = $derived.by(() => {
+		const sorted = [...entries].sort((a, b) => b.value - a.value);
+		if (soloed) {
+			const active = sorted.find((entry) => entry.label === soloed);
+			return active ? [active] : sorted.slice(0, maxChips);
+		}
+		return sorted.slice(0, maxChips);
+	});
+	const hiddenCount = $derived(
+		Math.max(0, entries.length - topEntries.length - (soloed && entries.find((e) => e.label === soloed) ? 0 : 0)),
+	);
 </script>
 
 <div class="legend">
@@ -46,11 +54,16 @@
 			<small>{format(entry.value)}</small>
 		</button>
 	{/each}
-	{#if entries.length > maxChips}
-		<span class="more">+{entries.length - maxChips}</span>
+	{#if hiddenCount > 0}
+		<span class="more">+{hiddenCount}</span>
 	{/if}
 	{#if soloed}
-		<button type="button" class="clear" onclick={clearSolo}>× 전체 보기</button>
+		<button type="button" class="clear" onclick={clearSolo} title="전체 스택 보기">
+			<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" aria-hidden="true">
+				<path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+			</svg>
+			<span>전체</span>
+		</button>
 	{/if}
 </div>
 
@@ -127,6 +140,9 @@
 	}
 
 	.clear {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
 		padding: 2px 8px;
 		border: 1px solid rgba(248, 113, 113, 0.5);
 		border-radius: 999px;
@@ -135,6 +151,14 @@
 		font-size: 10px;
 		font-weight: 800;
 		cursor: pointer;
+		flex: 0 0 auto;
+		white-space: nowrap;
+		line-height: 1;
+		min-width: 0;
+	}
+
+	.clear span {
+		white-space: nowrap;
 	}
 
 	.clear:hover {

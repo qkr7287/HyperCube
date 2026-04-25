@@ -1,6 +1,8 @@
 export type Server2dMetric = 'cpu' | 'memory' | 'network';
 export type Server2dStateFilter = 'all' | 'running' | 'paused' | 'problem' | 'stopped';
 export type Server2dSortMode = 'load' | 'name' | 'problem';
+export type Server2dSortDir = 'desc' | 'asc';
+export type Server2dContainerSort = 'default' | 'gpu' | 'memory' | 'cpu' | 'network';
 
 type Server2dView = {
 	soloStack: string | null;
@@ -9,8 +11,13 @@ type Server2dView = {
 	expandedStack: string | null;
 	searchQuery: string;
 	sortMode: Server2dSortMode;
+	stackSortDir: Server2dSortDir;
+	containerSort: Server2dContainerSort;
+	containerSortDir: Server2dSortDir;
 	matrixShowAll: boolean;
 	containersPaused: boolean;
+	stacksPaused: boolean;
+	eventsPaused: boolean;
 	metricAutoPaused: boolean;
 };
 
@@ -21,8 +28,13 @@ export const view: Server2dView = $state({
 	expandedStack: null,
 	searchQuery: '',
 	sortMode: 'load',
+	stackSortDir: 'desc',
+	containerSort: 'default',
+	containerSortDir: 'desc',
 	matrixShowAll: false,
 	containersPaused: false,
+	stacksPaused: false,
+	eventsPaused: false,
 	metricAutoPaused: false,
 });
 
@@ -32,8 +44,13 @@ export function resetViewForServerChange(): void {
 	view.searchQuery = '';
 	view.stateFilter = 'all';
 	view.sortMode = 'load';
+	view.stackSortDir = 'desc';
+	view.containerSort = 'default';
+	view.containerSortDir = 'desc';
 	view.matrixShowAll = false;
 	view.containersPaused = false;
+	view.stacksPaused = false;
+	view.eventsPaused = false;
 	view.metricAutoPaused = false;
 }
 
