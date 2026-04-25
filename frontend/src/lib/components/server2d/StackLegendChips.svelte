@@ -128,11 +128,13 @@
 	}
 
 	.chip small {
-		color: var(--text-muted);
-		font-size: 9px;
-		font-weight: 800;
+		color: color-mix(in srgb, var(--chip-color, #cbd5e1) 75%, #ffffff);
+		font-size: 10px;
+		font-weight: 900;
 		white-space: nowrap;
 		flex: 0 0 auto;
+		letter-spacing: 0.01em;
+		text-shadow: 0 0 6px color-mix(in srgb, var(--chip-color, #64748b) 35%, transparent);
 	}
 
 	.more {

@@ -1071,6 +1071,7 @@
 		const diskBuckets: number[][] = Array.from({ length: buckets.length }, () => []);
 		const gpuBuckets: number[][] = Array.from({ length: buckets.length }, () => []);
 		const netBuckets: number[][] = Array.from({ length: buckets.length }, () => []);
+		const procBuckets: number[][] = Array.from({ length: buckets.length }, () => []);
 		const sorted = [...rows].sort((a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime());
 		let prevRow: SystemHistoryRow | null = null;
 
@@ -1085,6 +1086,8 @@
 			cpuBuckets[index].push(Number(row.cpu_usage ?? 0));
 			memBuckets[index].push(Number(row.memory_usage ?? 0));
 			diskBuckets[index].push(Number(row.disk_usage ?? 0));
+			const procTotal = Number(row.processes_total ?? 0);
+			if (procTotal > 0) procBuckets[index].push(procTotal);
 			const gpuAvg = avg((row.gpu ?? []).map((item: any) => Number(item.usage ?? 0)));
 			if (gpuAvg > 0) gpuBuckets[index].push(gpuAvg);
 			if (prevRow) {
@@ -1102,6 +1105,8 @@
 		const diskSeries = fillBuckets(diskBuckets, Number(systemInfo?.disk?.usage ?? 0));
 		const gpuSeries = fillBuckets(gpuBuckets, gpuAverage);
 		const netSeries = fillBuckets(netBuckets, 0);
+		const procFallback = Number(systemInfo?.processes?.total ?? 0);
+		const procSeries = fillBuckets(procBuckets, procFallback);
 
 		return {
 			cpu: cpuSeries,
@@ -1109,6 +1114,7 @@
 			disk: diskSeries,
 			gpu: gpuSeries,
 			network: netSeries,
+			processes: procSeries,
 			cpuAvg: avg(nonZero(cpuSeries, 0)),
 			cpuMax: max(cpuSeries),
 			memoryAvg: avg(nonZero(memSeries, 0)),
@@ -1119,6 +1125,8 @@
 			gpuMax: max(gpuSeries),
 			networkAvg: avg(nonZero(netSeries, 0)),
 			networkMax: max(netSeries),
+			processesAvg: avg(nonZero(procSeries, procFallback)),
+			processesMax: max(procSeries),
 			hasGpu:
 				(Array.isArray(systemInfo?.gpu) && systemInfo.gpu.length > 0) ||
 				gpuSeries.some((value) => value > 0),

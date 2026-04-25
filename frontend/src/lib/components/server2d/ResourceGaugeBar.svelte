@@ -13,6 +13,7 @@
 		disk: number[];
 		gpu: number[];
 		network: number[];
+		processes?: number[];
 		cpuAvg: number;
 		cpuMax: number;
 		memoryAvg: number;
@@ -23,6 +24,8 @@
 		gpuMax: number;
 		networkAvg: number;
 		networkMax: number;
+		processesAvg?: number;
+		processesMax?: number;
 		hasGpu: boolean;
 	};
 
@@ -145,7 +148,7 @@
 		label="프로세스"
 		value={processPercent}
 		valueText={`${processCount}`}
-		sparkValues={[]}
+		sparkValues={systemTrend.processes ?? []}
 		sparkColor="#fbbf24"
 		hint={`실행 ${runningProcesses} · 로그인 ${systemInfo?.logins?.active ?? 0}`}
 		tooltip="서버에 올라온 전체 프로세스 수입니다. hint는 실행 상태 프로세스 수와 현재 로그인한 세션 수입니다. 카드를 누르면 상위 프로세스 목록이 열립니다."
