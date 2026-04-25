@@ -810,6 +810,18 @@
 		return `${next.toFixed(next >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
 	}
 
+	function formatRateCompact(value: number): string {
+		if (!Number.isFinite(value) || value <= 0) return '0';
+		const units = ['B', 'K', 'M', 'G'];
+		let next = value;
+		let index = 0;
+		while (next >= 1024 && index < units.length - 1) {
+			next /= 1024;
+			index += 1;
+		}
+		return `${next.toFixed(next >= 10 || index === 0 ? 0 : 1)}${units[index]}`;
+	}
+
 	function buildHistoryModel(historyRows: ContainerHistoryRow[], currentRows: Row[], range: MonitoringRange, anchorMs: number): HistoryModel {
 		const config = MONITORING_RANGE_CONFIG[range];
 		const buckets = buildRangeBuckets(range, anchorMs);
@@ -1331,7 +1343,7 @@
 						<div class="trend-chart">
 							<div class="chart-head">
 								<strong>트래픽</strong>
-								<StackLegendChips entries={networkLegend} format={formatRate} maxChips={3} />
+								<StackLegendChips entries={networkLegend} format={formatRateCompact} maxChips={3} />
 							</div>
 							<FleetLineChart
 								title={`트래픽 평균 / ${rangeConfig.label}`}

@@ -79,6 +79,7 @@
 		flex: 0 1 auto;
 		min-width: 0;
 		overflow: hidden;
+		white-space: nowrap;
 		transition: opacity 0.12s ease, transform 0.12s ease;
 	}
 
@@ -112,6 +113,8 @@
 		color: var(--text-muted);
 		font-size: 9px;
 		font-weight: 800;
+		white-space: nowrap;
+		flex: 0 0 auto;
 	}
 
 	.more {
