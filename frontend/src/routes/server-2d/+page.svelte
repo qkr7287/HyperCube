@@ -25,7 +25,6 @@
 	import StackSidebar from '$lib/components/server2d/StackSidebar.svelte';
 	import ContainersGridPanel from '$lib/components/server2d/ContainersGridPanel.svelte';
 	import StackNetworkMatrix from '$lib/components/server2d/StackNetworkMatrix.svelte';
-	import StackLegendChips from '$lib/components/server2d/StackLegendChips.svelte';
 	import DonutChart from '$lib/components/server2d/DonutChart.svelte';
 	import HealthRadialGauge from '$lib/components/server2d/HealthRadialGauge.svelte';
 	import ResourceRadarChart from '$lib/components/server2d/ResourceRadarChart.svelte';
@@ -320,10 +319,14 @@
 		rows.map((row) => {
 			const trend = historyModel.containerMap.get(row.id);
 			const stack = (stacks as any[]).find((s: any) => s.name === row.stack);
+			const rawX = trend?.memoryAvg ?? row.memory;
+			const rawY = trend?.cpuAvg ?? row.cpu;
 			return {
-				x: trend?.memoryAvg ?? row.memory,
-				y: trend?.cpuAvg ?? row.cpu,
-				r: 3.5 + Math.min(5.5, ((trend?.networkAvg ?? row.network) / (1024 * 1024)) * 1.2),
+				x: Math.max(0, Math.min(100, rawX)),
+				y: Math.max(0, Math.min(100, rawY)),
+				rawX,
+				rawY,
+				r: 3 + Math.min(4, ((trend?.networkAvg ?? row.network) / (1024 * 1024)) * 1),
 				label: row.name,
 				stack: row.stack,
 				state: stateLabel(row.state),
@@ -1337,7 +1340,7 @@
 						<div class="trend-chart">
 							<div class="chart-head">
 								<strong>CPU</strong>
-								<StackLegendChips entries={cpuLegend} maxChips={4} />
+								<small class="chart-sub">{(stacks as any[]).length}개 스택 평균</small>
 							</div>
 							<FleetLineChart
 								title={`CPU 평균 / ${rangeConfig.label}`}
@@ -1348,13 +1351,13 @@
 								topNames={cpuTopNames}
 								soloLabel={view.soloStack}
 								extraPlugins={trendPlugins}
-								rightPadding={90}
+								rightPadding={92}
 							/>
 						</div>
 						<div class="trend-chart">
 							<div class="chart-head">
 								<strong>메모리</strong>
-								<StackLegendChips entries={memoryLegend} maxChips={4} />
+								<small class="chart-sub">{(stacks as any[]).length}개 스택 평균</small>
 							</div>
 							<FleetLineChart
 								title={`메모리 평균 / ${rangeConfig.label}`}
@@ -1365,13 +1368,13 @@
 								topNames={memoryTopNames}
 								soloLabel={view.soloStack}
 								extraPlugins={trendPlugins}
-								rightPadding={90}
+								rightPadding={92}
 							/>
 						</div>
 						<div class="trend-chart">
 							<div class="chart-head">
 								<strong>트래픽</strong>
-								<StackLegendChips entries={networkLegend} format={formatRate} maxChips={4} />
+								<small class="chart-sub">{(stacks as any[]).length}개 스택 평균</small>
 							</div>
 							<FleetLineChart
 								title={`트래픽 평균 / ${rangeConfig.label}`}
@@ -1382,17 +1385,13 @@
 								topNames={networkTopNames}
 								soloLabel={view.soloStack}
 								extraPlugins={trendPlugins}
-								rightPadding={90}
+								rightPadding={92}
 							/>
 						</div>
 						<div class="trend-chart">
 							<div class="chart-head">
-								<strong>{systemTrend.hasGpu ? '호스트 GPU' : '스택 분포 요약'}</strong>
-								{#if systemTrend.hasGpu}
-									<small class="muted">서버 전체 평균</small>
-								{:else}
-									<small class="muted">GPU 데이터 없음 · {total}개 / {running} 실행</small>
-								{/if}
+								<strong>{systemTrend.hasGpu ? '호스트 GPU' : '서버 트래픽'}</strong>
+								<small class="chart-sub">{systemTrend.hasGpu ? '서버 전체 GPU 평균' : '서버 전체 송수신 합계'}</small>
 							</div>
 							{#if systemTrend.hasGpu}
 								<FleetLineChart
@@ -1404,7 +1403,7 @@
 									topNames={['호스트 GPU']}
 									soloLabel={null}
 									extraPlugins={trendPlugins}
-									rightPadding={90}
+									rightPadding={92}
 								/>
 							{:else}
 								<FleetLineChart
@@ -1416,7 +1415,7 @@
 									topNames={['호스트 NET']}
 									soloLabel={null}
 									extraPlugins={trendPlugins}
-									rightPadding={90}
+									rightPadding={92}
 								/>
 							{/if}
 						</div>
@@ -1767,10 +1766,16 @@
 		gap: 10px;
 		min-height: 22px;
 		flex-wrap: nowrap;
+		overflow: hidden;
 	}
 
 	.panel-head > * {
 		min-width: 0;
+	}
+
+	.panel-head .panel-title {
+		flex: 0 0 auto;
+		max-width: 50%;
 	}
 
 	.panel-title {
@@ -1823,24 +1828,13 @@
 	}
 
 	.hot-inline {
-		display: inline-flex;
+		display: flex;
 		align-items: center;
 		gap: 5px;
 		flex-wrap: nowrap;
-		overflow-x: auto;
-		overflow-y: hidden;
 		min-width: 0;
 		max-width: 100%;
-		scrollbar-width: thin;
-	}
-
-	.hot-inline::-webkit-scrollbar {
-		height: 3px;
-	}
-
-	.hot-inline::-webkit-scrollbar-thumb {
-		background: rgba(148, 163, 184, 0.24);
-		border-radius: 2px;
+		overflow: hidden;
 	}
 
 	.hot-label {
@@ -1867,7 +1861,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
-		padding: 2px 8px;
+		padding: 2px 9px 2px 7px;
 		border-radius: 999px;
 		border: 1px solid rgba(100, 116, 139, 0.28);
 		background: rgba(15, 23, 42, 0.55);
@@ -1875,8 +1869,11 @@
 		font-size: 10px;
 		font-weight: 800;
 		cursor: pointer;
-		max-width: 140px;
+		min-width: 0;
+		flex: 1 1 0;
+		max-width: 150px;
 		overflow: hidden;
+		white-space: nowrap;
 	}
 
 	.hot-chip:hover {
@@ -1997,13 +1994,15 @@
 		flex: 0 0 auto;
 	}
 
-	.chart-head .muted {
+	.chart-head .muted,
+	.chart-head .chart-sub {
 		color: var(--text-muted);
 		font-size: 10px;
 		font-weight: 700;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		min-width: 0;
 	}
 
 	.trend-chart :global(.chart) {

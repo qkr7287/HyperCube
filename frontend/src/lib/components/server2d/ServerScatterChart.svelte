@@ -15,6 +15,8 @@
 		x: number;
 		y: number;
 		r: number;
+		rawX?: number;
+		rawY?: number;
 		label: string;
 		stack: string;
 		state: string;
@@ -101,6 +103,8 @@
 						x: point.x,
 						y: point.y,
 						r: point.r,
+						rawX: point.rawX ?? point.x,
+						rawY: point.rawY ?? point.y,
 						label: point.label,
 						stack: point.stack,
 						state: point.state,
@@ -144,15 +148,16 @@
 								return [
 									`스택: ${raw.stack}`,
 									`상태: ${raw.state}`,
-									`메모리 평균: ${Number(raw.x ?? 0).toFixed(1)}%`,
-									`CPU 평균: ${Number(raw.y ?? 0).toFixed(1)}%`,
+									`메모리 평균: ${Number(raw.rawX ?? raw.x ?? 0).toFixed(1)}%`,
+									`CPU 평균: ${Number(raw.rawY ?? raw.y ?? 0).toFixed(1)}%`,
 									`트래픽 평균: ${formatRate(Number(raw.network ?? 0))}`,
 								];
 							},
 						},
 					},
 				},
-				layout: { padding: { top: 6, right: 8, bottom: 0, left: 0 } },
+				layout: { padding: { top: 14, right: 14, bottom: 4, left: 4 } },
+				clip: false,
 				scales: {
 					x: {
 						min: 0,

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import InfoTooltip from '$lib/components/InfoTooltip.svelte';
+	import AutoSlideCarousel from './AutoSlideCarousel.svelte';
 	import { view } from '$lib/stores/server2d-view.svelte';
 
 	type MatrixContainer = {
@@ -76,12 +77,13 @@
 			.sort((a, b) => b.usage - a.usage);
 	});
 
-	const TOP_LIMIT = 10;
-	const showAll = $derived(view.matrixShowAll);
+	const NET_COLS = 6;
+	const VOL_COLS = 4;
+	const ROWS_PER_PAGE = 5;
 
 	const visibleColumns = $derived.by(() => {
-		const nets = showAll ? networkUsage : networkUsage.slice(0, TOP_LIMIT);
-		const vols = showAll ? volumeUsage : volumeUsage.slice(0, TOP_LIMIT);
+		const nets = networkUsage.slice(0, NET_COLS);
+		const vols = volumeUsage.slice(0, VOL_COLS);
 		return [...nets, ...vols];
 	});
 
@@ -139,10 +141,6 @@
 		modalState = { open: false, stack: '', column: null, containers: [] };
 	}
 
-	function toggleShowAll() {
-		view.matrixShowAll = !view.matrixShowAll;
-	}
-
 	function stateLabel(state: string): string {
 		if (state === 'running') return '실행';
 		if (state === 'exited' || state === 'stopped') return '중지';
@@ -154,73 +152,64 @@
 
 	const totalNetworks = $derived(networkUsage.length);
 	const totalVolumes = $derived(volumeUsage.length);
-	const visibleNetworkCount = $derived(showAll ? totalNetworks : Math.min(TOP_LIMIT, totalNetworks));
-	const visibleVolumeCount = $derived(showAll ? totalVolumes : Math.min(TOP_LIMIT, totalVolumes));
+	const paused = $derived(modalState.open);
 </script>
 
 <section class="matrix">
 	<div class="head">
 		<div class="title">
-			프레임 다이어그램 <small>· 스택 × 네트워크/볼륨</small>
-			<InfoTooltip text={`스택과 네트워크/볼륨의 공유 관계도.\n\n• 가로 행 = 스택\n• 세로 열 = 네트워크(파랑) / 볼륨(주황)\n• 셀 숫자 = 그 스택의 멤버 수\n• 색 진할수록 많이 사용\n• 셀 클릭 = 멤버 컨테이너 목록`} placement="bottom-start" />
+			프레임 다이어그램
+			<InfoTooltip text={`스택과 네트워크/볼륨의 공유 관계도.\n\n• 가로 행 = 스택\n• 파랑 열 = 네트워크 (사용 많은 ${NET_COLS}개)\n• 주황 열 = 볼륨 (사용 많은 ${VOL_COLS}개)\n• 셀 숫자 = 그 스택의 멤버 수\n• 색 진할수록 많이 사용\n• 셀 클릭 = 멤버 컨테이너 목록`} placement="bottom-start" />
 		</div>
-		<div class="meta">
-			<span>네트워크 {totalNetworks}개 · 볼륨 {totalVolumes}개 (표시 중: 네트워크 {visibleNetworkCount} · 볼륨 {visibleVolumeCount})</span>
-			{#if totalNetworks > TOP_LIMIT || totalVolumes > TOP_LIMIT}
-				<button type="button" class="toggle" onclick={toggleShowAll}>
-					{showAll ? '상위만 보기' : '전체 보기'}
-				</button>
-			{/if}
-		</div>
+		<small class="meta">{totalNetworks} 네트워크 · {totalVolumes} 볼륨 · {sortedStacks.length} 스택</small>
 	</div>
 
 	{#if sortedStacks.length === 0 || visibleColumns.length === 0}
 		<div class="empty">네트워크/볼륨 정보가 없습니다.</div>
 	{:else}
-		<div class="scroll">
-			<table>
-				<thead>
-					<tr>
-						<th class="stack-col">스택 \ 네트워크·볼륨</th>
-						{#each visibleColumns as column (column.kind + ':' + column.name)}
-							<th class={`col ${column.kind}`}>
-								<span class="col-name" title={column.name}>{column.name}</span>
-								<small>{column.kind === 'network' ? 'NET' : 'VOL'} · {column.usage}</small>
-							</th>
-						{/each}
-					</tr>
-				</thead>
-				<tbody>
-					{#each sortedStacks as stack (stack.name)}
-						<tr>
-							<th class="stack-label" style={`--stack-color:${stack.color}`}>
-								<strong>{stack.name}</strong>
-								<small>{stack.containers.length}개</small>
-							</th>
-							{#each visibleColumns as column (column.kind + ':' + column.name)}
-								{@const key = `${stack.name}__${column.kind}:${column.name}`}
-								{@const cell = cellByKey.get(key)}
-								{#if cell}
-									<td
-										class={`cell ${column.kind}`}
-										style={`--v:${cellIntensity(cell.count).toFixed(0)}%`}
-										title={`${stack.name} · ${column.name}\n${cell.count}개 컨테이너`}
-									>
-										<button
-											type="button"
-											onclick={() => openCell(stack.name, column)}
-										>
-											{cell.count}
-										</button>
-									</td>
-								{:else}
-									<td class="cell empty"></td>
-								{/if}
+		<div class="layout">
+			<div class="header-row" style={`--cols:${visibleColumns.length}`}>
+				<div class="corner"></div>
+				{#each visibleColumns as column (column.kind + ':' + column.name)}
+					<div class={`col-head ${column.kind}`} title={`${column.kind === 'network' ? '네트워크' : '볼륨'}: ${column.name}\n사용: ${column.usage}개 컨테이너`}>
+						<span class="col-name">{column.name}</span>
+						<small>{column.kind === 'network' ? 'NET' : 'VOL'}·{column.usage}</small>
+					</div>
+				{/each}
+			</div>
+
+			<div class="rows-host">
+				<AutoSlideCarousel items={sortedStacks} pageSize={ROWS_PER_PAGE} intervalMs={7500} {paused}>
+					{#snippet children(pageItems: MatrixStack[])}
+						<div class="rows" style={`--cols:${visibleColumns.length}; --rows:${pageItems.length};`}>
+							{#each pageItems as stack (stack.name)}
+								<div class="row" style={`--stack-color:${stack.color}`}>
+									<div class="row-label" title={`${stack.name} (${stack.containers.length}개)`}>
+										<i class="stripe"></i>
+										<strong>{stack.name}</strong>
+										<small>{stack.containers.length}</small>
+									</div>
+									{#each visibleColumns as column (column.kind + ':' + column.name)}
+										{@const key = `${stack.name}__${column.kind}:${column.name}`}
+										{@const cell = cellByKey.get(key)}
+										{#if cell}
+											<button
+												type="button"
+												class={`cell ${column.kind}`}
+												style={`--v:${cellIntensity(cell.count).toFixed(0)}%`}
+												title={`${stack.name} · ${column.name}\n${cell.count}개 컨테이너`}
+												onclick={() => openCell(stack.name, column)}
+											>{cell.count}</button>
+										{:else}
+											<div class="cell empty"></div>
+										{/if}
+									{/each}
+								</div>
 							{/each}
-						</tr>
-					{/each}
-				</tbody>
-			</table>
+						</div>
+					{/snippet}
+				</AutoSlideCarousel>
+			</div>
 		</div>
 	{/if}
 </section>
@@ -259,202 +248,192 @@
 
 <style>
 	.matrix {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
+		display: grid;
+		grid-template-rows: auto minmax(0, 1fr);
+		gap: 6px;
 		min-height: 0;
+		min-width: 0;
+		height: 100%;
+		overflow: hidden;
 	}
 
 	.head {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		gap: 10px;
-		flex-wrap: wrap;
+		gap: 8px;
+		min-height: 22px;
 	}
 
 	.title {
 		color: var(--text-primary);
-		font-size: 13px;
+		font-size: 12px;
 		font-weight: 850;
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
 	}
 
-	.title small {
+	.meta {
 		color: var(--text-muted);
-		font-size: 11px;
+		font-size: 10px;
+		font-weight: 700;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		flex: 0 1 auto;
+	}
+
+	.layout {
+		display: grid;
+		grid-template-rows: auto minmax(0, 1fr);
+		gap: 4px;
+		min-height: 0;
+		overflow: hidden;
+	}
+
+	.header-row {
+		display: grid;
+		grid-template-columns: minmax(80px, 1fr) repeat(var(--cols), minmax(0, 1fr));
+		gap: 3px;
+		align-items: end;
+	}
+
+	.corner {
+		min-height: 28px;
+	}
+
+	.col-head {
+		display: grid;
+		gap: 1px;
+		padding: 4px 5px;
+		border-radius: 5px;
+		background: rgba(15, 23, 42, 0.7);
+		text-align: center;
+		min-width: 0;
+	}
+
+	.col-head.network {
+		border-top: 2px solid rgba(34, 211, 238, 0.7);
+	}
+
+	.col-head.volume {
+		border-top: 2px solid rgba(251, 146, 60, 0.7);
+	}
+
+	.col-head .col-name {
+		display: block;
+		color: var(--text-primary);
+		font-size: 9px;
+		font-weight: 800;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.col-head small {
+		color: var(--text-muted);
+		font-size: 8px;
 		font-weight: 700;
 	}
 
-	.meta {
+	.rows-host {
+		min-height: 0;
+		min-width: 0;
+		overflow: hidden;
+	}
+
+	.rows {
+		display: grid;
+		grid-auto-flow: row;
+		grid-auto-rows: minmax(0, 1fr);
+		gap: 3px;
+		min-height: 0;
+		height: 100%;
+	}
+
+	.row {
+		display: grid;
+		grid-template-columns: minmax(80px, 1fr) repeat(var(--cols), minmax(0, 1fr));
+		gap: 3px;
+		min-width: 0;
+		min-height: 0;
+		align-items: stretch;
+	}
+
+	.row-label {
+		display: grid;
+		grid-template-columns: 4px minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 5px;
+		padding: 4px 6px;
+		border-radius: 5px;
+		background: rgba(15, 23, 42, 0.6);
+		min-width: 0;
+		overflow: hidden;
+	}
+
+	.stripe {
+		width: 4px;
+		height: 16px;
+		background: var(--stack-color, #30d5c8);
+		border-radius: 2px;
+	}
+
+	.row-label strong {
+		color: var(--text-primary);
+		font-size: 10px;
+		font-weight: 800;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		min-width: 0;
+	}
+
+	.row-label small {
+		color: var(--text-muted);
+		font-size: 9px;
+		font-weight: 800;
+	}
+
+	.cell {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		color: var(--text-muted);
-		font-size: 10px;
-		font-weight: 700;
-		flex-wrap: wrap;
-	}
-
-	.toggle {
-		padding: 3px 10px;
-		border: 1px solid rgba(48, 213, 200, 0.4);
-		border-radius: 999px;
-		background: rgba(48, 213, 200, 0.12);
-		color: #30d5c8;
-		font-size: 10px;
-		font-weight: 800;
-		cursor: pointer;
-	}
-
-	.scroll {
-		overflow: auto;
-		flex: 1;
-		min-height: 0;
-		border: 1px solid rgba(100, 116, 139, 0.14);
-		border-radius: 8px;
-		background: rgba(15, 23, 42, 0.42);
-	}
-
-	.scroll::-webkit-scrollbar {
-		width: 6px;
-		height: 6px;
-	}
-	.scroll::-webkit-scrollbar-thumb {
-		background: rgba(148, 163, 184, 0.28);
-		border-radius: 3px;
-	}
-
-	table {
-		border-collapse: separate;
-		border-spacing: 0;
-		font-size: 11px;
-	}
-
-	thead th {
-		position: sticky;
-		top: 0;
-		z-index: 3;
-		background: rgba(13, 17, 23, 0.96);
-		border-bottom: 1px solid rgba(100, 116, 139, 0.2);
-		padding: 6px 8px;
-		min-width: 74px;
-		text-align: center;
-		color: var(--text-primary);
-		font-weight: 800;
-		font-size: 10px;
-	}
-
-	th.stack-col {
-		text-align: left;
-		min-width: 130px;
-		z-index: 4;
-		left: 0;
-		color: var(--text-muted);
-		font-size: 10px;
-	}
-
-	th.col {
-		vertical-align: bottom;
-	}
-
-	th.col .col-name {
-		display: block;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		max-width: 110px;
-	}
-
-	th.col small {
-		display: block;
-		color: var(--text-muted);
-		font-size: 9px;
-		font-weight: 700;
-		margin-top: 2px;
-	}
-
-	th.col.network {
-		border-top: 2px solid rgba(34, 211, 238, 0.6);
-	}
-
-	th.col.volume {
-		border-top: 2px solid rgba(251, 146, 60, 0.6);
-	}
-
-	tbody th.stack-label {
-		position: sticky;
-		left: 0;
-		z-index: 2;
-		background: rgba(13, 17, 23, 0.96);
-		border-right: 1px solid rgba(100, 116, 139, 0.16);
-		padding: 6px 8px;
-		text-align: left;
-		border-left: 3px solid var(--stack-color, #30d5c8);
-	}
-
-	tbody th.stack-label strong {
-		display: block;
-		color: var(--text-primary);
-		font-size: 11px;
-		font-weight: 800;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		max-width: 150px;
-	}
-
-	tbody th.stack-label small {
-		color: var(--text-muted);
-		font-size: 9px;
-	}
-
-	td.cell {
-		padding: 0;
-		text-align: center;
-		border-right: 1px solid rgba(100, 116, 139, 0.08);
-		border-bottom: 1px solid rgba(100, 116, 139, 0.08);
-		position: relative;
-	}
-
-	td.cell button {
-		width: 100%;
-		height: 100%;
-		min-height: 28px;
-		padding: 4px 6px;
+		justify-content: center;
 		border: none;
-		background: color-mix(in srgb, #f87171 var(--v), rgba(51, 65, 85, 0.4));
-		color: #f8fafc;
+		padding: 0;
 		font-weight: 800;
 		font-size: 11px;
 		cursor: pointer;
-		transition: transform 0.1s ease, outline 0.1s ease;
+		border-radius: 4px;
+		min-width: 0;
+		min-height: 22px;
+		transition: outline 0.1s ease;
 	}
 
-	td.cell.network button {
-		background: color-mix(in srgb, #22d3ee var(--v), rgba(51, 65, 85, 0.4));
+	.cell.network {
+		background: color-mix(in srgb, #22d3ee var(--v), rgba(15, 23, 42, 0.55));
 		color: #0b1320;
 	}
 
-	td.cell.volume button {
-		background: color-mix(in srgb, #fb923c var(--v), rgba(51, 65, 85, 0.4));
+	.cell.volume {
+		background: color-mix(in srgb, #fb923c var(--v), rgba(15, 23, 42, 0.55));
 		color: #0b1320;
 	}
 
-	td.cell button:hover {
-		outline: 2px solid rgba(48, 213, 200, 0.55);
+	.cell:hover {
+		outline: 2px solid rgba(48, 213, 200, 0.65);
 		outline-offset: -2px;
 	}
 
-	td.cell.empty {
-		background: transparent;
-		min-height: 28px;
+	.cell.empty {
+		cursor: default;
+		background: rgba(15, 23, 42, 0.4);
+		min-height: 22px;
 	}
 
 	.empty {
-		padding: 18px;
+		padding: 14px;
 		border: 1px dashed rgba(100, 116, 139, 0.3);
 		border-radius: 8px;
 		color: var(--text-muted);

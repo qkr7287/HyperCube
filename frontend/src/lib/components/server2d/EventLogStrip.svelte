@@ -1,5 +1,6 @@
 <script lang="ts">
 	import InfoTooltip from '$lib/components/InfoTooltip.svelte';
+	import AutoSlideCarousel from './AutoSlideCarousel.svelte';
 
 	type EventRow = {
 		id: string;
@@ -14,9 +15,13 @@
 
 	let {
 		events = [] as EventRow[],
+		pageSize = 5,
+		intervalMs = 5500,
 		onSelect = (_container: any) => {},
 	}: {
 		events?: EventRow[];
+		pageSize?: number;
+		intervalMs?: number;
 		onSelect?: (container: any) => void;
 	} = $props();
 
@@ -27,6 +32,12 @@
 			return '-';
 		}
 	}
+
+	function severityLabel(sev: 'critical' | 'warn' | 'info'): string {
+		if (sev === 'critical') return '경고';
+		if (sev === 'warn') return '주의';
+		return '정보';
+	}
 </script>
 
 <section class="events">
@@ -34,59 +45,46 @@
 		<div class="title">
 			<i class="live"></i>
 			<span>실시간 이벤트 / 경고</span>
-			<InfoTooltip text={`서버에서 지금 주의가 필요한 항목입니다.\n\n• 장애 · 재시작 루프 → 경고(빨강)\n• 일시정지 · 고부하 → 주의(노랑)\n• 등급 위→아래 정렬\n• 대상 클릭 = 컨테이너 상세`} placement="top-start" />
+			<InfoTooltip text={`서버에서 지금 주의가 필요한 항목입니다.\n\n• 장애 · 재시작 루프 → 경고 (빨강)\n• 일시정지 · 고부하 → 주의 (노랑)\n• 등급 위→아래 정렬\n• 대상 클릭 = 컨테이너 상세\n• 5건씩 자동 순환`} placement="top-start" />
 		</div>
-		<small>{events.length}건 표시</small>
+		<small>{events.length}건</small>
 	</div>
-	<div class="body">
-		<table>
-			<thead>
-				<tr>
-					<th class="sev-col">등급</th>
-					<th class="time-col">시각</th>
-					<th>스택</th>
-					<th>대상</th>
-					<th>내용</th>
-					<th class="act-col">조치</th>
-				</tr>
-			</thead>
-			<tbody>
-				{#each events.slice(0, 20) as event (event.id)}
-					<tr class={event.severity}>
-						<td class="sev-col">
-							<span class={`sev ${event.severity}`}>
-								{event.severity === 'critical' ? '경고' : event.severity === 'warn' ? '주의' : '정보'}
-							</span>
-						</td>
-						<td class="time-col">{formatClock(event.at)}</td>
-						<td class="stack">{event.stack}</td>
-						<td>
-							{#if event.container}
-								<button type="button" class="link" onclick={() => onSelect(event.container)}>{event.target}</button>
-							{:else}
-								{event.target}
-							{/if}
-						</td>
-						<td class="msg">{event.message}</td>
-						<td class="act-col">{event.action ?? '-'}</td>
-					</tr>
-				{:else}
-					<tr class="empty-row">
-						<td colspan="6">현재 주의가 필요한 항목이 없습니다. 서버 상태 양호.</td>
-					</tr>
-				{/each}
-			</tbody>
-		</table>
-	</div>
+	{#if events.length === 0}
+		<div class="empty">현재 주의 항목이 없습니다. 서버 상태 양호.</div>
+	{:else}
+		<div class="body">
+			<AutoSlideCarousel items={events} pageSize={pageSize} intervalMs={intervalMs}>
+				{#snippet children(pageItems: EventRow[])}
+					<div class="list">
+						{#each pageItems as event (event.id)}
+							<button
+								type="button"
+								class={`row ${event.severity}`}
+								onclick={() => event.container && onSelect(event.container)}
+								disabled={!event.container}
+							>
+								<span class={`sev ${event.severity}`}>{severityLabel(event.severity)}</span>
+								<span class="time">{formatClock(event.at)}</span>
+								<span class="stack" title={event.stack}>{event.stack}</span>
+								<span class="target" title={event.target}>{event.target}</span>
+								<span class="msg" title={event.message}>{event.message}</span>
+							</button>
+						{/each}
+					</div>
+				{/snippet}
+			</AutoSlideCarousel>
+		</div>
+	{/if}
 </section>
 
 <style>
 	.events {
-		display: flex;
-		flex-direction: column;
+		display: grid;
+		grid-template-rows: auto minmax(0, 1fr);
 		gap: 6px;
 		min-width: 0;
 		min-height: 0;
+		height: 100%;
 	}
 
 	.head {
@@ -94,6 +92,7 @@
 		justify-content: space-between;
 		align-items: center;
 		gap: 8px;
+		min-height: 22px;
 	}
 
 	.title {
@@ -122,80 +121,70 @@
 	.head small {
 		color: var(--text-muted);
 		font-size: 10px;
-		font-weight: 700;
+		font-weight: 800;
 	}
 
 	.body {
-		overflow: auto;
-		flex: 1;
+		display: flex;
+		flex-direction: column;
 		min-height: 0;
-		border: 1px solid rgba(100, 116, 139, 0.16);
-		border-radius: 8px;
-		background: rgba(15, 23, 42, 0.42);
+		overflow: hidden;
 	}
 
-	.body::-webkit-scrollbar {
-		width: 6px;
-		height: 6px;
-	}
-	.body::-webkit-scrollbar-thumb {
-		background: rgba(148, 163, 184, 0.24);
-		border-radius: 3px;
-	}
-
-	table {
-		width: 100%;
-		border-collapse: separate;
-		border-spacing: 0;
-		font-size: 11px;
+	.list {
+		display: grid;
+		grid-auto-flow: row;
+		grid-auto-rows: minmax(0, 1fr);
+		gap: 4px;
+		min-height: 0;
+		height: 100%;
 	}
 
-	thead th {
-		position: sticky;
-		top: 0;
-		z-index: 2;
-		padding: 6px 8px;
+	.row {
+		display: grid;
+		grid-template-columns: 38px 56px minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 2fr);
+		align-items: center;
+		gap: 6px;
+		padding: 4px 9px;
+		border: 1px solid rgba(100, 116, 139, 0.18);
+		border-left: 3px solid #94a3b8;
+		border-radius: 6px;
+		background: rgba(15, 23, 42, 0.55);
 		text-align: left;
-		background: rgba(13, 17, 23, 0.96);
-		border-bottom: 1px solid rgba(100, 116, 139, 0.2);
-		color: var(--text-muted);
-		font-weight: 800;
-		font-size: 10px;
+		cursor: pointer;
+		min-width: 0;
+		min-height: 0;
+		font-size: 11px;
+		transition: border-color 0.12s ease;
 	}
 
-	tbody td {
-		padding: 5px 8px;
-		border-bottom: 1px dashed rgba(100, 116, 139, 0.14);
-		color: var(--text-primary);
-		vertical-align: middle;
+	.row:disabled {
+		cursor: default;
 	}
 
-	.sev-col {
-		width: 56px;
+	.row:hover:not(:disabled) {
+		border-color: rgba(48, 213, 200, 0.45);
 	}
 
-	.time-col {
-		width: 80px;
-		color: var(--text-muted);
-		font-family: 'JetBrains Mono', 'Consolas', monospace;
+	.row.critical {
+		border-left-color: #f87171;
+		background: rgba(248, 113, 113, 0.06);
 	}
 
-	.act-col {
-		width: 80px;
-		color: var(--text-muted);
+	.row.warn {
+		border-left-color: #fbbf24;
+		background: rgba(251, 191, 36, 0.05);
 	}
 
-	tbody tr.critical {
-		background: rgba(248, 113, 113, 0.05);
-	}
-
-	tbody tr.warn {
-		background: rgba(251, 191, 36, 0.04);
+	.row.info {
+		border-left-color: #60a5fa;
 	}
 
 	.sev {
 		display: inline-flex;
-		padding: 1px 7px;
+		align-items: center;
+		justify-content: center;
+		padding: 2px 0;
 		border-radius: 999px;
 		font-size: 9px;
 		font-weight: 800;
@@ -216,33 +205,43 @@
 		color: #60a5fa;
 	}
 
-	.stack {
-		color: var(--text-secondary);
+	.time {
+		color: var(--text-muted);
+		font-family: 'JetBrains Mono', 'Consolas', monospace;
+		font-size: 10px;
 		font-weight: 700;
 	}
 
-	.link {
-		background: none;
-		border: none;
-		color: #30d5c8;
-		font-weight: 800;
-		font-size: 11px;
-		cursor: pointer;
-		padding: 0;
+	.stack {
+		color: var(--text-secondary);
+		font-weight: 700;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
-	.link:hover {
-		text-decoration: underline;
+	.target {
+		color: #30d5c8;
+		font-weight: 800;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.msg {
 		color: var(--text-secondary);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
-	.empty-row td {
+	.empty {
 		padding: 14px;
-		text-align: center;
+		border: 1px dashed rgba(100, 116, 139, 0.28);
+		border-radius: 8px;
 		color: var(--text-muted);
+		font-size: 11px;
+		text-align: center;
 		font-style: italic;
 	}
 </style>
