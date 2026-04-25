@@ -119,7 +119,12 @@
 	}
 
 	const totalVisible = $derived(flatCards.length);
-	const paused = $derived(Boolean(search) || stateFilter !== 'all' || Boolean(soloed));
+	const autoPaused = $derived(view.containersPaused);
+	const paused = $derived(Boolean(search) || stateFilter !== 'all' || Boolean(soloed) || autoPaused);
+
+	function togglePause() {
+		view.containersPaused = !view.containersPaused;
+	}
 </script>
 
 <aside class="container-panel">
@@ -132,6 +137,20 @@
 	</div>
 
 	<div class="controls">
+		<button
+			type="button"
+			class="play-pause"
+			class:paused={autoPaused}
+			title={autoPaused ? '자동 슬라이드 재개' : '자동 슬라이드 일시정지'}
+			aria-label={autoPaused ? '재개' : '일시정지'}
+			onclick={togglePause}
+		>
+			{#if autoPaused}
+				<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>
+			{:else}
+				<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+			{/if}
+		</button>
 		<input
 			type="search"
 			placeholder="컨테이너 · 스택 검색"
@@ -241,6 +260,32 @@
 	.controls input[type='search']:focus {
 		outline: none;
 		border-color: rgba(48, 213, 200, 0.5);
+	}
+
+	.play-pause {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		padding: 0;
+		border: 1px solid rgba(48, 213, 200, 0.4);
+		border-radius: 50%;
+		background: rgba(48, 213, 200, 0.12);
+		color: #30d5c8;
+		cursor: pointer;
+		flex: 0 0 auto;
+		transition: background-color 0.15s ease, transform 0.12s ease;
+	}
+
+	.play-pause:hover {
+		background: rgba(48, 213, 200, 0.22);
+	}
+
+	.play-pause.paused {
+		background: rgba(251, 191, 36, 0.16);
+		border-color: rgba(251, 191, 36, 0.45);
+		color: #fbbf24;
 	}
 
 	.chip-reset {

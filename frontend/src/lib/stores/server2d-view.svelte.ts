@@ -10,6 +10,8 @@ type Server2dView = {
 	searchQuery: string;
 	sortMode: Server2dSortMode;
 	matrixShowAll: boolean;
+	containersPaused: boolean;
+	metricAutoPaused: boolean;
 };
 
 export const view: Server2dView = $state({
@@ -20,6 +22,8 @@ export const view: Server2dView = $state({
 	searchQuery: '',
 	sortMode: 'load',
 	matrixShowAll: false,
+	containersPaused: false,
+	metricAutoPaused: false,
 });
 
 export function resetViewForServerChange(): void {
@@ -29,6 +33,8 @@ export function resetViewForServerChange(): void {
 	view.stateFilter = 'all';
 	view.sortMode = 'load';
 	view.matrixShowAll = false;
+	view.containersPaused = false;
+	view.metricAutoPaused = false;
 }
 
 export function stateFilterLabel(value: Server2dStateFilter): string {

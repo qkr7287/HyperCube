@@ -93,6 +93,7 @@
 		cpu: number[];
 		memory: number[];
 		network: number[];
+		disk: number[];
 		count: number;
 		running: number;
 	};
@@ -235,12 +236,24 @@
 			};
 		}),
 	);
+	let stackDiskSeries = $derived(
+		(stacks as any[]).map((stack: any) => {
+			const trend = historyModel.stackMap.get(stack.name);
+			return {
+				label: stack.name,
+				values: trend?.disk ?? Array.from({ length: historyModel.buckets.length }, () => 0),
+				color: stack.color,
+			};
+		}),
+	);
 	let cpuTopNames = $derived(topNamesBySeries(stackCpuSeries));
 	let memoryTopNames = $derived(topNamesBySeries(stackMemorySeries));
 	let networkTopNames = $derived(topNamesBySeries(stackNetworkSeries));
+	let diskTopNames = $derived(topNamesBySeries(stackDiskSeries));
 	let cpuLegend = $derived(legendFromSeries(stackCpuSeries));
 	let memoryLegend = $derived(legendFromSeries(stackMemorySeries));
 	let networkLegend = $derived(legendFromSeries(stackNetworkSeries));
+	let diskLegend = $derived(legendFromSeries(stackDiskSeries));
 
 	let sidebarStacks = $derived(
 		(stacks as any[]).map((stack: any) => {
@@ -453,7 +466,6 @@
 			}))
 			.sort((a, b) => b.last - a.last)
 			.slice(0, 5)
-			.filter((item) => item.last > 0)
 			.map((item) => item.label);
 	}
 
@@ -834,18 +846,19 @@
 			if (row.container.shortId) rowByHistoryId.set(row.container.shortId, row);
 		}
 
-		const perContainer = new Map<string, { row: Row; cpuBuckets: number[][]; memoryBuckets: number[][]; networkBuckets: number[][]; samples: number }>();
+		const perContainer = new Map<string, { row: Row; cpuBuckets: number[][]; memoryBuckets: number[][]; networkBuckets: number[][]; diskBuckets: number[][]; samples: number }>();
 		for (const row of currentRows) {
 			perContainer.set(row.id, {
 				row,
 				cpuBuckets: Array.from({ length: buckets.length }, () => []),
 				memoryBuckets: Array.from({ length: buckets.length }, () => []),
 				networkBuckets: Array.from({ length: buckets.length }, () => []),
+				diskBuckets: Array.from({ length: buckets.length }, () => []),
 				samples: 0,
 			});
 		}
 
-		const previousByContainer = new Map<string, { rx: number; tx: number; at: number }>();
+		const previousByContainer = new Map<string, { rx: number; tx: number; dr: number; dw: number; at: number }>();
 		const sorted = [...historyRows].sort((a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime());
 
 		for (const item of sorted) {
@@ -862,23 +875,28 @@
 			const seconds = previous ? Math.max(1, (ts - previous.at) / 1000) : config.bucketSeconds;
 			const rx = Number(item.network_rx ?? 0);
 			const tx = Number(item.network_tx ?? 0);
+			const dr = Number(item.disk_read ?? 0);
+			const dw = Number(item.disk_write ?? 0);
 			const networkRate = previous ? Math.max(0, (rx - previous.rx) + (tx - previous.tx)) / seconds : 0;
+			const diskRate = previous ? Math.max(0, (dr - previous.dr) + (dw - previous.dw)) / seconds : 0;
 
 			entry.cpuBuckets[index].push(Number(item.cpu_usage ?? 0));
 			entry.memoryBuckets[index].push(Number(item.memory_percent ?? 0));
 			entry.networkBuckets[index].push(networkRate);
+			entry.diskBuckets[index].push(diskRate);
 			entry.samples += 1;
-			previousByContainer.set(item.container_id, { rx, tx, at: ts });
+			previousByContainer.set(item.container_id, { rx, tx, dr, dw, at: ts });
 		}
 
 		const containerMap = new Map<string, ContainerTrend>();
-		const stackTemp = new Map<string, { cpu: number[][]; memory: number[][]; network: number[][]; count: number; running: number }>();
+		const stackTemp = new Map<string, { cpu: number[][]; memory: number[][]; network: number[][]; disk: number[][]; count: number; running: number }>();
 
 		for (const row of currentRows) {
 			const entry = perContainer.get(row.id);
 			const cpuSeries = fillBuckets(entry?.cpuBuckets ?? [], row.cpu);
 			const memorySeries = fillBuckets(entry?.memoryBuckets ?? [], row.memory);
 			const networkSeries = fillBuckets(entry?.networkBuckets ?? [], row.network);
+			const diskSeries = fillBuckets(entry?.diskBuckets ?? [], 0);
 			const cpuAvg = avg(nonZero(cpuSeries, row.cpu));
 			const memoryAvg = avg(nonZero(memorySeries, row.memory));
 			const networkAvg = avg(nonZero(networkSeries, row.network));
@@ -897,6 +915,7 @@
 				cpu: Array.from({ length: buckets.length }, () => []),
 				memory: Array.from({ length: buckets.length }, () => []),
 				network: Array.from({ length: buckets.length }, () => []),
+				disk: Array.from({ length: buckets.length }, () => []),
 				count: 0,
 				running: 0,
 			};
@@ -904,6 +923,7 @@
 				stackEntry.cpu[index].push(cpuSeries[index] || 0);
 				stackEntry.memory[index].push(memorySeries[index] || 0);
 				stackEntry.network[index].push(networkSeries[index] || 0);
+				stackEntry.disk[index].push(diskSeries[index] || 0);
 			}
 			stackEntry.count += 1;
 			if (row.state === 'running') stackEntry.running += 1;
@@ -916,6 +936,7 @@
 				cpu: entry.cpu.map((values) => avg(values)),
 				memory: entry.memory.map((values) => avg(values)),
 				network: entry.network.map((values) => avg(values)),
+				disk: entry.disk.map((values) => avg(values)),
 				count: entry.count,
 				running: entry.running,
 			});
@@ -1311,7 +1332,7 @@
 						<div class="trend-chart">
 							<div class="chart-head">
 								<strong>CPU</strong>
-								<StackLegendChips entries={cpuLegend} maxChips={3} />
+								<StackLegendChips entries={cpuLegend} maxChips={5} />
 							</div>
 							<FleetLineChart
 								title={`CPU 평균 / ${rangeConfig.label}`}
@@ -1328,7 +1349,7 @@
 						<div class="trend-chart">
 							<div class="chart-head">
 								<strong>메모리</strong>
-								<StackLegendChips entries={memoryLegend} maxChips={3} />
+								<StackLegendChips entries={memoryLegend} maxChips={5} />
 							</div>
 							<FleetLineChart
 								title={`메모리 평균 / ${rangeConfig.label}`}
@@ -1345,7 +1366,7 @@
 						<div class="trend-chart">
 							<div class="chart-head">
 								<strong>트래픽</strong>
-								<StackLegendChips entries={networkLegend} format={formatRateCompact} maxChips={3} />
+								<StackLegendChips entries={networkLegend} format={formatRateCompact} maxChips={5} />
 							</div>
 							<FleetLineChart
 								title={`트래픽 평균 / ${rangeConfig.label}`}
@@ -1361,34 +1382,20 @@
 						</div>
 						<div class="trend-chart">
 							<div class="chart-head">
-								<strong>{systemTrend.hasGpu ? '호스트 GPU' : '서버 트래픽'}</strong>
-								<small class="chart-sub">{systemTrend.hasGpu ? '서버 전체 GPU 평균' : '서버 전체 송수신 합계'}</small>
+								<strong>디스크 I/O</strong>
+								<StackLegendChips entries={diskLegend} format={formatRateCompact} maxChips={5} />
 							</div>
-							{#if systemTrend.hasGpu}
-								<FleetLineChart
-									title={`호스트 GPU / ${rangeConfig.label}`}
-									help="서버 전체 GPU 평균 사용률."
-									labels={trendLabels}
-									unit="percent"
-									series={[{ label: '호스트 GPU', values: systemTrend.gpu, color: '#c084fc' }]}
-									topNames={['호스트 GPU']}
-									soloLabel={null}
-									extraPlugins={[]}
-									rightPadding={0}
-								/>
-							{:else}
-								<FleetLineChart
-									title={`트래픽 합계 / ${rangeConfig.label}`}
-									help="서버 전체 트래픽 히스토리."
-									labels={trendLabels}
-									unit="rate"
-									series={[{ label: '호스트 NET', values: systemTrend.network, color: '#22d3ee' }]}
-									topNames={['호스트 NET']}
-									soloLabel={null}
-									extraPlugins={[]}
-									rightPadding={0}
-								/>
-							{/if}
+							<FleetLineChart
+								title={`디스크 I/O / ${rangeConfig.label}`}
+								help="모든 스택의 디스크 읽기·쓰기 합계 평균."
+								labels={trendLabels}
+								unit="rate"
+								series={stackDiskSeries}
+								topNames={diskTopNames}
+								soloLabel={view.soloStack}
+								extraPlugins={[]}
+								rightPadding={0}
+							/>
 						</div>
 					</div>
 				</div>

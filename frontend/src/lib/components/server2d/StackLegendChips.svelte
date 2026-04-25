@@ -67,13 +67,13 @@
 	.chip {
 		display: inline-flex;
 		align-items: center;
-		gap: 4px;
-		padding: 2px 7px 2px 6px;
+		gap: 3px;
+		padding: 2px 6px 2px 5px;
 		border: 1px solid var(--chip-color, #64748b);
 		border-radius: 999px;
 		background: color-mix(in srgb, var(--chip-color, #64748b) 14%, rgba(13, 17, 23, 0.5));
 		color: var(--text-primary);
-		font-size: 10px;
+		font-size: 9px;
 		font-weight: 700;
 		cursor: pointer;
 		flex: 0 1 auto;
@@ -93,17 +93,17 @@
 	}
 
 	.dot {
-		width: 7px;
-		height: 7px;
+		width: 6px;
+		height: 6px;
 		border-radius: 50%;
 		background: var(--chip-color, #64748b);
-		box-shadow: 0 0 6px color-mix(in srgb, var(--chip-color, #64748b) 55%, transparent);
+		box-shadow: 0 0 5px color-mix(in srgb, var(--chip-color, #64748b) 55%, transparent);
 		flex: 0 0 auto;
 	}
 
 	.chip b {
 		font-weight: 800;
-		max-width: 80px;
+		max-width: 56px;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -111,7 +111,7 @@
 
 	.chip small {
 		color: var(--text-muted);
-		font-size: 9px;
+		font-size: 8px;
 		font-weight: 800;
 		white-space: nowrap;
 		flex: 0 0 auto;

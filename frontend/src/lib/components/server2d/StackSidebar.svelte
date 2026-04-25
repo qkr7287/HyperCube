@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy, onMount } from 'svelte';
 	import InfoTooltip from '$lib/components/InfoTooltip.svelte';
 	import AutoSlideCarousel from './AutoSlideCarousel.svelte';
 	import { view, type Server2dMetric } from '$lib/stores/server2d-view.svelte';
@@ -18,19 +19,68 @@
 		stacks = [] as StackItem[],
 		pageSize = 10,
 		intervalMs = 6000,
+		metricRotateMs = 7000,
 	}: {
 		stacks?: StackItem[];
 		pageSize?: number;
 		intervalMs?: number;
+		metricRotateMs?: number;
 	} = $props();
 
 	const metric = $derived(view.selectedMetric);
 	const soloed = $derived(view.soloStack);
 	const paused = $derived(Boolean(view.soloStack));
 
+	const METRIC_CYCLE: Server2dMetric[] = ['cpu', 'memory', 'network'];
+	const METRIC_TICK = 80;
+
+	let metricProgress = $state(0);
+	let metricTimer: ReturnType<typeof setInterval> | null = null;
+	const metricAutoPaused = $derived(view.metricAutoPaused);
+	const metricRotating = $derived(!metricAutoPaused && !paused);
+
 	function setMetric(next: Server2dMetric) {
 		view.selectedMetric = next;
+		view.metricAutoPaused = true;
+		metricProgress = 0;
 	}
+
+	function toggleMetricAutoRotate() {
+		view.metricAutoPaused = !view.metricAutoPaused;
+		metricProgress = 0;
+	}
+
+	function advanceMetric() {
+		const idx = METRIC_CYCLE.indexOf(view.selectedMetric);
+		const next = METRIC_CYCLE[(idx + 1) % METRIC_CYCLE.length];
+		view.selectedMetric = next;
+		metricProgress = 0;
+	}
+
+	function metricTick() {
+		if (!metricRotating) return;
+		const steps = Math.max(1, Math.floor(metricRotateMs / METRIC_TICK));
+		const next = metricProgress + 100 / steps;
+		if (next >= 100) advanceMetric();
+		else metricProgress = next;
+	}
+
+	$effect(() => {
+		metricRotateMs;
+		if (metricTimer) clearInterval(metricTimer);
+		metricTimer = setInterval(metricTick, METRIC_TICK);
+		return () => {
+			if (metricTimer) clearInterval(metricTimer);
+		};
+	});
+
+	onMount(() => {
+		metricTimer = setInterval(metricTick, METRIC_TICK);
+	});
+
+	onDestroy(() => {
+		if (metricTimer) clearInterval(metricTimer);
+	});
 
 	function toggleSolo(name: string) {
 		view.soloStack = view.soloStack === name ? null : name;
@@ -89,18 +139,37 @@
 		<small>{stacks.length}개 · 실행 {runningAll}/{total}{#if problemAll > 0} · <b class="warn">문제 {problemAll}</b>{/if}</small>
 	</div>
 
-	<div class="metric-switch" role="tablist" aria-label="사이드바 지표">
-		{#each ['cpu', 'memory', 'network'] as key (key)}
-			<button
-				type="button"
-				role="tab"
-				aria-selected={metric === key}
-				class:active={metric === key}
-				onclick={() => setMetric(key as Server2dMetric)}
-			>
-				{key === 'cpu' ? 'CPU' : key === 'memory' ? '메모리' : '트래픽'}
-			</button>
-		{/each}
+	<div class="metric-row">
+		<button
+			type="button"
+			class="metric-pause"
+			class:paused={metricAutoPaused}
+			title={metricAutoPaused ? '자동 전환 재개' : '자동 전환 일시정지'}
+			aria-label={metricAutoPaused ? '재개' : '일시정지'}
+			onclick={toggleMetricAutoRotate}
+		>
+			{#if metricAutoPaused}
+				<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>
+			{:else}
+				<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+			{/if}
+		</button>
+		<div class="metric-switch" role="tablist" aria-label="사이드바 지표">
+			{#each ['cpu', 'memory', 'network'] as key (key)}
+				<button
+					type="button"
+					role="tab"
+					aria-selected={metric === key}
+					class:active={metric === key}
+					onclick={() => setMetric(key as Server2dMetric)}
+				>
+					{key === 'cpu' ? 'CPU' : key === 'memory' ? '메모리' : '트래픽'}
+				</button>
+			{/each}
+		</div>
+	</div>
+	<div class="metric-progress" aria-hidden="true">
+		<i style={`width:${metricRotating ? metricProgress.toFixed(1) : 0}%`}></i>
 	</div>
 
 	<div class="body">
@@ -178,13 +247,60 @@
 		font-weight: 800;
 	}
 
+	.metric-row {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+
+	.metric-pause {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 24px;
+		height: 24px;
+		padding: 0;
+		border: 1px solid rgba(48, 213, 200, 0.4);
+		border-radius: 50%;
+		background: rgba(48, 213, 200, 0.12);
+		color: #30d5c8;
+		cursor: pointer;
+		flex: 0 0 auto;
+		transition: background-color 0.15s ease;
+	}
+
+	.metric-pause:hover {
+		background: rgba(48, 213, 200, 0.22);
+	}
+
+	.metric-pause.paused {
+		background: rgba(251, 191, 36, 0.16);
+		border-color: rgba(251, 191, 36, 0.45);
+		color: #fbbf24;
+	}
+
+	.metric-progress {
+		height: 3px;
+		border-radius: 999px;
+		background: rgba(30, 41, 59, 0.65);
+		overflow: hidden;
+	}
+
+	.metric-progress i {
+		display: block;
+		height: 100%;
+		background: linear-gradient(90deg, #30d5c8, #60a5fa);
+		width: 0%;
+		transition: width 80ms linear;
+	}
+
 	.metric-switch {
 		display: inline-flex;
 		border: 1px solid rgba(100, 116, 139, 0.24);
 		border-radius: 999px;
 		padding: 2px;
 		background: rgba(15, 23, 42, 0.65);
-		align-self: flex-start;
+		flex: 1;
 	}
 
 	.metric-switch button {

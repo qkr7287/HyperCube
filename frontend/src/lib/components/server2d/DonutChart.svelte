@@ -104,13 +104,15 @@
 		<div class="title">{title}</div>
 	{/if}
 	<div class="chart-wrap">
-		<canvas bind:this={canvas}></canvas>
-		{#if centerLabel || centerValue}
-			<div class="center-label" aria-hidden="true">
-				<strong>{centerValue}</strong>
-				<small>{centerLabel}</small>
-			</div>
-		{/if}
+		<div class="canvas-square">
+			<canvas bind:this={canvas}></canvas>
+			{#if centerLabel || centerValue}
+				<div class="center-label" aria-hidden="true">
+					<strong>{centerValue}</strong>
+					<small>{centerLabel}</small>
+				</div>
+			{/if}
+		</div>
 	</div>
 </div>
 
@@ -137,6 +139,17 @@
 		width: 100%;
 		height: 100%;
 		min-height: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.canvas-square {
+		position: relative;
+		width: min(100%, 100cqh);
+		aspect-ratio: 1 / 1;
+		max-width: 100%;
+		max-height: 100%;
 	}
 
 	canvas {

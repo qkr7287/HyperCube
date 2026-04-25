@@ -75,10 +75,12 @@
 
 <div class="radial">
 	<div class="chart-wrap">
-		<canvas bind:this={canvas}></canvas>
-		<div class="center-label">
-			<strong style={`color:${toneColors[tone]}`}>{Math.round(score)}</strong>
-			<small>{label}</small>
+		<div class="canvas-square">
+			<canvas bind:this={canvas}></canvas>
+			<div class="center-label">
+				<strong style={`color:${toneColors[tone]}`}>{Math.round(score)}</strong>
+				<small>{label}</small>
+			</div>
 		</div>
 	</div>
 </div>
@@ -95,6 +97,17 @@
 		position: relative;
 		width: 100%;
 		height: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.canvas-square {
+		position: relative;
+		aspect-ratio: 1 / 1;
+		max-width: 100%;
+		max-height: 100%;
+		width: 100%;
 	}
 
 	canvas {
