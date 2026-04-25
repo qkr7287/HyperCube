@@ -98,12 +98,9 @@
 					{#if showRank}
 						<span class={`rank rank-${index + 1}`}>#{index + 1}</span>
 					{/if}
-					<strong class="target" title={row.name}>{row.name}</strong>
+					<strong class="target" title={`${row.name} · ${row.stack}`}>{row.name}</strong>
 					<span class={`state-tag ${stateClass(row.state)}`}>{stateLabel(row.state)}</span>
 				</header>
-				<div class="msg" title={row.stack}>
-					<em class="stack-tag">{row.stack}</em>
-				</div>
 				<div class="metrics-grid">
 					<em class="metric"><b>CPU</b><u>{row.cpu.toFixed(1)}%</u></em>
 					<em class="metric"><b>MEM</b><u>{row.memory.toFixed(1)}%</u></em>
@@ -193,8 +190,8 @@
 
 	.row {
 		display: grid;
-		grid-template-rows: auto auto auto;
-		gap: 4px;
+		grid-template-rows: auto auto;
+		gap: 5px;
 		padding: 7px 10px 8px;
 		border: 1px solid rgba(100, 116, 139, 0.18);
 		border-left: 3px solid #94a3b8;

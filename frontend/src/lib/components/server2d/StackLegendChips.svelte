@@ -70,10 +70,11 @@
 <style>
 	.legend {
 		display: flex;
-		flex-wrap: wrap;
+		flex-wrap: nowrap;
 		align-items: center;
 		gap: 4px;
 		min-width: 0;
+		overflow: hidden;
 	}
 
 	.chip {

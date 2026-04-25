@@ -1361,7 +1361,7 @@
 						<div class="trend-chart">
 							<div class="chart-head">
 								<strong>CPU</strong>
-								<StackLegendChips entries={cpuLegend} maxChips={5} />
+								<StackLegendChips entries={cpuLegend} maxChips={3} />
 							</div>
 							<FleetLineChart
 								title={`CPU 평균 / ${rangeConfig.label}`}
@@ -1378,7 +1378,7 @@
 						<div class="trend-chart">
 							<div class="chart-head">
 								<strong>메모리</strong>
-								<StackLegendChips entries={memoryLegend} maxChips={5} />
+								<StackLegendChips entries={memoryLegend} maxChips={3} />
 							</div>
 							<FleetLineChart
 								title={`메모리 평균 / ${rangeConfig.label}`}
@@ -1395,7 +1395,7 @@
 						<div class="trend-chart">
 							<div class="chart-head">
 								<strong>트래픽</strong>
-								<StackLegendChips entries={networkLegend} format={formatRateCompact} maxChips={5} />
+								<StackLegendChips entries={networkLegend} format={formatRateCompact} maxChips={3} />
 							</div>
 							<FleetLineChart
 								title={`트래픽 평균 / ${rangeConfig.label}`}
@@ -1412,7 +1412,7 @@
 						<div class="trend-chart">
 							<div class="chart-head">
 								<strong>디스크 I/O</strong>
-								<StackLegendChips entries={diskLegend} format={formatRateCompact} maxChips={5} />
+								<StackLegendChips entries={diskLegend} format={formatRateCompact} maxChips={3} />
 							</div>
 							<FleetLineChart
 								title={`디스크 I/O / ${rangeConfig.label}`}
@@ -2160,9 +2160,10 @@
 	.chart-head {
 		display: grid;
 		grid-template-columns: auto minmax(0, 1fr);
-		align-items: start;
+		align-items: center;
 		gap: 8px;
 		min-height: 24px;
+		overflow: hidden;
 	}
 
 	.chart-head strong {
@@ -2173,7 +2174,6 @@
 		align-items: center;
 		gap: 5px;
 		padding: 2px 10px;
-		margin-top: 2px;
 		border-radius: 999px;
 		background: rgba(48, 213, 200, 0.14);
 		border: 1px solid rgba(48, 213, 200, 0.32);
