@@ -112,22 +112,12 @@
 			</div>
 		{/if}
 	</div>
-	<div class="legend">
-		{#each segments as segment (segment.label)}
-			<div class="row">
-				<i style={`background:${segment.color}`}></i>
-				<span>{segment.label}</span>
-				<b>{segment.value}</b>
-			</div>
-		{/each}
-	</div>
 </div>
 
 <style>
 	.donut-card {
 		display: grid;
-		grid-template-rows: minmax(0, 1fr) auto;
-		gap: 4px;
+		grid-template-rows: minmax(0, 1fr);
 		min-width: 0;
 		min-height: 0;
 		padding: 0;

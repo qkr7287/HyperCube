@@ -1001,7 +1001,9 @@
 			gpuMax: max(gpuSeries),
 			networkAvg: avg(nonZero(netSeries, 0)),
 			networkMax: max(netSeries),
-			hasGpu: gpuSeries.some((value) => value > 0),
+			hasGpu:
+				(Array.isArray(systemInfo?.gpu) && systemInfo.gpu.length > 0) ||
+				gpuSeries.some((value) => value > 0),
 		};
 	}
 
@@ -1872,7 +1874,7 @@
 
 	.snapshot-grid {
 		display: grid;
-		grid-template-columns: repeat(4, minmax(0, 1fr));
+		grid-template-columns: minmax(0, 0.85fr) minmax(0, 0.85fr) minmax(0, 1fr) minmax(0, 1.4fr);
 		grid-template-rows: minmax(0, 1fr);
 		gap: 8px;
 		min-height: 0;

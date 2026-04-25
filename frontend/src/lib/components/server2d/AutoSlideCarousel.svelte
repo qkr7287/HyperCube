@@ -16,11 +16,12 @@
 		children: Snippet<[T[], number, number]>;
 	} = $props();
 
+	const TICK_MS = 80;
+
 	let pageIndex = $state(0);
 	let hovered = $state(false);
-	let timer: ReturnType<typeof setInterval> | null = null;
-	let progressTimer: ReturnType<typeof setInterval> | null = null;
 	let progress = $state(0);
+	let timer: ReturnType<typeof setInterval> | null = null;
 
 	const pages = $derived.by(() => {
 		if (items.length <= pageSize) return [items];
@@ -31,7 +32,7 @@
 		return out;
 	});
 	const pageCount = $derived(pages.length);
-	const activeItems = $derived(pages[pageIndex] ?? []);
+	const activeItems = $derived(pages[Math.min(pageIndex, pageCount - 1)] ?? []);
 	const shouldRotate = $derived(!paused && !hovered && pageCount > 1);
 
 	function advance() {
@@ -40,44 +41,52 @@
 		progress = 0;
 	}
 
-	function start() {
-		stop();
+	function tick() {
 		if (!shouldRotate) return;
-		const tick = 80;
-		const steps = Math.max(1, Math.floor(intervalMs / tick));
-		progress = 0;
-		progressTimer = setInterval(() => {
-			progress = Math.min(100, progress + 100 / steps);
-		}, tick);
-		timer = setInterval(advance, intervalMs);
+		const steps = Math.max(1, Math.floor(intervalMs / TICK_MS));
+		const next = progress + 100 / steps;
+		if (next >= 100) {
+			advance();
+		} else {
+			progress = next;
+		}
 	}
 
-	function stop() {
-		if (timer) clearInterval(timer);
-		if (progressTimer) clearInterval(progressTimer);
-		timer = null;
-		progressTimer = null;
+	function startTimer() {
+		stopTimer();
+		timer = setInterval(tick, TICK_MS);
+	}
+
+	function stopTimer() {
+		if (timer) {
+			clearInterval(timer);
+			timer = null;
+		}
 	}
 
 	function goto(index: number) {
 		pageIndex = Math.max(0, Math.min(pageCount - 1, index));
 		progress = 0;
-		start();
 	}
 
 	$effect(() => {
-		items;
-		pageSize;
-		intervalMs;
-		paused;
-		hovered;
 		if (pageIndex >= pageCount) pageIndex = 0;
-		start();
-		return stop;
 	});
 
-	onMount(start);
-	onDestroy(stop);
+	$effect(() => {
+		intervalMs;
+		startTimer();
+		return stopTimer;
+	});
+
+	$effect(() => {
+		if (paused || hovered) {
+			progress = 0;
+		}
+	});
+
+	onMount(startTimer);
+	onDestroy(stopTimer);
 </script>
 
 <div
