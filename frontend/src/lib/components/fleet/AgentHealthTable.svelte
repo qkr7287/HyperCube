@@ -495,18 +495,20 @@
 	th.c-score :global(.info-tip) {
 		margin-left: 3px;
 	}
+	/* min-width 는 헤더 텍스트 + 정렬 화살표 + MetricHelp(?) 까지 한 줄에 들어갈
+	   만큼 확보해야 짤리거나 ? 아이콘 누락이 안 생김. */
 	.c-host { width: 10%; min-width: 140px; }
-	.c-mem { width: 9%; min-width: 116px; }
-	.c-disk { width: 5%; min-width: 66px; }
-	.c-gpu { width: 6%; min-width: 72px; }
-	.c-net { width: 7%; min-width: 96px; }
-	.c-net-trend { width: 8%; min-width: 100px; }
-	.c-proc { width: 5%; min-width: 64px; }
-	.c-login { width: 4%; min-width: 50px; }
+	.c-mem { width: 9%; min-width: 120px; }
+	.c-disk { width: 5%; min-width: 90px; }
+	.c-gpu { width: 6%; min-width: 80px; }
+	.c-net { width: 7%; min-width: 110px; }
+	.c-net-trend { width: 8%; min-width: 110px; }
+	.c-proc { width: 6%; min-width: 124px; }
+	.c-login { width: 6%; min-width: 124px; }
 	.c-containers { width: 12%; min-width: 150px; }
-	.c-fresh { width: 8%; min-width: 92px; }
-	.c-trend { width: 9%; min-width: 108px; }
-	.c-action { width: 5%; min-width: 56px; }
+	.c-fresh { width: 8%; min-width: 100px; }
+	.c-trend { width: 9%; min-width: 110px; }
+	.c-action { width: 5%; min-width: 70px; }
 	th {
 		position: sticky;
 		top: 0;
@@ -516,6 +518,8 @@
 		font-size: 12px;
 		font-weight: 800;
 		letter-spacing: 0.2px;
+		/* 좁은 컬럼에서 헤더 텍스트가 줄바꿈되거나 잘리지 않게 한 줄 강제. */
+		white-space: nowrap;
 	}
 	tbody tr {
 		cursor: pointer;
