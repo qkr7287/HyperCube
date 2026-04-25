@@ -18,7 +18,6 @@
 	import InfoTooltip from '$lib/components/InfoTooltip.svelte';
 	import TimeRangeSelector from '$lib/components/fleet/TimeRangeSelector.svelte';
 	import FleetLineChart from '$lib/components/fleet/FleetLineChart.svelte';
-	import ServerScatterChart from '$lib/components/server2d/ServerScatterChart.svelte';
 	import ResourceGaugeBar from '$lib/components/server2d/ResourceGaugeBar.svelte';
 	import KpiTileRow from '$lib/components/server2d/KpiTileRow.svelte';
 	import HotContainersList from '$lib/components/server2d/HotContainersList.svelte';
@@ -289,27 +288,6 @@
 						container: row.container,
 					};
 				}),
-			};
-		}),
-	);
-
-	let scatterPoints = $derived(
-		rows.map((row) => {
-			const trend = historyModel.containerMap.get(row.id);
-			const stack = (stacks as any[]).find((s: any) => s.name === row.stack);
-			const rawX = trend?.memoryAvg ?? row.memory;
-			const rawY = trend?.cpuAvg ?? row.cpu;
-			return {
-				x: Math.max(0, Math.min(100, rawX)),
-				y: Math.max(0, Math.min(100, rawY)),
-				rawX,
-				rawY,
-				r: 3 + Math.min(4, ((trend?.networkAvg ?? row.network) / (1024 * 1024)) * 1),
-				label: row.name,
-				stack: row.stack,
-				state: stateLabel(row.state),
-				network: trend?.networkAvg ?? row.network,
-				color: stack?.color ?? '#94a3b8',
 			};
 		}),
 	);
@@ -1400,24 +1378,12 @@
 					</div>
 				</div>
 
-				<div class="bottom-grid">
-					<div class="panel scatter">
-						<div class="panel-head">
-							<div class="panel-title">산점도 (컨테이너 부하 분포) <InfoTooltip text={`컨테이너 1개 = 점 1개\n\n• 가로축: 메모리 사용률\n• 세로축: CPU 사용률\n• 오른쪽 위 = 고부하 (HOT)\n• 점 크기 = 트래픽 양\n• 점 색깔 = 소속 스택`} placement="top-start" /></div>
-							<small>{scatterPoints.length}개 컨테이너 · 색 = 스택</small>
-						</div>
-						<div class="chart-host scatter-host">
-							<ServerScatterChart points={scatterPoints} soloStack={view.soloStack} />
-						</div>
-					</div>
-
-					<div class="panel events">
-						<EventLogStrip
-							events={eventRows}
-							pageSize={6}
-							onSelect={(container) => { selectedContainer = container; }}
-						/>
-					</div>
+				<div class="panel events events-strip">
+					<EventLogStrip
+						events={eventRows}
+						pageSize={4}
+						onSelect={(container) => { selectedContainer = container; }}
+					/>
 				</div>
 			</section>
 
@@ -1782,11 +1748,16 @@
 
 	.center {
 		display: grid;
-		grid-template-rows: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1.1fr);
+		grid-template-rows: minmax(0, 0.85fr) minmax(0, 1.6fr) minmax(0, 0.55fr);
 		gap: 8px;
 		min-width: 0;
 		min-height: 0;
 		overflow: hidden;
+	}
+
+	.events-strip {
+		min-height: 0;
+		padding: 8px 11px;
 	}
 
 	.panel {
@@ -1991,24 +1962,6 @@
 
 	.trend-chart :global(.canvas-wrap) {
 		height: 100%;
-		min-height: 0;
-		flex: 1;
-	}
-
-	.bottom-grid {
-		display: grid;
-		grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.3fr);
-		gap: 10px;
-		min-height: 0;
-		overflow: hidden;
-	}
-
-	.bottom-grid > .panel {
-		min-height: 0;
-		overflow: hidden;
-	}
-
-	.scatter-host {
 		min-height: 0;
 		flex: 1;
 	}
