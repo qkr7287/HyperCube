@@ -2098,6 +2098,10 @@
 		overflow: hidden;
 	}
 
+	.snapshot > .panel-head {
+		min-height: 30px;
+	}
+
 	.hot-inline {
 		display: flex;
 		align-items: center;
@@ -2105,6 +2109,7 @@
 		flex-wrap: nowrap;
 		min-width: 0;
 		max-width: 100%;
+		min-height: 26px;
 		overflow: hidden;
 	}
 
