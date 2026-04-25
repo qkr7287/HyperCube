@@ -1436,7 +1436,7 @@
 									rows={hottest}
 									limit={3}
 									variant="vertical"
-									title="🔥 부하 TOP 3"
+									title="부하 TOP 3"
 									subtitle="CPU · 메모리 · 트래픽 기준으로 지금 가장 뜨거운 컨테이너"
 									badge={`${Math.min(3, hottest.length)} / ${hottest.length || 0}`}
 									helperText="CPU, 메모리, 네트워크 사용량을 합산해 가장 바쁜 컨테이너 순으로 보여줍니다. 클릭하면 상세 모달이 열립니다."
@@ -1981,7 +1981,7 @@
 
 	.events-split {
 		display: grid;
-		grid-template-rows: minmax(0, 208px) minmax(0, 1fr);
+		grid-template-rows: auto minmax(0, 1fr);
 		gap: 8px;
 		min-height: 0;
 		height: 100%;
