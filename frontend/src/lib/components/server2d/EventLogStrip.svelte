@@ -15,8 +15,8 @@
 
 	let {
 		events = [] as EventRow[],
-		pageSize = 5,
-		intervalMs = 5500,
+		pageSize = 4,
+		intervalMs = 6000,
 		onSelect = (_container: any) => {},
 	}: {
 		events?: EventRow[];
@@ -27,7 +27,7 @@
 
 	function formatClock(date: Date): string {
 		try {
-			return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+			return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
 		} catch {
 			return '-';
 		}
@@ -44,13 +44,17 @@
 	<div class="head">
 		<div class="title">
 			<i class="live"></i>
-			<span>실시간 이벤트 / 경고</span>
-			<InfoTooltip text={`서버에서 지금 주의가 필요한 항목입니다.\n\n• 장애 · 재시작 루프 → 경고 (빨강)\n• 일시정지 · 고부하 → 주의 (노랑)\n• 등급 위→아래 정렬\n• 대상 클릭 = 컨테이너 상세\n• 5건씩 자동 순환`} placement="top-start" />
+			<span>실시간 이벤트</span>
+			<InfoTooltip text={`서버에서 지금 주의가 필요한 항목입니다.\n\n• 장애 · 재시작 루프 → 경고 (빨강)\n• 일시정지 · 고부하 → 주의 (노랑)\n• 등급 위→아래 정렬\n• 카드 클릭 = 컨테이너 상세\n• 자동 순환`} placement="bottom-end" />
 		</div>
 		<small>{events.length}건</small>
 	</div>
 	{#if events.length === 0}
-		<div class="empty">현재 주의 항목이 없습니다. 서버 상태 양호.</div>
+		<div class="empty">
+			<span class="ok">●</span>
+			<strong>서버 정상</strong>
+			<small>주의 항목 없음</small>
+		</div>
 	{:else}
 		<div class="body">
 			<AutoSlideCarousel items={events} pageSize={pageSize} intervalMs={intervalMs}>
@@ -63,11 +67,15 @@
 								onclick={() => event.container && onSelect(event.container)}
 								disabled={!event.container}
 							>
-								<span class={`sev ${event.severity}`}>{severityLabel(event.severity)}</span>
-								<span class="time">{formatClock(event.at)}</span>
-								<span class="stack" title={event.stack}>{event.stack}</span>
-								<span class="target" title={event.target}>{event.target}</span>
-								<span class="msg" title={event.message}>{event.message}</span>
+								<header>
+									<span class={`sev ${event.severity}`}>{severityLabel(event.severity)}</span>
+									<strong class="target" title={event.target}>{event.target}</strong>
+									<span class="time">{formatClock(event.at)}</span>
+								</header>
+								<p class="msg" title={`${event.stack} · ${event.message}`}>
+									<em class="stack-tag">{event.stack}</em>
+									<span>{event.message}</span>
+								</p>
 							</button>
 						{/each}
 					</div>
@@ -102,15 +110,24 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
+		min-width: 0;
+		overflow: hidden;
+	}
+
+	.title span {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.live {
-		width: 9px;
-		height: 9px;
+		width: 8px;
+		height: 8px;
 		border-radius: 50%;
 		background: #34d399;
-		box-shadow: 0 0 10px rgba(52, 211, 153, 0.6);
+		box-shadow: 0 0 8px rgba(52, 211, 153, 0.6);
 		animation: pulse 1.6s ease-in-out infinite;
+		flex: 0 0 auto;
 	}
 
 	@keyframes pulse {
@@ -122,6 +139,7 @@
 		color: var(--text-muted);
 		font-size: 10px;
 		font-weight: 800;
+		flex: 0 0 auto;
 	}
 
 	.body {
@@ -135,59 +153,68 @@
 		display: grid;
 		grid-auto-flow: row;
 		grid-auto-rows: minmax(0, 1fr);
-		gap: 4px;
+		gap: 5px;
 		min-height: 0;
 		height: 100%;
 	}
 
 	.row {
 		display: grid;
-		grid-template-columns: 38px 56px minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 2fr);
-		align-items: center;
-		gap: 6px;
-		padding: 4px 9px;
+		grid-template-rows: auto minmax(0, 1fr);
+		gap: 2px;
+		padding: 6px 9px 7px;
 		border: 1px solid rgba(100, 116, 139, 0.18);
 		border-left: 3px solid #94a3b8;
-		border-radius: 6px;
+		border-radius: 7px;
 		background: rgba(15, 23, 42, 0.55);
 		text-align: left;
 		cursor: pointer;
 		min-width: 0;
 		min-height: 0;
 		font-size: 11px;
-		transition: border-color 0.12s ease;
+		transition: border-color 0.12s ease, transform 0.12s ease, background-color 0.12s ease;
 	}
 
 	.row:disabled {
 		cursor: default;
 	}
 
-	.row:hover:not(:disabled) {
-		border-color: rgba(48, 213, 200, 0.45);
+	.row:not(:disabled):hover {
+		border-color: rgba(48, 213, 200, 0.5);
+		transform: translateY(-1px);
 	}
 
 	.row.critical {
 		border-left-color: #f87171;
-		background: rgba(248, 113, 113, 0.06);
+		background: rgba(248, 113, 113, 0.07);
 	}
 
 	.row.warn {
 		border-left-color: #fbbf24;
-		background: rgba(251, 191, 36, 0.05);
+		background: rgba(251, 191, 36, 0.06);
 	}
 
 	.row.info {
 		border-left-color: #60a5fa;
 	}
 
+	.row header {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+	}
+
 	.sev {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		padding: 2px 0;
+		padding: 1px 6px;
 		border-radius: 999px;
 		font-size: 9px;
 		font-weight: 800;
+		flex: 0 0 auto;
 	}
 
 	.sev.critical {
@@ -205,43 +232,82 @@
 		color: #60a5fa;
 	}
 
+	.target {
+		color: var(--text-primary);
+		font-size: 11px;
+		font-weight: 800;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		min-width: 0;
+	}
+
 	.time {
 		color: var(--text-muted);
 		font-family: 'JetBrains Mono', 'Consolas', monospace;
 		font-size: 10px;
 		font-weight: 700;
+		flex: 0 0 auto;
 	}
 
-	.stack {
+	.msg {
+		display: flex;
+		gap: 5px;
+		align-items: baseline;
+		margin: 0;
+		padding-left: 4px;
+		min-width: 0;
+		overflow: hidden;
+	}
+
+	.stack-tag {
+		font-style: normal;
+		color: #94a3b8;
+		font-size: 9px;
+		font-weight: 800;
+		background: rgba(2, 6, 23, 0.45);
+		padding: 1px 6px;
+		border-radius: 999px;
+		flex: 0 0 auto;
+	}
+
+	.msg span {
 		color: var(--text-secondary);
+		font-size: 10px;
 		font-weight: 700;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-	}
-
-	.target {
-		color: #30d5c8;
-		font-weight: 800;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.msg {
-		color: var(--text-secondary);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		min-width: 0;
 	}
 
 	.empty {
-		padding: 14px;
-		border: 1px dashed rgba(100, 116, 139, 0.28);
+		display: grid;
+		grid-template-columns: auto auto auto;
+		justify-content: center;
+		align-items: center;
+		gap: 8px;
+		padding: 16px 14px;
+		border: 1px dashed rgba(52, 211, 153, 0.3);
 		border-radius: 8px;
+		background: rgba(52, 211, 153, 0.05);
+		min-height: 0;
+	}
+
+	.empty .ok {
+		color: #34d399;
+		font-size: 12px;
+	}
+
+	.empty strong {
+		color: #34d399;
+		font-size: 12px;
+		font-weight: 800;
+	}
+
+	.empty small {
 		color: var(--text-muted);
-		font-size: 11px;
-		text-align: center;
-		font-style: italic;
+		font-size: 10px;
+		font-weight: 700;
 	}
 </style>

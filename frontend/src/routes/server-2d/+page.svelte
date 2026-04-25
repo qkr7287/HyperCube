@@ -1287,6 +1287,7 @@
 					</div>
 				</div>
 
+				<div class="trend-events-row">
 				<div class="panel trend">
 					<div class="panel-head">
 						<div class="panel-title">스택 평균 추이 <InfoTooltip text={`스택별 평균값을 4개 차트로 비교합니다.\n\n• 차트당 모든 스택의 평균선\n• 상위 5개만 컬러 + 오른쪽 라벨 강조\n• 칩 클릭 = 해당 스택만 표시 (Solo)\n• 스택 사이드바 클릭과 연동`} placement="bottom-start" /></div>
@@ -1378,12 +1379,14 @@
 					</div>
 				</div>
 
-				<div class="panel events events-strip">
-					<EventLogStrip
-						events={eventRows}
-						pageSize={4}
-						onSelect={(container) => { selectedContainer = container; }}
-					/>
+					<div class="panel events events-side">
+						<EventLogStrip
+							events={eventRows}
+							pageSize={4}
+							intervalMs={6000}
+							onSelect={(container) => { selectedContainer = container; }}
+						/>
+					</div>
 				</div>
 			</section>
 
@@ -1748,16 +1751,27 @@
 
 	.center {
 		display: grid;
-		grid-template-rows: minmax(0, 0.85fr) minmax(0, 1.6fr) minmax(0, 0.55fr);
+		grid-template-rows: minmax(0, 0.85fr) minmax(0, 1.85fr);
 		gap: 8px;
 		min-width: 0;
 		min-height: 0;
 		overflow: hidden;
 	}
 
-	.events-strip {
+	.trend-events-row {
+		display: grid;
+		grid-template-columns: 3fr minmax(220px, 1fr);
+		gap: 8px;
 		min-height: 0;
+		min-width: 0;
+		overflow: hidden;
+	}
+
+	.events-side {
 		padding: 8px 11px;
+		min-height: 0;
+		min-width: 0;
+		overflow: hidden;
 	}
 
 	.panel {
@@ -1885,9 +1899,12 @@
 	}
 
 	.trend {
-		gap: 6px;
+		gap: 8px;
 		min-height: 0;
+		min-width: 0;
 		overflow: hidden;
+		display: grid;
+		grid-template-rows: auto minmax(0, 1fr);
 	}
 
 	.trend-grid {
