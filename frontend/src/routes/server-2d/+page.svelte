@@ -782,22 +782,28 @@
 	}
 
 	function metricMemory(metric: any): number {
-		return Number(metric?.memory?.percent ?? metric?.memory_percent ?? metric?.memory?.usage_percent ?? 0);
+		const raw = Number(metric?.memory?.percent ?? metric?.memory_percent ?? metric?.memory?.usage_percent ?? 0);
+		if (!Number.isFinite(raw)) return 0;
+		// Some containers without limits report >100% relative to limit fallback; pin to 0-100.
+		return Math.max(0, Math.min(100, raw));
 	}
 
 	function metricNetwork(metric: any): number {
 		const stats = Array.isArray(metric?.network_stats) ? metric.network_stats : [];
-		if (stats.length) {
-			return stats.reduce((sum: number, stat: any) => sum + Number(stat.rx_rate_bps ?? 0) + Number(stat.tx_rate_bps ?? 0), 0);
-		}
-		return Number(metric?.network?.rx_rate_bps ?? 0) + Number(metric?.network?.tx_rate_bps ?? 0);
+		const sum = stats.length
+			? stats.reduce((acc: number, stat: any) => acc + Number(stat.rx_rate_bps ?? 0) + Number(stat.tx_rate_bps ?? 0), 0)
+			: Number(metric?.network?.rx_rate_bps ?? 0) + Number(metric?.network?.tx_rate_bps ?? 0);
+		// rx/tx counters can briefly read negative across resets; floor at 0.
+		return Number.isFinite(sum) ? Math.max(0, sum) : 0;
 	}
 
 	function metricGpu(metric: any): number | null {
 		const raw = metric?.gpu?.usage ?? metric?.gpu_usage;
 		if (raw === null || raw === undefined) return null;
 		const value = Number(raw);
-		return Number.isFinite(value) ? value : null;
+		if (!Number.isFinite(value)) return null;
+		// Agent contract guarantees 0-100; clamp defensively against transport glitches.
+		return Math.max(0, Math.min(100, value));
 	}
 
 	function metricGpuMemoryUsed(metric: any): number | null {
