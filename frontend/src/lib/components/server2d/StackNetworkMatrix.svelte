@@ -161,8 +161,8 @@
 <section class="matrix">
 	<div class="head">
 		<div class="title">
-			프레임 다이어그램 <small>· 스택 × 네트워크/볼륨 관계도</small>
-			<InfoTooltip text="각 스택(가로 행)이 어떤 네트워크(파랑 열)·볼륨(주황 열)을 공유하는지 한눈에 보여줍니다. 셀의 숫자는 해당 스택에서 그 네트워크/볼륨에 붙은 컨테이너 개수, 색이 진할수록 많이 쓰입니다. 셀을 누르면 해당 컨테이너 목록이 열립니다." placement="bottom-start" />
+			프레임 다이어그램 <small>· 스택 × 네트워크/볼륨</small>
+			<InfoTooltip text={`스택과 네트워크/볼륨의 공유 관계도.\n\n• 가로 행 = 스택\n• 세로 열 = 네트워크(파랑) / 볼륨(주황)\n• 셀 숫자 = 그 스택의 멤버 수\n• 색 진할수록 많이 사용\n• 셀 클릭 = 멤버 컨테이너 목록`} placement="bottom-start" />
 		</div>
 		<div class="meta">
 			<span>네트워크 {totalNetworks}개 · 볼륨 {totalVolumes}개 (표시 중: 네트워크 {visibleNetworkCount} · 볼륨 {visibleVolumeCount})</span>

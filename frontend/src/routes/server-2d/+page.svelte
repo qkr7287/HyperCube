@@ -1285,13 +1285,13 @@
 			<section class="center">
 				<div class="panel snapshot">
 					<div class="panel-head">
-						<div class="panel-title">서버 스냅샷 <InfoTooltip text="도넛=컨테이너 상태 분포 · 원형 게이지=종합 건강 점수 · 레이더=자원 6축 밸런스 · 버블=스택 CPU×메모리 부하(크기=컨테이너 수)." placement="bottom-start" /></div>
-						<div class="hot-inline">
-							<span class="hot-label">🔥</span>
+						<div class="panel-title">서버 스냅샷 <InfoTooltip text={`서버 한 대를 4개 그래프로 한눈에.\n\n• 도넛: 컨테이너 상태 분포\n• 원형 게이지: 종합 건강 점수\n• 레이더: 자원 6축 밸런스\n• 버블: 스택 CPU × 메모리 부하 (크기 = 컨테이너 수)`} placement="bottom-start" /></div>
+						<div class="hot-inline" title="CPU + 메모리 + 트래픽을 합산한 부하 상위 3개 컨테이너. 클릭하면 상세가 열립니다.">
+							<span class="hot-label"><span class="flame">🔥</span> 부하 TOP 3</span>
 							{#each hottest.slice(0, 3) as row (row.id)}
-								<button type="button" class={`hot-chip ${row.state === 'dead' || row.state === 'restarting' ? 'problem' : row.state === 'paused' ? 'paused' : row.state === 'running' ? 'running' : 'stopped'}`} onclick={() => { selectedContainer = row.container; }} title={`${row.name} · ${row.stack} · CPU ${row.cpu.toFixed(1)}% · MEM ${row.memory.toFixed(1)}%`}>
+								<button type="button" class={`hot-chip ${row.state === 'dead' || row.state === 'restarting' ? 'problem' : row.state === 'paused' ? 'paused' : row.state === 'running' ? 'running' : 'stopped'}`} onclick={() => { selectedContainer = row.container; }} title={`${row.name}\n스택: ${row.stack}\nCPU ${row.cpu.toFixed(1)}% · MEM ${row.memory.toFixed(1)}%`}>
 									<strong>{row.name}</strong>
-									<em>{row.cpu.toFixed(0)}·{row.memory.toFixed(0)}%</em>
+									<em>CPU {row.cpu.toFixed(0)}·MEM {row.memory.toFixed(0)}</em>
 								</button>
 							{/each}
 						</div>
@@ -1330,7 +1330,7 @@
 
 				<div class="panel trend">
 					<div class="panel-head">
-						<div class="panel-title">스택 평균 추이 <InfoTooltip text="상위 5개 스택만 컬러+오른쪽 라벨로 강조. 차트 위 칩 클릭 = 해당 스택 Solo 모드." placement="bottom-start" /></div>
+						<div class="panel-title">스택 평균 추이 <InfoTooltip text={`스택별 평균값을 4개 차트로 비교합니다.\n\n• 차트당 모든 스택의 평균선\n• 상위 5개만 컬러 + 오른쪽 라벨 강조\n• 칩 클릭 = 해당 스택만 표시 (Solo)\n• 스택 사이드바 클릭과 연동`} placement="bottom-start" /></div>
 						<small>{(stacks as any[]).length}개 스택 · {rangeConfig.label}</small>
 					</div>
 					<div class="trend-grid">
@@ -1426,8 +1426,8 @@
 				<div class="bottom-grid">
 					<div class="panel scatter">
 						<div class="panel-head">
-							<div class="panel-title">산점도 (CPU × 메모리) <InfoTooltip text="각 점 = 컨테이너. 오른쪽 위 = 고부하. 점 크기 = 트래픽." placement="top-start" /></div>
-							<small>{scatterPoints.length}개</small>
+							<div class="panel-title">산점도 <InfoTooltip text={`컨테이너 1개 = 점 1개\n\n• 가로축: 메모리 사용률\n• 세로축: CPU 사용률\n• 오른쪽 위 = 고부하 (HOT)\n• 점 크기 = 트래픽 양\n• 점 색깔 = 소속 스택`} placement="top-start" /></div>
+							<small>{scatterPoints.length}개 컨테이너</small>
 						</div>
 						<div class="chart-host scatter-host">
 							<ServerScatterChart points={scatterPoints} soloStack={view.soloStack} />
@@ -1844,9 +1844,23 @@
 	}
 
 	.hot-label {
-		color: var(--text-muted);
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 3px 8px;
+		border-radius: 999px;
+		background: rgba(248, 113, 113, 0.14);
+		border: 1px solid rgba(248, 113, 113, 0.3);
+		color: #f87171;
 		font-size: 10px;
 		font-weight: 800;
+		letter-spacing: 0.03em;
+		flex: 0 0 auto;
+	}
+
+	.flame {
+		font-size: 12px;
+		line-height: 1;
 	}
 
 	.hot-chip {
@@ -1948,10 +1962,10 @@
 	.trend-chart {
 		display: grid;
 		grid-template-rows: auto minmax(0, 1fr);
-		gap: 4px;
-		padding: 6px 9px 8px;
+		gap: 6px;
+		padding: 8px 10px 9px;
 		border: 1px solid rgba(100, 116, 139, 0.14);
-		border-radius: 8px;
+		border-radius: 9px;
 		background: rgba(15, 23, 42, 0.42);
 		min-height: 0;
 		min-width: 0;
@@ -1959,18 +1973,27 @@
 	}
 
 	.chart-head {
-		display: flex;
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
 		align-items: center;
-		gap: 8px;
-		flex-wrap: nowrap;
-		justify-content: space-between;
+		gap: 10px;
+		min-height: 22px;
 		overflow: hidden;
 	}
 
 	.chart-head strong {
 		color: var(--text-primary);
-		font-size: 12px;
-		font-weight: 850;
+		font-size: 13px;
+		font-weight: 900;
+		letter-spacing: 0.02em;
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 2px 9px;
+		border-radius: 999px;
+		background: rgba(48, 213, 200, 0.12);
+		border: 1px solid rgba(48, 213, 200, 0.32);
+		color: #30d5c8;
 		flex: 0 0 auto;
 	}
 

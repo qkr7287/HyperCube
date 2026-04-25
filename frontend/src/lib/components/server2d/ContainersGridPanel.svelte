@@ -126,7 +126,7 @@
 	<div class="head">
 		<div class="title">
 			<span>전체 컨테이너</span>
-			<InfoTooltip text="서버의 모든 컨테이너를 한 화면에 표시합니다. 많을 때는 자동 슬라이드로 순환합니다. 검색·상태 필터·Solo를 지정하면 순환이 멈추고, 해제하면 다시 시작합니다. 각 카드 상단의 컬러 스트립은 해당 스택의 색입니다." placement="bottom-end" />
+			<InfoTooltip text={`서버의 모든 컨테이너를 한 화면에.\n\n• 자동 슬라이드로 전체 순환\n• 검색 / 상태 / Solo 적용 시 순환 정지\n• 카드 왼쪽 컬러 스트립 = 소속 스택\n• 카드 클릭 = 상세 모달`} placement="bottom-end" />
 		</div>
 		<small>{totalVisible}개 표시</small>
 	</div>
@@ -263,12 +263,27 @@
 		flex: 1;
 		display: flex;
 		flex-direction: column;
+		overflow: hidden;
 	}
 
 	.cards {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
-		gap: 7px;
+		gap: 6px;
+		overflow-y: auto;
+		min-height: 0;
+		flex: 1;
+		padding-right: 2px;
+		align-content: start;
+	}
+
+	.cards::-webkit-scrollbar {
+		width: 4px;
+	}
+
+	.cards::-webkit-scrollbar-thumb {
+		background: rgba(148, 163, 184, 0.22);
+		border-radius: 2px;
 	}
 
 	.card {

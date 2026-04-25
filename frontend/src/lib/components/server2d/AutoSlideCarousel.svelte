@@ -119,8 +119,8 @@
 
 <style>
 	.carousel {
-		display: flex;
-		flex-direction: column;
+		display: grid;
+		grid-template-rows: minmax(0, 1fr) auto;
 		gap: 6px;
 		min-height: 0;
 		height: 100%;
@@ -131,7 +131,7 @@
 		flex-direction: column;
 		gap: 6px;
 		min-height: 0;
-		flex: 1;
+		overflow: hidden;
 		animation: slideIn 360ms cubic-bezier(0.22, 1, 0.36, 1);
 	}
 
@@ -150,8 +150,10 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		padding-top: 4px;
-		border-top: 1px dashed rgba(100, 116, 139, 0.2);
+		padding: 6px 2px 2px;
+		border-top: 1px dashed rgba(100, 116, 139, 0.25);
+		flex: 0 0 auto;
+		background: inherit;
 	}
 
 	.dots {

@@ -1,14 +1,14 @@
 <!--
   Small "?" help icon with a hover-triggered explanation bubble.
-  Drops in next to any label. Text is short, plain-language, and
-  appears without a click so the layout stays clean.
 
-  Default placement is `bottom-start` — bubble drops below the glyph
-  and anchors at its left edge. That keeps the bubble inside modals
-  whose header is near the top of the viewport (where `top` would
-  clip the bubble off-screen) and dodges the right-edge clip too.
+  The bubble is rendered with `position: fixed` and positioned via JS so it
+  can escape panels that clip with `overflow: hidden`. Flips placement
+  automatically when near viewport edges.
 -->
 <script lang="ts">
+	import { onDestroy } from 'svelte';
+	import { browser } from '$app/environment';
+
 	let {
 		text,
 		label = '설명',
@@ -18,12 +18,112 @@
 		label?: string;
 		placement?: 'top' | 'bottom' | 'left' | 'right' | 'bottom-start' | 'bottom-end' | 'top-start' | 'top-end';
 	} = $props();
+
+	let glyph = $state<HTMLSpanElement | null>(null);
+	let bubble = $state<HTMLSpanElement | null>(null);
+	let open = $state(false);
+	let style = $state('');
+
+	const BUBBLE_MAX_WIDTH = 300;
+	const GAP = 8;
+
+	function computePosition() {
+		if (!glyph || !bubble) return;
+		const anchor = glyph.getBoundingClientRect();
+		const vw = window.innerWidth;
+		const vh = window.innerHeight;
+
+		// Measure bubble natural size
+		const bubbleRect = bubble.getBoundingClientRect();
+		const bw = Math.min(bubbleRect.width || BUBBLE_MAX_WIDTH, BUBBLE_MAX_WIDTH);
+		const bh = bubbleRect.height || 80;
+
+		let top = 0;
+		let left = 0;
+		let mode = placement;
+
+		// Decide vertical: prefer bottom; flip to top if no room
+		const wantsTop = mode.startsWith('top');
+		const spaceBelow = vh - anchor.bottom - GAP;
+		const spaceAbove = anchor.top - GAP;
+		const placeAbove = wantsTop
+			? spaceAbove >= bh || spaceAbove >= spaceBelow
+			: spaceBelow < bh && spaceAbove > spaceBelow;
+
+		if (placeAbove) {
+			top = anchor.top - GAP - bh;
+			mode = mode.replace('bottom', 'top') as typeof mode;
+		} else {
+			top = anchor.bottom + GAP;
+			mode = mode.replace('top', 'bottom') as typeof mode;
+		}
+
+		// Decide horizontal
+		if (mode.endsWith('-end')) {
+			left = anchor.right - bw;
+		} else if (mode.endsWith('-start')) {
+			left = anchor.left;
+		} else if (mode === 'left') {
+			left = anchor.left - bw - GAP;
+			top = anchor.top + anchor.height / 2 - bh / 2;
+		} else if (mode === 'right') {
+			left = anchor.right + GAP;
+			top = anchor.top + anchor.height / 2 - bh / 2;
+		} else {
+			left = anchor.left + anchor.width / 2 - bw / 2;
+		}
+
+		// Clamp to viewport
+		left = Math.max(8, Math.min(vw - bw - 8, left));
+		top = Math.max(8, Math.min(vh - bh - 8, top));
+
+		style = `position: fixed; top: ${top}px; left: ${left}px; width: ${bw}px; max-width: ${BUBBLE_MAX_WIDTH}px; z-index: 2000;`;
+	}
+
+	function handleEnter() {
+		open = true;
+		// Compute after render
+		queueMicrotask(() => computePosition());
+	}
+
+	function handleLeave() {
+		open = false;
+	}
+
+	function handleScroll() {
+		if (open) computePosition();
+	}
+
+	$effect(() => {
+		if (!browser || !open) return;
+		window.addEventListener('scroll', handleScroll, true);
+		window.addEventListener('resize', handleScroll);
+		return () => {
+			window.removeEventListener('scroll', handleScroll, true);
+			window.removeEventListener('resize', handleScroll);
+		};
+	});
+
+	onDestroy(() => {
+		open = false;
+	});
 </script>
 
-<span class="info-tip" tabindex="0" aria-label={label}>
+<span
+	class="info-tip"
+	tabindex="0"
+	aria-label={label}
+	bind:this={glyph}
+	onmouseenter={handleEnter}
+	onmouseleave={handleLeave}
+	onfocus={handleEnter}
+	onblur={handleLeave}
+>
 	<span class="info-glyph" aria-hidden="true">?</span>
-	<span class="info-bubble" data-placement={placement} role="tooltip">{text}</span>
 </span>
+{#if open}
+	<span class="info-bubble" role="tooltip" bind:this={bubble} style={style}>{text}</span>
+{/if}
 
 <style>
 	.info-tip {
@@ -42,15 +142,15 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 14px;
-		height: 14px;
+		width: 15px;
+		height: 15px;
 		border-radius: 50%;
 		font-size: 10px;
-		font-weight: 700;
+		font-weight: 800;
 		line-height: 1;
-		color: rgba(203, 213, 225, 0.85);
-		background: rgba(148, 163, 184, 0.18);
-		border: 1px solid rgba(148, 163, 184, 0.28);
+		color: rgba(203, 213, 225, 0.95);
+		background: rgba(148, 163, 184, 0.22);
+		border: 1px solid rgba(148, 163, 184, 0.34);
 		transition: color 0.15s, background-color 0.15s, border-color 0.15s;
 	}
 
@@ -61,101 +161,25 @@
 		border-color: #30d5c8;
 	}
 
-	.info-bubble {
-		position: absolute;
-		z-index: 60;
-		max-width: 300px;
-		min-width: 220px;
-		padding: 10px 12px;
+	:global(.info-bubble) {
+		padding: 11px 13px;
 		font-size: 12px;
-		line-height: 1.55;
+		line-height: 1.6;
 		color: #e2e8f0;
-		background: rgba(13, 17, 23, 0.98);
-		border: 1px solid rgba(48, 213, 200, 0.35);
-		border-radius: 8px;
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-		opacity: 0;
-		pointer-events: none;
-		transform: translateY(-2px);
-		transition: opacity 0.15s ease, transform 0.15s ease;
+		background: rgba(11, 15, 24, 0.98);
+		border: 1px solid rgba(48, 213, 200, 0.4);
+		border-radius: 9px;
+		box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
 		white-space: pre-line;
 		text-align: left;
 		font-weight: 400;
 		letter-spacing: 0.01em;
+		pointer-events: none;
+		animation: bubble-in 160ms ease-out;
 	}
 
-	.info-bubble[data-placement='top'] {
-		bottom: calc(100% + 8px);
-		left: 50%;
-		transform: translate(-50%, -2px);
-	}
-	.info-bubble[data-placement='top-start'] {
-		bottom: calc(100% + 8px);
-		left: 0;
-		transform: translate(0, -2px);
-	}
-	.info-bubble[data-placement='top-end'] {
-		bottom: calc(100% + 8px);
-		right: 0;
-		transform: translate(0, -2px);
-	}
-	.info-bubble[data-placement='bottom'] {
-		top: calc(100% + 8px);
-		left: 50%;
-		transform: translate(-50%, 2px);
-	}
-	.info-bubble[data-placement='bottom-start'] {
-		top: calc(100% + 8px);
-		left: 0;
-		transform: translate(0, 2px);
-	}
-	.info-bubble[data-placement='bottom-end'] {
-		top: calc(100% + 8px);
-		right: 0;
-		transform: translate(0, 2px);
-	}
-	.info-bubble[data-placement='left'] {
-		right: calc(100% + 10px);
-		top: 50%;
-		transform: translate(-2px, -50%);
-	}
-	.info-bubble[data-placement='right'] {
-		left: calc(100% + 10px);
-		top: 50%;
-		transform: translate(2px, -50%);
-	}
-
-	.info-tip:hover .info-bubble,
-	.info-tip:focus-visible .info-bubble {
-		opacity: 1;
-		pointer-events: auto;
-	}
-	.info-tip:hover .info-bubble[data-placement='top'],
-	.info-tip:focus-visible .info-bubble[data-placement='top'] {
-		transform: translate(-50%, 0);
-	}
-	.info-tip:hover .info-bubble[data-placement='top-start'],
-	.info-tip:focus-visible .info-bubble[data-placement='top-start'],
-	.info-tip:hover .info-bubble[data-placement='top-end'],
-	.info-tip:focus-visible .info-bubble[data-placement='top-end'] {
-		transform: translate(0, 0);
-	}
-	.info-tip:hover .info-bubble[data-placement='bottom'],
-	.info-tip:focus-visible .info-bubble[data-placement='bottom'] {
-		transform: translate(-50%, 0);
-	}
-	.info-tip:hover .info-bubble[data-placement='bottom-start'],
-	.info-tip:focus-visible .info-bubble[data-placement='bottom-start'],
-	.info-tip:hover .info-bubble[data-placement='bottom-end'],
-	.info-tip:focus-visible .info-bubble[data-placement='bottom-end'] {
-		transform: translate(0, 0);
-	}
-	.info-tip:hover .info-bubble[data-placement='left'],
-	.info-tip:focus-visible .info-bubble[data-placement='left'] {
-		transform: translate(0, -50%);
-	}
-	.info-tip:hover .info-bubble[data-placement='right'],
-	.info-tip:focus-visible .info-bubble[data-placement='right'] {
-		transform: translate(0, -50%);
+	@keyframes bubble-in {
+		from { opacity: 0; transform: translateY(-2px); }
+		to { opacity: 1; transform: translateY(0); }
 	}
 </style>

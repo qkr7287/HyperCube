@@ -84,7 +84,7 @@
 	<div class="head">
 		<div class="title">
 			<span>스택 현황</span>
-			<InfoTooltip text="서버의 모든 Docker Compose 스택입니다. 많으면 자동 슬라이드로 순환 노출됩니다. 스택을 마우스로 올리거나 클릭하면 Solo 모드로 전환되고, 클릭 시 순환이 멈춥니다." placement="bottom-start" />
+			<InfoTooltip text={`서버의 모든 Docker Compose 스택 목록입니다.\n\n• 부하 큰 스택 순으로 정렬\n• 스택이 많으면 자동 슬라이드 순환\n• 클릭 = 해당 스택만 보는 Solo 모드\n• Solo 모드일 때 자동 순환 정지`} placement="bottom-start" />
 		</div>
 		<small>{stacks.length}개 · 실행 {runningAll}/{total}{#if problemAll > 0} · <b class="warn">문제 {problemAll}</b>{/if}</small>
 	</div>
@@ -208,12 +208,26 @@
 		flex: 1;
 		display: flex;
 		flex-direction: column;
+		overflow: hidden;
 	}
 
 	.list {
 		display: flex;
 		flex-direction: column;
 		gap: 7px;
+		overflow-y: auto;
+		padding-right: 2px;
+		min-height: 0;
+		flex: 1;
+	}
+
+	.list::-webkit-scrollbar {
+		width: 4px;
+	}
+
+	.list::-webkit-scrollbar-thumb {
+		background: rgba(148, 163, 184, 0.22);
+		border-radius: 2px;
 	}
 
 	.item {

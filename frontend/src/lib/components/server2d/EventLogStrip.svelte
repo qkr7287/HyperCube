@@ -34,7 +34,7 @@
 		<div class="title">
 			<i class="live"></i>
 			<span>실시간 이벤트 / 경고</span>
-			<InfoTooltip text="현재 서버에서 관심이 필요한 상태 변화입니다. 장애·재시작·고부하 등 주의 항목을 우선 표시합니다. 클릭하면 해당 컨테이너 상세로 이동합니다." placement="top-start" />
+			<InfoTooltip text={`서버에서 지금 주의가 필요한 항목입니다.\n\n• 장애 · 재시작 루프 → 경고(빨강)\n• 일시정지 · 고부하 → 주의(노랑)\n• 등급 위→아래 정렬\n• 대상 클릭 = 컨테이너 상세`} placement="top-start" />
 		</div>
 		<small>{events.length}건 표시</small>
 	</div>
