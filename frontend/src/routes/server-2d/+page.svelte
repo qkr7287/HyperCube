@@ -1307,8 +1307,8 @@
 								series={stackCpuSeries}
 								topNames={cpuTopNames}
 								soloLabel={view.soloStack}
-								extraPlugins={trendPlugins}
-								rightPadding={92}
+								extraPlugins={[]}
+								rightPadding={0}
 							/>
 						</div>
 						<div class="trend-chart">
@@ -1324,8 +1324,8 @@
 								series={stackMemorySeries}
 								topNames={memoryTopNames}
 								soloLabel={view.soloStack}
-								extraPlugins={trendPlugins}
-								rightPadding={92}
+								extraPlugins={[]}
+								rightPadding={0}
 							/>
 						</div>
 						<div class="trend-chart">
@@ -1341,8 +1341,8 @@
 								series={stackNetworkSeries}
 								topNames={networkTopNames}
 								soloLabel={view.soloStack}
-								extraPlugins={trendPlugins}
-								rightPadding={92}
+								extraPlugins={[]}
+								rightPadding={0}
 							/>
 						</div>
 						<div class="trend-chart">
@@ -1359,8 +1359,8 @@
 									series={[{ label: '호스트 GPU', values: systemTrend.gpu, color: '#c084fc' }]}
 									topNames={['호스트 GPU']}
 									soloLabel={null}
-									extraPlugins={trendPlugins}
-									rightPadding={92}
+									extraPlugins={[]}
+									rightPadding={0}
 								/>
 							{:else}
 								<FleetLineChart
@@ -1371,8 +1371,8 @@
 									series={[{ label: '호스트 NET', values: systemTrend.network, color: '#22d3ee' }]}
 									topNames={['호스트 NET']}
 									soloLabel={null}
-									extraPlugins={trendPlugins}
-									rightPadding={92}
+									extraPlugins={[]}
+									rightPadding={0}
 								/>
 							{/if}
 						</div>
