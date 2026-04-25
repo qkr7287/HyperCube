@@ -774,7 +774,11 @@
 	}
 
 	function metricCpu(metric: any): number {
-		return Number(metric?.cpu?.usage ?? metric?.cpu_usage ?? metric?.cpu ?? 0);
+		const raw = Number(metric?.cpu?.usage ?? metric?.cpu_usage ?? metric?.cpu ?? 0);
+		if (!Number.isFinite(raw)) return 0;
+		const cores = Number(metric?.cpu?.cores ?? 0);
+		const value = cores >= 1 ? raw / cores : raw;
+		return Math.max(0, Math.min(100, value));
 	}
 
 	function metricMemory(metric: any): number {
