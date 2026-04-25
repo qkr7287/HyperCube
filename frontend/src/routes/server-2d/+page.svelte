@@ -1244,22 +1244,34 @@
 					{/each}
 				</select>
 				<span class={`status-pill ${health}`}>{healthLabel(health)}</span>
-				<small>{selectedAgent?.ip_address ?? '-'}</small>
-				<small>· {isDemoServer ? '데모' : $wsConnected ? 'LIVE' : 'OFFLINE'}</small>
-				<small>· {systemInfo?.os || '-'}</small>
-				<small>· 가동 {formatUptime(systemInfo?.uptime)}</small>
+				<div class="server-meta">
+					<small class="meta-item">{selectedAgent?.ip_address ?? '-'}</small>
+					<i class="meta-sep" aria-hidden="true"></i>
+					<small class="meta-item conn">{isDemoServer ? '데모' : $wsConnected ? 'LIVE' : 'OFFLINE'}</small>
+					<i class="meta-sep" aria-hidden="true"></i>
+					<small class="meta-item os" title={systemInfo?.os || '-'}>{systemInfo?.os || '-'}</small>
+					<i class="meta-sep" aria-hidden="true"></i>
+					<small class="meta-item">가동 {formatUptime(systemInfo?.uptime)}</small>
+				</div>
 			</div>
 			<div class="topbar-ctrls">
 				<div class="range-inline">
-					<span>추이 범위</span>
+					<span class="range-label">추이 범위</span>
 					<TimeRangeSelector value={selectedRange} onChange={changeRange} />
-					<small>{rangeConfig.pollLabel}</small>
+					<small class="poll-label">{rangeConfig.pollLabel}</small>
 				</div>
+				<i class="ctrl-sep" aria-hidden="true"></i>
 				<span class={`status-chip ${historyLoading ? 'loading' : historyError ? 'error' : 'ok'}`}>
 					{historyLoading ? '갱신 중' : historyError ? '실패' : formatClock(historyPolledAt)}
 				</span>
-				<button type="button" onclick={refreshConnection}>새로고침</button>
-				<button type="button" onclick={open3d}>3D 상세</button>
+				<button type="button" class="ctrl-btn" onclick={refreshConnection} title="데이터 새로고침" aria-label="새로고침">
+					<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.74 10h-2.08A6 6 0 1 1 12 6a5.96 5.96 0 0 1 4.22 1.78L13 11h7V4z"/></svg>
+					<span>새로고침</span>
+				</button>
+				<button type="button" class="ctrl-btn primary" onclick={open3d} title="3D 상세 모니터링" aria-label="3D 상세">
+					<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M12 2 2 7v10l10 5 10-5V7zm0 2.18 7.55 3.78L12 11.74 4.45 7.96zM4 9.5l7 3.5v7.34L4 16.66zm9 10.84V13l7-3.5v7.16z"/></svg>
+					<span>3D 상세</span>
+				</button>
 			</div>
 		</section>
 
@@ -1418,12 +1430,32 @@
 				</div>
 
 					<div class="panel events events-side">
-						<EventLogStrip
-							events={eventRows}
-							pageSize={4}
-							intervalMs={10000}
-							onSelect={(container) => { selectedContainer = container; }}
-						/>
+						<div class="events-split">
+							<section class="load-top-panel">
+								<HotContainersList
+									rows={hottest}
+									limit={3}
+									variant="vertical"
+									title="🔥 부하 TOP 3"
+									subtitle="CPU · 메모리 · 트래픽 기준으로 지금 가장 뜨거운 컨테이너"
+									badge={`${Math.min(3, hottest.length)} / ${hottest.length || 0}`}
+									helperText="CPU, 메모리, 네트워크 사용량을 합산해 가장 바쁜 컨테이너 순으로 보여줍니다. 클릭하면 상세 모달이 열립니다."
+									panelClass="load-top-hero"
+									showRank={true}
+									compactMetrics={true}
+									onSelect={(container) => { selectedContainer = container; }}
+								/>
+							</section>
+
+							<section class="events-log-panel">
+								<EventLogStrip
+									events={eventRows}
+									pageSize={4}
+									intervalMs={10000}
+									onSelect={(container) => { selectedContainer = container; }}
+								/>
+							</section>
+						</div>
 					</div>
 				</div>
 			</section>
@@ -1582,20 +1614,57 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 12px;
-		padding: 6px 16px;
+		gap: 16px;
+		padding: 8px 16px;
 		border-bottom: 1px solid var(--border);
 		background: var(--bg-card);
 		flex: 0 0 auto;
 		flex-wrap: wrap;
+		min-height: 46px;
 	}
 
 	.server-id {
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: 10px;
 		min-width: 0;
 		flex-wrap: wrap;
+	}
+
+	.server-meta {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		min-width: 0;
+		flex-wrap: nowrap;
+		overflow: hidden;
+	}
+
+	.meta-item {
+		color: var(--text-muted);
+		font-size: 11px;
+		font-weight: 700;
+		white-space: nowrap;
+		max-width: 280px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.meta-item.os {
+		max-width: 320px;
+	}
+
+	.meta-item.conn {
+		color: #34d399;
+		letter-spacing: 0.04em;
+	}
+
+	.meta-sep {
+		display: inline-block;
+		width: 1px;
+		height: 12px;
+		background: rgba(100, 116, 139, 0.4);
+		flex: 0 0 auto;
 	}
 
 	.hostname {
@@ -1686,7 +1755,7 @@
 	.topbar-ctrls {
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: 10px;
 		flex-wrap: wrap;
 	}
 
@@ -1698,36 +1767,92 @@
 	.range-inline {
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
+		gap: 8px;
 		color: var(--text-secondary);
 		font-size: 11px;
 		font-weight: 700;
 	}
 
-	.range-inline small {
+	.range-label {
+		color: var(--text-muted);
+		font-size: 10px;
+		font-weight: 800;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+	}
+
+	.poll-label {
 		color: var(--text-muted);
 		font-size: 10px;
 		font-weight: 700;
+		padding: 2px 8px;
+		border: 1px dashed rgba(100, 116, 139, 0.32);
+		border-radius: 999px;
+		white-space: nowrap;
+	}
+
+	.ctrl-sep {
+		display: inline-block;
+		width: 1px;
+		height: 18px;
+		background: rgba(100, 116, 139, 0.32);
+		flex: 0 0 auto;
 	}
 
 	.status-chip {
-		padding: 2px 9px;
+		display: inline-flex;
+		align-items: center;
+		height: 22px;
+		padding: 0 10px;
 		border-radius: 999px;
 		background: rgba(52, 211, 153, 0.16);
 		color: #34d399;
 		font-weight: 800;
 		font-size: 10px;
+		letter-spacing: 0.04em;
 		border: 1px solid rgba(52, 211, 153, 0.25);
+		white-space: nowrap;
 	}
 
 	.status-chip.loading { background: rgba(96, 165, 250, 0.16); color: #60a5fa; border-color: rgba(96, 165, 250, 0.3); }
 	.status-chip.error { background: rgba(248, 113, 113, 0.18); color: #f87171; border-color: rgba(248, 113, 113, 0.35); }
 
-	.topbar-ctrls button {
+	.ctrl-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
 		height: 30px;
-		padding: 0 10px;
+		padding: 0 12px;
+		border: 1px solid rgba(100, 116, 139, 0.35);
+		border-radius: 8px;
+		background: rgba(15, 23, 42, 0.6);
+		color: var(--text-primary);
 		font-size: 12px;
-		font-weight: 750;
+		font-weight: 800;
+		letter-spacing: 0.02em;
+		cursor: pointer;
+		white-space: nowrap;
+		transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+	}
+
+	.ctrl-btn:hover {
+		border-color: rgba(48, 213, 200, 0.5);
+		background: rgba(48, 213, 200, 0.1);
+	}
+
+	.ctrl-btn.primary {
+		border-color: rgba(48, 213, 200, 0.45);
+		background: rgba(48, 213, 200, 0.16);
+		color: #30d5c8;
+	}
+
+	.ctrl-btn.primary:hover {
+		background: rgba(48, 213, 200, 0.26);
+		border-color: rgba(48, 213, 200, 0.7);
+	}
+
+	.ctrl-btn svg {
+		flex: 0 0 auto;
 	}
 
 	.kpi-gauge-row {
@@ -1839,6 +1964,191 @@
 		min-height: 0;
 		min-width: 0;
 		overflow: hidden;
+	}
+
+	.events-split {
+		display: grid;
+		grid-template-rows: minmax(0, 208px) minmax(0, 1fr);
+		gap: 8px;
+		min-height: 0;
+		height: 100%;
+	}
+
+	.load-top-panel,
+	.events-log-panel {
+		min-height: 0;
+		min-width: 0;
+		overflow: hidden;
+	}
+
+	.load-top-panel {
+		display: flex;
+	}
+
+	.events-log-panel {
+		display: flex;
+		min-height: 0;
+	}
+
+	.load-top-panel :global(.hot-panel) {
+		width: 100%;
+	}
+
+	.load-top-panel :global(.load-top-hero) {
+		padding: 8px 9px;
+		border: 1px solid rgba(248, 113, 113, 0.18);
+		border-radius: 12px;
+		background:
+			radial-gradient(circle at top left, rgba(248, 113, 113, 0.18), transparent 44%),
+			linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(15, 23, 42, 0.72));
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.03),
+			0 14px 30px rgba(2, 6, 23, 0.24);
+	}
+
+	.load-top-panel :global(.load-top-hero .hot-head) {
+		align-items: flex-start;
+		padding-bottom: 1px;
+	}
+
+	.load-top-panel :global(.load-top-hero .title) {
+		font-size: 13px;
+		font-weight: 900;
+		letter-spacing: 0.02em;
+	}
+
+	.load-top-panel :global(.load-top-hero .subtitle) {
+		max-width: 230px;
+		font-size: 9px;
+		line-height: 1.25;
+	}
+
+	.load-top-panel :global(.load-top-hero .hot-head > small) {
+		padding: 3px 7px;
+		border-radius: 999px;
+		background: rgba(15, 23, 42, 0.5);
+		border: 1px solid rgba(248, 113, 113, 0.22);
+		color: #f8b4bd;
+		font-size: 9px;
+		font-weight: 800;
+		white-space: nowrap;
+	}
+
+	.load-top-panel :global(.load-top-hero .hot-list) {
+		padding-right: 2px;
+		gap: 6px;
+	}
+
+	.load-top-panel :global(.load-top-hero .hot-item) {
+		grid-template-columns: 42px minmax(0, 1fr);
+		grid-template-rows: auto auto;
+		gap: 5px 9px;
+		padding: 9px 10px;
+		border-radius: 11px;
+		border-width: 1px;
+		background:
+			linear-gradient(180deg, rgba(15, 23, 42, 0.82), rgba(2, 6, 23, 0.52));
+		box-shadow: inset 3px 0 0 #94a3b8;
+		transition: transform 0.14s ease, border-color 0.14s ease, background-color 0.14s ease;
+	}
+
+	.load-top-panel :global(.load-top-hero .hot-item:hover) {
+		transform: translateY(-1px);
+		border-color: rgba(48, 213, 200, 0.45);
+		background: rgba(15, 23, 42, 0.82);
+	}
+
+	.load-top-panel :global(.load-top-hero .hot-item.running) { box-shadow: inset 3px 0 0 #34d399; }
+	.load-top-panel :global(.load-top-hero .hot-item.paused) { box-shadow: inset 3px 0 0 #fbbf24; }
+	.load-top-panel :global(.load-top-hero .hot-item.problem) { box-shadow: inset 3px 0 0 #f87171; }
+	.load-top-panel :global(.load-top-hero .hot-item.stopped) { box-shadow: inset 3px 0 0 #94a3b8; }
+
+	.load-top-panel :global(.load-top-hero .meta) {
+		grid-column: 2;
+		grid-row: 1;
+		gap: 8px;
+		align-items: center;
+	}
+
+	.load-top-panel :global(.load-top-hero .dot) {
+		width: 8px;
+		height: 8px;
+		box-shadow: 0 0 10px currentColor;
+	}
+
+	.load-top-panel :global(.load-top-hero .text b) {
+		font-size: 11px;
+		letter-spacing: 0.01em;
+	}
+
+	.load-top-panel :global(.load-top-hero .text small) {
+		font-size: 9px;
+	}
+
+	.load-top-panel :global(.load-top-hero .metrics) {
+		grid-column: 2;
+		grid-row: 2;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		align-items: center;
+		justify-content: start;
+		min-width: 0;
+	}
+
+	.load-top-panel :global(.load-top-hero .metrics em) {
+		padding: 3px 6px;
+		border-radius: 999px;
+		background: rgba(15, 23, 42, 0.74);
+		border: 1px solid rgba(100, 116, 139, 0.16);
+		font-size: 8px;
+		color: rgba(226, 232, 240, 0.88);
+		line-height: 1;
+	}
+
+	.load-top-panel :global(.load-top-hero .metrics em b) {
+		color: rgba(148, 163, 184, 0.88);
+		font-size: 7px;
+	}
+
+	.load-top-panel :global(.load-top-hero .rank-badge) {
+		grid-column: 1;
+		grid-row: 1 / span 2;
+		align-self: center;
+		justify-self: start;
+		min-width: 34px;
+		height: 34px;
+		padding: 0;
+		border-radius: 10px;
+		background: linear-gradient(180deg, rgba(248, 113, 113, 0.18), rgba(251, 191, 36, 0.1));
+		border: 1px solid rgba(248, 113, 113, 0.2);
+		color: #f8d7db;
+		font-size: 10px;
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+	}
+
+	.load-top-panel :global(.load-top-hero .hot-item:nth-child(1) .rank-badge) {
+		background: linear-gradient(180deg, rgba(251, 191, 36, 0.22), rgba(248, 113, 113, 0.1));
+		color: #f6e7b1;
+	}
+
+	.load-top-panel :global(.load-top-hero .hot-item:nth-child(2) .rank-badge) {
+		background: linear-gradient(180deg, rgba(226, 232, 240, 0.16), rgba(148, 163, 184, 0.14));
+		color: #d7dee8;
+	}
+
+	.load-top-panel :global(.load-top-hero .hot-item:nth-child(3) .rank-badge) {
+		background: linear-gradient(180deg, rgba(251, 146, 60, 0.18), rgba(248, 113, 113, 0.1));
+		color: #f7cfab;
+	}
+
+	.load-top-panel :global(.load-top-hero .empty) {
+		border-color: rgba(248, 113, 113, 0.2);
+		background: rgba(15, 23, 42, 0.35);
+	}
+
+	.events-log-panel :global(.events) {
+		width: 100%;
 	}
 
 	.panel {
@@ -2105,6 +2415,10 @@
 		.center {
 			grid-template-rows: auto;
 			overflow: visible;
+		}
+
+		.events-split {
+			grid-template-rows: auto auto;
 		}
 
 		.snapshot-grid {
