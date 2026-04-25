@@ -68,7 +68,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
-		padding: 2px 8px 2px 6px;
+		padding: 2px 7px 2px 6px;
 		border: 1px solid var(--chip-color, #64748b);
 		border-radius: 999px;
 		background: color-mix(in srgb, var(--chip-color, #64748b) 14%, rgba(13, 17, 23, 0.5));
@@ -76,6 +76,9 @@
 		font-size: 10px;
 		font-weight: 700;
 		cursor: pointer;
+		flex: 0 1 auto;
+		min-width: 0;
+		overflow: hidden;
 		transition: opacity 0.12s ease, transform 0.12s ease;
 	}
 

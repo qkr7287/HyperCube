@@ -24,7 +24,7 @@
 	import HotContainersList from '$lib/components/server2d/HotContainersList.svelte';
 	import StackSidebar from '$lib/components/server2d/StackSidebar.svelte';
 	import ContainersGridPanel from '$lib/components/server2d/ContainersGridPanel.svelte';
-	import StackNetworkMatrix from '$lib/components/server2d/StackNetworkMatrix.svelte';
+	import StackLegendChips from '$lib/components/server2d/StackLegendChips.svelte';
 	import DonutChart from '$lib/components/server2d/DonutChart.svelte';
 	import HealthRadialGauge from '$lib/components/server2d/HealthRadialGauge.svelte';
 	import ResourceRadarChart from '$lib/components/server2d/ResourceRadarChart.svelte';
@@ -291,28 +291,6 @@
 				}),
 			};
 		}),
-	);
-
-	let matrixStacks = $derived(
-		(stacks as any[]).map((stack: any) => ({
-			name: stack.name,
-			color: stack.color,
-			containers: stack.containers.map((container: any) => ({
-				id: container.id,
-				name: displayName(container),
-				stack: stack.name,
-				state: container.state,
-				networks: Array.from(new Set((container.networks ?? []) as string[])).filter(Boolean),
-				volumes: Array.from(
-					new Set(
-						((container.mounts ?? []) as any[])
-							.filter((mount) => mount?.type === 'volume' && mount?.name)
-							.map((mount) => String(mount.name)),
-					),
-				),
-				container,
-			})),
-		})),
 	);
 
 	let scatterPoints = $derived(
@@ -1340,7 +1318,7 @@
 						<div class="trend-chart">
 							<div class="chart-head">
 								<strong>CPU</strong>
-								<small class="chart-sub">{(stacks as any[]).length}개 스택 평균</small>
+								<StackLegendChips entries={cpuLegend} maxChips={3} />
 							</div>
 							<FleetLineChart
 								title={`CPU 평균 / ${rangeConfig.label}`}
@@ -1357,7 +1335,7 @@
 						<div class="trend-chart">
 							<div class="chart-head">
 								<strong>메모리</strong>
-								<small class="chart-sub">{(stacks as any[]).length}개 스택 평균</small>
+								<StackLegendChips entries={memoryLegend} maxChips={3} />
 							</div>
 							<FleetLineChart
 								title={`메모리 평균 / ${rangeConfig.label}`}
@@ -1374,7 +1352,7 @@
 						<div class="trend-chart">
 							<div class="chart-head">
 								<strong>트래픽</strong>
-								<small class="chart-sub">{(stacks as any[]).length}개 스택 평균</small>
+								<StackLegendChips entries={networkLegend} format={formatRate} maxChips={3} />
 							</div>
 							<FleetLineChart
 								title={`트래픽 평균 / ${rangeConfig.label}`}
@@ -1425,24 +1403,18 @@
 				<div class="bottom-grid">
 					<div class="panel scatter">
 						<div class="panel-head">
-							<div class="panel-title">산점도 <InfoTooltip text={`컨테이너 1개 = 점 1개\n\n• 가로축: 메모리 사용률\n• 세로축: CPU 사용률\n• 오른쪽 위 = 고부하 (HOT)\n• 점 크기 = 트래픽 양\n• 점 색깔 = 소속 스택`} placement="top-start" /></div>
-							<small>{scatterPoints.length}개 컨테이너</small>
+							<div class="panel-title">산점도 (컨테이너 부하 분포) <InfoTooltip text={`컨테이너 1개 = 점 1개\n\n• 가로축: 메모리 사용률\n• 세로축: CPU 사용률\n• 오른쪽 위 = 고부하 (HOT)\n• 점 크기 = 트래픽 양\n• 점 색깔 = 소속 스택`} placement="top-start" /></div>
+							<small>{scatterPoints.length}개 컨테이너 · 색 = 스택</small>
 						</div>
 						<div class="chart-host scatter-host">
 							<ServerScatterChart points={scatterPoints} soloStack={view.soloStack} />
 						</div>
 					</div>
 
-					<div class="panel matrix">
-						<StackNetworkMatrix
-							stacks={matrixStacks}
-							onSelectContainer={(container) => { selectedContainer = container; }}
-						/>
-					</div>
-
 					<div class="panel events">
 						<EventLogStrip
 							events={eventRows}
+							pageSize={6}
 							onSelect={(container) => { selectedContainer = container; }}
 						/>
 					</div>
@@ -1973,25 +1945,25 @@
 		display: grid;
 		grid-template-columns: auto minmax(0, 1fr);
 		align-items: center;
-		gap: 10px;
-		min-height: 22px;
+		gap: 8px;
+		min-height: 24px;
 		overflow: hidden;
 	}
 
 	.chart-head strong {
-		color: var(--text-primary);
-		font-size: 13px;
+		font-size: 12px;
 		font-weight: 900;
 		letter-spacing: 0.02em;
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
-		padding: 2px 9px;
+		padding: 2px 10px;
 		border-radius: 999px;
-		background: rgba(48, 213, 200, 0.12);
+		background: rgba(48, 213, 200, 0.14);
 		border: 1px solid rgba(48, 213, 200, 0.32);
 		color: #30d5c8;
 		flex: 0 0 auto;
+		white-space: nowrap;
 	}
 
 	.chart-head .muted,
@@ -2025,8 +1997,8 @@
 
 	.bottom-grid {
 		display: grid;
-		grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.3fr) minmax(0, 1.1fr);
-		gap: 8px;
+		grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.3fr);
+		gap: 10px;
 		min-height: 0;
 		overflow: hidden;
 	}
