@@ -1450,8 +1450,6 @@
 							<section class="events-log-panel">
 								<EventLogStrip
 									events={eventRows}
-									pageSize={4}
-									intervalMs={10000}
 									onSelect={(container) => { selectedContainer = container; }}
 								/>
 							</section>
@@ -1861,6 +1859,7 @@
 	.ctrl-btn svg {
 		flex: 0 0 auto;
 		display: block;
+		transform: translateY(1px);
 	}
 
 	.ctrl-btn span {

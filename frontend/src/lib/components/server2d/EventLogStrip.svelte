@@ -1,7 +1,5 @@
 <script lang="ts">
 	import InfoTooltip from '$lib/components/InfoTooltip.svelte';
-	import AutoSlideCarousel from './AutoSlideCarousel.svelte';
-	import { view } from '$lib/stores/server2d-view.svelte';
 
 	type EventRow = {
 		id: string;
@@ -16,13 +14,9 @@
 
 	let {
 		events = [] as EventRow[],
-		pageSize = 4,
-		intervalMs = 6000,
 		onSelect = (_container: any) => {},
 	}: {
 		events?: EventRow[];
-		pageSize?: number;
-		intervalMs?: number;
 		onSelect?: (container: any) => void;
 	} = $props();
 
@@ -46,7 +40,7 @@
 		<div class="title">
 			<i class="live"></i>
 			<span>실시간 이벤트</span>
-			<InfoTooltip text={`서버에서 지금 주의가 필요한 항목입니다.\n\n• 갱신 주기: WebSocket 실시간 (Agent 송출 즉시 반영)\n• 추이 범위(1m/5m/1h/24h/7d) 영향 없음\n\n• 장애 · 재시작 루프 → 경고 (빨강)\n• 일시정지 · 고부하 → 주의 (노랑)\n• 등급 위→아래 정렬\n• 카드 클릭 = 컨테이너 상세\n• 자동 순환`} placement="bottom-end" />
+			<InfoTooltip text={`서버에서 지금 주의가 필요한 항목입니다.\n\n• 갱신 주기: WebSocket 실시간 (Agent 송출 즉시 반영)\n• 추이 범위(1m/5m/1h/24h/7d) 영향 없음\n\n• 장애 · 재시작 루프 → 경고 (빨강)\n• 일시정지 · 고부하 → 주의 (노랑)\n• 등급 위→아래 정렬\n• 카드 클릭 = 컨테이너 상세\n• 많아지면 세로 스크롤`} placement="bottom-end" />
 		</div>
 		<small>{events.length}건</small>
 	</div>
@@ -57,38 +51,25 @@
 			<small>주의 항목 없음</small>
 		</div>
 	{:else}
-		<div class="body">
-			<AutoSlideCarousel
-				items={events}
-				pageSize={pageSize}
-				intervalMs={intervalMs}
-				userPaused={view.eventsPaused}
-				hideBar={true}
-				pauseLabel="이벤트 슬라이드"
-			>
-				{#snippet children(pageItems: EventRow[])}
-					<div class="list">
-						{#each pageItems as event (event.id)}
-							<button
-								type="button"
-								class={`row ${event.severity}`}
-								onclick={() => event.container && onSelect(event.container)}
-								disabled={!event.container}
-							>
-								<header>
-									<span class={`sev ${event.severity}`}>{severityLabel(event.severity)}</span>
-									<strong class="target" title={event.target}>{event.target}</strong>
-									<span class="time">{formatClock(event.at)}</span>
-								</header>
-								<p class="msg" title={`${event.stack} · ${event.message}`}>
-									<em class="stack-tag">{event.stack}</em>
-									<span>{event.message}</span>
-								</p>
-							</button>
-						{/each}
-					</div>
-				{/snippet}
-			</AutoSlideCarousel>
+		<div class="list">
+			{#each events as event (event.id)}
+				<button
+					type="button"
+					class={`row ${event.severity}`}
+					onclick={() => event.container && onSelect(event.container)}
+					disabled={!event.container}
+				>
+					<header>
+						<span class={`sev ${event.severity}`}>{severityLabel(event.severity)}</span>
+						<strong class="target" title={event.target}>{event.target}</strong>
+						<span class="time">{formatClock(event.at)}</span>
+					</header>
+					<p class="msg" title={`${event.stack} · ${event.message}`}>
+						<em class="stack-tag">{event.stack}</em>
+						<span>{event.message}</span>
+					</p>
+				</button>
+			{/each}
 		</div>
 	{/if}
 </section>
@@ -150,19 +131,23 @@
 		flex: 0 0 auto;
 	}
 
-	.body {
-		display: flex;
-		flex-direction: column;
-		min-height: 0;
-		overflow: hidden;
-	}
-
 	.list {
 		display: flex;
 		flex-direction: column;
 		gap: 5px;
 		min-height: 0;
-		align-content: flex-start;
+		flex: 1;
+		overflow-y: auto;
+		padding-right: 2px;
+	}
+
+	.list::-webkit-scrollbar {
+		width: 4px;
+	}
+
+	.list::-webkit-scrollbar-thumb {
+		background: rgba(148, 163, 184, 0.22);
+		border-radius: 2px;
 	}
 
 	.row {

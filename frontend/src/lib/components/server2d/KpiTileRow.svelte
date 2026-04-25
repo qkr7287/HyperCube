@@ -218,7 +218,7 @@
 
 	.text {
 		display: grid;
-		gap: 1px;
+		gap: 6px;
 		min-width: 0;
 		flex: 1;
 	}
