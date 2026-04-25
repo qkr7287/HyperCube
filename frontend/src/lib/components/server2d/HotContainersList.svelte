@@ -8,7 +8,7 @@
 		cpu: number;
 		memory: number;
 		network: number;
-		gpu?: number;
+		gpu?: number | null;
 		state: string;
 		container: any;
 	};
@@ -104,7 +104,7 @@
 				<div class="metrics-grid">
 					<em class="metric"><b>CPU</b><u>{row.cpu.toFixed(1)}%</u></em>
 					<em class="metric"><b>MEM</b><u>{row.memory.toFixed(1)}%</u></em>
-					<em class="metric" class:dim={!(row.gpu && row.gpu > 0)}><b>GPU</b><u>{row.gpu && row.gpu > 0 ? `${row.gpu.toFixed(1)}%` : '-'}</u></em>
+					<em class="metric" class:dim={typeof row.gpu !== 'number'}><b>GPU</b><u>{typeof row.gpu === 'number' ? `${row.gpu.toFixed(1)}%` : '—'}</u></em>
 					<em class="metric"><b>NET</b><u>{compactMetrics ? formatRateCompact(row.network) : formatRate(row.network)}</u></em>
 				</div>
 			</button>

@@ -19,7 +19,9 @@
 		cpu: number;
 		memory: number;
 		network: number;
-		gpu: number;
+		gpu: number | null;
+		gpuMemoryUsed?: number | null;
+		gpuMemoryTotal?: number | null;
 		container: any;
 	};
 
@@ -35,7 +37,9 @@
 			cpu: number;
 			memory: number;
 			network: number;
-			gpu?: number;
+			gpu?: number | null;
+			gpuMemoryUsed?: number | null;
+			gpuMemoryTotal?: number | null;
 			container: any;
 		}[];
 	};
@@ -127,11 +131,15 @@
 	});
 
 	function sortKey(card: ContainerCard, mode: Server2dContainerSort): number {
-		if (mode === 'gpu') return card.gpu;
+		if (mode === 'gpu') return typeof card.gpu === 'number' ? card.gpu : -1;
 		if (mode === 'memory') return card.memory;
 		if (mode === 'cpu') return card.cpu;
 		if (mode === 'network') return card.network;
 		return 0;
+	}
+
+	function isGpuNull(card: ContainerCard): boolean {
+		return card.gpu === null || card.gpu === undefined;
 	}
 
 	function stateClass(state: string): string {
@@ -190,14 +198,25 @@
 					cpu: cell.cpu,
 					memory: cell.memory,
 					network: cell.network,
-					gpu: Number(cell.gpu ?? 0),
+					gpu: cell.gpu === null || cell.gpu === undefined ? null : Number(cell.gpu),
+					gpuMemoryUsed: cell.gpuMemoryUsed ?? null,
+					gpuMemoryTotal: cell.gpuMemoryTotal ?? null,
 					container: cell.container,
 				});
 			}
 		}
 		if (containerSort !== 'default') {
 			const sign = containerSortDir === 'asc' ? 1 : -1;
-			out.sort((a, b) => sign * (sortKey(a, containerSort) - sortKey(b, containerSort)));
+			out.sort((a, b) => {
+				if (containerSort === 'gpu') {
+					const aNull = isGpuNull(a);
+					const bNull = isGpuNull(b);
+					if (aNull && !bNull) return 1;
+					if (!aNull && bNull) return -1;
+					if (aNull && bNull) return 0;
+				}
+				return sign * (sortKey(a, containerSort) - sortKey(b, containerSort));
+			});
 		}
 		return out;
 	});
@@ -211,7 +230,7 @@
 	}
 
 	const totalVisible = $derived(flatCards.length);
-	const hasGpuData = $derived(flatCards.some((card) => card.gpu > 0));
+	const hasGpuData = $derived(flatCards.some((card) => typeof card.gpu === 'number'));
 </script>
 
 <aside class="container-panel">
@@ -299,11 +318,13 @@
 							<small class={`state ${stateClass(cell.state)}`}>{stateLabel(cell.state)}</small>
 						</div>
 						<small class="stack-tag">{cell.stack}</small>
-						<div class="metrics" class:has-gpu={cell.gpu > 0}>
+						<div class="metrics" class:has-gpu={typeof cell.gpu === 'number'}>
 							<em class:hot={containerSort === 'cpu'}><b>CPU</b><u>{cell.cpu.toFixed(1)}%</u></em>
 							<em class:hot={containerSort === 'memory'}><b>MEM</b><u>{cell.memory.toFixed(1)}%</u></em>
-							{#if cell.gpu > 0 && containerSort !== 'network'}
-								<em class:hot={containerSort === 'gpu'}><b>GPU</b><u>{cell.gpu.toFixed(1)}%</u></em>
+							{#if containerSort === 'gpu'}
+								<em class="hot" class:dim={cell.gpu === null}><b>GPU</b><u>{cell.gpu === null ? '—' : `${(cell.gpu as number).toFixed(1)}%`}</u></em>
+							{:else if typeof cell.gpu === 'number' && cell.gpu > 0 && containerSort !== 'network'}
+								<em><b>GPU</b><u>{cell.gpu.toFixed(1)}%</u></em>
 							{:else}
 								<em class:hot={containerSort === 'network'}><b>NET</b><u>{formatRate(cell.network)}</u></em>
 							{/if}
@@ -595,6 +616,10 @@
 
 	.metrics em.hot u {
 		color: #30d5c8;
+	}
+
+	.metrics em.dim u {
+		color: var(--text-muted);
 	}
 
 	.metrics b {

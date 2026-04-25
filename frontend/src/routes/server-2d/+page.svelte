@@ -67,6 +67,10 @@
 		network_tx: number;
 		disk_read: number;
 		disk_write: number;
+		gpu_usage?: number | null;
+		gpu_memory_used?: number | null;
+		gpu_memory_total?: number | null;
+		gpu_source?: string | null;
 	};
 	type Row = {
 		container: any;
@@ -79,15 +83,20 @@
 		cpu: number;
 		memory: number;
 		network: number;
-		gpu: number;
+		gpu: number | null;
+		gpuMemoryUsed: number | null;
+		gpuMemoryTotal: number | null;
+		gpuSource: string | null;
 	};
 	type ContainerTrend = {
 		cpu: number[];
 		memory: number[];
 		network: number[];
+		gpu: number[];
 		cpuAvg: number;
 		memoryAvg: number;
 		networkAvg: number;
+		gpuAvg: number | null;
 		samples: number;
 	};
 	type StackTrend = {
@@ -95,6 +104,8 @@
 		memory: number[];
 		network: number[];
 		disk: number[];
+		gpu: number[];
+		gpuMeasured: boolean;
 		count: number;
 		running: number;
 	};
@@ -184,6 +195,9 @@
 				memory: metricMemory(metric),
 				network: metricNetwork(metric),
 				gpu: metricGpu(metric),
+				gpuMemoryUsed: metricGpuMemoryUsed(metric),
+				gpuMemoryTotal: metricGpuMemoryTotal(metric),
+				gpuSource: metricGpuSource(metric),
 			};
 		}),
 	);
@@ -253,14 +267,28 @@
 			};
 		}),
 	);
+	let stackGpuSeries = $derived(
+		(stacks as any[]).map((stack: any) => {
+			const trend = historyModel.stackMap.get(stack.name);
+			return {
+				label: stack.name,
+				values: trend?.gpu ?? Array.from({ length: historyModel.buckets.length }, () => 0),
+				color: stack.color,
+				hidden: trend ? !trend.gpuMeasured : true,
+			};
+		}),
+	);
+	let hasAnyGpu = $derived(stackGpuSeries.some((series: any) => !series.hidden));
 	let cpuTopNames = $derived(topNamesBySeries(stackCpuSeries));
 	let memoryTopNames = $derived(topNamesBySeries(stackMemorySeries));
 	let networkTopNames = $derived(topNamesBySeries(stackNetworkSeries));
 	let diskTopNames = $derived(topNamesBySeries(stackDiskSeries));
+	let gpuTopNames = $derived(topNamesBySeries(stackGpuSeries.filter((s: any) => !s.hidden)));
 	let cpuLegend = $derived(legendFromSeries(stackCpuSeries));
 	let memoryLegend = $derived(legendFromSeries(stackMemorySeries));
 	let networkLegend = $derived(legendFromSeries(stackNetworkSeries));
 	let diskLegend = $derived(legendFromSeries(stackDiskSeries));
+	let gpuLegend = $derived(legendFromSeries(stackGpuSeries.filter((s: any) => !s.hidden)));
 
 	let sidebarStacks = $derived(
 		(stacks as any[]).map((stack: any) => {
@@ -298,6 +326,7 @@
 				total: stack.stats.total,
 				containers: stackRows.map((row) => {
 					const trend = historyModel.containerMap.get(row.id);
+					const gpuTrend = trend?.gpuAvg;
 					return {
 						id: row.id,
 						name: row.name,
@@ -305,7 +334,9 @@
 						cpu: trend?.cpuAvg ?? row.cpu,
 						memory: trend?.memoryAvg ?? row.memory,
 						network: trend?.networkAvg ?? row.network,
-						gpu: row.gpu,
+						gpu: typeof gpuTrend === 'number' ? gpuTrend : row.gpu,
+						gpuMemoryUsed: row.gpuMemoryUsed,
+						gpuMemoryTotal: row.gpuMemoryTotal,
 						container: row.container,
 					};
 				}),
@@ -758,8 +789,30 @@
 		return Number(metric?.network?.rx_rate_bps ?? 0) + Number(metric?.network?.tx_rate_bps ?? 0);
 	}
 
-	function metricGpu(metric: any): number {
-		return Number(metric?.gpu?.usage ?? metric?.gpu_usage ?? 0);
+	function metricGpu(metric: any): number | null {
+		const raw = metric?.gpu?.usage ?? metric?.gpu_usage;
+		if (raw === null || raw === undefined) return null;
+		const value = Number(raw);
+		return Number.isFinite(value) ? value : null;
+	}
+
+	function metricGpuMemoryUsed(metric: any): number | null {
+		const raw = metric?.gpu?.memory_used;
+		if (raw === null || raw === undefined) return null;
+		const value = Number(raw);
+		return Number.isFinite(value) ? value : null;
+	}
+
+	function metricGpuMemoryTotal(metric: any): number | null {
+		const raw = metric?.gpu?.memory_total;
+		if (raw === null || raw === undefined) return null;
+		const value = Number(raw);
+		return Number.isFinite(value) ? value : null;
+	}
+
+	function metricGpuSource(metric: any): string | null {
+		const raw = metric?.gpu?.source;
+		return typeof raw === 'string' ? raw : null;
 	}
 
 	function displayName(container: any): string {
@@ -858,7 +911,7 @@
 			if (row.container.shortId) rowByHistoryId.set(row.container.shortId, row);
 		}
 
-		const perContainer = new Map<string, { row: Row; cpuBuckets: number[][]; memoryBuckets: number[][]; networkBuckets: number[][]; diskBuckets: number[][]; samples: number }>();
+		const perContainer = new Map<string, { row: Row; cpuBuckets: number[][]; memoryBuckets: number[][]; networkBuckets: number[][]; diskBuckets: number[][]; gpuBuckets: number[][]; gpuMeasured: boolean; samples: number }>();
 		for (const row of currentRows) {
 			perContainer.set(row.id, {
 				row,
@@ -866,6 +919,8 @@
 				memoryBuckets: Array.from({ length: buckets.length }, () => []),
 				networkBuckets: Array.from({ length: buckets.length }, () => []),
 				diskBuckets: Array.from({ length: buckets.length }, () => []),
+				gpuBuckets: Array.from({ length: buckets.length }, () => []),
+				gpuMeasured: false,
 				samples: 0,
 			});
 		}
@@ -896,12 +951,19 @@
 			entry.memoryBuckets[index].push(Number(item.memory_percent ?? 0));
 			entry.networkBuckets[index].push(networkRate);
 			entry.diskBuckets[index].push(diskRate);
+			if (item.gpu_usage !== null && item.gpu_usage !== undefined) {
+				const gpuValue = Number(item.gpu_usage);
+				if (Number.isFinite(gpuValue)) {
+					entry.gpuBuckets[index].push(gpuValue);
+					entry.gpuMeasured = true;
+				}
+			}
 			entry.samples += 1;
 			previousByContainer.set(item.container_id, { rx, tx, dr, dw, at: ts });
 		}
 
 		const containerMap = new Map<string, ContainerTrend>();
-		const stackTemp = new Map<string, { cpu: number[][]; memory: number[][]; network: number[][]; disk: number[][]; count: number; running: number }>();
+		const stackTemp = new Map<string, { cpu: number[][]; memory: number[][]; network: number[][]; disk: number[][]; gpu: number[][]; gpuMeasured: boolean; count: number; running: number }>();
 
 		for (const row of currentRows) {
 			const entry = perContainer.get(row.id);
@@ -909,17 +971,24 @@
 			const memorySeries = fillBuckets(entry?.memoryBuckets ?? [], row.memory);
 			const networkSeries = fillBuckets(entry?.networkBuckets ?? [], row.network);
 			const diskSeries = fillBuckets(entry?.diskBuckets ?? [], 0);
+			const liveGpu = typeof row.gpu === 'number' ? row.gpu : 0;
+			const hasLiveGpu = typeof row.gpu === 'number';
+			const gpuMeasured = (entry?.gpuMeasured ?? false) || hasLiveGpu;
+			const gpuSeries = gpuMeasured ? fillBuckets(entry?.gpuBuckets ?? [], liveGpu) : Array.from({ length: buckets.length }, () => 0);
 			const cpuAvg = avg(nonZero(cpuSeries, row.cpu));
 			const memoryAvg = avg(nonZero(memorySeries, row.memory));
 			const networkAvg = avg(nonZero(networkSeries, row.network));
+			const gpuAvg = gpuMeasured ? (avg(nonZero(gpuSeries, liveGpu)) || liveGpu) : null;
 
 			containerMap.set(row.id, {
 				cpu: cpuSeries,
 				memory: memorySeries,
 				network: networkSeries,
+				gpu: gpuSeries,
 				cpuAvg: cpuAvg || row.cpu,
 				memoryAvg: memoryAvg || row.memory,
 				networkAvg: networkAvg || row.network,
+				gpuAvg,
 				samples: entry?.samples ?? 0,
 			});
 
@@ -928,6 +997,8 @@
 				memory: Array.from({ length: buckets.length }, () => []),
 				network: Array.from({ length: buckets.length }, () => []),
 				disk: Array.from({ length: buckets.length }, () => []),
+				gpu: Array.from({ length: buckets.length }, () => []),
+				gpuMeasured: false,
 				count: 0,
 				running: 0,
 			};
@@ -936,7 +1007,9 @@
 				stackEntry.memory[index].push(memorySeries[index] || 0);
 				stackEntry.network[index].push(networkSeries[index] || 0);
 				stackEntry.disk[index].push(diskSeries[index] || 0);
+				if (gpuMeasured) stackEntry.gpu[index].push(gpuSeries[index] || 0);
 			}
+			if (gpuMeasured) stackEntry.gpuMeasured = true;
 			stackEntry.count += 1;
 			if (row.state === 'running') stackEntry.running += 1;
 			stackTemp.set(row.stack, stackEntry);
@@ -949,6 +1022,8 @@
 				memory: entry.memory.map((values) => avg(values)),
 				network: entry.network.map((values) => avg(values)),
 				disk: entry.disk.map((values) => avg(values)),
+				gpu: entry.gpuMeasured ? entry.gpu.map((values) => avg(values)) : Array.from({ length: buckets.length }, () => 0),
+				gpuMeasured: entry.gpuMeasured,
 				count: entry.count,
 				running: entry.running,
 			});
@@ -1411,20 +1486,31 @@
 						</div>
 						<div class="trend-chart">
 							<div class="chart-head">
-								<strong>디스크 I/O</strong>
-								<StackLegendChips entries={diskLegend} format={formatRateCompact} maxChips={3} />
+								<strong>GPU</strong>
+								{#if hasAnyGpu}
+									<StackLegendChips entries={gpuLegend} maxChips={3} />
+								{:else}
+									<small class="muted gpu-empty">GPU 데이터 없음</small>
+								{/if}
 							</div>
-							<FleetLineChart
-								title={`디스크 I/O / ${rangeConfig.label}`}
-								help="모든 스택의 디스크 읽기·쓰기 합계 평균."
-								labels={trendLabels}
-								unit="rate"
-								series={stackDiskSeries}
-								topNames={diskTopNames}
-								soloLabel={view.soloStack}
-								extraPlugins={[]}
-								rightPadding={0}
-							/>
+							{#if hasAnyGpu}
+								<FleetLineChart
+									title={`GPU 평균 / ${rangeConfig.label}`}
+									help="GPU usage 보고가 있는 컨테이너의 스택별 평균. usage=null(측정 불가)은 평균에서 제외."
+									labels={trendLabels}
+									unit="percent"
+									series={stackGpuSeries}
+									topNames={gpuTopNames}
+									soloLabel={view.soloStack}
+									extraPlugins={[]}
+									rightPadding={0}
+								/>
+							{:else}
+								<div class="gpu-empty-body">
+									<span>GPU usage 보고가 없습니다.</span>
+									<small>GPU 미장착 호스트이거나 컨테이너에서 GPU를 사용하지 않습니다.</small>
+								</div>
+							{/if}
 						</div>
 					</div>
 				</div>
@@ -2191,6 +2277,36 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		min-width: 0;
+	}
+
+	.gpu-empty {
+		justify-self: end;
+	}
+
+	.gpu-empty-body {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 4px;
+		min-height: 0;
+		padding: 12px;
+		border: 1px dashed rgba(100, 116, 139, 0.28);
+		border-radius: 8px;
+		background: rgba(15, 23, 42, 0.45);
+	}
+
+	.gpu-empty-body span {
+		color: var(--text-secondary);
+		font-size: 12px;
+		font-weight: 800;
+	}
+
+	.gpu-empty-body small {
+		color: var(--text-muted);
+		font-size: 10px;
+		font-weight: 700;
+		text-align: center;
 	}
 
 	.trend-chart :global(.chart) {
