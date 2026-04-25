@@ -16,11 +16,25 @@
 		rows = [] as HotRow[],
 		limit = 5,
 		variant = 'horizontal' as 'vertical' | 'horizontal',
+		title = '',
+		subtitle = '',
+		badge = '',
+		helperText = 'CPU · 메모리 · 트래픽 사용량을 합산해 가장 바쁜 컨테이너부터 정렬합니다. 클릭하면 상세 모달이 열립니다.',
+		panelClass = '',
+		showRank = false,
+		compactMetrics = false,
 		onSelect = (_container: any) => {},
 	}: {
 		rows?: HotRow[];
 		limit?: number;
 		variant?: 'vertical' | 'horizontal';
+		title?: string;
+		subtitle?: string;
+		badge?: string;
+		helperText?: string;
+		panelClass?: string;
+		showRank?: boolean;
+		compactMetrics?: boolean;
 		onSelect?: (container: any) => void;
 	} = $props();
 
@@ -43,73 +57,119 @@
 		return 'stopped';
 	}
 
+	function stateLabel(state: string): string {
+		if (state === 'running') return '실행';
+		if (state === 'paused') return '일시정지';
+		if (state === 'dead') return '장애';
+		if (state === 'restarting') return '재시작';
+		if (state === 'exited' || state === 'stopped') return '중지';
+		return state || '-';
+	}
+
+	function formatRateCompact(value: number): string {
+		if (!Number.isFinite(value) || value <= 0) return '0';
+		const units = ['B', 'K', 'M', 'G'];
+		let next = value;
+		let index = 0;
+		while (next >= 1024 && index < units.length - 1) {
+			next /= 1024;
+			index += 1;
+		}
+		return `${next.toFixed(next >= 100 ? 0 : next >= 10 ? 1 : 2)}${units[index]}`;
+	}
+
 	const top = $derived(rows.slice(0, limit));
 </script>
 
-<div class={`hot-panel ${variant}`}>
+<section class={`hot-panel ${variant} ${panelClass}`.trim()}>
 	<div class="hot-head">
-		<span class="title">Top {limit} 뜨거운 컨테이너 <InfoTooltip text="CPU · 메모리 · 트래픽 사용량을 합산해 가장 바쁜 컨테이너부터 정렬합니다. 클릭하면 상세 모달이 열립니다." placement={variant === 'horizontal' ? 'bottom-start' : 'bottom-end'} /></span>
-		<small>{rows.length}개 중 상위 {Math.min(limit, rows.length)}개</small>
+		<div class="title">
+			<i class="flame" aria-hidden="true">🔥</i>
+			<span class="title-text">{title || `Top ${limit} 뜨거운 컨테이너`}</span>
+			<InfoTooltip text={helperText} placement={variant === 'horizontal' ? 'bottom-start' : 'bottom-end'} />
+		</div>
+		<small>{badge || `${rows.length}개 중 상위 ${Math.min(limit, rows.length)}개`}</small>
 	</div>
 	<div class="hot-list">
-		{#each top as row (row.id)}
-			<button type="button" class={`hot-item ${stateClass(row.state)}`} onclick={() => onSelect(row.container)}>
-				<div class="meta">
-					<i class={`dot ${stateClass(row.state)}`}></i>
-					<div class="text">
-						<b>{row.name}</b>
-						<small>{row.stack}</small>
-					</div>
-				</div>
-				<div class="metrics">
-					<em><b>CPU</b>{row.cpu.toFixed(1)}%</em>
-					<em><b>MEM</b>{row.memory.toFixed(1)}%</em>
-					<em><b>NET</b>{formatRate(row.network)}</em>
-				</div>
+		{#each top as row, index (row.id)}
+			<button type="button" class={`row ${stateClass(row.state)}`} onclick={() => onSelect(row.container)}>
+				<header>
+					{#if showRank}
+						<span class={`rank rank-${index + 1}`}>#{index + 1}</span>
+					{/if}
+					<strong class="target" title={row.name}>{row.name}</strong>
+					<span class={`state-tag ${stateClass(row.state)}`}>{stateLabel(row.state)}</span>
+				</header>
+				<p class="msg" title={row.stack}>
+					<em class="stack-tag">{row.stack}</em>
+					<span class="metrics">
+						<b>CPU</b><u>{row.cpu.toFixed(1)}%</u>
+						<b>MEM</b><u>{row.memory.toFixed(1)}%</u>
+						<b>NET</b><u>{compactMetrics ? formatRateCompact(row.network) : formatRate(row.network)}</u>
+					</span>
+				</p>
 			</button>
 		{/each}
 		{#if top.length === 0}
 			<div class="empty">표시할 컨테이너가 없습니다.</div>
 		{/if}
 	</div>
-</div>
+</section>
 
 <style>
 	.hot-panel {
-		display: flex;
-		flex-direction: column;
-		gap: 5px;
+		display: grid;
+		grid-template-rows: auto minmax(0, 1fr);
+		gap: 6px;
 		min-height: 0;
 		min-width: 0;
+		height: 100%;
 	}
 
 	.hot-head {
 		display: flex;
 		justify-content: space-between;
-		align-items: baseline;
+		align-items: center;
 		gap: 8px;
+		min-height: 22px;
 	}
 
 	.title {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
 		color: var(--text-primary);
 		font-size: 12px;
 		font-weight: 850;
-		display: inline-flex;
-		align-items: center;
+		min-width: 0;
+		overflow: hidden;
+	}
+
+	.flame {
+		font-size: 12px;
+		line-height: 1;
+		flex: 0 0 auto;
+	}
+
+	.title-text {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.hot-head small {
 		color: var(--text-muted);
 		font-size: 10px;
-		font-weight: 700;
+		font-weight: 800;
+		flex: 0 0 auto;
 	}
 
-	.hot-panel.vertical .hot-list {
+	.hot-list {
 		display: flex;
 		flex-direction: column;
 		gap: 5px;
-		overflow-y: auto;
 		min-height: 0;
+		overflow-y: auto;
 		padding-right: 2px;
 	}
 
@@ -118,110 +178,156 @@
 		grid-auto-flow: column;
 		grid-auto-columns: minmax(0, 1fr);
 		gap: 6px;
-		min-height: 0;
+		overflow: visible;
 	}
 
 	.hot-list::-webkit-scrollbar {
-		width: 5px;
+		width: 4px;
 	}
 	.hot-list::-webkit-scrollbar-thumb {
-		background: rgba(148, 163, 184, 0.24);
-		border-radius: 3px;
+		background: rgba(148, 163, 184, 0.22);
+		border-radius: 2px;
 	}
 
-	.hot-item {
+	.row {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
-		align-items: center;
-		gap: 8px;
-		padding: 6px 8px;
-		border: 1px solid rgba(100, 116, 139, 0.16);
+		grid-template-rows: auto auto;
+		gap: 3px;
+		padding: 7px 10px 8px;
+		border: 1px solid rgba(100, 116, 139, 0.18);
 		border-left: 3px solid #94a3b8;
 		border-radius: 7px;
 		background: rgba(15, 23, 42, 0.55);
-		color: var(--text-primary);
 		text-align: left;
 		cursor: pointer;
 		min-width: 0;
-		transition: border-color 0.12s ease;
+		font-size: 11px;
+		color: var(--text-primary);
+		transition: border-color 0.12s ease, transform 0.12s ease, background-color 0.12s ease;
 	}
 
-	.hot-panel.horizontal .hot-item {
-		grid-template-columns: minmax(0, 1fr);
-		grid-template-rows: auto auto;
-		gap: 4px;
-	}
-
-	.hot-item:hover {
+	.row:hover {
 		border-color: rgba(48, 213, 200, 0.45);
+		transform: translateY(-1px);
 	}
 
-	.hot-item.running { border-left-color: #34d399; }
-	.hot-item.paused { border-left-color: #fbbf24; }
-	.hot-item.problem { border-left-color: #f87171; }
-	.hot-item.stopped { border-left-color: #94a3b8; }
+	.row.running { border-left-color: #34d399; background: rgba(52, 211, 153, 0.05); }
+	.row.paused { border-left-color: #fbbf24; background: rgba(251, 191, 36, 0.06); }
+	.row.problem { border-left-color: #f87171; background: rgba(248, 113, 113, 0.07); }
+	.row.stopped { border-left-color: #94a3b8; }
 
-	.meta {
-		display: flex;
-		align-items: center;
-		gap: 7px;
-		min-width: 0;
-	}
-
-	.dot {
-		width: 7px;
-		height: 7px;
-		border-radius: 50%;
-		flex: 0 0 auto;
-	}
-	.dot.running { background: #34d399; }
-	.dot.paused { background: #fbbf24; }
-	.dot.problem { background: #f87171; }
-	.dot.stopped { background: #94a3b8; }
-
-	.text {
+	.row header {
 		display: grid;
+		grid-template-columns: auto minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 6px;
 		min-width: 0;
 	}
 
-	.text b {
+	.rank {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 22px;
+		padding: 1px 6px;
+		border-radius: 999px;
+		font-size: 9px;
+		font-weight: 900;
+		letter-spacing: 0.04em;
+		flex: 0 0 auto;
+		line-height: 1;
+		background: rgba(248, 113, 113, 0.18);
+		color: #f87171;
+		border: 1px solid rgba(248, 113, 113, 0.32);
+	}
+
+	.rank-1 {
+		background: rgba(251, 191, 36, 0.22);
+		color: #fbbf24;
+		border-color: rgba(251, 191, 36, 0.45);
+	}
+	.rank-2 {
+		background: rgba(148, 163, 184, 0.18);
+		color: #cbd5e1;
+		border-color: rgba(148, 163, 184, 0.4);
+	}
+	.rank-3 {
+		background: rgba(217, 119, 6, 0.2);
+		color: #f59e0b;
+		border-color: rgba(217, 119, 6, 0.45);
+	}
+
+	.target {
+		color: var(--text-primary);
 		font-size: 11px;
 		font-weight: 800;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+		min-width: 0;
 	}
 
-	.text small {
-		color: var(--text-muted);
+	.state-tag {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 1px 6px;
+		border-radius: 999px;
 		font-size: 9px;
+		font-weight: 800;
+		flex: 0 0 auto;
+	}
+
+	.state-tag.running { background: rgba(52, 211, 153, 0.2); color: #34d399; }
+	.state-tag.paused { background: rgba(251, 191, 36, 0.22); color: #fbbf24; }
+	.state-tag.problem { background: rgba(248, 113, 113, 0.22); color: #f87171; }
+	.state-tag.stopped { background: rgba(148, 163, 184, 0.2); color: #94a3b8; }
+
+	.msg {
+		display: flex;
+		gap: 6px;
+		align-items: center;
+		margin: 0;
+		padding-left: 4px;
+		min-width: 0;
 		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+	}
+
+	.stack-tag {
+		font-style: normal;
+		color: #94a3b8;
+		font-size: 9px;
+		font-weight: 800;
+		background: rgba(2, 6, 23, 0.45);
+		padding: 1px 6px;
+		border-radius: 999px;
+		flex: 0 0 auto;
+		line-height: 1;
 	}
 
 	.metrics {
 		display: inline-flex;
-		gap: 3px;
-		flex-shrink: 0;
-	}
-
-	.metrics em {
-		font-style: normal;
-		display: inline-flex;
-		gap: 3px;
+		gap: 6px;
 		align-items: baseline;
-		padding: 2px 5px;
-		background: rgba(2, 6, 23, 0.5);
-		border-radius: 999px;
-		font-size: 9px;
-		color: var(--text-primary);
-		font-weight: 800;
+		color: var(--text-secondary);
+		font-size: 10px;
+		font-weight: 700;
+		min-width: 0;
+		overflow: hidden;
+		flex-wrap: nowrap;
+		white-space: nowrap;
 	}
 
-	.metrics em b {
+	.metrics b {
 		color: var(--text-muted);
-		font-size: 8px;
+		font-size: 9px;
+		font-weight: 800;
+		margin-right: 2px;
+	}
+
+	.metrics u {
+		text-decoration: none;
+		color: var(--text-primary);
 		font-weight: 800;
 	}
 
