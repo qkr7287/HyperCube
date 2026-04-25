@@ -191,6 +191,7 @@
 		const scales = chart.options.scales as any;
 		if (scales?.x) scales.x.max = xMax;
 		if (scales?.y) scales.y.max = yMax;
+		chart.resize();
 		chart.update('none');
 	}
 
@@ -212,14 +213,14 @@
 
 <style>
 	.bubble {
+		position: relative;
 		width: 100%;
 		height: 100%;
 		min-width: 0;
 		min-height: 0;
 	}
 
-	canvas {
-		width: 100% !important;
-		height: 100% !important;
+	.bubble canvas {
+		display: block;
 	}
 </style>
