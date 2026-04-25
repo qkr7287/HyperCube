@@ -46,6 +46,11 @@
 		goto(`${base}/`);
 	}
 
+	function open2d(agentId: string) {
+		if (browser) localStorage.setItem('hc_selected_server', agentId);
+		goto(`${base}/server-2d`);
+	}
+
 	$effect(() => {
 		const list = displayedAgents;
 		if (list.length === 0) {
@@ -108,11 +113,11 @@
 	/>
 
 	<div class="rotator-area">
-		<FleetCardRotator agents={displayedAgents} selectedId={selectedAgentId} {range} onSelect={selectAgent} onOpen3d={open3d} />
+		<FleetCardRotator agents={displayedAgents} selectedId={selectedAgentId} {range} onSelect={selectAgent} onOpen2d={open2d} onOpen3d={open3d} />
 	</div>
 
 	<div class="table-area">
-		<AgentHealthTable agents={displayedAgents} selectedId={selectedAgentId} onSelect={selectAgent} onOpen3d={open3d} />
+		<AgentHealthTable agents={displayedAgents} selectedId={selectedAgentId} onSelect={selectAgent} onOpen2d={open2d} onOpen3d={open3d} />
 	</div>
 </div>
 

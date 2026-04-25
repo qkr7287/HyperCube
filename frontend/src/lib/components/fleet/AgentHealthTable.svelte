@@ -10,11 +10,13 @@
 		agents = [],
 		selectedId = null,
 		onSelect,
+		onOpen2d,
 		onOpen3d,
 	}: {
 		agents?: FleetAgentRow[];
 		selectedId?: string | null;
 		onSelect: (agentId: string) => void;
+		onOpen2d?: (agentId: string) => void;
 		onOpen3d?: (agentId: string) => void;
 	} = $props();
 
@@ -94,6 +96,13 @@
 		event.stopPropagation();
 		event.stopImmediatePropagation?.();
 		onOpen3d?.(agentId);
+	}
+
+	function handleMonitor2d(event: MouseEvent, agentId: string) {
+		event.preventDefault();
+		event.stopPropagation();
+		event.stopImmediatePropagation?.();
+		onOpen2d?.(agentId);
 	}
 
 	function handleRowClick(event: MouseEvent, agentId: string) {
@@ -335,20 +344,36 @@
 								/>
 							</td>
 							<td class="c-action">
-								{#if onOpen3d}
-									{@const isSim = row.agent.id.startsWith('sim-')}
-									<button
-										type="button"
-										class="monitor-btn"
-										class:disabled={isSim}
-										disabled={isSim}
-										onclick={(e) => handleMonitor(e, row.agent.id)}
-										title={isSim ? '시뮬레이션 서버는 3D 뷰로 연결할 실제 토폴로지가 없습니다' : '3D 토폴로지 뷰에서 상세 모니터링'}
-									>
-										<span aria-hidden="true">◆</span>
-										<span>상세</span>
-									</button>
-								{/if}
+								<div class="action-group">
+									{#if onOpen2d}
+										{@const isSim2 = row.agent.id.startsWith('sim-')}
+										<button
+											type="button"
+											class="monitor-btn monitor-2d"
+											class:disabled={isSim2}
+											disabled={isSim2}
+											onclick={(e) => handleMonitor2d(e, row.agent.id)}
+											title={isSim2 ? '시뮬레이션 서버는 2D 뷰로 연결할 실제 데이터가 없습니다' : '2D 관제 대시보드에서 상세 모니터링'}
+										>
+											<span aria-hidden="true">▦</span>
+											<span>2D</span>
+										</button>
+									{/if}
+									{#if onOpen3d}
+										{@const isSim3 = row.agent.id.startsWith('sim-')}
+										<button
+											type="button"
+											class="monitor-btn"
+											class:disabled={isSim3}
+											disabled={isSim3}
+											onclick={(e) => handleMonitor(e, row.agent.id)}
+											title={isSim3 ? '시뮬레이션 서버는 3D 뷰로 연결할 실제 토폴로지가 없습니다' : '3D 토폴로지 뷰에서 상세 모니터링'}
+										>
+											<span aria-hidden="true">◆</span>
+											<span>3D</span>
+										</button>
+									{/if}
+								</div>
 							</td>
 						</tr>
 					{/each}
@@ -738,6 +763,23 @@
 	.monitor-btn:hover:not(.disabled) {
 		background: linear-gradient(rgba(48, 213, 200, 0.3), rgba(48, 213, 200, 0.3)), var(--bg-card);
 		border-color: rgba(48, 213, 200, 0.8);
+	}
+
+	.action-group {
+		display: inline-flex;
+		gap: 6px;
+		flex-wrap: nowrap;
+	}
+
+	.monitor-btn.monitor-2d {
+		border-color: rgba(96, 165, 250, 0.55);
+		background: linear-gradient(rgba(96, 165, 250, 0.18), rgba(96, 165, 250, 0.18)), var(--bg-card);
+		color: #60a5fa;
+	}
+
+	.monitor-btn.monitor-2d:hover:not(.disabled) {
+		background: linear-gradient(rgba(96, 165, 250, 0.3), rgba(96, 165, 250, 0.3)), var(--bg-card);
+		border-color: rgba(96, 165, 250, 0.8);
 	}
 	.monitor-btn.disabled,
 	.monitor-btn:disabled {

@@ -558,7 +558,7 @@
 			isLoggedIn = true;
 			currentUsername = decodeUsername(accessToken);
 			connectGlobal(accessToken);
-			await loadAgents();
+			goto(`${base}/admin/dashboard`);
 		} catch {
 			loginError = '서버에 연결할 수 없습니다.';
 		}
@@ -1275,6 +1275,11 @@
 		isLoggedIn = true;
 		currentUsername = decodeUsername(savedToken);
 		connectGlobal(savedToken);
+		const saved = localStorage.getItem('hc_selected_server');
+		if (!saved) {
+			goto(`${base}/admin/dashboard`);
+			return;
+		}
 		await loadAgents();
 	});
 
@@ -1305,23 +1310,9 @@
 	<div class="shell">
 		<AdminHeader totalAgents={agents.length} username={currentUsername} onLogout={doLogout} />
 		<main class="server-picker">
-			<h1>서버 선택</h1>
-			<p>이 화면은 한 번에 서버 하나를 깊게 보는 2D 관제 페이지입니다. 분석할 서버를 선택하세요.</p>
-			{#if agentsLoading}
-				<div class="empty-state">서버 목록을 불러오는 중입니다.</div>
-			{:else if agents.length === 0}
-				<div class="empty-state">연결된 서버가 없습니다.</div>
-			{:else}
-				<div class="server-grid">
-					{#each agents as agent (agent.id)}
-						<button type="button" class="server-card" onclick={() => selectServer(agent.id)}>
-							<strong>{agent.hostname}</strong>
-							<span>{agent.ip_address}</span>
-							<small>컨테이너 {agent.container_count ?? 0}개</small>
-						</button>
-					{/each}
-				</div>
-			{/if}
+			<h1>서버 선택 필요</h1>
+			<p>2D 관제 대시보드는 서버를 먼저 선택해야 열립니다. 전체 서버 모니터링에서 서버 카드의 2D 버튼을 눌러 진입하세요.</p>
+			<button type="button" class="empty-state" onclick={() => goto(`${base}/admin/dashboard`)}>전체 서버 모니터링으로 이동</button>
 		</main>
 	</div>
 {:else}

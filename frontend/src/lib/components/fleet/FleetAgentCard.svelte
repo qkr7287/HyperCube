@@ -10,6 +10,7 @@
 		selected = false,
 		range = '1h',
 		onSelect = () => {},
+		onOpen2d,
 		onOpen3d,
 	}: {
 		agent: FleetAgentRow;
@@ -17,6 +18,7 @@
 		selected?: boolean;
 		range?: '1m' | '5m' | '1h' | '24h' | '7d';
 		onSelect?: (agentId: string) => void;
+		onOpen2d?: (agentId: string) => void;
 		onOpen3d?: (agentId: string) => void;
 	} = $props();
 
@@ -195,6 +197,11 @@
 		onOpen3d?.(agent.agent.id);
 	}
 
+	function handleMonitor2d(event: MouseEvent) {
+		event.stopPropagation();
+		onOpen2d?.(agent.agent.id);
+	}
+
 	function handleCardClick() {
 		onSelect(agent.agent.id);
 	}
@@ -244,6 +251,20 @@
 			</span>
 		</div>
 		<div class="head-actions">
+			{#if onOpen2d}
+				{@const isSim = agent.agent.id.startsWith('sim-')}
+				<button
+					type="button"
+					class="monitor-btn monitor-2d"
+					class:disabled={isSim}
+					disabled={isSim}
+					onclick={handleMonitor2d}
+					title={isSim ? '시뮬레이션 서버는 2D 뷰로 연결할 실제 데이터가 없습니다' : '이 서버를 2D 관제 대시보드에서 상세 모니터링'}
+				>
+					<span aria-hidden="true">▦</span>
+					<span class="monitor-label">2D</span>
+				</button>
+			{/if}
 			{#if onOpen3d}
 				{@const isSim = agent.agent.id.startsWith('sim-')}
 				<button
@@ -255,7 +276,7 @@
 					title={isSim ? '시뮬레이션 서버는 3D 뷰로 연결할 실제 토폴로지가 없습니다' : '이 서버를 3D 토폴로지 뷰에서 상세 모니터링'}
 				>
 					<span aria-hidden="true">◆</span>
-					<span class="monitor-label">상세</span>
+					<span class="monitor-label">3D</span>
 				</button>
 			{/if}
 		</div>
@@ -737,6 +758,20 @@
 	.monitor-btn:hover:not(.disabled) {
 		background: linear-gradient(rgba(48, 213, 200, 0.3), rgba(48, 213, 200, 0.3)), var(--bg-card);
 		border-color: rgba(48, 213, 200, 0.8);
+	}
+	.monitor-btn.monitor-2d {
+		border-color: rgba(96, 165, 250, 0.55);
+		background: linear-gradient(rgba(96, 165, 250, 0.18), rgba(96, 165, 250, 0.18)), var(--bg-card);
+		color: #60a5fa;
+	}
+	.monitor-btn.monitor-2d:hover:not(.disabled) {
+		background: linear-gradient(rgba(96, 165, 250, 0.3), rgba(96, 165, 250, 0.3)), var(--bg-card);
+		border-color: rgba(96, 165, 250, 0.8);
+	}
+	.head-actions {
+		display: inline-flex;
+		gap: 5px;
+		flex-wrap: nowrap;
 	}
 	.monitor-btn.disabled,
 	.monitor-btn:disabled {

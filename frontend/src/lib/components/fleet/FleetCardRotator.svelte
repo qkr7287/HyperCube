@@ -8,12 +8,14 @@
 		selectedId = null,
 		range = '1h',
 		onSelect = () => {},
+		onOpen2d,
 		onOpen3d,
 	}: {
 		agents?: FleetAgentRow[];
 		selectedId?: string | null;
 		range?: '1m' | '5m' | '1h' | '24h' | '7d';
 		onSelect?: (agentId: string) => void;
+		onOpen2d?: (agentId: string) => void;
 		onOpen3d?: (agentId: string) => void;
 	} = $props();
 
@@ -192,6 +194,7 @@
 									selected={selectedId === agent.agent.id}
 									{range}
 									{onSelect}
+									{onOpen2d}
 									{onOpen3d}
 								/>
 							{/each}

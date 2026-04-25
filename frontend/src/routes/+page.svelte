@@ -327,7 +327,7 @@
 				return;
 			}
 			connectGlobal(accessToken);
-			await loadApprovedAgents();
+			goto(`${base}/admin/dashboard`);
 		} catch {
 			loginError = 'Connection failed';
 		}
@@ -436,6 +436,11 @@
 				isLoggedIn = true;
 				currentUsername = decodeUsername(accessToken);
 				connectGlobal(accessToken);
+				const saved = localStorage.getItem('hc_selected_server');
+				if (!saved) {
+					goto(`${base}/admin/dashboard`);
+					return;
+				}
 				await loadApprovedAgents();
 			}
 		}
@@ -501,30 +506,11 @@
 </div>
 {:else if !selectedServerId}
 <StatusToasts />
-<div class="select-header">
-	<AgentStatusBadge totalKnown={agents.length} />
-</div>
 <div class="auth-page">
 	<div class="server-select-card">
-		<h2 class="auth-title">Select Server</h2>
-		<p class="auth-subtitle">Monitor a connected server</p>
-		{#if agentsLoading}
-			<p class="auth-subtitle">Loading servers...</p>
-		{:else if agents.length === 0}
-			<p class="auth-subtitle">연결된 서버가 아직 없습니다. 서버에서 Agent를 실행하면 자동으로 등록됩니다.</p>
-		{:else}
-			<div class="server-list">
-				{#each agents as agent (agent.id)}
-					<button class="server-item" onclick={() => selectServer(agent.id)}>
-						<span class="server-hostname">{agent.hostname}</span>
-						<span class="server-ip">{agent.ip_address}</span>
-						<span class="server-badge">
-							{agent.container_count ?? 0} containers
-						</span>
-					</button>
-				{/each}
-			</div>
-		{/if}
+		<h2 class="auth-title">서버 선택 필요</h2>
+		<p class="auth-subtitle">3D 상세 모니터링은 서버를 먼저 선택해야 합니다.</p>
+		<button class="auth-btn" onclick={() => goto(`${base}/admin/dashboard`)}>전체 서버 모니터링으로 이동</button>
 		<button class="auth-btn-outline" onclick={doLogout}>Logout</button>
 	</div>
 </div>
