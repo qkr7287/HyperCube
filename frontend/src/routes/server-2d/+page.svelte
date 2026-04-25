@@ -29,7 +29,7 @@
 	import HealthRadialGauge from '$lib/components/server2d/HealthRadialGauge.svelte';
 	import ResourceRadarChart from '$lib/components/server2d/ResourceRadarChart.svelte';
 	import StackBubbleChart from '$lib/components/server2d/StackBubbleChart.svelte';
-	import EventLogStrip from '$lib/components/server2d/EventLogStrip.svelte';
+	import AlertTicker from '$lib/components/server2d/AlertTicker.svelte';
 	import { rightEdgeLabelsPlugin } from '$lib/charts/rightEdgeLabelsPlugin';
 	import { view, resetViewForServerChange } from '$lib/stores/server2d-view.svelte';
 	import { resolveGroup, groupContainersByStack } from '$lib/utils/container-grouping';
@@ -1400,23 +1400,13 @@
 					</div>
 				</div>
 
-				<div class="bottom-grid">
-					<div class="panel scatter">
-						<div class="panel-head">
-							<div class="panel-title">산점도 (컨테이너 부하 분포) <InfoTooltip text={`컨테이너 1개 = 점 1개\n\n• 가로축: 메모리 사용률\n• 세로축: CPU 사용률\n• 오른쪽 위 = 고부하 (HOT)\n• 점 크기 = 트래픽 양\n• 점 색깔 = 소속 스택`} placement="top-start" /></div>
-							<small>{scatterPoints.length}개 컨테이너 · 색 = 스택</small>
-						</div>
-						<div class="chart-host scatter-host">
-							<ServerScatterChart points={scatterPoints} soloStack={view.soloStack} />
-						</div>
+				<div class="panel scatter scatter-full">
+					<div class="panel-head">
+						<div class="panel-title">산점도 (컨테이너 부하 분포) <InfoTooltip text={`컨테이너 1개 = 점 1개\n\n• 가로축: 메모리 사용률\n• 세로축: CPU 사용률\n• 오른쪽 위 = 고부하 (HOT)\n• 점 크기 = 트래픽 양\n• 점 색깔 = 소속 스택`} placement="top-start" /></div>
+						<small>{scatterPoints.length}개 컨테이너 · 색 = 스택</small>
 					</div>
-
-					<div class="panel events">
-						<EventLogStrip
-							events={eventRows}
-							pageSize={6}
-							onSelect={(container) => { selectedContainer = container; }}
-						/>
+					<div class="chart-host scatter-host">
+						<ServerScatterChart points={scatterPoints} soloStack={view.soloStack} />
 					</div>
 				</div>
 			</section>
@@ -1428,6 +1418,13 @@
 				/>
 			</aside>
 		</main>
+
+		<section class="ticker-row">
+			<AlertTicker
+				events={eventRows}
+				onSelect={(container) => { selectedContainer = container; }}
+			/>
+		</section>
 	</div>
 {/if}
 
@@ -1713,9 +1710,14 @@
 		display: grid;
 		grid-template-columns: minmax(280px, 320px) minmax(0, 1fr) minmax(400px, 500px);
 		gap: 10px;
-		padding: 10px 14px 12px;
+		padding: 10px 14px 8px;
 		align-items: stretch;
 		overflow: hidden;
+	}
+
+	.ticker-row {
+		flex: 0 0 auto;
+		padding: 4px 14px 12px;
 	}
 
 	.panel {
@@ -1782,7 +1784,7 @@
 
 	.center {
 		display: grid;
-		grid-template-rows: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1.1fr);
+		grid-template-rows: minmax(0, 0.85fr) minmax(0, 1.55fr) minmax(0, 1fr);
 		gap: 8px;
 		min-width: 0;
 		min-height: 0;
@@ -1995,15 +1997,7 @@
 		flex: 1;
 	}
 
-	.bottom-grid {
-		display: grid;
-		grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.3fr);
-		gap: 10px;
-		min-height: 0;
-		overflow: hidden;
-	}
-
-	.bottom-grid > .panel {
+	.scatter-full {
 		min-height: 0;
 		overflow: hidden;
 	}
