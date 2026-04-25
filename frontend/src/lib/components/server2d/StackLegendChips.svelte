@@ -70,30 +70,34 @@
 <style>
 	.legend {
 		display: flex;
-		flex-wrap: nowrap;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 3px;
+		gap: 4px;
 		min-width: 0;
-		overflow: hidden;
 	}
 
 	.chip {
 		display: inline-flex;
 		align-items: center;
-		gap: 3px;
-		padding: 2px 6px 2px 5px;
+		gap: 4px;
+		padding: 3px 8px 3px 7px;
 		border: 1px solid var(--chip-color, #64748b);
 		border-radius: 999px;
 		background: color-mix(in srgb, var(--chip-color, #64748b) 14%, rgba(13, 17, 23, 0.5));
 		color: var(--text-primary);
-		font-size: 9px;
+		font-size: 10px;
 		font-weight: 700;
 		cursor: pointer;
 		flex: 0 1 auto;
 		min-width: 0;
 		overflow: hidden;
 		white-space: nowrap;
+		line-height: 1.2;
 		transition: opacity 0.12s ease, transform 0.12s ease;
+	}
+
+	.chip:hover {
+		filter: brightness(1.2);
 	}
 
 	.chip.active {
@@ -106,8 +110,8 @@
 	}
 
 	.dot {
-		width: 6px;
-		height: 6px;
+		width: 7px;
+		height: 7px;
 		border-radius: 50%;
 		background: var(--chip-color, #64748b);
 		box-shadow: 0 0 5px color-mix(in srgb, var(--chip-color, #64748b) 55%, transparent);
@@ -116,7 +120,7 @@
 
 	.chip b {
 		font-weight: 800;
-		max-width: 56px;
+		max-width: 110px;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -124,7 +128,7 @@
 
 	.chip small {
 		color: var(--text-muted);
-		font-size: 8px;
+		font-size: 9px;
 		font-weight: 800;
 		white-space: nowrap;
 		flex: 0 0 auto;

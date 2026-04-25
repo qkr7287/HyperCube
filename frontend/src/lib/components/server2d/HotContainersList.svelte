@@ -8,6 +8,7 @@
 		cpu: number;
 		memory: number;
 		network: number;
+		gpu?: number;
 		state: string;
 		container: any;
 	};
@@ -100,14 +101,15 @@
 					<strong class="target" title={row.name}>{row.name}</strong>
 					<span class={`state-tag ${stateClass(row.state)}`}>{stateLabel(row.state)}</span>
 				</header>
-				<p class="msg" title={row.stack}>
+				<div class="msg" title={row.stack}>
 					<em class="stack-tag">{row.stack}</em>
-					<span class="metrics">
-						<b>CPU</b><u>{row.cpu.toFixed(1)}%</u>
-						<b>MEM</b><u>{row.memory.toFixed(1)}%</u>
-						<b>NET</b><u>{compactMetrics ? formatRateCompact(row.network) : formatRate(row.network)}</u>
-					</span>
-				</p>
+				</div>
+				<div class="metrics-grid">
+					<em class="metric"><b>CPU</b><u>{row.cpu.toFixed(1)}%</u></em>
+					<em class="metric"><b>MEM</b><u>{row.memory.toFixed(1)}%</u></em>
+					<em class="metric" class:dim={!(row.gpu && row.gpu > 0)}><b>GPU</b><u>{row.gpu && row.gpu > 0 ? `${row.gpu.toFixed(1)}%` : '-'}</u></em>
+					<em class="metric"><b>NET</b><u>{compactMetrics ? formatRateCompact(row.network) : formatRate(row.network)}</u></em>
+				</div>
 			</button>
 		{/each}
 		{#if top.length === 0}
@@ -191,8 +193,8 @@
 
 	.row {
 		display: grid;
-		grid-template-rows: auto auto;
-		gap: 3px;
+		grid-template-rows: auto auto auto;
+		gap: 4px;
 		padding: 7px 10px 8px;
 		border: 1px solid rgba(100, 116, 139, 0.18);
 		border-left: 3px solid #94a3b8;
@@ -303,32 +305,61 @@
 		border-radius: 999px;
 		flex: 0 0 auto;
 		line-height: 1;
-	}
-
-	.metrics {
-		display: inline-flex;
-		gap: 6px;
-		align-items: baseline;
-		color: var(--text-secondary);
-		font-size: 10px;
-		font-weight: 700;
-		min-width: 0;
+		max-width: 100%;
 		overflow: hidden;
-		flex-wrap: nowrap;
+		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 
-	.metrics b {
-		color: var(--text-muted);
-		font-size: 9px;
-		font-weight: 800;
-		margin-right: 2px;
+	.metrics-grid {
+		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: 4px;
+		min-width: 0;
 	}
 
-	.metrics u {
+	.metric {
+		font-style: normal;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 1px;
+		padding: 4px 4px 5px;
+		border-radius: 5px;
+		background: rgba(2, 6, 23, 0.5);
+		min-width: 0;
+		overflow: hidden;
+		line-height: 1.05;
+	}
+
+	.metric b {
+		color: var(--text-muted);
+		font-size: 8px;
+		font-weight: 800;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		line-height: 1;
+	}
+
+	.metric u {
 		text-decoration: none;
 		color: var(--text-primary);
-		font-weight: 800;
+		font-size: 11px;
+		font-weight: 900;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		max-width: 100%;
+		line-height: 1.05;
+	}
+
+	.metric.dim {
+		opacity: 0.5;
+	}
+
+	.metric.dim u {
+		color: var(--text-muted);
 	}
 
 	.empty {

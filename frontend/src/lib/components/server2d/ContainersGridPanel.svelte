@@ -42,7 +42,7 @@
 
 	let {
 		stacks = [] as StackGroup[],
-		metricRotateMs = 18000,
+		metricRotateMs = 27000,
 		onSelectContainer = (_container: any) => {},
 	}: {
 		stacks?: StackGroup[];

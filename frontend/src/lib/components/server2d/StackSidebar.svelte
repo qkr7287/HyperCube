@@ -20,7 +20,7 @@
 		stacks = [] as StackItem[],
 		pageSize = 10,
 		intervalMs = 12000,
-		metricRotateMs = 18000,
+		metricRotateMs = 27000,
 	}: {
 		stacks?: StackItem[];
 		pageSize?: number;

@@ -2160,10 +2160,9 @@
 	.chart-head {
 		display: grid;
 		grid-template-columns: auto minmax(0, 1fr);
-		align-items: center;
+		align-items: start;
 		gap: 8px;
 		min-height: 24px;
-		overflow: hidden;
 	}
 
 	.chart-head strong {
@@ -2174,6 +2173,7 @@
 		align-items: center;
 		gap: 5px;
 		padding: 2px 10px;
+		margin-top: 2px;
 		border-radius: 999px;
 		background: rgba(48, 213, 200, 0.14);
 		border: 1px solid rgba(48, 213, 200, 0.32);
