@@ -34,9 +34,13 @@
 		showAxes?: boolean;
 	} = $props();
 
-	// Bucket = range 라벨 (1m 범위 = 1분 단위). buildTimeLabels는 현재 시각부터
-	// 거꾸로 bucket 크기씩 빼서 라벨을 만든다. fleet-store의 BUCKET_SECONDS와 반드시 일치.
-	const BUCKET_SEC: Record<RangeKey, number> = { '1m': 60, '5m': 300, '1h': 3600, '24h': 86400, '7d': 604800 };
+	// Bucket size in seconds — fleet-store의 BUCKET_SECONDS와 반드시 일치해야
+	// label 시점이 실제 데이터와 맞는다.
+	const BUCKET_SEC: Record<RangeKey, number> = { '1m': 5, '5m': 30, '1h': 300, '24h': 7200, '7d': 86400 };
+
+	function pad(n: number): string {
+		return String(n).padStart(2, '0');
+	}
 
 	function buildTimeLabels(count: number): string[] {
 		if (count === 0) return [];
@@ -48,25 +52,16 @@
 			const at = latestBucketStart - (count - 1 - i) * interval;
 			const d = new Date(at);
 			if (range === '7d') {
-				const mo = String(d.getMonth() + 1).padStart(2, '0');
-				const day = String(d.getDate()).padStart(2, '0');
-				labels.push(`${mo}/${day}`);
+				labels.push(`${pad(d.getMonth() + 1)}/${pad(d.getDate())}`);
 			} else if (range === '24h') {
-				const mo = String(d.getMonth() + 1).padStart(2, '0');
-				const day = String(d.getDate()).padStart(2, '0');
-				labels.push(`${mo}/${day}`);
+				// 2시간 bucket — 시점을 알 수 있도록 시각까지 표시
+				labels.push(`${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}시`);
 			} else if (range === '1h') {
-				const hh = String(d.getHours()).padStart(2, '0');
-				labels.push(`${hh}h`);
-			} else if (range === '5m') {
-				const hh = String(d.getHours()).padStart(2, '0');
-				const mm = String(d.getMinutes()).padStart(2, '0');
-				labels.push(`${hh}:${mm}`);
+				// 5분 bucket — HH:MM
+				labels.push(`${pad(d.getHours())}:${pad(d.getMinutes())}`);
 			} else {
-				// 1m
-				const hh = String(d.getHours()).padStart(2, '0');
-				const mm = String(d.getMinutes()).padStart(2, '0');
-				labels.push(`${hh}:${mm}`);
+				// 5m / 1m — HH:MM
+				labels.push(`${pad(d.getHours())}:${pad(d.getMinutes())}`);
 			}
 		}
 		return labels;
@@ -115,9 +110,11 @@
 			borderColor: item.color,
 			backgroundColor: ctx ? buildGradient(ctx, item.color) : `${item.color}30`,
 			borderWidth: 2,
-			pointRadius: 0,
-			pointHoverRadius: 0,
-			pointHitRadius: 8,
+			pointRadius: 2.5,
+			pointHoverRadius: 4.5,
+			pointBackgroundColor: item.color,
+			pointBorderColor: 'rgba(11, 15, 24, 0.9)',
+			pointBorderWidth: 1,
 			tension: 0.35,
 			fill: list.length === 1 ? 'origin' : false,
 			cubicInterpolationMode: 'monotone' as const,
