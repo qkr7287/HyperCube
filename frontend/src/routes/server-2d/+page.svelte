@@ -153,6 +153,7 @@
 
 	let accessToken = $state('');
 	let isLoggedIn = $state(false);
+	let redirecting = $state(false);
 	let currentUsername = $state('');
 	let loginUsername = $state('');
 	let loginPassword = $state('');
@@ -1268,18 +1269,20 @@
 		const savedToken = localStorage.getItem('hc_access_token');
 		if (!savedToken) return;
 		if (decodeRole(savedToken) === 'user') {
+			redirecting = true;
 			goto(`${base}/user`);
+			return;
+		}
+		const saved = localStorage.getItem('hc_selected_server');
+		if (!saved) {
+			redirecting = true;
+			goto(`${base}/admin/dashboard`);
 			return;
 		}
 		accessToken = savedToken;
 		isLoggedIn = true;
 		currentUsername = decodeUsername(savedToken);
 		connectGlobal(savedToken);
-		const saved = localStorage.getItem('hc_selected_server');
-		if (!saved) {
-			goto(`${base}/admin/dashboard`);
-			return;
-		}
 		await loadAgents();
 	});
 
@@ -1294,7 +1297,9 @@
 	<title>서버 2D 관제 - HyperCube</title>
 </svelte:head>
 
-{#if !isLoggedIn}
+{#if redirecting}
+	<!-- redirecting: render nothing to avoid a flash of the login or fallback UI -->
+{:else if !isLoggedIn}
 	<div class="auth-page">
 		<form class="auth-card" onsubmit={(event) => { event.preventDefault(); doLogin(); }}>
 			<img src={logoHypercube} alt="HyperCube" />

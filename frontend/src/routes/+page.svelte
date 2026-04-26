@@ -95,6 +95,7 @@
 	let loginPassword = '';
 	let loginError = '';
 	let agentsLoading = false;
+	let redirecting = false;
 
 	// Topology input — projected from live container state.
 	// Phase 3 will also feed networks / mounts once the Agent emits them.
@@ -429,18 +430,20 @@
 			const savedToken = localStorage.getItem('hc_access_token');
 			if (savedToken) {
 				if (decodeRole(savedToken) === 'user') {
+					redirecting = true;
 					goto(`${base}/user`);
+					return;
+				}
+				const saved = localStorage.getItem('hc_selected_server');
+				if (!saved) {
+					redirecting = true;
+					goto(`${base}/admin/dashboard`);
 					return;
 				}
 				accessToken = savedToken;
 				isLoggedIn = true;
 				currentUsername = decodeUsername(accessToken);
 				connectGlobal(accessToken);
-				const saved = localStorage.getItem('hc_selected_server');
-				if (!saved) {
-					goto(`${base}/admin/dashboard`);
-					return;
-				}
 				await loadApprovedAgents();
 			}
 		}
@@ -483,7 +486,9 @@
 
 <svelte:window on:keydown={handleGlobalKeydown} />
 
-{#if !isLoggedIn}
+{#if redirecting}
+<!-- redirecting: render nothing to avoid a flash of the login or fallback UI -->
+{:else if !isLoggedIn}
 <div class="auth-page">
 	<div class="auth-card">
 		<img class="auth-logo" src={logoHypercube} alt="HyperCube" />
