@@ -3,6 +3,7 @@
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
+	import InfoTooltip from '$lib/components/InfoTooltip.svelte';
 	import NewRequestModal from '$lib/components/NewRequestModal.svelte';
 	import {
 		formatDateTime,
@@ -32,6 +33,30 @@
 
 	const ACTIVE_STATUSES = new Set(['pending', 'approved', 'deploying']);
 	let pollTimer: ReturnType<typeof setInterval> | null = null;
+	const requestPageHelp = `이 페이지는 내가 요청한 컨테이너의 전체 진행 상황을 모아보는 곳입니다.
+
+• 새 요청 만들기: 새 컨테이너 생성 요청 시작
+• 카드 상태: 승인 대기 → 승인 완료 → 배포 중 → 배포 완료
+• 모니터링 열기: 배포가 끝난 뒤 상세 관제 화면으로 이동
+
+처음에는 빈 화면일 수 있으며, 요청을 만들면 목록이 자동으로 채워집니다.`;
+	const totalRequestsHelp = `지금까지 내가 제출한 전체 요청 수입니다.
+
+생성 요청과 삭제 요청이 모두 포함되며, 완료된 요청도 함께 집계됩니다.`;
+	const activeFlowHelp = `아직 처리가 끝나지 않은 요청 수입니다.
+
+여기에는 승인 대기, 승인 완료, 배포 중 상태가 포함됩니다.
+숫자가 0이 되면 현재 진행 중인 작업이 없다는 뜻입니다.`;
+	const readyToMonitorHelp = `배포가 끝나 바로 확인할 수 있는 컨테이너 수입니다.
+
+이 숫자에 포함된 항목은 카드 아래의 "모니터링 열기" 버튼으로 상세 화면에 들어갈 수 있습니다.`;
+	const requestCardHelp = `각 카드는 컨테이너 요청 1건을 뜻합니다.
+
+위쪽에는 이름, 요청 종류, 템플릿, 배치 서버가 보이고
+아래쪽에는 배포 진행률, 검토 메모, 생성 시각이 표시됩니다.`;
+	const reviewNoteHelp = `검토 메모는 관리자 또는 시스템이 남긴 안내입니다.
+
+반려 사유, 배포 중 참고사항, 확인이 필요한 설정이 적힐 수 있으니 먼저 읽어보는 것이 좋습니다.`;
 
 	function token(): string | null {
 		if (!browser) return null;
@@ -88,37 +113,54 @@
 <div class="page">
 	<section class="hero">
 		<div>
-			<p class="eyebrow">User Workspace</p>
-			<h1>Container Requests</h1>
-			<p class="subtitle">Track approvals, deployment progress, and jump into the monitoring dashboard when a container is ready.</p>
+			<p class="eyebrow">사용자 작업공간</p>
+			<div class="title-row">
+				<h1>컨테이너 요청 현황</h1>
+				<InfoTooltip
+					text={requestPageHelp}
+					label="요청 현황 페이지 도움말"
+					placement="bottom-start"
+					maxWidth={380}
+				/>
+			</div>
+			<p class="subtitle">승인부터 배포 완료까지 한눈에 확인하고, 준비된 컨테이너는 바로 모니터링 화면으로 열 수 있습니다.</p>
 		</div>
-		<button class="new-btn" onclick={() => (newModalOpen = true)}>New Request</button>
+		<button class="new-btn" onclick={() => (newModalOpen = true)}>새 요청 만들기</button>
 	</section>
 
 	<section class="summary-grid">
 		<div class="summary-card">
-			<span class="summary-label">Total Requests</span>
+			<span class="summary-label">
+				전체 요청
+				<InfoTooltip text={totalRequestsHelp} label="전체 요청 도움말" placement="bottom-start" />
+			</span>
 			<strong>{totalRequests}</strong>
-			<span class="summary-meta">All submitted items</span>
+			<span class="summary-meta">지금까지 제출한 모든 요청</span>
 		</div>
 		<div class="summary-card">
-			<span class="summary-label">Active Flow</span>
+			<span class="summary-label">
+				진행 중
+				<InfoTooltip text={activeFlowHelp} label="진행 중 도움말" placement="bottom-start" />
+			</span>
 			<strong>{activeRequests}</strong>
-			<span class="summary-meta">Pending, approved, or deploying</span>
+			<span class="summary-meta">승인 대기, 승인 완료, 배포 중</span>
 		</div>
 		<div class="summary-card">
-			<span class="summary-label">Ready To Monitor</span>
+			<span class="summary-label">
+				모니터링 가능
+				<InfoTooltip text={readyToMonitorHelp} label="모니터링 가능 도움말" placement="bottom-start" />
+			</span>
 			<strong>{deployedRequests}</strong>
-			<span class="summary-meta">Deployment completed</span>
+			<span class="summary-meta">배포가 완료된 항목</span>
 		</div>
 	</section>
 
 	{#if !loading && requests.length === 0}
 		<div class="empty">
-			<div class="empty-badge">No Requests Yet</div>
-			<div class="empty-title">You have not requested a container yet</div>
-			<p class="empty-text">Create your first request to start the approval and deployment flow.</p>
-			<button class="empty-btn" onclick={() => (newModalOpen = true)}>Create First Request</button>
+			<div class="empty-badge">아직 요청이 없습니다</div>
+			<div class="empty-title">아직 컨테이너를 요청하지 않았습니다</div>
+			<p class="empty-text">첫 요청을 만들면 승인과 배포 흐름이 여기에서 자동으로 보이기 시작합니다.</p>
+			<button class="empty-btn" onclick={() => (newModalOpen = true)}>첫 요청 만들기</button>
 		</div>
 	{:else}
 		<div class="cards">
@@ -127,11 +169,19 @@
 					<div class="card-main">
 						<div class="card-heading">
 							<div>
-								<div class="card-name">{request.custom_name || request.target_container_name || 'Untitled Container'}</div>
+								<div class="name-row">
+									<div class="card-name">{request.custom_name || request.target_container_name || '이름 없는 컨테이너'}</div>
+									<InfoTooltip
+										text={requestCardHelp}
+										label="요청 카드 도움말"
+										placement="bottom-start"
+										maxWidth={360}
+									/>
+								</div>
 								<div class="card-meta">
-									<span>{request.action === 'create' ? 'Create' : 'Delete'}</span>
-									<span>{request.template_name ?? 'No Template'}</span>
-									<span>{request.target_agent_hostname ?? 'No Host'}</span>
+									<span>{request.action === 'create' ? '생성 요청' : '삭제 요청'}</span>
+									<span>{request.template_name ?? '템플릿 없음'}</span>
+									<span>{request.target_agent_hostname ?? '배치 서버 없음'}</span>
 								</div>
 							</div>
 							<div class="card-status">
@@ -154,7 +204,10 @@
 
 						{#if request.review_note}
 							<div class="review-note">
-								<span class="review-label">Review Note</span>
+								<span class="review-label">
+									검토 메모
+									<InfoTooltip text={reviewNoteHelp} label="검토 메모 도움말" placement="bottom-start" />
+								</span>
 								<p>{request.review_note}</p>
 							</div>
 						{/if}
@@ -163,9 +216,9 @@
 					<div class="card-actions">
 						<span class="requested-at">{formatDateTime(request.created_at)}</span>
 						{#if request.status === 'deployed' && request.target_container}
-							<button class="monitor-btn" onclick={() => openDashboard(request)}>Open Monitoring</button>
+							<button class="monitor-btn" onclick={() => openDashboard(request)}>모니터링 열기</button>
 						{:else if request.status === 'deployed'}
-							<span class="pending-link">Waiting for container sync</span>
+							<span class="pending-link">컨테이너 동기화 대기 중</span>
 						{/if}
 					</div>
 				</div>
@@ -214,6 +267,15 @@
 		font-size: 28px;
 		line-height: 1.1;
 		margin-bottom: 8px;
+	}
+
+	.title-row,
+	.name-row,
+	.summary-label,
+	.review-label {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
 	}
 
 	.subtitle {
@@ -411,7 +473,6 @@
 	}
 
 	.review-label {
-		display: block;
 		font-size: 11px;
 		font-weight: 700;
 		color: var(--text-muted);

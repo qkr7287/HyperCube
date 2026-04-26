@@ -58,16 +58,16 @@
 				href={base + '/user'}
 				class="nav-link"
 				class:active={currentPath === `${base}/user` || currentPath === `${base}/user/`}
-			>Requests</a>
+			>요청 현황</a>
 			<a
 				href={base + '/user/containers'}
 				class="nav-link"
 				class:active={currentPath.startsWith(`${base}/user/containers`)}
-			>My Containers</a>
+			>내 컨테이너</a>
 		</nav>
 		<div class="right">
 			<span class="user-name">{username}</span>
-			<button class="logout-btn" onclick={doLogout}>Logout</button>
+			<button class="logout-btn" onclick={doLogout}>로그아웃</button>
 		</div>
 	</header>
 	<main class="user-body">
