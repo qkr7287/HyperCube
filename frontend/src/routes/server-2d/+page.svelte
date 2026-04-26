@@ -635,7 +635,7 @@
 			} catch {
 				liveAgents = [];
 			}
-			agents = [...liveAgents, DEMO_AGENT];
+			agents = liveAgents;
 			seedActiveAgents(liveAgents.map((agent: Agent) => agent.id));
 			const saved = browser ? localStorage.getItem('hc_selected_server') : '';
 			const preferred = selectedServerId && agents.some((agent) => agent.id === selectedServerId)
