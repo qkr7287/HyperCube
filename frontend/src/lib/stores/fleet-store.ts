@@ -187,17 +187,17 @@ export const lastFleetUpdate = writable<Date | null>(null);
 const BUCKET_SECONDS: Record<TimeRange, number> = {
 	'1m': 5,        // 5초 bucket → 1분 창에 12점
 	'5m': 30,       // 30초 bucket → 5분 창에 10점
-	'1h': 120,      // 2분 bucket → 1시간 창에 30점
-	'24h': 1800,    // 30분 bucket → 24시간 창에 48점
-	'7d': 14400,    // 4시간 bucket → 7일 창에 42점
+	'1h': 240,      // 4분 bucket → 1시간 창에 15점
+	'24h': 3600,    // 1시간 bucket → 24시간 창에 24점
+	'7d': 43200,    // 12시간 bucket → 7일 창에 14점
 };
 // 차트에 표시할 bucket 개수. BUCKET × POINTS = 표시 창(window).
 export const SPARKLINE_POINTS: Record<TimeRange, number> = {
 	'1m': 12,   // 1 min window
 	'5m': 10,   // 5 min window
-	'1h': 30,   // 1 h window
-	'24h': 48,  // 24 h window
-	'7d': 42,   // 7 d window
+	'1h': 15,   // 1 h window
+	'24h': 24,  // 24 h window
+	'7d': 14,   // 7 d window
 };
 // Backend retention에 맞춘 raw data 요청 범위. bucket × points 보다 조금 더 넉넉히.
 const API_RANGE: Record<TimeRange, string> = {
