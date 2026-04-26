@@ -3,6 +3,7 @@
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
+	import InfoTooltip from '$lib/components/InfoTooltip.svelte';
 	import {
 		formatDateTime,
 		formatRelativeTime,
@@ -26,6 +27,32 @@
 	let containers = $state<ContainerRow[]>([]);
 	let search = $state('');
 	let pollTimer: ReturnType<typeof setInterval> | null = null;
+	const containersPageHelp = `이 페이지는 내가 요청해서 실제로 만들어진 컨테이너만 모아보는 목록입니다.
+
+• 카드 클릭: 컨테이너 상세 모니터링 화면으로 이동
+• 검색창: 이름, 이미지, 서버 이름으로 빠르게 찾기
+• 상태 배지: 실행 중인지, 주의가 필요한지 바로 확인
+
+배포가 완료된 요청만 이 목록에 나타납니다.`;
+	const searchHelp = `검색창에서는 다음 정보를 한 번에 찾을 수 있습니다.
+
+• 컨테이너 이름
+• Docker 이미지 이름
+• 배치된 서버 이름
+• 요청에 사용한 템플릿 이름
+
+일부만 입력해도 포함된 항목이 바로 걸러집니다.`;
+	const summaryHelp = `오른쪽 숫자는 현재 보이는 전체 컨테이너 현황입니다.
+
+• 전체: 목록에 있는 모든 컨테이너 수
+• 실행 중: 정상 동작 중인 컨테이너 수
+• 주의 필요: 일시정지 또는 재시작 상태인 컨테이너 수`;
+	const cardStatusHelp = `카드에는 컨테이너의 핵심 정보가 요약되어 있습니다.
+
+• 서버: 어느 서버에 배치되었는지
+• 템플릿: 어떤 요청 템플릿으로 만들어졌는지
+• 요청 시각: 처음 요청한 시간
+• 최근 동기화: 상태 정보를 마지막으로 받은 시간`;
 
 	function token(): string | null {
 		if (!browser) return null;
@@ -84,30 +111,46 @@
 <div class="page">
 	<section class="page-header">
 		<div>
-			<p class="eyebrow">Container Fleet</p>
-			<h1>My Containers</h1>
-			<p class="subtitle">Only containers requested by the current user appear here. Open any card to see the 2D monitoring dashboard.</p>
+			<p class="eyebrow">컨테이너 목록</p>
+			<div class="title-row">
+				<h1>내 컨테이너</h1>
+				<InfoTooltip
+					text={containersPageHelp}
+					label="내 컨테이너 페이지 도움말"
+					placement="bottom-start"
+					maxWidth={380}
+				/>
+			</div>
+			<p class="subtitle">현재 사용자 계정으로 요청한 컨테이너만 표시되며, 카드를 누르면 2D 모니터링 대시보드로 이동합니다.</p>
 		</div>
 		<button class="refresh-btn" onclick={load} disabled={loading}>
-			{loading ? 'Refreshing...' : 'Refresh'}
+			{loading ? '새로고침 중...' : '새로고침'}
 		</button>
 	</section>
 
 	<section class="toolbar">
 		<div class="search-shell">
-			<input bind:value={search} type="text" placeholder="Search by name, image, or host" />
+			<div class="search-label">
+				<span>검색</span>
+				<InfoTooltip text={searchHelp} label="검색 도움말" placement="bottom-start" maxWidth={360} />
+			</div>
+			<input bind:value={search} type="text" placeholder="이름, 이미지, 서버 이름으로 검색" />
 		</div>
-		<div class="summary">
-			<span><strong>{totalCount}</strong> total</span>
-			<span><strong>{runningCount}</strong> running</span>
-			<span><strong>{warningCount}</strong> attention</span>
+		<div class="summary" aria-label="컨테이너 요약">
+			<span class="summary-title">
+				현황 요약
+				<InfoTooltip text={summaryHelp} label="현황 요약 도움말" placement="bottom-end" maxWidth={360} />
+			</span>
+			<span><strong>{totalCount}</strong> 전체</span>
+			<span><strong>{runningCount}</strong> 실행 중</span>
+			<span><strong>{warningCount}</strong> 주의 필요</span>
 		</div>
 	</section>
 
 	{#if !loading && filteredContainers.length === 0}
 		<div class="empty">
-			<div class="empty-title">No containers to show</div>
-			<p class="empty-text">Once a request is deployed, the container will appear here automatically.</p>
+			<div class="empty-title">표시할 컨테이너가 없습니다</div>
+			<p class="empty-text">요청이 배포 완료되면 이 목록에 컨테이너가 자동으로 나타납니다.</p>
 		</div>
 	{:else}
 		<div class="grid">
@@ -117,6 +160,12 @@
 						<div>
 							<div class="name-row">
 								<h2>{container.name}</h2>
+								<InfoTooltip
+									text={cardStatusHelp}
+									label="컨테이너 카드 도움말"
+									placement="bottom-start"
+									maxWidth={360}
+								/>
 								<span class="status-pill" style="background: {statusTone(container.status)};">
 									{statusLabel(container.status)}
 								</span>
@@ -128,26 +177,26 @@
 
 					<div class="meta-grid">
 						<div class="meta-item">
-							<span class="meta-label">Host</span>
+							<span class="meta-label">배치 서버</span>
 							<span class="meta-value">{container.agent_hostname ?? '-'}</span>
 						</div>
 						<div class="meta-item">
-							<span class="meta-label">Template</span>
+							<span class="meta-label">템플릿</span>
 							<span class="meta-value">{container.template_name ?? '-'}</span>
 						</div>
 						<div class="meta-item">
-							<span class="meta-label">Requested At</span>
+							<span class="meta-label">요청 시각</span>
 							<span class="meta-value">{formatDateTime(container.requested_at)}</span>
 						</div>
 						<div class="meta-item">
-							<span class="meta-label">Last Sync</span>
+							<span class="meta-label">최근 동기화</span>
 							<span class="meta-value">{formatDateTime(container.last_seen)}</span>
 						</div>
 					</div>
 
 					<div class="card-footer">
-						<span class="request-status">Request: {statusLabel(container.request_status)}</span>
-						<span class="open-link">Open dashboard</span>
+						<span class="request-status">요청 상태: {statusLabel(container.request_status)}</span>
+						<span class="open-link">대시보드 열기</span>
 					</div>
 				</button>
 			{/each}
@@ -188,6 +237,14 @@
 		margin-bottom: 8px;
 	}
 
+	.title-row,
+	.search-label,
+	.summary-title {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+	}
+
 	.subtitle {
 		font-size: 13px;
 		color: var(--text-secondary);
@@ -217,6 +274,13 @@
 		background: rgba(18, 23, 32, 0.94);
 	}
 
+	.search-label {
+		font-size: 11px;
+		font-weight: 700;
+		color: var(--text-secondary);
+		margin-bottom: 8px;
+	}
+
 	.search-shell input {
 		width: 100%;
 		border: none;
@@ -232,10 +296,18 @@
 
 	.summary {
 		display: flex;
+		align-items: center;
 		gap: 14px;
 		flex-wrap: wrap;
 		font-size: 12px;
 		color: var(--text-secondary);
+	}
+
+	.summary-title {
+		font-size: 11px;
+		font-weight: 700;
+		color: var(--text-muted);
+		margin-right: 2px;
 	}
 
 	.summary strong {

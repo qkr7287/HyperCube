@@ -3,7 +3,7 @@ import { formatBytes } from '$lib/utils/data-adapter';
 export function formatDateTime(value?: string | null): string {
 	if (!value) return '-';
 	try {
-		return new Date(value).toLocaleString();
+		return new Date(value).toLocaleString('ko-KR');
 	} catch {
 		return value;
 	}
@@ -12,11 +12,12 @@ export function formatDateTime(value?: string | null): string {
 export function formatRelativeTime(value?: string | null): string {
 	if (!value) return '-';
 	try {
-		const diff = Math.floor((Date.now() - new Date(value).getTime()) / 1000);
-		if (diff < 60) return `${diff}s ago`;
-		if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-		if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-		return `${Math.floor(diff / 86400)}d ago`;
+		const diff = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
+		if (diff < 10) return '방금 전';
+		if (diff < 60) return `${diff}초 전`;
+		if (diff < 3600) return `${Math.floor(diff / 60)}분 전`;
+		if (diff < 86400) return `${Math.floor(diff / 3600)}시간 전`;
+		return `${Math.floor(diff / 86400)}일 전`;
 	} catch {
 		return value;
 	}
@@ -24,19 +25,19 @@ export function formatRelativeTime(value?: string | null): string {
 
 export function statusLabel(status?: string | null): string {
 	return ({
-		running: 'Running',
-		stopped: 'Stopped',
-		paused: 'Paused',
-		exited: 'Exited',
-		created: 'Created',
-		restarting: 'Restarting',
-		dead: 'Dead',
-		pending: 'Pending',
-		approved: 'Approved',
-		deploying: 'Deploying',
-		deployed: 'Deployed',
-		failed: 'Failed',
-		rejected: 'Rejected',
+		running: '실행 중',
+		stopped: '중지됨',
+		paused: '일시정지',
+		exited: '종료됨',
+		created: '생성됨',
+		restarting: '재시작 중',
+		dead: '비정상 종료',
+		pending: '승인 대기',
+		approved: '승인 완료',
+		deploying: '배포 중',
+		deployed: '배포 완료',
+		failed: '실패',
+		rejected: '반려됨',
 	} as Record<string, string>)[status ?? ''] ?? (status || '-');
 }
 
