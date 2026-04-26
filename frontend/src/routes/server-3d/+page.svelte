@@ -587,7 +587,6 @@
 					<span class="dot"></span>
 					<span class="label">Volume</span>
 				</label>
-				<InfoTooltip text={"각 토글을 켜면 그 종류의 그룹이 토폴로지 위에 색깔 영역으로 떠오릅니다.\n\n• Stack — Docker Compose 프로젝트 단위 묶음\n• Network — 같은 docker network에 연결된 컨테이너 묶음\n• Volume — 같은 docker volume을 공유하는 컨테이너 묶음\n\n여러 개 동시에 켜서 어느 컨테이너가 어떤 그룹에 동시에 속해 있는지 한눈에 비교할 수 있습니다."} placement="bottom-end" />
 			</div>
 			<div class="topology-overlay topology-overlay-live">
 				<span class="live-dot"></span>
