@@ -1273,12 +1273,6 @@
 			goto(`${base}/user`);
 			return;
 		}
-		const saved = localStorage.getItem('hc_selected_server');
-		if (!saved) {
-			redirecting = true;
-			goto(`${base}/admin/dashboard`);
-			return;
-		}
 		accessToken = savedToken;
 		isLoggedIn = true;
 		currentUsername = decodeUsername(savedToken);

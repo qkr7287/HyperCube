@@ -359,13 +359,19 @@
 			agents = data.results ?? data ?? [];
 			seedActiveAgents(agents.map((a: any) => a.id));
 
-			if (agents.length === 1) {
-				selectServer(agents[0].id);
+			if (agents.length === 0) {
+				// nothing to select
 			} else if (browser) {
 				const saved = localStorage.getItem('hc_selected_server');
 				if (saved && agents.find((a: any) => a.id === saved)) {
 					selectServer(saved);
+				} else {
+					// no saved server (or saved id is gone) — fall back to the first agent
+					// so the 3D detail page is never empty when entered from the nav tab.
+					selectServer(agents[0].id);
 				}
+			} else if (agents.length >= 1) {
+				selectServer(agents[0].id);
 			}
 		} catch {
 			agents = [];
@@ -432,12 +438,6 @@
 				if (decodeRole(savedToken) === 'user') {
 					redirecting = true;
 					goto(`${base}/user`);
-					return;
-				}
-				const saved = localStorage.getItem('hc_selected_server');
-				if (!saved) {
-					redirecting = true;
-					goto(`${base}/admin/dashboard`);
 					return;
 				}
 				accessToken = savedToken;
