@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
 	import { page } from '$app/stores';
+	import InfoTooltip from '$lib/components/InfoTooltip.svelte';
 	import UserMetricChart from '$lib/components/UserMetricChart.svelte';
 	import {
 		formatBytesValue,
@@ -13,6 +14,48 @@
 		statusLabel,
 		statusTone,
 	} from '$lib/utils/container-dashboard';
+
+	const cpuHelp = `이 컨테이너가 실제로 사용 중인 CPU 사용률(%)입니다.
+
+여러 코어 환경이라도 0~100% 범위로 정규화돼 표시되므로, 100%에 가까울수록 컨테이너가 받은 CPU를 모두 쓰고 있다는 뜻입니다.
+
+값은 약 10초마다 자동 갱신됩니다.`;
+
+	const memoryHelp = `현재 메모리 사용량 / 컨테이너에 허용된 최대치입니다.
+
+옆의 비율(%)은 (사용량 ÷ 한도)이며, 100%에 가까울수록 OOM(메모리 부족) 위험이 커집니다.
+
+수치는 컨테이너 자체가 보고한 값으로, 호스트 전체 메모리와는 다릅니다.`;
+
+	const networkHelp = `컨테이너가 시작된 시점부터 누적된 네트워크 송수신량입니다.
+
+• RX: 외부에서 컨테이너로 들어온 누적 바이트
+• TX: 컨테이너에서 외부로 나간 누적 바이트
+
+순간 속도가 아닌 누적치라 시간이 지날수록 값은 점점 커집니다. 짧은 시간 동안의 변화량은 그래프 기울기로 확인할 수 있습니다.`;
+
+	const diskHelp = `컨테이너가 시작된 시점부터 누적된 디스크 읽기/쓰기 양입니다.
+
+• Read: 디스크에서 읽어 들인 누적 바이트
+• Write: 디스크에 기록한 누적 바이트
+
+순간 IOPS가 아닌 누적 바이트입니다. 마찬가지로 그래프 기울기가 가파를수록 그 시간대에 디스크 I/O가 많았다는 의미입니다.`;
+
+	const timeSeriesHelp = `선택한 기간(1H/6H/24H/7D)에 해당하는 메트릭 변화 추이입니다.
+
+• 1H: 최근 1시간 (가장 촘촘)
+• 6H/24H/7D: 더 긴 기간 (자동 보간)
+
+그래프 위에 마우스를 올리면 그 시각의 정확한 수치를 확인할 수 있습니다. y축 단위는 자동으로 데이터 범위에 맞춰 조정됩니다.`;
+
+	const runtimeHelp = `이 컨테이너가 어느 요청으로부터 만들어졌는지, 마지막 동기화는 언제 일어났는지 등을 보여주는 메타정보입니다.
+
+문제가 생겼을 때 운영자에게 Container ID나 Request ID를 함께 알려주면 빠르게 추적할 수 있습니다.`;
+
+	const configHelp = `요청 시점에 적용된 포트 매핑과 환경 변수입니다.
+
+• 포트 매핑: 외부에서 접속할 때 사용할 호스트 포트와 컨테이너 내부 포트의 연결
+• 환경 변수: 컨테이너가 실행될 때 주입된 값 (비밀번호 등 민감 값이 보일 수 있으니 화면 공유에 유의)`;
 
 	type ContainerDetail = {
 		container_id: string;
@@ -53,10 +96,12 @@
 	};
 
 	const RANGE_OPTIONS = [
-		{ key: '1h', label: '1H' },
-		{ key: '6h', label: '6H' },
-		{ key: '24h', label: '24H' },
-		{ key: '7d', label: '7D' },
+		{ key: '1m', label: '1분' },
+		{ key: '5m', label: '5분' },
+		{ key: '1h', label: '1시간' },
+		{ key: '6h', label: '6시간' },
+		{ key: '24h', label: '24시간' },
+		{ key: '7d', label: '7일' },
 	] as const;
 
 	let container = $state<ContainerDetail | null>(null);
@@ -131,7 +176,7 @@
 			await Promise.all(tasks);
 			history = normalizeHistory(history, currentMetrics);
 		} catch (error: any) {
-			errorMsg = error?.message || 'Could not load dashboard.';
+			errorMsg = error?.message || '대시보드를 불러오지 못했습니다.';
 		} finally {
 			loading = false;
 			refreshing = false;
@@ -153,7 +198,7 @@
 
 	let cpuDatasets = $derived([
 		{
-			label: 'CPU',
+			label: 'CPU 사용률',
 			color: '#30d5c8',
 			values: history.map((row) => row.cpu_usage),
 			fill: true,
@@ -162,7 +207,7 @@
 	]);
 	let memoryDatasets = $derived([
 		{
-			label: 'Memory',
+			label: '메모리 사용률',
 			color: '#4fc3f7',
 			values: history.map((row) => row.memory_percent),
 			fill: true,
@@ -171,13 +216,13 @@
 	]);
 	let networkDatasets = $derived([
 		{
-			label: 'RX',
+			label: '수신(RX)',
 			color: '#30d5c8',
 			values: history.map((row) => row.network_rx),
 			format: 'bytes' as const,
 		},
 		{
-			label: 'TX',
+			label: '송신(TX)',
 			color: '#f59e0b',
 			values: history.map((row) => row.network_tx),
 			format: 'bytes' as const,
@@ -185,13 +230,13 @@
 	]);
 	let diskDatasets = $derived([
 		{
-			label: 'Read',
+			label: '읽기(Read)',
 			color: '#38bdf8',
 			values: history.map((row) => row.disk_read),
 			format: 'bytes' as const,
 		},
 		{
-			label: 'Write',
+			label: '쓰기(Write)',
 			color: '#a78bfa',
 			values: history.map((row) => row.disk_write),
 			format: 'bytes' as const,
@@ -208,10 +253,10 @@
 </script>
 
 <div class="page">
-	<button class="back-link" onclick={() => goto(`${base}/user/containers`)}>Back to my containers</button>
+	<button class="back-link" onclick={() => goto(`${base}/user/containers`)}>← 내 컨테이너 목록으로</button>
 
 	{#if loading}
-		<div class="state-box">Loading dashboard...</div>
+		<div class="state-box">대시보드 불러오는 중...</div>
 	{:else if errorMsg}
 		<div class="state-box error">{errorMsg}</div>
 	{:else if container}
@@ -219,7 +264,7 @@
 			<div class="hero-left">
 				<div class="hero-title">
 					<div>
-						<p class="eyebrow">2D Monitoring Dashboard</p>
+						<p class="eyebrow">2D 모니터링 대시보드</p>
 						<h1>{container.name}</h1>
 					</div>
 					<span class="status-pill" style="background: {statusTone(container.status)};">
@@ -228,53 +273,53 @@
 				</div>
 				<p class="hero-subtitle">{container.selected_image || container.image}</p>
 				<div class="hero-meta">
-					<span>Host {container.agent_hostname ?? '-'}</span>
-					<span>Template {container.template_name ?? '-'}</span>
-					<span>Requested {formatDateTime(container.requested_at)}</span>
-					<span>Last sample {formatDateTime(currentMetrics?.timestamp || container.last_seen)}</span>
+					<span>호스트 {container.agent_hostname ?? '-'}</span>
+					<span>템플릿 {container.template_name ?? '-'}</span>
+					<span>요청 시각 {formatDateTime(container.requested_at)}</span>
+					<span>최근 샘플 {formatDateTime(currentMetrics?.timestamp || container.last_seen)}</span>
 				</div>
 			</div>
 			<div class="hero-actions">
 				<button class="refresh-btn" onclick={() => loadDashboard({ withDetail: true })} disabled={refreshing}>
-					{refreshing ? 'Refreshing...' : 'Refresh now'}
+					{refreshing ? '새로고침 중...' : '지금 새로고침'}
 				</button>
 			</div>
 		</section>
 
 		{#if container.status !== 'running'}
 			<div class="banner">
-				The container is currently <strong>{statusLabel(container.status)}</strong>. Live metrics may be missing or stale until it is running again.
+				컨테이너가 현재 <strong>{statusLabel(container.status)}</strong> 상태입니다. 다시 실행되기 전까지 실시간 메트릭이 비어 있거나 오래된 값일 수 있습니다.
 			</div>
 		{/if}
 
 		<section class="stat-grid">
 			<div class="stat-card">
-				<span class="stat-label">CPU Usage</span>
+				<span class="stat-label">CPU 사용률<InfoTooltip text={cpuHelp} placement="bottom-start" /></span>
 				<strong>{formatPercent(currentMetrics?.cpu?.usage, 2)}</strong>
-				<span class="stat-meta">Latest sample</span>
+				<span class="stat-meta">최근 샘플 기준</span>
 			</div>
 			<div class="stat-card">
-				<span class="stat-label">Memory Usage</span>
+				<span class="stat-label">메모리 사용량<InfoTooltip text={memoryHelp} placement="bottom-start" /></span>
 				<strong>{formatMemoryUsage(currentMetrics?.memory?.usage, currentMetrics?.memory?.limit)}</strong>
-				<span class="stat-meta">{formatPercent(currentMetrics?.memory?.percent, 2)} in use</span>
+				<span class="stat-meta">전체 대비 {formatPercent(currentMetrics?.memory?.percent, 2)} 사용 중</span>
 			</div>
 			<div class="stat-card">
-				<span class="stat-label">Network I/O</span>
+				<span class="stat-label">네트워크 누적<InfoTooltip text={networkHelp} placement="bottom-start" /></span>
 				<strong>{formatBytesValue(currentMetrics?.network?.rx)} / {formatBytesValue(currentMetrics?.network?.tx)}</strong>
-				<span class="stat-meta">RX / TX cumulative</span>
+				<span class="stat-meta">RX(수신) / TX(송신) 누적</span>
 			</div>
 			<div class="stat-card">
-				<span class="stat-label">Disk I/O</span>
+				<span class="stat-label">디스크 누적<InfoTooltip text={diskHelp} placement="bottom-start" /></span>
 				<strong>{formatBytesValue(currentMetrics?.disk?.read)} / {formatBytesValue(currentMetrics?.disk?.write)}</strong>
-				<span class="stat-meta">Read / Write cumulative</span>
+				<span class="stat-meta">Read(읽기) / Write(쓰기) 누적</span>
 			</div>
 		</section>
 
 		<section class="panel">
 			<div class="panel-header">
 				<div>
-					<h2>Time Series</h2>
-					<p>Track the core container metrics you need for day to day Docker monitoring.</p>
+					<h2>시계열 추이<InfoTooltip text={timeSeriesHelp} placement="bottom-start" /></h2>
+					<p>아래 4개 지표가 선택한 기간 동안 어떻게 변했는지 그래프로 보여줍니다.</p>
 				</div>
 				<div class="range-tabs">
 					{#each RANGE_OPTIONS as option}
@@ -290,29 +335,29 @@
 			<div class="chart-grid">
 				<div class="chart-card">
 					<div class="chart-head">
-						<h3>CPU Usage</h3>
-						<span>{formatPercent(currentMetrics?.cpu?.usage, 2)}</span>
+						<h3>CPU 사용률</h3>
+						<span>현재 {formatPercent(currentMetrics?.cpu?.usage, 2)}</span>
 					</div>
 					<UserMetricChart labels={historyLabels} datasets={cpuDatasets} yFormat="percent" />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
-						<h3>Memory Usage</h3>
-						<span>{formatPercent(currentMetrics?.memory?.percent, 2)}</span>
+						<h3>메모리 사용률</h3>
+						<span>현재 {formatPercent(currentMetrics?.memory?.percent, 2)}</span>
 					</div>
 					<UserMetricChart labels={historyLabels} datasets={memoryDatasets} yFormat="percent" />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
-						<h3>Network Traffic</h3>
-						<span>{formatBytesValue(currentMetrics?.network?.rx)} / {formatBytesValue(currentMetrics?.network?.tx)}</span>
+						<h3>네트워크 트래픽</h3>
+						<span>현재 누적 {formatBytesValue(currentMetrics?.network?.rx)} / {formatBytesValue(currentMetrics?.network?.tx)}</span>
 					</div>
 					<UserMetricChart labels={historyLabels} datasets={networkDatasets} yFormat="bytes" />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
-						<h3>Disk Throughput</h3>
-						<span>{formatBytesValue(currentMetrics?.disk?.read)} / {formatBytesValue(currentMetrics?.disk?.write)}</span>
+						<h3>디스크 처리량</h3>
+						<span>현재 누적 {formatBytesValue(currentMetrics?.disk?.read)} / {formatBytesValue(currentMetrics?.disk?.write)}</span>
 					</div>
 					<UserMetricChart labels={historyLabels} datasets={diskDatasets} yFormat="bytes" />
 				</div>
@@ -323,31 +368,31 @@
 			<div class="panel">
 				<div class="panel-header slim">
 					<div>
-						<h2>Runtime Details</h2>
-						<p>Deployment metadata for the current monitored container.</p>
+						<h2>런타임 정보<InfoTooltip text={runtimeHelp} placement="bottom-start" /></h2>
+						<p>이 컨테이너가 어느 요청에서 만들어졌고, 가장 최근에 언제 동기화됐는지를 보여줍니다.</p>
 					</div>
 				</div>
 				<div class="info-grid">
 					<div class="info-item">
-						<span class="info-label">Container ID</span>
+						<span class="info-label">컨테이너 ID</span>
 						<span class="info-value mono">{container.container_id}</span>
 					</div>
 					<div class="info-item">
-						<span class="info-label">Request ID</span>
+						<span class="info-label">요청 ID</span>
 						<span class="info-value mono">{container.request_id ?? '-'}</span>
 					</div>
 					<div class="info-item">
-						<span class="info-label">Request Status</span>
+						<span class="info-label">요청 상태</span>
 						<span class="info-value">{statusLabel(container.request_status)}</span>
 					</div>
 					<div class="info-item">
-						<span class="info-label">Last Container Sync</span>
+						<span class="info-label">최근 동기화</span>
 						<span class="info-value">{formatDateTime(container.last_seen)}</span>
 					</div>
 				</div>
 				{#if container.review_note}
 					<div class="note-box">
-						<span class="info-label">Review Note</span>
+						<span class="info-label">검토 메모</span>
 						<p>{container.review_note}</p>
 					</div>
 				{/if}
@@ -356,25 +401,25 @@
 			<div class="panel">
 				<div class="panel-header slim">
 					<div>
-						<h2>Config Snapshot</h2>
-						<p>Port mappings and environment variables captured at request time.</p>
+						<h2>요청 시 설정<InfoTooltip text={configHelp} placement="bottom-start" /></h2>
+						<p>요청을 만들 때 입력했던 포트 매핑과 환경 변수입니다.</p>
 					</div>
 				</div>
 				<div class="config-split">
 					<div class="config-card">
-						<span class="config-title">Port Mapping</span>
+						<span class="config-title">포트 매핑</span>
 						{#if portMappings.length > 0}
 							<div class="tag-list">
 								{#each portMappings as port}
-									<span class="tag">{port.host ?? '-'} to {port.container ?? '-'} {port.protocol ?? 'tcp'}</span>
+									<span class="tag">호스트 {port.host ?? '-'} → 컨테이너 {port.container ?? '-'} ({port.protocol ?? 'tcp'})</span>
 								{/each}
 							</div>
 						{:else}
-							<p class="config-empty">No custom port mapping was recorded.</p>
+							<p class="config-empty">별도로 지정한 포트 매핑이 없습니다.</p>
 						{/if}
 					</div>
 					<div class="config-card">
-						<span class="config-title">Environment Variables</span>
+						<span class="config-title">환경 변수</span>
 						{#if envEntries.length > 0}
 							<div class="env-list">
 								{#each envEntries as [key, value]}
@@ -385,7 +430,7 @@
 								{/each}
 							</div>
 						{:else}
-							<p class="config-empty">No extra environment variables were recorded.</p>
+							<p class="config-empty">추가로 입력한 환경 변수가 없습니다.</p>
 						{/if}
 					</div>
 				</div>
