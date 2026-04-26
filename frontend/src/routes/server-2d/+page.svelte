@@ -889,18 +889,30 @@
 		return Math.max(0, Math.min(100, value));
 	}
 
+	// Agent v3 contract: memoryUsed/memoryTotal (camelCase, bytes).
+	// Prod (Agent v2): memory_used/memory_total (snake_case, MiB) — fallback 시 bytes 로 환산.
 	function metricGpuMemoryUsed(metric: any): number | null {
-		const raw = metric?.gpu?.memory_used;
-		if (raw === null || raw === undefined) return null;
-		const value = Number(raw);
-		return Number.isFinite(value) ? value : null;
+		const camel = metric?.gpu?.memoryUsed;
+		if (camel !== null && camel !== undefined) {
+			const v = Number(camel);
+			return Number.isFinite(v) ? v : null;
+		}
+		const snake = metric?.gpu?.memory_used;
+		if (snake === null || snake === undefined) return null;
+		const v = Number(snake);
+		return Number.isFinite(v) ? v * 1024 * 1024 : null;  // MiB → bytes
 	}
 
 	function metricGpuMemoryTotal(metric: any): number | null {
-		const raw = metric?.gpu?.memory_total;
-		if (raw === null || raw === undefined) return null;
-		const value = Number(raw);
-		return Number.isFinite(value) ? value : null;
+		const camel = metric?.gpu?.memoryTotal;
+		if (camel !== null && camel !== undefined) {
+			const v = Number(camel);
+			return Number.isFinite(v) ? v : null;
+		}
+		const snake = metric?.gpu?.memory_total;
+		if (snake === null || snake === undefined) return null;
+		const v = Number(snake);
+		return Number.isFinite(v) ? v * 1024 * 1024 : null;  // MiB → bytes
 	}
 
 	function metricGpuSource(metric: any): string | null {
