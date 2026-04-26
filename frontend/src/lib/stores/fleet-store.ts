@@ -418,9 +418,10 @@ function buildRows(
 					disk: bucketsToSparkline(agentBuckets, rangeKey, (b) => b.disk_avg),
 					// GPU 는 system buckets 에 없어 0 fallback. agent series 의 gpu 도 동일.
 					gpu: bucketsToSparkline(agentBuckets, rangeKey, () => 0),
-					// rx/tx rate 는 max 값을 그대로 sparkline 으로. bytes/s 단위 absolute count.
-					rx: bucketsToSparkline(agentBuckets, rangeKey, (b) => b.network_rx_max),
-					tx: bucketsToSparkline(agentBuckets, rangeKey, (b) => b.network_tx_max),
+					// network_rx_max / tx_max 는 boot 이후 누적 바이트. sparkline 은 rate 이므로
+					// bucket 간 delta / bucket 길이로 변환.
+					rx: bucketsToRateSparkline(agentBuckets, rangeKey, (b) => b.network_rx_max),
+					tx: bucketsToRateSparkline(agentBuckets, rangeKey, (b) => b.network_tx_max),
 				},
 			};
 		})
@@ -615,12 +616,21 @@ function bucketSlots(rangeKey: TimeRange): number[] {
 
 function buildHistoryFromBuckets(rows: SystemBucketRow[], rangeKey: TimeRange): FleetHistoryPoint[] {
 	const slots = bucketSlots(rangeKey);
+	const bucketSec = BUCKET_SECONDS[rangeKey];
 	// Group rows by bucket_epoch — fleet-wide aggregation across agents.
 	const byBucket = new Map<number, SystemBucketRow[]>();
 	for (const r of rows) {
 		const arr = byBucket.get(r.bucket_epoch) ?? [];
 		arr.push(r);
 		byBucket.set(r.bucket_epoch, arr);
+	}
+	// Per-agent cumulative byte counters per bucket — fleet rate 는 agent 별 delta 합산.
+	// network_rx_max 는 boot 이후 누적이므로 같은 agent 의 직전 bucket 과 비교해야 의미.
+	const cumulativeByAgent = new Map<string, Map<number, { rx: number; tx: number }>>();
+	for (const r of rows) {
+		const m = cumulativeByAgent.get(r.agent) ?? new Map();
+		m.set(r.bucket_epoch, { rx: r.network_rx_max ?? 0, tx: r.network_tx_max ?? 0 });
+		cumulativeByAgent.set(r.agent, m);
 	}
 
 	const series: FleetHistoryPoint[] = [];
@@ -631,6 +641,18 @@ function buildHistoryFromBuckets(rows: SystemBucketRow[], rangeKey: TimeRange): 
 	const clampPct = (v: number) => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
 	for (let i = 0; i < slots.length; i += 1) {
 		const slot = slots[i];
+		const prevSlot = i > 0 ? slots[i - 1] : null;
+		// Sum rx/tx rate across all agents that have both this slot and previous slot data.
+		let rxRate = 0;
+		let txRate = 0;
+		if (prevSlot != null) {
+			for (const m of cumulativeByAgent.values()) {
+				const cur = m.get(slot);
+				const prev = m.get(prevSlot);
+				if (cur && prev && cur.rx >= prev.rx) rxRate += (cur.rx - prev.rx) / bucketSec;
+				if (cur && prev && cur.tx >= prev.tx) txRate += (cur.tx - prev.tx) / bucketSec;
+			}
+		}
 		const items = byBucket.get(slot);
 		if (items && items.length) {
 			const cpuAvg = clampPct(avg(items.map((it) => it.cpu_avg)));
@@ -639,6 +661,8 @@ function buildHistoryFromBuckets(rows: SystemBucketRow[], rangeKey: TimeRange): 
 			const memMax = clampPct(max(items.map((it) => it.memory_max)));
 			const diskAvg = clampPct(avg(items.map((it) => it.disk_avg)));
 			const diskMax = clampPct(max(items.map((it) => it.disk_max)));
+			// GPU 는 system_metrics 에 별도 컬럼이 없어 buckets 응답에도 없음 → 0.
+			// 정확한 fleet GPU trend 가 필요하면 backend 에 gpu_usage 컬럼 추가 후 buckets 에 포함시켜야 함.
 			const gpuAvg = 0;
 			const gpuMax = 0;
 			lastReal = { cpuAvg, cpuMax, memAvg, memMax, diskAvg, diskMax, gpuAvg, gpuMax, agents: items.length };
@@ -652,8 +676,8 @@ function buildHistoryFromBuckets(rows: SystemBucketRow[], rangeKey: TimeRange): 
 				memory_max: memMax,
 				disk_avg: diskAvg,
 				disk_max: diskMax,
-				network_rx_rate: 0,
-				network_tx_rate: 0,
+				network_rx_rate: rxRate,
+				network_tx_rate: txRate,
 				gpu_avg: gpuAvg,
 				gpu_max: gpuMax,
 			});
@@ -667,8 +691,8 @@ function buildHistoryFromBuckets(rows: SystemBucketRow[], rangeKey: TimeRange): 
 				memory_max: lastReal?.memMax ?? 0,
 				disk_avg: lastReal?.diskAvg ?? 0,
 				disk_max: lastReal?.diskMax ?? 0,
-				network_rx_rate: 0,
-				network_tx_rate: 0,
+				network_rx_rate: rxRate,
+				network_tx_rate: txRate,
 				gpu_avg: lastReal?.gpuAvg ?? 0,
 				gpu_max: lastReal?.gpuMax ?? 0,
 			});
@@ -1051,6 +1075,43 @@ function gpuSummary(gpu?: GpuMetric[] | null): {
  * 이어지는 streaming 효과의 핵심이다. 각 poll 마다 downsample로 재샘플링하면
  * 인덱스 ↔ 시각 정합이 깨져서 통째로 redraw되는 느낌이 남.
  */
+/**
+ * Cumulative counter buckets → rate sparkline.
+ *
+ * network_rx_max / tx_max 는 boot 이후 누적 바이트라 그대로 sparkline 에 넣으면
+ * 단조 증가 직선이 된다. bucket-to-bucket delta 를 bucket 길이로 나눠 평균 rate
+ * (B/s) 를 만든다. 첫 bucket 은 직전이 없으니 0.
+ */
+function bucketsToRateSparkline(
+	rows: SystemBucketRow[],
+	rangeKey: TimeRange,
+	cumulativeFn: (row: SystemBucketRow) => number,
+): number[] {
+	const bucketSec = BUCKET_SECONDS[rangeKey];
+	const points = SPARKLINE_POINTS[rangeKey];
+	const now = Math.floor(Date.now() / 1000);
+	const latestBucket = Math.floor(now / bucketSec) * bucketSec;
+	// slot index → cumulative bytes 매핑
+	const cumulative = new Array<number | null>(points).fill(null);
+	for (const r of rows) {
+		const offset = (latestBucket - r.bucket_epoch) / bucketSec;
+		const idx = points - 1 - offset;
+		if (idx < 0 || idx >= points) continue;
+		const v = cumulativeFn(r);
+		if (Number.isFinite(v)) cumulative[idx] = v;
+	}
+	// rate[i] = (cumulative[i] - cumulative[i-1]) / bucketSec. 둘 중 하나라도 null 이면 0.
+	const out = new Array(points).fill(0);
+	for (let i = 1; i < points; i += 1) {
+		const cur = cumulative[i];
+		const prev = cumulative[i - 1];
+		if (cur != null && prev != null && cur >= prev) {
+			out[i] = (cur - prev) / bucketSec;
+		}
+	}
+	return out;
+}
+
 /**
  * SystemBucketRow → fixed-length sparkline 배열.
  *
