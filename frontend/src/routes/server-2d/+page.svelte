@@ -791,16 +791,22 @@
 			}
 			if (!accessToken) return;
 
-			// backend가 bucket 단위로 미리 집계해서 보낸다 → frontend는 점들을
-			// 그대로 슬롯에 매핑하기만 하면 된다. raw row 페이징 불필요.
+			// backend가 bucket 단위로 미리 집계. frontend가 표시할 점 개수만큼의
+			// 시간 윈도우(bucket × points)를 from_time/to_time으로 명시.
+			// ?range=1m 만 보내면 backend가 최근 1분치만 필터해 점이 1개만 반환됨.
+			const windowMs = rangeConfig.bucketSeconds * rangeConfig.points * 1000;
+			const fromTime = new Date(anchor - windowMs).toISOString();
+			const toTime = new Date(anchor).toISOString();
 			const systemParams = new URLSearchParams({
 				agent: selectedServerId,
-				range: selectedRange,
+				from_time: fromTime,
+				to_time: toTime,
 				bucket: String(rangeConfig.bucketSeconds),
 			});
 			const containerParams = new URLSearchParams({
 				agent: selectedServerId,
-				range: selectedRange,
+				from_time: fromTime,
+				to_time: toTime,
 				bucket: String(rangeConfig.bucketSeconds),
 			});
 

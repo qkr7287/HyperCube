@@ -271,14 +271,20 @@ export async function refreshFleet() {
 
 	try {
 		const bucketSec = BUCKET_SECONDS[range];
+		const points = SPARKLINE_POINTS[range];
+		// bucket × points 만큼의 윈도우를 from_time/to_time으로 보내야 점이
+		// 충분히 채워진다. ?range=만 보내면 backend가 최근 한 bucket만 반환해
+		// 점이 1개로 평탄해진다.
+		const now = Date.now();
+		const fromTime = new Date(now - bucketSec * points * 1000).toISOString();
+		const toTime = new Date(now).toISOString();
 		const [agentsPayload, containersPayload, latestPayload, bucketsPayload] = await Promise.all([
 			api<{ results: AgentApiRow[] }>('/api/agents/?status=approved&page_size=200&ordering=hostname'),
 			api<{ results: ContainerApiRow[] }>('/api/containers/?page_size=1000&ordering=agent'),
 			// 카드의 "latest" 값(현재 CPU/메모리 % 등)은 raw row에서 가장 최근 1건으로 추출.
-			// agent별 한 행만 필요해서 수십~수백 row면 충분.
 			api<SystemMetricRow[]>(`/api/metrics/system/?limit=200&ordering=recorded_at`),
 			api<{ bucket_seconds: number; results: SystemBucketRow[] }>(
-				`/api/metrics/system/buckets/?range=${API_RANGE[range]}&bucket=${bucketSec}`,
+				`/api/metrics/system/buckets/?from_time=${encodeURIComponent(fromTime)}&to_time=${encodeURIComponent(toTime)}&bucket=${bucketSec}`,
 			),
 		]);
 
@@ -310,8 +316,12 @@ export async function loadSelectedAgent(agentId: string) {
 	selectedAgentId = agentId;
 	try {
 		const bucketSec = BUCKET_SECONDS[range];
+		const points = SPARKLINE_POINTS[range];
+		const now = Date.now();
+		const fromTime = new Date(now - bucketSec * points * 1000).toISOString();
+		const toTime = new Date(now).toISOString();
 		const payload = await api<{ bucket_seconds: number; results: SystemBucketRow[] }>(
-			`/api/metrics/system/buckets/?agent=${encodeURIComponent(agentId)}&range=${API_RANGE[range]}&bucket=${bucketSec}`,
+			`/api/metrics/system/buckets/?agent=${encodeURIComponent(agentId)}&from_time=${encodeURIComponent(fromTime)}&to_time=${encodeURIComponent(toTime)}&bucket=${bucketSec}`,
 		);
 		const buckets = payload?.results ?? [];
 		const history: AgentHistoryPoint[] = buckets.map((b) => ({
