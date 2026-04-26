@@ -182,24 +182,22 @@ export const fleetError = writable('');
 export const fleetConnected = writable(false);
 export const lastFleetUpdate = writable<Date | null>(null);
 
-// Bucket size == the range label (user-facing). "1m 범위 = 1분 단위 버킷".
-// Chart displays SPARKLINE_POINTS buckets wide, so the actual time window
-// visible is BUCKET_SECONDS × SPARKLINE_POINTS.
+// Bucket size — sparkline 점 개수가 너무 적어지지 않도록 range 별로 더 잘게 자른다.
+// BUCKET × POINTS ≈ 해당 range의 실제 표시 창(window).
 const BUCKET_SECONDS: Record<TimeRange, number> = {
-	'1m': 60,       // 1분 bucket
-	'5m': 300,      // 5분 bucket
-	'1h': 3600,     // 1시간 bucket
-	'24h': 86400,   // 1일 bucket
-	'7d': 604800,   // 1주 bucket
+	'1m': 5,        // 5초 bucket → 1분 창에 12점
+	'5m': 30,       // 30초 bucket → 5분 창에 10점
+	'1h': 120,      // 2분 bucket → 1시간 창에 30점
+	'24h': 1800,    // 30분 bucket → 24시간 창에 48점
+	'7d': 14400,    // 4시간 bucket → 7일 창에 42점
 };
 // 차트에 표시할 bucket 개수. BUCKET × POINTS = 표시 창(window).
-// ex) 1m × 30 = 30분 창, 1h × 24 = 24시간 창.
 export const SPARKLINE_POINTS: Record<TimeRange, number> = {
-	'1m': 30,   // 30 min window
-	'5m': 24,   // 2 h window
-	'1h': 24,   // 24 h window
-	'24h': 7,   // 7 days (backend 최대치)
-	'7d': 4,    // 4 weeks (실제로는 retention 기간에 따라 축소될 수 있음)
+	'1m': 12,   // 1 min window
+	'5m': 10,   // 5 min window
+	'1h': 30,   // 1 h window
+	'24h': 48,  // 24 h window
+	'7d': 42,   // 7 d window
 };
 // Backend retention에 맞춘 raw data 요청 범위. bucket × points 보다 조금 더 넉넉히.
 const API_RANGE: Record<TimeRange, string> = {
