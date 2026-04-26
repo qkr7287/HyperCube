@@ -71,19 +71,19 @@
 <style>
 	.rack-panel {
 		position: absolute;
-		top: 80px;
+		top: 56px;
 		right: 24px;
 		z-index: 10;
 		width: 208px;
-		background: var(--bg-card);
+		background: rgba(13, 17, 23, 0.55);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-md);
-		padding: 20px;
+		padding: 14px 16px;
 		display: flex;
 		flex-direction: column;
-		gap: 16px;
-		backdrop-filter: blur(12px);
-		-webkit-backdrop-filter: blur(12px);
+		gap: 14px;
+		backdrop-filter: blur(6px);
+		-webkit-backdrop-filter: blur(6px);
 		box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
 	}
 
