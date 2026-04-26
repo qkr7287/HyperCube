@@ -39,6 +39,7 @@
 		background: var(--bg-card);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-md);
+		flex: 0 0 auto;
 	}
 	button {
 		min-width: 50px;

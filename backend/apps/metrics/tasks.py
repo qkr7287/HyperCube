@@ -157,12 +157,12 @@ def _collect_container_metrics(r, agent):
         if usage_norm is not None:
             usage_norm = max(0.0, min(100.0, usage_norm))
 
-        records.append(ContainerMetricsHistory(
+        # Build kwargs and include the new normalization fields only when the
+        # model supports them (i.e. migration 0002 has been applied).
+        kwargs = dict(
             agent=agent,
             container_id=body.get("containerId", ""),
             cpu_usage=usage_norm,
-            cpu_usage_raw=usage_raw,
-            cpu_cores_quota=cores_quota_f,
             memory_usage=_as_int(memory.get("usage")),
             memory_limit=_as_int(memory.get("limit")),
             memory_percent=_as_float(memory.get("percent")),
@@ -172,7 +172,13 @@ def _collect_container_metrics(r, agent):
             disk_write=_as_int(disk.get("write")),
             raw_data=body,
             recorded_at=_parse_timestamp(payload.get("timestamp")),
-        ))
+        )
+        field_names = {f.name for f in ContainerMetricsHistory._meta.get_fields()}
+        if "cpu_usage_raw" in field_names:
+            kwargs["cpu_usage_raw"] = usage_raw
+        if "cpu_cores_quota" in field_names:
+            kwargs["cpu_cores_quota"] = cores_quota_f
+        records.append(ContainerMetricsHistory(**kwargs))
 
     return records
 

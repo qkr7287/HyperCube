@@ -1973,7 +1973,9 @@
 	.status-chip {
 		display: inline-flex;
 		align-items: center;
+		justify-content: center;
 		height: 24px;
+		min-width: 90px;
 		padding: 0 10px;
 		border-radius: 999px;
 		background: rgba(52, 211, 153, 0.16);
@@ -1984,6 +1986,7 @@
 		letter-spacing: 0.04em;
 		border: 1px solid rgba(52, 211, 153, 0.25);
 		white-space: nowrap;
+		flex: 0 0 auto;
 	}
 
 	.status-chip.loading { background: rgba(96, 165, 250, 0.16); color: #60a5fa; border-color: rgba(96, 165, 250, 0.3); }

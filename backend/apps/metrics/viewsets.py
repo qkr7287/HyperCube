@@ -266,24 +266,35 @@ class ContainerMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet
             (bucket_sec, bucket_sec),
             output_field=IntegerField(),
         )
-        rows = (
-            qs.annotate(bucket_epoch=bucket_expr)
-            .values("agent_id", "container_id", "bucket_epoch")
-            .annotate(
-                cpu_avg=Avg("cpu_usage"),
-                cpu_max=Max("cpu_usage"),
+        # New columns (cpu_usage_raw / cpu_cores_quota) only exist after the
+        # 0002 migration runs. Detect dynamically so this endpoint stays
+        # functional on environments that have not migrated yet.
+        field_names = {f.name for f in ContainerMetricsHistory._meta.get_fields()}
+        has_raw_cols = {"cpu_usage_raw", "cpu_cores_quota"}.issubset(field_names)
+
+        annotations = dict(
+            cpu_avg=Avg("cpu_usage"),
+            cpu_max=Max("cpu_usage"),
+            memory_avg=Avg("memory_usage"),
+            memory_max=Max("memory_usage"),
+            memory_percent_avg=Avg("memory_percent"),
+            network_rx_max=Max("network_rx"),
+            network_tx_max=Max("network_tx"),
+            disk_read_max=Max("disk_read"),
+            disk_write_max=Max("disk_write"),
+            sample_count=Count("id"),
+        )
+        if has_raw_cols:
+            annotations.update(
                 cpu_raw_avg=Avg("cpu_usage_raw"),
                 cpu_raw_max=Max("cpu_usage_raw"),
                 cpu_cores_quota_avg=Avg("cpu_cores_quota"),
-                memory_avg=Avg("memory_usage"),
-                memory_max=Max("memory_usage"),
-                memory_percent_avg=Avg("memory_percent"),
-                network_rx_max=Max("network_rx"),
-                network_tx_max=Max("network_tx"),
-                disk_read_max=Max("disk_read"),
-                disk_write_max=Max("disk_write"),
-                sample_count=Count("id"),
             )
+
+        rows = (
+            qs.annotate(bucket_epoch=bucket_expr)
+            .values("agent_id", "container_id", "bucket_epoch")
+            .annotate(**annotations)
             .order_by("agent_id", "container_id", "bucket_epoch")
         )
         results = [
@@ -296,9 +307,9 @@ class ContainerMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet
                 ).isoformat(),
                 "cpu_avg": round(r["cpu_avg"] or 0, 2),
                 "cpu_max": round(r["cpu_max"] or 0, 2),
-                "cpu_raw_avg": round(r["cpu_raw_avg"], 2) if r["cpu_raw_avg"] is not None else None,
-                "cpu_raw_max": round(r["cpu_raw_max"], 2) if r["cpu_raw_max"] is not None else None,
-                "cpu_cores_quota_avg": round(r["cpu_cores_quota_avg"], 2) if r["cpu_cores_quota_avg"] is not None else None,
+                "cpu_raw_avg": round(r["cpu_raw_avg"], 2) if r.get("cpu_raw_avg") is not None else None,
+                "cpu_raw_max": round(r["cpu_raw_max"], 2) if r.get("cpu_raw_max") is not None else None,
+                "cpu_cores_quota_avg": round(r["cpu_cores_quota_avg"], 2) if r.get("cpu_cores_quota_avg") is not None else None,
                 "memory_avg": float(r["memory_avg"] or 0),
                 "memory_max": float(r["memory_max"] or 0),
                 "memory_percent_avg": round(r["memory_percent_avg"] or 0, 2),

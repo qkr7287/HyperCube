@@ -411,7 +411,11 @@
 		padding: 0 4px;
 	}
 	.refresh {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		height: clamp(30px, 2.4vw, 38px);
+		min-width: clamp(82px, 5.5vw, 100px);
 		padding: 0 clamp(10px, 0.8vw, 18px);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-sm);
@@ -420,6 +424,7 @@
 		font-size: clamp(11px, 0.72vw, 14px);
 		font-weight: 800;
 		cursor: pointer;
+		flex: 0 0 auto;
 		transition: border-color 0.12s ease, background 0.12s ease;
 	}
 	.refresh:hover:not(:disabled) {

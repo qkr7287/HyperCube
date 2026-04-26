@@ -191,13 +191,13 @@ const BUCKET_SECONDS: Record<TimeRange, number> = {
 	'24h': 86400,    // 1일 bucket
 	'7d': 604800,    // 1주일 bucket
 };
-// 차트에 표시할 bucket 개수.
+// 차트에 표시할 bucket 개수. raw row 부담을 고려해 24h/7d는 더 적게.
 export const SPARKLINE_POINTS: Record<TimeRange, number> = {
 	'1m': 10,   // 1분 × 10 = 10분 창
 	'5m': 10,   // 5분 × 10 = 50분 창
 	'1h': 12,   // 1시간 × 12 = 12시간 창
-	'24h': 12,  // 1일 × 12 = 12일 창
-	'7d': 14,   // 1주일 × 14 = 14주 창
+	'24h': 7,   // 1일 × 7 = 7일 창
+	'7d': 4,    // 1주일 × 4 = 4주 창
 };
 // Backend retention에 맞춘 raw data 요청 범위. bucket × points 보다 조금 더 넉넉히.
 const API_RANGE: Record<TimeRange, string> = {
