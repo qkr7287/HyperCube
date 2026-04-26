@@ -181,6 +181,8 @@
 	let containers = $derived(isDemoServer ? demoState.containers : $containersStore);
 	let containerMetrics = $derived(isDemoServer ? demoState.metrics : $containerMetricsStore);
 	let selectedAgent = $derived(agents.find((agent) => agent.id === selectedServerId) ?? null);
+	// 첫 메트릭 프레임 도착 전엔 차트가 모두 0/디폴트로 깜빡거림 → 데이터 도달 후 dashboard 렌더
+	let dataReady = $derived(Boolean(systemInfo) && (isDemoServer || $wsConnected));
 
 	let rows = $derived<Row[]>(
 		containers.map((container: any) => {
@@ -1317,6 +1319,8 @@
 			<button type="button" class="empty-state" onclick={() => goto(`${base}/`)}>전체 서버 모니터링으로 이동</button>
 		</main>
 	</div>
+{:else if !dataReady}
+	<LoadingOverlay text="실시간 메트릭 수신 중" />
 {:else}
 	<div class="shell">
 		<AdminHeader totalAgents={agents.length} username={currentUsername} onLogout={doLogout} />
