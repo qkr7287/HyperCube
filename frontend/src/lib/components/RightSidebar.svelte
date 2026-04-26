@@ -1,5 +1,6 @@
 <script lang="ts">
 	import ProjectCard from './ProjectCard.svelte';
+	import InfoTooltip from './InfoTooltip.svelte';
 	import { resolveGroup } from '$lib/utils/container-grouping';
 
 	interface Container {
@@ -164,17 +165,19 @@
 <aside class="sidebar" class:list-mode={viewMode === 'list'} class:group-mode={viewMode === 'group'}>
 	<!-- Header -->
 	<div class="sidebar-header">
-		<span class="heading">컨테이너 정보</span>
+		<span class="heading">컨테이너 정보 <InfoTooltip text={"이 서버에서 돌고 있는 모든 컨테이너 목록입니다.\n\n• 위쪽 진행 바 = 전체 중 실행 중인 비율\n• 아래 카드/행 = 컨테이너 묶음(GROUP) 또는 개별(LIST)\n• 카드/행을 클릭하면 컨테이너 상세 모달이 열립니다.\n\n좌측 토폴로지에서 점을 클릭해도 여기에 그 컨테이너가 강조됩니다."} placement="bottom-start" /></span>
 		<div class="view-tabs">
 			<button
 				class="tab"
 				class:active={viewMode === 'group'}
 				onclick={() => onViewModeChange('group')}
+				title="같은 Stack(Compose 프로젝트)끼리 묶어서 카드 형태로 표시합니다."
 			>GROUP</button>
 			<button
 				class="tab"
 				class:active={viewMode === 'list'}
 				onclick={() => onViewModeChange('list')}
+				title="컨테이너를 개별 행으로 펼쳐서 표시합니다. 검색·정렬에 유리합니다."
 			>LIST</button>
 		</div>
 	</div>

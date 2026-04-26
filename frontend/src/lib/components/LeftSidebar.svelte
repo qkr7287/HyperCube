@@ -9,6 +9,7 @@
 	import iconProcess from '$lib/assets/icons/sidebar-process.svg';
 	import iconGpu from '$lib/assets/icons/sidebar-gpu.svg';
 	import LiveSparkline from './LiveSparkline.svelte';
+	import InfoTooltip from './InfoTooltip.svelte';
 	import { base } from '$app/paths';
 	import type { GpuMetric } from '$lib/utils/data-adapter';
 
@@ -185,7 +186,7 @@
 	<div class="server-section">
 		{#if systemInfo}
 			<div class="info-group">
-				<div class="group-label">Identity</div>
+				<div class="group-label">Identity <InfoTooltip text={"이 서버(Agent)가 누구인지 알려주는 정보입니다.\n\n• Hostname — 서버의 호스트 이름\n• IP — 서버의 IP 주소\n• OS — 운영체제 종류·버전\n\n드롭다운(▾)이 보이면 다른 등록된 서버로 즉시 전환할 수 있습니다."} placement="bottom-start" /></div>
 				<div class="info-row">
 					<div class="info-label-group">
 						<img src={iconHostname} alt="" class="icon" />
@@ -251,7 +252,7 @@
 				: ''}
 
 			<div class="info-group">
-				<div class="group-label">Resources</div>
+				<div class="group-label">Resources <InfoTooltip text={"서버 하드웨어가 지금 얼마나 사용되고 있는지 보여줍니다.\n\n• CPU — 코어 사용률 (0~100%)\n• Memory — 사용 중인 RAM 비율\n• Disk — 루트 파티션 사용률\n• GPU — GPU가 있을 때만 표시\n\n각 카드를 클릭하면 자세한 내역(프로세스별 점유, 시간 추이 등)이 모달로 열립니다."} placement="bottom-start" /></div>
 
 				<div class="metric-card clickable" onclick={onOpenCpu} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenCpu()}>
 					<div class="metric-head">
@@ -305,7 +306,7 @@
 			</div>
 
 			<div class="info-group">
-				<div class="group-label">Activity</div>
+				<div class="group-label">Activity <InfoTooltip text={"서버에서 \"지금 무엇이 돌고 있는가\"를 요약합니다.\n\n• Network — 활성 네트워크 연결(소켓) 수\n• Logins — 현재 SSH/콘솔에 로그인된 세션 수\n• Processes — 실행 중인 모든 프로세스 수\n\n각 카드를 클릭하면 상세 목록 모달이 열립니다."} placement="bottom-start" /></div>
 
 				<div class="metric-card clickable" onclick={onOpenNetwork} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenNetwork()}>
 					<div class="metric-head">
