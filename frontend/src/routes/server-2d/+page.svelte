@@ -743,12 +743,17 @@
 		return (payload?.results ?? []) as T[];
 	}
 
+	function clampPct(v: number): number {
+		if (!Number.isFinite(v)) return 0;
+		return Math.max(0, Math.min(100, v));
+	}
+
 	function bucketsToSystemRows(buckets: SystemBucket[]): SystemHistoryRow[] {
 		return buckets.map((b) => ({
 			recorded_at: b.bucket_start,
-			cpu_usage: b.cpu_avg,
-			memory_usage: b.memory_avg,
-			disk_usage: b.disk_avg,
+			cpu_usage: clampPct(b.cpu_avg),
+			memory_usage: clampPct(b.memory_avg),
+			disk_usage: clampPct(b.disk_avg),
 			network_rx: b.network_rx_max,
 			network_tx: b.network_tx_max,
 			processes_total: null,
@@ -759,13 +764,16 @@
 	}
 
 	function bucketsToContainerRows(buckets: ContainerBucket[]): ContainerHistoryRow[] {
+		// Docker stats CPU%는 코어 합산 형식 → 100%를 넘을 수 있음. backend의
+		// ContainerMetricsHistory에 cores 컬럼이 없어 정확 정규화는 불가, 우선
+		// 0-100% 범위로 clamp 해서 차트가 깨지지 않게 한다.
 		return buckets.map((b) => ({
 			recorded_at: b.bucket_start,
 			container_id: b.container_id,
-			cpu_usage: b.cpu_avg,
+			cpu_usage: clampPct(b.cpu_avg),
 			memory_usage: b.memory_avg,
 			memory_limit: 0,
-			memory_percent: b.memory_percent_avg,
+			memory_percent: clampPct(b.memory_percent_avg),
 			network_rx: b.network_rx_max,
 			network_tx: b.network_tx_max,
 			disk_read: b.disk_read_max,

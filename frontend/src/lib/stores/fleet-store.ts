@@ -617,16 +617,17 @@ function buildHistoryFromBuckets(rows: SystemBucketRow[], rangeKey: TimeRange): 
 	let lastReal: Snapshot | null = null;
 	let firstRealIdx = -1;
 
+	const clampPct = (v: number) => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
 	for (let i = 0; i < slots.length; i += 1) {
 		const slot = slots[i];
 		const items = byBucket.get(slot);
 		if (items && items.length) {
-			const cpuAvg = avg(items.map((it) => it.cpu_avg));
-			const cpuMax = max(items.map((it) => it.cpu_max));
-			const memAvg = avg(items.map((it) => it.memory_avg));
-			const memMax = max(items.map((it) => it.memory_max));
-			const diskAvg = avg(items.map((it) => it.disk_avg));
-			const diskMax = max(items.map((it) => it.disk_max));
+			const cpuAvg = clampPct(avg(items.map((it) => it.cpu_avg)));
+			const cpuMax = clampPct(max(items.map((it) => it.cpu_max)));
+			const memAvg = clampPct(avg(items.map((it) => it.memory_avg)));
+			const memMax = clampPct(max(items.map((it) => it.memory_max)));
+			const diskAvg = clampPct(avg(items.map((it) => it.disk_avg)));
+			const diskMax = clampPct(max(items.map((it) => it.disk_max)));
 			const gpuAvg = 0;
 			const gpuMax = 0;
 			lastReal = { cpuAvg, cpuMax, memAvg, memMax, diskAvg, diskMax, gpuAvg, gpuMax, agents: items.length };
