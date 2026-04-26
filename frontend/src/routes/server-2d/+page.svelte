@@ -1305,12 +1305,14 @@
 			<button type="submit">로그인</button>
 		</form>
 	</div>
+{:else if !selectedServerId && agentsLoading}
+	<!-- agents are still loading; render nothing to avoid a fallback flash before auto-select -->
 {:else if !selectedServerId}
 	<div class="shell">
 		<AdminHeader totalAgents={agents.length} username={currentUsername} onLogout={doLogout} />
 		<main class="server-picker">
-			<h1>서버 선택 필요</h1>
-			<p>2D 관제 대시보드는 서버를 먼저 선택해야 열립니다. 전체 서버 모니터링에서 서버 카드의 2D 버튼을 눌러 진입하세요.</p>
+			<h1>서버 없음</h1>
+			<p>아직 등록·승인된 서버가 없습니다. Agent를 실행하면 자동으로 등록됩니다.</p>
 			<button type="button" class="empty-state" onclick={() => goto(`${base}/admin/dashboard`)}>전체 서버 모니터링으로 이동</button>
 		</main>
 	</div>

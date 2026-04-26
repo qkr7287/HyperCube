@@ -509,12 +509,14 @@
 		</form>
 	</div>
 </div>
+{:else if !selectedServerId && agentsLoading}
+<!-- agents are still loading; render nothing to avoid a fallback flash before the auto-selected server kicks in -->
 {:else if !selectedServerId}
 <StatusToasts />
 <div class="auth-page">
 	<div class="server-select-card">
-		<h2 class="auth-title">서버 선택 필요</h2>
-		<p class="auth-subtitle">3D 상세 모니터링은 서버를 먼저 선택해야 합니다.</p>
+		<h2 class="auth-title">서버 없음</h2>
+		<p class="auth-subtitle">아직 등록·승인된 서버가 없습니다. Agent를 실행하면 자동으로 등록됩니다.</p>
 		<button class="auth-btn" onclick={() => goto(`${base}/admin/dashboard`)}>전체 서버 모니터링으로 이동</button>
 		<button class="auth-btn-outline" onclick={doLogout}>Logout</button>
 	</div>
