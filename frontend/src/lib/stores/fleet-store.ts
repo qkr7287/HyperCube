@@ -249,27 +249,49 @@ async function api<T>(path: string): Promise<T> {
 	return unwrap<T>(json);
 }
 
+type SystemBucketRow = {
+	agent: string;
+	bucket_epoch: number;
+	bucket_start: string;
+	cpu_avg: number;
+	cpu_max: number;
+	memory_avg: number;
+	memory_max: number;
+	disk_avg: number;
+	disk_max: number;
+	network_rx_max: number;
+	network_tx_max: number;
+	sample_count: number;
+};
+
 export async function refreshFleet() {
 	if (!browser || !token) return;
 	fleetLoading.set(true);
 	fleetError.set('');
 
 	try {
-		const [agentsPayload, containersPayload, metricsPayload] = await Promise.all([
+		const bucketSec = BUCKET_SECONDS[range];
+		const [agentsPayload, containersPayload, latestPayload, bucketsPayload] = await Promise.all([
 			api<{ results: AgentApiRow[] }>('/api/agents/?status=approved&page_size=200&ordering=hostname'),
 			api<{ results: ContainerApiRow[] }>('/api/containers/?page_size=1000&ordering=agent'),
-			api<SystemMetricRow[]>(`/api/metrics/system/?range=${API_RANGE[range]}&limit=${RANGE_LIMITS[range]}&ordering=recorded_at`),
+			// 카드의 "latest" 값(현재 CPU/메모리 % 등)은 raw row에서 가장 최근 1건으로 추출.
+			// agent별 한 행만 필요해서 수십~수백 row면 충분.
+			api<SystemMetricRow[]>(`/api/metrics/system/?limit=200&ordering=recorded_at`),
+			api<{ bucket_seconds: number; results: SystemBucketRow[] }>(
+				`/api/metrics/system/buckets/?range=${API_RANGE[range]}&bucket=${bucketSec}`,
+			),
 		]);
 
 		const agents = agentsPayload.results ?? [];
 		const containers = containersPayload.results ?? [];
-		const metrics = Array.isArray(metricsPayload) ? metricsPayload : [];
-		const rows = buildRows(agents, containers, metrics);
-		const history = buildHistory(metrics, range);
+		const latestRaw = Array.isArray(latestPayload) ? latestPayload : [];
+		const buckets = bucketsPayload?.results ?? [];
+		const rows = buildRows(agents, containers, latestRaw);
+		const history = buildHistoryFromBuckets(buckets, range);
 
 		fleetAgents.set(rows);
 		fleetHistory.set(history);
-		fleetAgentSeries.set(buildAgentSeries(agents, metrics, history.map((point) => point.timestamp), range));
+		fleetAgentSeries.set(buildAgentSeriesFromBuckets(agents, buckets, range));
 		fleetSummary.set(buildSummary(rows));
 		fleetConnected.set(true);
 		lastFleetUpdate.set(new Date());
@@ -287,10 +309,25 @@ export async function loadSelectedAgent(agentId: string) {
 	if (!browser || !token || !agentId) return;
 	selectedAgentId = agentId;
 	try {
-		const rows = await api<SystemMetricRow[]>(
-			`/api/metrics/system/?agent=${encodeURIComponent(agentId)}&range=${API_RANGE[range]}&limit=${HISTORY_LIMITS[range]}&ordering=recorded_at`,
+		const bucketSec = BUCKET_SECONDS[range];
+		const payload = await api<{ bucket_seconds: number; results: SystemBucketRow[] }>(
+			`/api/metrics/system/buckets/?agent=${encodeURIComponent(agentId)}&range=${API_RANGE[range]}&bucket=${bucketSec}`,
 		);
-		selectedAgentHistory.set(buildAgentHistory(Array.isArray(rows) ? rows : []));
+		const buckets = payload?.results ?? [];
+		const history: AgentHistoryPoint[] = buckets.map((b) => ({
+			timestamp: b.bucket_start,
+			cpu_usage: b.cpu_avg,
+			memory_usage: b.memory_avg,
+			disk_usage: b.disk_avg,
+			network_rx_rate: 0,
+			network_tx_rate: 0,
+			processes_total: null,
+			processes_running: null,
+			logins_total: null,
+			gpu_usage: 0,
+			gpu_temperature: null,
+		}));
+		selectedAgentHistory.set(history);
 	} catch {
 		selectedAgentHistory.set([]);
 	}
@@ -544,6 +581,156 @@ function buildSummary(rows: FleetAgentRow[]): FleetSummary {
 				metric_timestamp: row.latest?.timestamp ?? null,
 			})),
 	};
+}
+
+function bucketSlots(rangeKey: TimeRange): number[] {
+	const sec = BUCKET_SECONDS[rangeKey];
+	const points = SPARKLINE_POINTS[rangeKey];
+	const now = Math.floor(Date.now() / 1000 / sec) * sec;
+	const out: number[] = [];
+	for (let i = points - 1; i >= 0; i -= 1) out.push(now - i * sec);
+	return out;
+}
+
+function buildHistoryFromBuckets(rows: SystemBucketRow[], rangeKey: TimeRange): FleetHistoryPoint[] {
+	const slots = bucketSlots(rangeKey);
+	// Group rows by bucket_epoch — fleet-wide aggregation across agents.
+	const byBucket = new Map<number, SystemBucketRow[]>();
+	for (const r of rows) {
+		const arr = byBucket.get(r.bucket_epoch) ?? [];
+		arr.push(r);
+		byBucket.set(r.bucket_epoch, arr);
+	}
+
+	const series: FleetHistoryPoint[] = [];
+	type Snapshot = { cpuAvg: number; cpuMax: number; memAvg: number; memMax: number; diskAvg: number; diskMax: number; gpuAvg: number; gpuMax: number; agents: number };
+	let lastReal: Snapshot | null = null;
+	let firstRealIdx = -1;
+
+	for (let i = 0; i < slots.length; i += 1) {
+		const slot = slots[i];
+		const items = byBucket.get(slot);
+		if (items && items.length) {
+			const cpuAvg = avg(items.map((it) => it.cpu_avg));
+			const cpuMax = max(items.map((it) => it.cpu_max));
+			const memAvg = avg(items.map((it) => it.memory_avg));
+			const memMax = max(items.map((it) => it.memory_max));
+			const diskAvg = avg(items.map((it) => it.disk_avg));
+			const diskMax = max(items.map((it) => it.disk_max));
+			const gpuAvg = 0;
+			const gpuMax = 0;
+			lastReal = { cpuAvg, cpuMax, memAvg, memMax, diskAvg, diskMax, gpuAvg, gpuMax, agents: items.length };
+			if (firstRealIdx < 0) firstRealIdx = i;
+			series.push({
+				timestamp: new Date(slot * 1000).toISOString(),
+				agent_count: items.length,
+				cpu_avg: cpuAvg,
+				cpu_max: cpuMax,
+				memory_avg: memAvg,
+				memory_max: memMax,
+				disk_avg: diskAvg,
+				disk_max: diskMax,
+				network_rx_rate: 0,
+				network_tx_rate: 0,
+				gpu_avg: gpuAvg,
+				gpu_max: gpuMax,
+			});
+		} else {
+			series.push({
+				timestamp: new Date(slot * 1000).toISOString(),
+				agent_count: lastReal?.agents ?? 0,
+				cpu_avg: lastReal?.cpuAvg ?? 0,
+				cpu_max: lastReal?.cpuMax ?? 0,
+				memory_avg: lastReal?.memAvg ?? 0,
+				memory_max: lastReal?.memMax ?? 0,
+				disk_avg: lastReal?.diskAvg ?? 0,
+				disk_max: lastReal?.diskMax ?? 0,
+				network_rx_rate: 0,
+				network_tx_rate: 0,
+				gpu_avg: lastReal?.gpuAvg ?? 0,
+				gpu_max: lastReal?.gpuMax ?? 0,
+			});
+		}
+	}
+
+	// backward-fill: 첫 real value 이전 슬롯을 첫 값으로 평탄화
+	if (firstRealIdx > 0) {
+		const first = series[firstRealIdx];
+		for (let i = 0; i < firstRealIdx; i += 1) {
+			series[i] = {
+				...series[i],
+				cpu_avg: first.cpu_avg, cpu_max: first.cpu_max,
+				memory_avg: first.memory_avg, memory_max: first.memory_max,
+				disk_avg: first.disk_avg, disk_max: first.disk_max,
+				gpu_avg: first.gpu_avg, gpu_max: first.gpu_max,
+				agent_count: first.agent_count,
+			};
+		}
+	}
+
+	return series;
+}
+
+function buildAgentSeriesFromBuckets(
+	agents: AgentApiRow[],
+	rows: SystemBucketRow[],
+	rangeKey: TimeRange,
+): FleetAgentSeries[] {
+	const slots = bucketSlots(rangeKey);
+	const slotIndex = new Map(slots.map((s, i) => [s, i]));
+	const byAgent = new Map<string, Map<number, SystemBucketRow>>();
+	for (const r of rows) {
+		const m = byAgent.get(r.agent) ?? new Map<number, SystemBucketRow>();
+		m.set(r.bucket_epoch, r);
+		byAgent.set(r.agent, m);
+	}
+
+	function fillSeries(values: (number | null)[]): number[] {
+		// forward fill from the first real value
+		let last: number | null = null;
+		const out = values.slice();
+		for (let i = 0; i < out.length; i += 1) {
+			if (out[i] !== null) last = out[i];
+			else if (last !== null) out[i] = last;
+		}
+		// backward fill leading nulls with first real value
+		let first: number | null = null;
+		for (const v of out) if (v !== null) { first = v; break; }
+		if (first !== null) {
+			for (let i = 0; i < out.length; i += 1) if (out[i] === null) out[i] = first;
+		} else {
+			for (let i = 0; i < out.length; i += 1) out[i] = 0;
+		}
+		return out as number[];
+	}
+
+	return agents.map((agent, index) => {
+		const m = byAgent.get(agent.id) ?? new Map<number, SystemBucketRow>();
+		const cpu: (number | null)[] = new Array(slots.length).fill(null);
+		const mem: (number | null)[] = new Array(slots.length).fill(null);
+		const disk: (number | null)[] = new Array(slots.length).fill(null);
+		const gpu: (number | null)[] = new Array(slots.length).fill(null);
+		const net: (number | null)[] = new Array(slots.length).fill(null);
+		for (const [bucket, row] of m) {
+			const idx = slotIndex.get(bucket);
+			if (idx === undefined) continue;
+			cpu[idx] = row.cpu_avg;
+			mem[idx] = row.memory_avg;
+			disk[idx] = row.disk_avg;
+			gpu[idx] = 0;
+			net[idx] = 0;
+		}
+		return {
+			agent_id: agent.id,
+			hostname: agent.hostname,
+			color: AGENT_COLORS[index % AGENT_COLORS.length],
+			cpu: fillSeries(cpu),
+			memory: fillSeries(mem),
+			disk: fillSeries(disk),
+			gpu: fillSeries(gpu),
+			network: fillSeries(net),
+		};
+	});
 }
 
 function buildHistory(metrics: SystemMetricRow[], rangeKey: TimeRange): FleetHistoryPoint[] {
