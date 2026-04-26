@@ -105,11 +105,13 @@
 			borderColor: item.color,
 			backgroundColor: ctx ? buildGradient(ctx, item.color) : `${item.color}30`,
 			borderWidth: 2,
+			// pointRadius/HoverRadius 모두 0 — 데이터 포인트 동그라미를 라인·hover
+			// 양쪽에서 완전히 숨긴다. tooltip 은 interaction.mode='index' 로 계속 동작.
 			pointRadius: 0,
-			pointHoverRadius: 4,
+			pointHoverRadius: 0,
 			pointBackgroundColor: item.color,
 			pointBorderColor: 'rgba(11, 15, 24, 0.9)',
-			pointBorderWidth: 1,
+			pointBorderWidth: 0,
 			pointHitRadius: 12,
 			tension: 0.35,
 			fill: list.length === 1 ? 'origin' : false,
@@ -151,6 +153,10 @@
 					active: { animation: { duration: 900, easing: 'easeInOutCubic' } },
 				},
 				interaction: { mode: 'index', intersect: false },
+				// dataset 가 갱신될 때(streamUpdate)에도 모든 point 가 안 보이도록 element 단위로도 0 강제.
+				elements: {
+					point: { radius: 0, hoverRadius: 0, hitRadius: 12, borderWidth: 0 },
+				},
 				plugins: {
 					legend: {
 						display: showLegend || list.length > 1,

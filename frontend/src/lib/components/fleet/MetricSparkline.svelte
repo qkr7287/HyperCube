@@ -41,11 +41,15 @@
 </div>
 
 <style>
+	/* 부모가 height 를 명시했을 때(SVG height:100% 가 의미를 갖도록) 같이 stretch.
+	   wrap 자체에 height 가 없으면 svg height:100% 가 0 으로 collapse 해서
+	   FleetStatusBar 의 CPU/메모리 KPI 스파크라인이 안 보이게 된다. */
 	.spark-wrap {
 		position: relative;
 		display: flex;
 		align-items: center;
 		width: 100%;
+		height: 100%;
 		min-width: 0;
 	}
 	.spark {
