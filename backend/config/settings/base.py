@@ -97,6 +97,15 @@ CHANNEL_LAYERS = {
     },
 }
 
+# Cache (Redis DB 2 — DB 0 channels, DB 1 metrics raw cache, DB 2 view cache)
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": config("CACHE_REDIS_URL", default="redis://redis:6379/2"),
+        "TIMEOUT": 60,
+    },
+}
+
 # REST Framework
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [

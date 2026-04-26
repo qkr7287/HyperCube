@@ -1,5 +1,8 @@
 from datetime import timedelta
 
+import hashlib
+
+from django.core.cache import cache
 from django.db import connection
 from django.db.models import Avg, Count, IntegerField, Max
 from django.db.models.expressions import RawSQL
@@ -88,6 +91,19 @@ def _parse_bucket_seconds(raw: str | None, default: int = 60) -> int:
     return max(10, min(n, 30 * 86400))
 
 
+# 24h/7d 집계는 수백만 row를 GROUP BY해야 해서 한 번 계산하면 60s 캐시.
+# Cache key는 path + 정렬된 query params + user 단위로 분리해서 권한 누수 방지.
+_BUCKET_CACHE_TTL = 60
+
+
+def _make_cache_key(prefix: str, request, bucket_sec: int) -> str:
+    params = sorted(request.query_params.items())
+    user_id = getattr(request.user, "id", "anon")
+    raw = f"{prefix}|{user_id}|{bucket_sec}|" + "&".join(f"{k}={v}" for k, v in params)
+    digest = hashlib.md5(raw.encode()).hexdigest()
+    return f"metrics:buckets:{digest}"
+
+
 class SystemMetricsFilter(filters.FilterSet):
     agent = filters.UUIDFilter(field_name="agent_id")
     from_time = filters.IsoDateTimeFilter(field_name="recorded_at", lookup_expr="gte")
@@ -174,6 +190,11 @@ class SystemMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet):
     @action(detail=False, methods=["get"], url_path="buckets")
     def buckets(self, request):
         bucket_sec = _parse_bucket_seconds(request.query_params.get("bucket"), default=60)
+        cache_key = _make_cache_key("system", request, bucket_sec)
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response(cached)
+
         qs = self.filter_queryset(self.get_queryset())
         # PostgreSQL: floor(epoch / N) * N → bucket start in epoch seconds.
         bucket_expr = RawSQL(
@@ -220,7 +241,9 @@ class SystemMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet):
             }
             for r in rows
         ]
-        return Response({"bucket_seconds": bucket_sec, "results": results})
+        payload = {"bucket_seconds": bucket_sec, "results": results}
+        cache.set(cache_key, payload, _BUCKET_CACHE_TTL)
+        return Response(payload)
 
 
 @extend_schema_view(
@@ -284,6 +307,11 @@ class ContainerMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet
     @action(detail=False, methods=["get"], url_path="buckets")
     def buckets(self, request):
         bucket_sec = _parse_bucket_seconds(request.query_params.get("bucket"), default=60)
+        cache_key = _make_cache_key("container", request, bucket_sec)
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response(cached)
+
         qs = self.filter_queryset(self.get_queryset())
         bucket_expr = RawSQL(
             "(floor(extract(epoch from recorded_at) / %s) * %s)::bigint",
@@ -353,4 +381,6 @@ class ContainerMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet
             }
             for r in rows
         ]
-        return Response({"bucket_seconds": bucket_sec, "results": results})
+        payload = {"bucket_seconds": bucket_sec, "results": results}
+        cache.set(cache_key, payload, _BUCKET_CACHE_TTL)
+        return Response(payload)
