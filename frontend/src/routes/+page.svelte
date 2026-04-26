@@ -230,7 +230,7 @@
 							{$fleetConnected ? '실시간 연결' : '연결 끊김'}
 						</span>
 						<div class="range-label">
-							조회 범위
+							조회 단위
 							<MetricHelp text="모든 그래프와 서버 카드 스파크라인이 보여주는 시간 범위입니다. 데이터는 15초마다 자동으로 갱신됩니다." placement="bottom-end" />
 						</div>
 						<TimeRangeSelector value={range} onChange={changeRange} />
@@ -341,7 +341,7 @@
 		box-sizing: border-box;
 		width: 100%;
 		min-height: calc(100vh - 48px);
-		padding: 0 var(--dash-pad) var(--dash-pad);
+		padding: var(--dash-pad);
 		color: var(--text-primary);
 		display: flex;
 		flex-direction: column;

@@ -1346,7 +1346,7 @@
 			</div>
 			<div class="topbar-ctrls">
 				<div class="range-inline">
-					<span class="range-label">추이 범위</span>
+					<span class="range-label">조회 단위</span>
 					<TimeRangeSelector value={selectedRange} onChange={changeRange} />
 					<small class="poll-label">{rangeConfig.pollLabel}</small>
 				</div>

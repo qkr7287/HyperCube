@@ -564,28 +564,92 @@ function buildHistory(metrics: SystemMetricRow[], rangeKey: TimeRange): FleetHis
 		previousByAgent.set(row.agent, row);
 	}
 
-	return Array.from(buckets.entries())
-		.sort(([a], [b]) => a - b)
-		.map(([timestamp, item]) => {
-			const cpu = item.rows.map((row) => num(row.cpu_usage));
-			const memory = item.rows.map((row) => num(row.memory_usage));
-			const disk = item.rows.map((row) => num(row.disk_usage));
-			const gpu = item.rows.map((row) => gpuUsage(row.gpu)).filter((value) => value > 0);
-			return {
-				timestamp: new Date(timestamp * 1000).toISOString(),
-				agent_count: item.agents.size,
-				cpu_avg: avg(cpu),
-				cpu_max: max(cpu),
-				memory_avg: avg(memory),
-				memory_max: max(memory),
-				disk_avg: avg(disk),
-				disk_max: max(disk),
-				network_rx_rate: item.rx,
-				network_tx_rate: item.tx,
-				gpu_avg: avg(gpu),
-				gpu_max: max(gpu),
-			};
+	// 카드의 SPARKLINE_POINTS와 동일한 점 개수만큼 슬롯을 만들어 빈 bucket을 채운다.
+	// 데이터가 1개 bucket밖에 없으면 24h/7d range에서 그래프가 한 점만 그려져
+	// "선이 안 보이는" 문제가 됨. backward/forward-fill로 평탄선이라도 그리도록.
+	const bucketSec = BUCKET_SECONDS[rangeKey];
+	const points = SPARKLINE_POINTS[rangeKey];
+	const nowBucket = Math.floor(Date.now() / 1000 / bucketSec) * bucketSec;
+	const slots: number[] = [];
+	for (let i = points - 1; i >= 0; i -= 1) slots.push(nowBucket - i * bucketSec);
+
+	const realByBucket = buckets;
+	const series: FleetHistoryPoint[] = [];
+	let lastReal: { rx: number; tx: number; cpuAvg: number; cpuMax: number; memAvg: number; memMax: number; diskAvg: number; diskMax: number; gpuAvg: number; gpuMax: number; agents: number } | null = null;
+
+	const computed = new Map<number, FleetHistoryPoint>();
+	for (const [bucket, item] of realByBucket) {
+		const cpu = item.rows.map((row) => num(row.cpu_usage));
+		const memory = item.rows.map((row) => num(row.memory_usage));
+		const disk = item.rows.map((row) => num(row.disk_usage));
+		const gpu = item.rows.map((row) => gpuUsage(row.gpu)).filter((value) => value > 0);
+		computed.set(bucket, {
+			timestamp: new Date(bucket * 1000).toISOString(),
+			agent_count: item.agents.size,
+			cpu_avg: avg(cpu),
+			cpu_max: max(cpu),
+			memory_avg: avg(memory),
+			memory_max: max(memory),
+			disk_avg: avg(disk),
+			disk_max: max(disk),
+			network_rx_rate: item.rx,
+			network_tx_rate: item.tx,
+			gpu_avg: avg(gpu),
+			gpu_max: max(gpu),
 		});
+	}
+
+	for (const slot of slots) {
+		const real = computed.get(slot);
+		if (real) {
+			series.push(real);
+			lastReal = {
+				rx: real.network_rx_rate,
+				tx: real.network_tx_rate,
+				cpuAvg: real.cpu_avg, cpuMax: real.cpu_max,
+				memAvg: real.memory_avg, memMax: real.memory_max,
+				diskAvg: real.disk_avg, diskMax: real.disk_max,
+				gpuAvg: real.gpu_avg, gpuMax: real.gpu_max,
+				agents: real.agent_count,
+			};
+		} else {
+			series.push({
+				timestamp: new Date(slot * 1000).toISOString(),
+				agent_count: lastReal?.agents ?? 0,
+				cpu_avg: lastReal?.cpuAvg ?? 0,
+				cpu_max: lastReal?.cpuMax ?? 0,
+				memory_avg: lastReal?.memAvg ?? 0,
+				memory_max: lastReal?.memMax ?? 0,
+				disk_avg: lastReal?.diskAvg ?? 0,
+				disk_max: lastReal?.diskMax ?? 0,
+				network_rx_rate: 0,
+				network_tx_rate: 0,
+				gpu_avg: lastReal?.gpuAvg ?? 0,
+				gpu_max: lastReal?.gpuMax ?? 0,
+			});
+		}
+	}
+
+	// backward-fill: 처음 몇 개 슬롯이 비어 0/0인 경우 첫 실제 값으로 덮어쓴다.
+	let firstRealIdx = -1;
+	for (let i = 0; i < series.length; i += 1) {
+		if (computed.has(slots[i])) { firstRealIdx = i; break; }
+	}
+	if (firstRealIdx > 0) {
+		const firstReal = series[firstRealIdx];
+		for (let i = 0; i < firstRealIdx; i += 1) {
+			series[i] = {
+				...series[i],
+				cpu_avg: firstReal.cpu_avg, cpu_max: firstReal.cpu_max,
+				memory_avg: firstReal.memory_avg, memory_max: firstReal.memory_max,
+				disk_avg: firstReal.disk_avg, disk_max: firstReal.disk_max,
+				gpu_avg: firstReal.gpu_avg, gpu_max: firstReal.gpu_max,
+				agent_count: firstReal.agent_count,
+			};
+		}
+	}
+
+	return series;
 }
 
 function buildAgentSeries(
