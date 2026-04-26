@@ -188,7 +188,10 @@
 		{@const runPercent = total > 0 ? Math.round((runningCount / total) * 100) : 0}
 		<div class="health-summary">
 			<div class="health-top">
-				<span class="health-fraction">{runningCount} <small>/ {total}</small></span>
+				<span class="health-fraction">
+					<small class="health-caption">전체 컨테이너</small>
+					<span class="fraction-value">{runningCount} <em>/ {total}</em></span>
+				</span>
 				<span class="health-percent">{runPercent}% running</span>
 			</div>
 			<div class="health-bar">
@@ -367,7 +370,7 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding-bottom: 32px;
+		padding-bottom: 12px;
 		flex-shrink: 0;
 	}
 
@@ -426,14 +429,28 @@
 		align-items: baseline;
 	}
 	.health-fraction {
-		font-size: 20px;
-		font-weight: 700;
+		display: inline-flex;
+		flex-direction: column;
+		gap: 2px;
 		color: var(--text-primary);
 	}
-	.health-fraction small {
+	.health-caption {
+		font-size: 10px;
+		font-weight: 800;
+		color: var(--text-muted);
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+	}
+	.fraction-value {
+		font-size: 20px;
+		font-weight: 700;
+	}
+	.fraction-value em {
+		font-style: normal;
 		font-size: 13px;
 		color: var(--text-muted);
 		font-weight: 500;
+		margin-left: 2px;
 	}
 	.health-percent {
 		font-size: 11px;

@@ -24,6 +24,7 @@
 	let glyph = $state<HTMLSpanElement | null>(null);
 	let bubble = $state<HTMLSpanElement | null>(null);
 	let open = $state(false);
+	let positioned = $state(false);
 	let style = $state('');
 
 	const GAP = 8;
@@ -78,17 +79,24 @@
 		left = Math.max(8, Math.min(vw - bw - 8, left));
 		top = Math.max(8, Math.min(vh - bh - 8, top));
 
-		style = `position: fixed; top: ${top}px; left: ${left}px; width: ${bw}px; max-width: ${maxWidth}px; z-index: 2000;`;
+		style = `top: ${top}px; left: ${left}px; width: ${bw}px;`;
+		positioned = true;
 	}
 
 	function handleEnter() {
 		open = true;
-		// Compute after render
-		queueMicrotask(() => computePosition());
+		positioned = false;
+		// Wait two animation frames so the bubble is in the DOM with its
+		// final width measurable, then compute position. Setting
+		// positioned=true reveals it via CSS to avoid a flash at (0,0).
+		if (browser) {
+			requestAnimationFrame(() => requestAnimationFrame(() => computePosition()));
+		}
 	}
 
 	function handleLeave() {
 		open = false;
+		positioned = false;
 	}
 
 	function handleScroll() {
@@ -123,7 +131,14 @@
 	<span class="info-glyph" aria-hidden="true">?</span>
 </span>
 {#if open}
-	<span class="info-bubble" role="tooltip" bind:this={bubble} style={style}>{text}</span>
+	<span
+		class="info-bubble"
+		class:positioned
+		role="tooltip"
+		bind:this={bubble}
+		style={style}
+		style:max-width="{maxWidth}px"
+	>{text}</span>
 {/if}
 
 <style>
@@ -163,6 +178,10 @@
 	}
 
 	:global(.info-bubble) {
+		position: fixed;
+		top: -9999px;
+		left: -9999px;
+		z-index: 2000;
 		padding: 12px 14px;
 		font-size: 12.5px;
 		line-height: 1.65;
@@ -176,11 +195,11 @@
 		font-weight: 400;
 		letter-spacing: 0.01em;
 		pointer-events: none;
-		animation: bubble-in 160ms ease-out;
+		opacity: 0;
+		transition: opacity 0.12s ease-out;
 	}
 
-	@keyframes bubble-in {
-		from { opacity: 0; transform: translateY(-2px); }
-		to { opacity: 1; transform: translateY(0); }
+	:global(.info-bubble.positioned) {
+		opacity: 1;
 	}
 </style>
