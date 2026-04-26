@@ -1,0 +1,94 @@
+# 16번 prod 자동 배포.
+#
+# Build and push images workflow 가 main 에서 성공하면, 16번 self-hosted
+# runner (label: hc16-prod) 가 /home/agics-ai/docker/hypercube 에서
+# IMAGE_TAG 갱신 + docker compose pull && up -d 실행.
+#
+# Migration 은 backend container entrypoint 가 자동 처리 (manage.py migrate).
+#
+# 수동 실행: GitHub Actions 탭에서 "Deploy to 16 prod" → Run workflow.
+#  - sha 입력란에 특정 commit 으로 pin 가능. 비우면 latest main HEAD.
+
+name: Deploy to 16 prod
+
+on:
+  workflow_run:
+    workflows: ["Build and push images"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Image short SHA to deploy (e.g. 14e92fa). Empty = main HEAD."
+        required: false
+        default: ""
+
+jobs:
+  deploy:
+    # 자동 trigger 면 build 가 success 일 때만. 수동 trigger 는 무조건.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: [self-hosted, hc16-prod]
+    timeout-minutes: 15
+
+    env:
+      PROD_DIR: /home/agics-ai/docker/hypercube
+      HEALTHCHECK_URL: http://localhost:3334/hypercube/
+
+    steps:
+      - name: Determine target SHA
+        id: target
+        run: |
+          set -euo pipefail
+          INPUT_SHA="${{ github.event.inputs.sha || '' }}"
+          if [ -n "$INPUT_SHA" ]; then
+            SHORT="${INPUT_SHA:0:7}"
+          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
+            FULL="${{ github.event.workflow_run.head_sha }}"
+            SHORT="${FULL:0:7}"
+          else
+            FULL="${GITHUB_SHA}"
+            SHORT="${FULL:0:7}"
+          fi
+          echo "short=$SHORT" >> "$GITHUB_OUTPUT"
+          echo "Target image tag: sha-$SHORT"
+
+      - name: Update IMAGE_TAG and pull
+        working-directory: ${{ env.PROD_DIR }}
+        run: |
+          set -euo pipefail
+          BACKUP=".env.bak.$(date +%s)"
+          cp .env "$BACKUP"
+          sed -i "s|^IMAGE_TAG=.*|IMAGE_TAG=sha-${{ steps.target.outputs.short }}|" .env
+          echo "Updated .env (backup: $BACKUP):"
+          grep IMAGE_TAG .env
+          docker compose pull
+
+      - name: Apply
+        working-directory: ${{ env.PROD_DIR }}
+        run: docker compose up -d
+
+      - name: Wait for backend healthy
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 24); do
+            if curl -sf "$HEALTHCHECK_URL" > /dev/null; then
+              echo "Healthy after ${i} attempts ($(($i * 5))s)."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Health check failed. Backend logs:"
+          docker logs hc-backend --tail 80 || true
+          exit 1
+
+      - name: Migration log tail
+        if: always()
+        run: docker logs hc-backend --tail 30 2>&1 | grep -E "Applying|migrat|ERROR" | tail -20 || true
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Deploy to 16 prod" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image tag: \`sha-${{ steps.target.outputs.short }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- URL: $HEALTHCHECK_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Status: ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
