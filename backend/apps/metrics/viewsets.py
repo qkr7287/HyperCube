@@ -273,8 +273,10 @@ class ContainerMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet
         has_raw_cols = {"cpu_usage_raw", "cpu_cores_quota"}.issubset(field_names)
 
         annotations = dict(
-            cpu_avg=Avg("cpu_usage"),
-            cpu_max=Max("cpu_usage"),
+            # cpu_usage 컬럼은 0-100 정규화 값(usage_pct)을 저장하도록 의미가 정해져 있음.
+            # Agent v2: cpu.usage_pct → cpu_usage. 구버전: usage / cores 로 fallback 계산.
+            cpu_usage_pct_avg=Avg("cpu_usage"),
+            cpu_usage_pct_max=Max("cpu_usage"),
             memory_avg=Avg("memory_usage"),
             memory_max=Max("memory_usage"),
             memory_percent_avg=Avg("memory_percent"),
@@ -286,8 +288,8 @@ class ContainerMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet
         )
         if has_raw_cols:
             annotations.update(
-                cpu_raw_avg=Avg("cpu_usage_raw"),
-                cpu_raw_max=Max("cpu_usage_raw"),
+                cpu_usage_avg=Avg("cpu_usage_raw"),  # raw (코어 합산) 평균
+                cpu_usage_max=Max("cpu_usage_raw"),
                 cpu_cores_quota_avg=Avg("cpu_cores_quota"),
             )
 
@@ -305,11 +307,17 @@ class ContainerMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet
                 "bucket_start": timezone.datetime.fromtimestamp(
                     int(r["bucket_epoch"]), tz=timezone.get_current_timezone()
                 ).isoformat(),
-                "cpu_avg": round(r["cpu_avg"] or 0, 2),
-                "cpu_max": round(r["cpu_max"] or 0, 2),
-                "cpu_raw_avg": round(r["cpu_raw_avg"], 2) if r.get("cpu_raw_avg") is not None else None,
-                "cpu_raw_max": round(r["cpu_raw_max"], 2) if r.get("cpu_raw_max") is not None else None,
+                # 0-100 정규화 평균 — null 은 그대로 null 로 (모든 샘플의
+                # usage_pct 가 null 이면 frontend 가 "—"로 그릴 수 있게)
+                "cpu_usage_pct_avg": round(r["cpu_usage_pct_avg"], 2) if r.get("cpu_usage_pct_avg") is not None else None,
+                "cpu_usage_pct_max": round(r["cpu_usage_pct_max"], 2) if r.get("cpu_usage_pct_max") is not None else None,
+                # raw 코어 합산 % 평균 — 분석/디버깅용
+                "cpu_usage_avg": round(r["cpu_usage_avg"], 2) if r.get("cpu_usage_avg") is not None else None,
+                "cpu_usage_max": round(r["cpu_usage_max"], 2) if r.get("cpu_usage_max") is not None else None,
                 "cpu_cores_quota_avg": round(r["cpu_cores_quota_avg"], 2) if r.get("cpu_cores_quota_avg") is not None else None,
+                # 호환용: 기존 cpu_avg/cpu_max 필드명도 유지 (정규화 값과 동일)
+                "cpu_avg": round(r["cpu_usage_pct_avg"] or 0, 2),
+                "cpu_max": round(r["cpu_usage_pct_max"] or 0, 2),
                 "memory_avg": float(r["memory_avg"] or 0),
                 "memory_max": float(r["memory_max"] or 0),
                 "memory_percent_avg": round(r["memory_percent_avg"] or 0, 2),

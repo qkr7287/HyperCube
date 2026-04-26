@@ -46,10 +46,12 @@ class ContainerMetricsHistory(models.Model):
     )
     container_id = models.CharField(max_length=64, db_index=True)
     cpu_usage = models.FloatField(
+        null=True, blank=True,
         help_text=(
-            "컨테이너 CPU 사용률. 신규 Agent는 0~100 정규화 값(usage_pct)을 저장하고, "
-            "구버전 Agent는 Docker stats raw(코어 합산 %) 그대로 저장. 표시는 항상 0-100을 가정."
-        )
+            "컨테이너 CPU 사용률 (0~100 정규화). 신규 Agent의 cpu.usage_pct 값을 그대로 저장. "
+            "Agent가 cores_quota 결정 실패 시 null 저장됨. "
+            "구버전 Agent는 cpu.usage / cores 로 fallback 계산해 채움."
+        ),
     )
     cpu_usage_raw = models.FloatField(
         null=True, blank=True,

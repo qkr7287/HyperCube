@@ -715,6 +715,15 @@
 		container_id: string;
 		bucket_start: string;
 		bucket_epoch: number;
+		// 정규화된 0-100 CPU% (preferred). Agent v2가 채움. cores_quota 결정
+		// 실패한 bucket은 null.
+		cpu_usage_pct_avg?: number | null;
+		cpu_usage_pct_max?: number | null;
+		// raw 코어 합산 % (분석용, optional)
+		cpu_usage_avg?: number | null;
+		cpu_usage_max?: number | null;
+		cpu_cores_quota_avg?: number | null;
+		// 호환용 (구버전 backend가 이 필드만 보낼 수 있음)
 		cpu_avg: number;
 		cpu_max: number;
 		memory_avg: number;
@@ -764,21 +773,23 @@
 	}
 
 	function bucketsToContainerRows(buckets: ContainerBucket[]): ContainerHistoryRow[] {
-		// Docker stats CPU%는 코어 합산 형식 → 100%를 넘을 수 있음. backend의
-		// ContainerMetricsHistory에 cores 컬럼이 없어 정확 정규화는 불가, 우선
-		// 0-100% 범위로 clamp 해서 차트가 깨지지 않게 한다.
-		return buckets.map((b) => ({
-			recorded_at: b.bucket_start,
-			container_id: b.container_id,
-			cpu_usage: clampPct(b.cpu_avg),
-			memory_usage: b.memory_avg,
-			memory_limit: 0,
-			memory_percent: clampPct(b.memory_percent_avg),
-			network_rx: b.network_rx_max,
-			network_tx: b.network_tx_max,
-			disk_read: b.disk_read_max,
-			disk_write: b.disk_write_max,
-		}));
+		// Agent v2는 이미 정규화된 0-100 값을 cpu_usage_pct_avg 로 보냄. 그대로 사용.
+		// 구버전 backend 응답엔 그 필드가 없으므로 cpu_avg 로 fallback (이미 정규화돼 있음).
+		return buckets.map((b) => {
+			const cpuPct = b.cpu_usage_pct_avg ?? b.cpu_avg ?? 0;
+			return {
+				recorded_at: b.bucket_start,
+				container_id: b.container_id,
+				cpu_usage: typeof cpuPct === 'number' ? cpuPct : 0,
+				memory_usage: b.memory_avg,
+				memory_limit: 0,
+				memory_percent: clampPct(b.memory_percent_avg),
+				network_rx: b.network_rx_max,
+				network_tx: b.network_tx_max,
+				disk_read: b.disk_read_max,
+				disk_write: b.disk_write_max,
+			};
+		});
 	}
 
 	async function loadHistoricalData() {
