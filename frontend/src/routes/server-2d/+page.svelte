@@ -615,6 +615,8 @@
 			localStorage.removeItem('hc_access_token');
 			localStorage.removeItem('hc_selected_server');
 		}
+		// 어느 페이지에서 로그아웃하든 항상 / 의 로그인 화면으로 복귀.
+		goto(`${base}/`);
 	}
 
 	async function loadAgents() {

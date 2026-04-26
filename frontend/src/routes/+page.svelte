@@ -42,6 +42,7 @@
 	let loginUsername = $state('');
 	let loginPassword = $state('');
 	let loginError = $state('');
+	let loginLoading = $state(false);
 	let redirecting = $state(false);
 
 	let displayedAgents = $derived($fleetAgents);
@@ -100,7 +101,9 @@
 	}
 
 	async function doLogin() {
+		if (loginLoading) return;
 		loginError = '';
+		loginLoading = true;
 		try {
 			const res = await fetch(`${base}/api/auth/token/`, {
 				method: 'POST',
@@ -109,7 +112,7 @@
 			});
 			const json = await res.json();
 			if (!res.ok) {
-				loginError = json.error?.detail || json.detail || 'Login failed';
+				loginError = json.error?.detail || json.detail || '로그인 실패. 사용자명·비밀번호를 확인하세요.';
 				return;
 			}
 			const accessToken = json.data?.access || json.access;
@@ -126,7 +129,9 @@
 			loadAgentCount(accessToken);
 			startFleetMonitoring(accessToken, range);
 		} catch {
-			loginError = 'Connection failed';
+			loginError = '서버에 연결할 수 없습니다.';
+		} finally {
+			loginLoading = false;
 		}
 	}
 
@@ -193,23 +198,75 @@
 	<LoadingOverlay text="초기화 중" />
 {:else if !isLoggedIn}
 	<div class="auth-page">
+		<!-- background accents (radial gradients + grid lines) — 시각적 깊이 -->
+		<div class="auth-bg" aria-hidden="true">
+			<span class="bg-glow bg-glow-1"></span>
+			<span class="bg-glow bg-glow-2"></span>
+			<span class="bg-grid"></span>
+		</div>
+
 		<div class="auth-card">
-			<img class="auth-logo" src={logoHypercube} alt="HyperCube" />
-			<p class="auth-subtitle">Container Monitoring Platform</p>
-			<form onsubmit={(e) => { e.preventDefault(); doLogin(); }}>
+			<header class="auth-header">
+				<img class="auth-logo" src={logoHypercube} alt="HyperCube" />
+				<p class="auth-tagline">Container Monitoring Platform</p>
+			</header>
+
+			<div class="auth-divider"></div>
+
+			<form class="auth-form" onsubmit={(e) => { e.preventDefault(); doLogin(); }}>
+				<h1 class="auth-title">로그인</h1>
+				<p class="auth-hint">계정 정보를 입력하면 모니터링 대시보드로 이동합니다.</p>
+
 				<div class="auth-field">
-					<label for="login-user">Username</label>
-					<input id="login-user" type="text" bind:value={loginUsername} placeholder="admin" />
+					<label for="login-user">사용자명</label>
+					<div class="auth-input-wrap">
+						<svg class="auth-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+							<circle cx="12" cy="7" r="4" />
+						</svg>
+						<input id="login-user" type="text" bind:value={loginUsername} placeholder="admin" autocomplete="username" disabled={loginLoading} />
+					</div>
 				</div>
+
 				<div class="auth-field">
-					<label for="login-pass">Password</label>
-					<input id="login-pass" type="password" bind:value={loginPassword} />
+					<label for="login-pass">비밀번호</label>
+					<div class="auth-input-wrap">
+						<svg class="auth-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+							<path d="M7 11V7a5 5 0 0 1 10 0v4" />
+						</svg>
+						<input id="login-pass" type="password" bind:value={loginPassword} placeholder="••••••••" autocomplete="current-password" disabled={loginLoading} />
+					</div>
 				</div>
+
 				{#if loginError}
-					<p class="auth-error">{loginError}</p>
+					<p class="auth-error" role="alert">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<circle cx="12" cy="12" r="10" />
+							<line x1="12" y1="8" x2="12" y2="12" />
+							<line x1="12" y1="16" x2="12.01" y2="16" />
+						</svg>
+						{loginError}
+					</p>
 				{/if}
-				<button class="auth-btn" type="submit">Login</button>
+
+				<button class="auth-btn" type="submit" disabled={loginLoading || !loginUsername || !loginPassword}>
+					{#if loginLoading}
+						<span class="auth-spinner" aria-hidden="true"></span>
+						로그인 중...
+					{:else}
+						로그인
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<line x1="5" y1="12" x2="19" y2="12" />
+							<polyline points="12 5 19 12 12 19" />
+						</svg>
+					{/if}
+				</button>
 			</form>
+
+			<footer class="auth-footer">
+				<span>HyperCube · Server Monitoring</span>
+			</footer>
 		</div>
 	</div>
 {:else if displayedAgents.length === 0 && $fleetLoading}
@@ -269,59 +326,262 @@
 
 <style>
 	.auth-page {
+		position: relative;
 		min-height: 100vh;
 		display: grid;
 		place-items: center;
 		padding: 24px;
-		background: var(--bg-base);
+		background: radial-gradient(circle at 20% 30%, rgba(48, 213, 200, 0.06), transparent 55%),
+			radial-gradient(circle at 80% 70%, rgba(96, 165, 250, 0.05), transparent 55%),
+			var(--bg-base);
+		overflow: hidden;
 	}
+	.auth-bg {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		z-index: 0;
+	}
+	.bg-glow {
+		position: absolute;
+		border-radius: 50%;
+		filter: blur(96px);
+		opacity: 0.5;
+	}
+	.bg-glow-1 {
+		width: 480px;
+		height: 480px;
+		top: -120px;
+		left: -160px;
+		background: radial-gradient(circle, rgba(48, 213, 200, 0.32), transparent 70%);
+		animation: drift1 18s ease-in-out infinite;
+	}
+	.bg-glow-2 {
+		width: 540px;
+		height: 540px;
+		bottom: -180px;
+		right: -180px;
+		background: radial-gradient(circle, rgba(96, 165, 250, 0.28), transparent 70%);
+		animation: drift2 22s ease-in-out infinite;
+	}
+	@keyframes drift1 {
+		0%, 100% { transform: translate(0, 0); }
+		50% { transform: translate(40px, 30px); }
+	}
+	@keyframes drift2 {
+		0%, 100% { transform: translate(0, 0); }
+		50% { transform: translate(-30px, -40px); }
+	}
+	.bg-grid {
+		position: absolute;
+		inset: 0;
+		background-image:
+			linear-gradient(to right, rgba(100, 116, 139, 0.06) 1px, transparent 1px),
+			linear-gradient(to bottom, rgba(100, 116, 139, 0.06) 1px, transparent 1px);
+		background-size: 56px 56px;
+		mask-image: radial-gradient(circle at center, black 30%, transparent 75%);
+	}
+
 	.auth-card {
-		width: min(420px, 100%);
-		padding: 32px;
-		border: 1px solid var(--border);
-		border-radius: 12px;
-		background: var(--bg-card);
+		position: relative;
+		z-index: 1;
+		width: min(440px, 100%);
+		padding: 36px 36px 24px;
+		border: 1px solid rgba(48, 213, 200, 0.18);
+		border-radius: 16px;
+		background: linear-gradient(180deg, rgba(18, 23, 32, 0.85), rgba(13, 17, 23, 0.95));
+		backdrop-filter: blur(12px);
+		display: grid;
+		gap: 20px;
+		box-shadow:
+			0 1px 0 rgba(255, 255, 255, 0.04) inset,
+			0 24px 60px -20px rgba(0, 0, 0, 0.6),
+			0 0 0 1px rgba(48, 213, 200, 0.04);
+	}
+
+	.auth-header {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 10px;
+		text-align: center;
+	}
+	.auth-logo {
+		height: 44px;
+		width: fit-content;
+		filter: drop-shadow(0 0 12px rgba(48, 213, 200, 0.35));
+	}
+	.auth-tagline {
+		margin: 0;
+		color: var(--text-muted);
+		font-size: 11px;
+		font-weight: 700;
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
+	}
+
+	.auth-divider {
+		height: 1px;
+		background: linear-gradient(to right, transparent, rgba(48, 213, 200, 0.22), transparent);
+	}
+
+	.auth-form {
 		display: grid;
 		gap: 14px;
 	}
-	.auth-logo {
-		height: 36px;
-		width: fit-content;
+	.auth-title {
+		margin: 0;
+		font-size: 18px;
+		font-weight: 800;
+		color: var(--text-primary);
+		letter-spacing: -0.01em;
 	}
-	.auth-subtitle {
+	.auth-hint {
+		margin: -8px 0 4px;
 		color: var(--text-muted);
 		font-size: 12px;
-		font-weight: 700;
-		letter-spacing: 0.04em;
+		font-weight: 600;
+		line-height: 1.5;
 	}
+
 	.auth-field {
 		display: grid;
 		gap: 6px;
-		font-size: 12px;
+	}
+	.auth-field label {
+		font-size: 11px;
+		font-weight: 800;
 		color: var(--text-secondary);
-		font-weight: 700;
+		letter-spacing: 0.04em;
+	}
+	.auth-input-wrap {
+		position: relative;
+		display: flex;
+		align-items: center;
+	}
+	.auth-icon {
+		position: absolute;
+		left: 12px;
+		width: 16px;
+		height: 16px;
+		color: var(--text-muted);
+		pointer-events: none;
+		transition: color 0.15s ease;
+	}
+	.auth-input-wrap:focus-within .auth-icon {
+		color: var(--accent);
 	}
 	.auth-field input {
-		height: 36px;
-		padding: 0 10px;
-		border: 1px solid var(--border);
-		border-radius: 8px;
-		background: var(--bg-base);
+		width: 100%;
+		height: 42px;
+		padding: 0 12px 0 38px;
+		border: 1px solid rgba(100, 116, 139, 0.22);
+		border-radius: 10px;
+		background: rgba(13, 17, 23, 0.6);
 		color: var(--text-primary);
 		font: inherit;
+		font-size: 14px;
+		transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
 	}
+	.auth-field input::placeholder {
+		color: var(--text-muted);
+		opacity: 0.6;
+	}
+	.auth-field input:hover:not(:disabled) {
+		border-color: rgba(48, 213, 200, 0.3);
+	}
+	.auth-field input:focus {
+		outline: none;
+		border-color: var(--accent);
+		background: rgba(13, 17, 23, 0.85);
+		box-shadow: 0 0 0 3px rgba(48, 213, 200, 0.14);
+	}
+	.auth-field input:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
 	.auth-error {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin: 0;
+		padding: 10px 12px;
+		border-radius: 8px;
+		background: rgba(239, 68, 68, 0.12);
+		border: 1px solid rgba(239, 68, 68, 0.22);
 		color: #fca5a5;
 		font-size: 12px;
+		font-weight: 700;
+		line-height: 1.4;
 	}
+	.auth-error svg {
+		width: 16px;
+		height: 16px;
+		flex: 0 0 auto;
+	}
+
 	.auth-btn {
-		height: 40px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		height: 44px;
+		margin-top: 4px;
 		border: none;
-		border-radius: 8px;
-		background: var(--accent);
+		border-radius: 10px;
+		background: linear-gradient(135deg, var(--accent), #20a89c);
 		color: var(--bg-base);
+		font-family: inherit;
+		font-size: 14px;
 		font-weight: 800;
+		letter-spacing: 0.02em;
 		cursor: pointer;
+		transition: transform 0.12s ease, box-shadow 0.15s ease, opacity 0.12s ease;
+		box-shadow: 0 6px 20px -6px rgba(48, 213, 200, 0.5);
+	}
+	.auth-btn svg {
+		width: 16px;
+		height: 16px;
+		transition: transform 0.15s ease;
+	}
+	.auth-btn:hover:not(:disabled) {
+		transform: translateY(-1px);
+		box-shadow: 0 10px 28px -8px rgba(48, 213, 200, 0.6);
+	}
+	.auth-btn:hover:not(:disabled) svg {
+		transform: translateX(2px);
+	}
+	.auth-btn:active:not(:disabled) {
+		transform: translateY(0);
+	}
+	.auth-btn:disabled {
+		opacity: 0.55;
+		cursor: not-allowed;
+		box-shadow: none;
+	}
+	.auth-spinner {
+		width: 14px;
+		height: 14px;
+		border: 2px solid rgba(13, 17, 23, 0.25);
+		border-top-color: var(--bg-base);
+		border-radius: 50%;
+		animation: auth-spin 0.7s linear infinite;
+	}
+	@keyframes auth-spin {
+		to { transform: rotate(360deg); }
+	}
+
+	.auth-footer {
+		display: flex;
+		justify-content: center;
+		padding-top: 8px;
+		border-top: 1px solid rgba(100, 116, 139, 0.1);
+		color: var(--text-muted);
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
 	}
 
 	.admin-shell {
