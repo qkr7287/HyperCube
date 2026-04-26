@@ -1,9 +1,10 @@
 <!--
   Small "?" help icon with a hover-triggered explanation bubble.
 
-  The bubble is rendered with `position: fixed` and positioned via JS so it
-  can escape panels that clip with `overflow: hidden`. Flips placement
-  automatically when near viewport edges.
+  The bubble is rendered into <body> via direct DOM manipulation so it
+  cannot be clipped or restacked by any ancestor's overflow / transform /
+  z-index. Position is calculated relative to the glyph and clamped to
+  the viewport.
 -->
 <script lang="ts">
 	import { onDestroy } from 'svelte';
@@ -22,12 +23,30 @@
 	} = $props();
 
 	let glyph = $state<HTMLSpanElement | null>(null);
-	let bubble = $state<HTMLSpanElement | null>(null);
-	let open = $state(false);
-	let positioned = $state(false);
-	let style = $state('');
+	let bubble: HTMLSpanElement | null = null;
+	let open = false;
 
 	const GAP = 8;
+
+	function ensureBubble(): HTMLSpanElement | null {
+		if (!browser) return null;
+		if (bubble) return bubble;
+		const node = document.createElement('span');
+		node.className = 'info-bubble';
+		node.setAttribute('role', 'tooltip');
+		node.style.maxWidth = `${maxWidth}px`;
+		node.textContent = text;
+		document.body.appendChild(node);
+		bubble = node;
+		return node;
+	}
+
+	function destroyBubble() {
+		if (bubble) {
+			bubble.remove();
+			bubble = null;
+		}
+	}
 
 	function computePosition() {
 		if (!glyph || !bubble) return;
@@ -35,7 +54,6 @@
 		const vw = window.innerWidth;
 		const vh = window.innerHeight;
 
-		// Measure bubble natural size
 		const bubbleRect = bubble.getBoundingClientRect();
 		const bw = Math.min(bubbleRect.width || maxWidth, maxWidth);
 		const bh = bubbleRect.height || 80;
@@ -44,7 +62,6 @@
 		let left = 0;
 		let mode = placement;
 
-		// Decide vertical: prefer bottom; flip to top if no room
 		const wantsTop = mode.startsWith('top');
 		const spaceBelow = vh - anchor.bottom - GAP;
 		const spaceAbove = anchor.top - GAP;
@@ -60,7 +77,6 @@
 			mode = mode.replace('top', 'bottom') as typeof mode;
 		}
 
-		// Decide horizontal
 		if (mode.endsWith('-end')) {
 			left = anchor.right - bw;
 		} else if (mode.endsWith('-start')) {
@@ -75,28 +91,33 @@
 			left = anchor.left + anchor.width / 2 - bw / 2;
 		}
 
-		// Clamp to viewport
 		left = Math.max(8, Math.min(vw - bw - 8, left));
 		top = Math.max(8, Math.min(vh - bh - 8, top));
 
-		style = `top: ${top}px; left: ${left}px; width: ${bw}px;`;
-		positioned = true;
+		bubble.style.top = `${top}px`;
+		bubble.style.left = `${left}px`;
+		bubble.style.width = `${bw}px`;
+		bubble.classList.add('positioned');
 	}
 
 	function handleEnter() {
+		if (!browser) return;
 		open = true;
-		positioned = false;
-		// Wait two animation frames so the bubble is in the DOM with its
-		// final width measurable, then compute position. Setting
-		// positioned=true reveals it via CSS to avoid a flash at (0,0).
-		if (browser) {
-			requestAnimationFrame(() => requestAnimationFrame(() => computePosition()));
-		}
+		const node = ensureBubble();
+		if (!node) return;
+		node.textContent = text;
+		node.classList.remove('positioned');
+		// Compute position after the browser has had a chance to lay out the bubble
+		// with its real dimensions. We don't gate on `open` here because we want the
+		// position to land even if the user moves the mouse in the same frame.
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => computePosition());
+		});
 	}
 
 	function handleLeave() {
 		open = false;
-		positioned = false;
+		destroyBubble();
 	}
 
 	function handleScroll() {
@@ -104,7 +125,7 @@
 	}
 
 	$effect(() => {
-		if (!browser || !open) return;
+		if (!browser) return;
 		window.addEventListener('scroll', handleScroll, true);
 		window.addEventListener('resize', handleScroll);
 		return () => {
@@ -115,6 +136,7 @@
 
 	onDestroy(() => {
 		open = false;
+		destroyBubble();
 	});
 </script>
 
@@ -130,16 +152,6 @@
 >
 	<span class="info-glyph" aria-hidden="true">?</span>
 </span>
-{#if open}
-	<span
-		class="info-bubble"
-		class:positioned
-		role="tooltip"
-		bind:this={bubble}
-		style={style}
-		style:max-width="{maxWidth}px"
-	>{text}</span>
-{/if}
 
 <style>
 	.info-tip {
@@ -152,6 +164,7 @@
 		margin-left: 6px;
 		cursor: help;
 		outline: none;
+		pointer-events: auto;
 	}
 
 	.info-glyph {
@@ -181,7 +194,7 @@
 		position: fixed;
 		top: -9999px;
 		left: -9999px;
-		z-index: 2000;
+		z-index: 99999;
 		padding: 12px 14px;
 		font-size: 12.5px;
 		line-height: 1.65;
