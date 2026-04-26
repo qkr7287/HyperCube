@@ -504,7 +504,7 @@
 		text-overflow: ellipsis;
 	}
 	/* Column widths — 14 cols, total ≈ 100%, no horizontal scroll */
-	.c-state { width: 6%; min-width: 76px; }
+	.c-state { width: 4%; min-width: 60px; }
 	.c-score {
 		width: 5%;
 		min-width: 58px;
@@ -523,17 +523,17 @@
 	/* min-width 는 헤더 텍스트 + 정렬 화살표 + MetricHelp(?) 까지 한 줄에 들어갈
 	   만큼 확보해야 짤리거나 ? 아이콘 누락이 안 생김. */
 	.c-host { width: 10%; min-width: 140px; }
-	.c-mem { width: 9%; min-width: 120px; }
+	.c-mem { width: 8%; min-width: 100px; }
 	.c-disk { width: 5%; min-width: 90px; }
-	.c-gpu { width: 6%; min-width: 80px; }
-	.c-net { width: 7%; min-width: 110px; }
+	.c-gpu { width: 5%; min-width: 70px; }
+	.c-net { width: 6%; min-width: 95px; }
 	.c-net-trend { width: 8%; min-width: 110px; }
-	.c-proc { width: 6%; min-width: 124px; }
+	.c-proc { width: 5%; min-width: 100px; }
 	.c-login { width: 6%; min-width: 124px; }
 	.c-containers { width: 12%; min-width: 150px; }
 	.c-fresh { width: 8%; min-width: 100px; }
 	.c-trend { width: 9%; min-width: 110px; }
-	.c-action { width: 5%; min-width: 70px; }
+	.c-action { width: 8%; min-width: 120px; }
 	th {
 		position: sticky;
 		top: 0;
