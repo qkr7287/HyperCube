@@ -92,7 +92,7 @@
 		<span class="label">
 			<span class="dot" class:danger={count('critical') > 0} class:offline={!connected}></span>
 			전체 서버
-			<MetricHelp text="대시보드에서 감시 중인 승인된 서버의 상태입니다. 아래 위험·주의·지연·오프라인 카운트로 어떤 상태에 몇 대가 있는지 확인합니다." />
+			<MetricHelp text="대시보드에서 감시 중인 승인된 서버의 상태입니다. 아래 위험·주의·지연·중지(오프라인) 카운트로 어떤 상태에 몇 대가 있는지 확인합니다." />
 		</span>
 		<div class="state-row">
 			<strong>{count('online')}</strong>
@@ -102,7 +102,7 @@
 			<span class="chip critical" class:zero={count('critical') === 0} title="위험: CPU/메모리/디스크/GPU 중 하나가 임계치를 넘었거나 컨테이너 장애·재시작 발생">위험 <b>{count('critical')}</b></span>
 			<span class="chip warning" class:zero={count('warning') === 0} title="주의: 자원 사용률이 경고 구간에 있거나 일시정지·고부하 컨테이너가 있음">주의 <b>{count('warning')}</b></span>
 			<span class="chip stale" class:zero={count('stale') === 0} title="지연: Agent가 보고는 하지만 마지막 메트릭이 1분 이상 늦게 도착했음">지연 <b>{count('stale')}</b></span>
-			<span class="chip offline" class:zero={count('offline') === 0} title="오프라인: Agent와의 연결이 끊겨 메트릭이 수신되지 않음">오프라인 <b>{count('offline')}</b></span>
+			<span class="chip offline" class:zero={count('offline') === 0} title="중지: Agent와의 연결이 끊겨 메트릭이 수신되지 않음 (오프라인)">중지 <b>{count('offline')}</b></span>
 		</div>
 	</div>
 
