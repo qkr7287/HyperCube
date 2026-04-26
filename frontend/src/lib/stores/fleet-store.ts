@@ -292,7 +292,7 @@ export async function refreshFleet() {
 		const containers = containersPayload.results ?? [];
 		const latestRaw = Array.isArray(latestPayload) ? latestPayload : [];
 		const buckets = bucketsPayload?.results ?? [];
-		const rows = buildRows(agents, containers, latestRaw);
+		const rows = buildRows(agents, containers, latestRaw, buckets, range);
 		const history = buildHistoryFromBuckets(buckets, range);
 
 		fleetAgents.set(rows);
@@ -378,9 +378,25 @@ export function currentAgents(): FleetAgentRow[] {
 	return get(fleetAgents);
 }
 
-function buildRows(agents: AgentApiRow[], containers: ContainerApiRow[], metrics: SystemMetricRow[]): FleetAgentRow[] {
+function buildRows(
+	agents: AgentApiRow[],
+	containers: ContainerApiRow[],
+	metrics: SystemMetricRow[],
+	buckets: SystemBucketRow[],
+	rangeKey: TimeRange,
+): FleetAgentRow[] {
 	const containersByAgent = groupContainers(containers);
 	const metricsByAgent = groupMetrics(metrics);
+	// 카드 sparkline 은 raw `/metrics/system/?limit=200` 가 아니라 buckets 엔드포인트
+	// 데이터로 생성한다. raw 200 row 는 ~8 분 분량이라 24h/7d 는 물론 1h sparkline
+	// 도 평탄해진다. buckets 는 from_time/to_time + bucket=range 단위로 받아 필요한
+	// 점 개수가 항상 채워짐.
+	const bucketsByAgent = new Map<string, SystemBucketRow[]>();
+	for (const r of buckets) {
+		const list = bucketsByAgent.get(r.agent) ?? [];
+		list.push(r);
+		bucketsByAgent.set(r.agent, list);
+	}
 
 	return agents
 		.map((agent) => {
@@ -389,14 +405,7 @@ function buildRows(agents: AgentApiRow[], containers: ContainerApiRow[], metrics
 			const containerSummary = containersByAgent.get(agent.id) ?? emptyContainerSummary();
 			const [health, reasons] = classifyHealth(agent, latest, containerSummary);
 
-			// rx/tx rate는 인접 snapshot 간 delta로 계산해 별도 배열에 담고,
-			// bucketSparkline이 시각 기준으로 정렬하도록 rate-carrying row를 넘긴다.
-			const rateRows = agentMetrics.map((row, idx, arr) => {
-				const [rx, tx] = idx === 0 ? [0, 0] : networkRate(arr[idx - 1], row);
-				return { ...row, __rx_rate: rx, __tx_rate: tx } as SystemMetricRow & { __rx_rate: number; __tx_rate: number };
-			});
-			const bucketSec = BUCKET_SECONDS[range];
-			const points = SPARKLINE_POINTS[range];
+			const agentBuckets = bucketsByAgent.get(agent.id) ?? [];
 			return {
 				agent,
 				health,
@@ -404,12 +413,14 @@ function buildRows(agents: AgentApiRow[], containers: ContainerApiRow[], metrics
 				latest,
 				containers: containerSummary,
 				sparkline: {
-					cpu: bucketSparkline(agentMetrics, bucketSec, points, (m) => num(m.cpu_usage)),
-					memory: bucketSparkline(agentMetrics, bucketSec, points, (m) => num(m.memory_usage)),
-					disk: bucketSparkline(agentMetrics, bucketSec, points, (m) => num(m.disk_usage)),
-					gpu: bucketSparkline(agentMetrics, bucketSec, points, (m) => gpuUsage(m.gpu)),
-					rx: bucketSparkline(rateRows, bucketSec, points, (m) => (m as any).__rx_rate ?? 0),
-					tx: bucketSparkline(rateRows, bucketSec, points, (m) => (m as any).__tx_rate ?? 0),
+					cpu: bucketsToSparkline(agentBuckets, rangeKey, (b) => b.cpu_avg),
+					memory: bucketsToSparkline(agentBuckets, rangeKey, (b) => b.memory_avg),
+					disk: bucketsToSparkline(agentBuckets, rangeKey, (b) => b.disk_avg),
+					// GPU 는 system buckets 에 없어 0 fallback. agent series 의 gpu 도 동일.
+					gpu: bucketsToSparkline(agentBuckets, rangeKey, () => 0),
+					// rx/tx rate 는 max 값을 그대로 sparkline 으로. bytes/s 단위 absolute count.
+					rx: bucketsToSparkline(agentBuckets, rangeKey, (b) => b.network_rx_max),
+					tx: bucketsToSparkline(agentBuckets, rangeKey, (b) => b.network_tx_max),
 				},
 			};
 		})
@@ -1040,6 +1051,45 @@ function gpuSummary(gpu?: GpuMetric[] | null): {
  * 이어지는 streaming 효과의 핵심이다. 각 poll 마다 downsample로 재샘플링하면
  * 인덱스 ↔ 시각 정합이 깨져서 통째로 redraw되는 느낌이 남.
  */
+/**
+ * SystemBucketRow → fixed-length sparkline 배열.
+ *
+ * buildRows 카드용. SPARKLINE_POINTS 길이의 배열을 만들고 각 bucket 을
+ * (현재 시각 기준 offset) 자리에 배치 — 마지막 슬롯이 최신.
+ * forward/backward fill 로 빈 칸은 직전·직후 값으로 메워서 평평한 baseline 회피.
+ */
+function bucketsToSparkline(
+	rows: SystemBucketRow[],
+	rangeKey: TimeRange,
+	valueFn: (row: SystemBucketRow) => number,
+): number[] {
+	const bucketSec = BUCKET_SECONDS[rangeKey];
+	const points = SPARKLINE_POINTS[rangeKey];
+	const now = Math.floor(Date.now() / 1000);
+	const latestBucket = Math.floor(now / bucketSec) * bucketSec;
+	const out: (number | null)[] = new Array(points).fill(null);
+	for (const r of rows) {
+		const offset = (latestBucket - r.bucket_epoch) / bucketSec;
+		const idx = points - 1 - offset;
+		if (idx < 0 || idx >= points) continue;
+		const v = valueFn(r);
+		if (Number.isFinite(v)) out[idx] = v;
+	}
+	let lastKnown: number | null = null;
+	for (let i = 0; i < points; i += 1) {
+		if (out[i] !== null) lastKnown = out[i] as number;
+		else if (lastKnown !== null) out[i] = lastKnown;
+	}
+	let firstReal: number | null = null;
+	for (const v of out) if (v !== null) { firstReal = v; break; }
+	if (firstReal !== null) {
+		for (let i = 0; i < points; i += 1) if (out[i] === null) out[i] = firstReal;
+	} else {
+		for (let i = 0; i < points; i += 1) out[i] = 0;
+	}
+	return out as number[];
+}
+
 function bucketSparkline(
 	rows: SystemMetricRow[],
 	bucketSec: number,
