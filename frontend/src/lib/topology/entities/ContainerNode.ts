@@ -9,9 +9,11 @@ const PRISM_GEOMETRY = new THREE.CylinderGeometry(7.4, 7.4, 12, 6);
 const CAPSULE_BODY_GEOMETRY = new THREE.CylinderGeometry(5.8, 5.8, 8.2, 18, 1, true);
 const CAPSULE_CAP_GEOMETRY = new THREE.SphereGeometry(5.8, 18, 14);
 const CRATE_CORE_GEOMETRY = new THREE.BoxGeometry(10.8, 10.8, 10.8);
-const CRATE_EDGE_GEOMETRY_X = new THREE.BoxGeometry(11.6, 0.72, 0.72);
-const CRATE_EDGE_GEOMETRY_Y = new THREE.BoxGeometry(0.72, 11.6, 0.72);
-const CRATE_EDGE_GEOMETRY_Z = new THREE.BoxGeometry(0.72, 0.72, 11.6);
+// Edge struts: thinner cross-section so the wireframe reads as an outline
+// rather than a chunky cage. Length stays 11.6 so corners still butt cleanly.
+const CRATE_EDGE_GEOMETRY_X = new THREE.BoxGeometry(11.6, 0.4, 0.4);
+const CRATE_EDGE_GEOMETRY_Y = new THREE.BoxGeometry(0.4, 11.6, 0.4);
+const CRATE_EDGE_GEOMETRY_Z = new THREE.BoxGeometry(0.4, 0.4, 11.6);
 const OVERLAY_ORB_GEOMETRY = new THREE.IcosahedronGeometry(1, 2);
 const OVERLAY_BOX_GEOMETRY = new THREE.BoxGeometry(1, 1, 1);
 FRAME_BODY_GEOMETRY.rotateX(Math.PI / 2);

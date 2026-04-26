@@ -83,6 +83,12 @@ To-Be: 멀티 서버 모니터링 플랫폼 (Django Backend + Agent 기반).
 - **nginx** - 정적 파일 서빙 + API/WS 리버스 프록시
 - **Docker Compose** - 개발/배포 환경 관리 (override 패턴)
 
+## 중요: serena LSP 범위 (이 프로젝트 한정)
+
+전역 "파일 탐색 규칙 (serena 우선)" 규칙(`~/.claude/CLAUDE.md`) 적용 시 주의:
+- 이 프로젝트 `.serena/project.yml`은 **typescript LSP만** 활성 → Python 백엔드는 Read/Grep 유지.
+- `.svelte`는 `<script lang="ts">` 내부 심볼만 detected. 마크업 구조 조사는 Read 필요.
+
 ## 중요: Svelte 5 runes 주의사항
 
 - **`+page.svelte`는 runes mode가 아님** → `$state()` 사용 불가. 반드시 `let` 사용.

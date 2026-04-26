@@ -2,16 +2,25 @@
 	import { untrack } from 'svelte';
 	import { sendCommand } from '$lib/stores/ws-store';
 	import { adaptCpuDetail } from '$lib/utils/data-adapter';
+	import MetricTrendChart from './MetricTrendChart.svelte';
+	import InfoTooltip from './InfoTooltip.svelte';
 
 	let {
 		open = false,
 		systemInfo = null,
+		agentId = '',
+		accessToken = '',
 		onClose = () => {},
 	}: {
 		open: boolean;
 		systemInfo: any;
+		agentId?: string;
+		accessToken?: string;
 		onClose: () => void;
 	} = $props();
+
+	const liveCpuPct = $derived(Math.round(systemInfo?.cpu?.usage ?? 0));
+	const cpuSpec = $derived(systemInfo?.cpu ?? null);
 
 	let loading = $state(true);
 	let data: any = $state(null);
@@ -107,8 +116,12 @@
 							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="7" x2="22" y2="7"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="17" x2="22" y2="17"/></svg>
 						</div>
 						<div class="stat-info">
-							<span class="stat-label">코어 수</span>
-							<span class="stat-value">{data.cores} <small>cores</small></span>
+							<span class="stat-label">코어 / 스레드</span>
+							{#if cpuSpec && cpuSpec.cores}
+								<span class="stat-value">{cpuSpec.cores}<small>C</small> / {cpuSpec.threads ?? data.cores}<small>T</small></span>
+							{:else}
+								<span class="stat-value">{data.cores} <small>threads</small></span>
+							{/if}
 						</div>
 					</div>
 					<div class="stat-card">
@@ -126,10 +139,65 @@
 				<div class="model-row">
 					<span class="model-label">Processor</span>
 					<span class="model-text">{data.model}</span>
+					{#if cpuSpec?.isHybrid}
+						<span class="spec-pill hybrid">Hybrid (P + E)</span>
+					{/if}
 				</div>
 
-				<!-- Heatmap -->
-				<div class="section-label">코어별 사용률 히트맵</div>
+				<!-- Live usage trend with history + range tabs -->
+				<div class="section-label">
+					CPU 사용률 추이
+					<InfoTooltip
+						placement="bottom-start"
+						text="CPU가 얼마나 바쁜지 보여주는 그래프예요. 0% = 한가, 100% = 완전 포화. 80% 이상이 길게 이어지면 서버가 힘들어하는 신호라 작업을 줄이거나 서버를 키워야 할 수 있어요."
+					/>
+					<span class="section-current">현재 {liveCpuPct}%</span>
+				</div>
+				<MetricTrendChart
+					{agentId}
+					{accessToken}
+					metricField="cpu_usage"
+					liveValue={liveCpuPct}
+					label="CPU 사용률 (%)"
+					color="#30d5c8"
+					unit="percent"
+					defaultRange="10m"
+				/>
+
+				<!-- Load Average explanation -->
+				{#if data.loadAvg}
+					<div class="section-label">
+						Load Average
+						<InfoTooltip
+							placement="bottom-start"
+							text={`최근 1분/5분/15분 동안 평균 몇 개 작업이 CPU를 쓰려고 줄 서 있었는지 보여주는 숫자예요. 내 서버 스레드 수(${cpuSpec?.threads ?? data.cores}개)보다 작으면 여유, 비슷하면 딱 찬 상태, 더 크면 작업이 밀리는 중. 꾸준히 넘으면 서버가 모자라요.`}
+						/>
+					</div>
+					<div class="load-display">
+						<div class="load-cell">
+							<span class="load-label">1 min</span>
+							<span class="load-num">{data.loadAvg.avg1?.toFixed(2) ?? '—'}</span>
+						</div>
+						<div class="load-cell">
+							<span class="load-label">5 min</span>
+							<span class="load-num">{data.loadAvg.avg5?.toFixed(2) ?? '—'}</span>
+						</div>
+						<div class="load-cell">
+							<span class="load-label">15 min</span>
+							<span class="load-num">{data.loadAvg.avg15?.toFixed(2) ?? '—'}</span>
+						</div>
+					</div>
+				{/if}
+
+				<!-- Per-core heatmap -->
+				<div class="section-label">
+					코어별 사용률 히트맵
+					<span class="section-sub">스레드 {data.perCore?.length ?? 0}개</span>
+					<InfoTooltip
+						placement="bottom-start"
+						text="스레드 하나하나가 지금 얼마나 바쁜지 색으로 표시해요. 초록=한가, 노랑=적당, 빨강=꽉 참. 한 칸만 계속 빨강이면 어떤 프로그램이 그 스레드만 쓰고 있는 거라, 부하 분산이 잘 안 되는 상태일 수 있어요."
+					/>
+				</div>
 				<div class="heatmap-legend">
 					<span class="legend-label">Low</span>
 					<div class="legend-gradient"></div>
@@ -185,9 +253,108 @@
 	.modal-title { font-size: 17px; font-weight: 700; color: #d9d9d9; }
 	.close-btn { background: none; border: none; cursor: pointer; padding: 6px; display: flex; }
 	.close-btn:hover svg { stroke: #cbd5e1; }
-	.modal-content { flex: 1; overflow-y: auto; padding: 28px; display: flex; flex-direction: column; gap: 20px; }
+	.modal-content {
+		flex: 1;
+		overflow-y: auto;
+		padding: 28px;
+		display: flex;
+		flex-direction: column;
+		gap: 20px;
+		/* Firefox */
+		scrollbar-width: thin;
+		scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+	}
+	.modal-content::-webkit-scrollbar { width: 10px; }
+	.modal-content::-webkit-scrollbar-track { background: transparent; }
+	.modal-content::-webkit-scrollbar-thumb {
+		background: rgba(148, 163, 184, 0.3);
+		border: 2px solid transparent;
+		border-radius: 8px;
+		background-clip: padding-box;
+	}
+	.modal-content::-webkit-scrollbar-thumb:hover {
+		background: rgba(48, 213, 200, 0.55);
+		background-clip: padding-box;
+	}
 	.loading-state { text-align: center; color: #64748b; font-size: 14px; padding: 32px; }
-	.section-label { font-size: 14px; font-weight: 700; color: #64748b; }
+	.section-label {
+		font-size: 14px;
+		font-weight: 700;
+		color: #64748b;
+		display: flex;
+		align-items: baseline;
+		gap: 10px;
+	}
+	.section-sub {
+		font-size: 11px;
+		font-weight: 500;
+		color: #475569;
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+	}
+
+	.section-desc {
+		margin: 0;
+		font-size: 12px;
+		line-height: 1.55;
+		color: #94a3b8;
+		background: rgba(15, 23, 42, 0.6);
+		border-left: 3px solid rgba(48, 213, 200, 0.5);
+		padding: 10px 14px;
+		border-radius: 0 6px 6px 0;
+	}
+	.section-desc strong {
+		color: #cbd5e1;
+		font-weight: 600;
+	}
+
+	/* Hybrid pill inline with model name */
+	.spec-pill.hybrid {
+		margin-left: auto;
+		font-size: 11px;
+		padding: 3px 10px;
+		border-radius: 999px;
+		font-weight: 600;
+		background: rgba(139, 92, 246, 0.14);
+		border: 1px solid rgba(139, 92, 246, 0.5);
+		color: #c4b5fd;
+	}
+
+	.section-current {
+		margin-left: auto;
+		font-size: 13px;
+		font-weight: 700;
+		color: #30d5c8;
+		font-variant-numeric: tabular-nums;
+	}
+
+	/* Load average display */
+	.load-display {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 10px;
+	}
+	.load-cell {
+		background: #121720;
+		border-radius: 10px;
+		padding: 12px 14px;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+	.load-label {
+		font-size: 10px;
+		color: #64748b;
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		font-weight: 600;
+	}
+	.load-num {
+		font-size: 20px;
+		font-weight: 700;
+		color: #cbd5e1;
+		font-variant-numeric: tabular-nums;
+	}
 
 	.stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 	.stat-card {

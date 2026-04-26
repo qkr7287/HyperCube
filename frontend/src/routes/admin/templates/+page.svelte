@@ -3,6 +3,7 @@
 	import { base } from '$app/paths';
 	import { browser } from '$app/environment';
 	import TemplateEditorModal from '$lib/components/TemplateEditorModal.svelte';
+	import InfoTooltip from '$lib/components/InfoTooltip.svelte';
 
 	type TemplateRow = {
 		id: string;
@@ -121,10 +122,10 @@
 <div class="page">
 	<div class="page-header">
 		<div>
-			<h1>컨테이너 템플릿</h1>
+			<h1>컨테이너 템플릿 <InfoTooltip text={"\"이 이미지를 이 옵션으로 띄우면 됩니다\"라는 미리 만든 묶음입니다.\n\n사용자는 컨테이너 생성을 요청할 때 직접 docker 옵션을 쓰지 않고 여기서 만든 템플릿을 골라 제출합니다.\n\n• 새 템플릿을 만들면 사용자 화면에 즉시 노출됩니다.\n• 잘못 만든 템플릿은 편집 또는 삭제할 수 있습니다 (사용 중인 요청이 있으면 삭제 불가)."} placement="bottom-start" /></h1>
 			<p class="subtitle">사용자가 컨테이너 요청 시 선택할 수 있는 템플릿을 관리합니다.</p>
 		</div>
-		<button class="create-btn" onclick={openCreate}>+ 새 템플릿</button>
+		<button class="create-btn" onclick={openCreate} title="새 템플릿을 등록합니다. 이름·타입(Simple/Compose)·이미지·설명을 입력하면 즉시 사용자 화면에 표시됩니다.">+ 새 템플릿</button>
 	</div>
 
 	{#if errorMsg}
@@ -142,12 +143,12 @@
 			<table>
 				<thead>
 					<tr>
-						<th>이름</th>
-						<th class="col-kind">타입</th>
-						<th>이미지</th>
-						<th>설명</th>
-						<th class="col-author">작성자</th>
-						<th class="col-date">수정일</th>
+						<th>이름 <InfoTooltip text={"템플릿을 식별하는 사람이 읽기 쉬운 이름입니다.\n사용자 화면 \"컨테이너 생성\" 드롭다운에 그대로 노출됩니다.\n\n예: \"Postgres 16\", \"Nginx 정적 호스팅\"."} placement="bottom-start" /></th>
+						<th class="col-kind">타입 <InfoTooltip text={"템플릿이 정의된 형식\n\n• Simple — 단일 이미지 + 기본 옵션 (docker run 한 번에 띄울 수 있는 컨테이너)\n• Compose — docker-compose.yml 형태 (여러 서비스를 묶음으로 띄워야 할 때)"} placement="bottom-start" /></th>
+						<th>이미지 <InfoTooltip text={"Simple 타입일 때 사용할 도커 이미지 주소입니다 (예: postgres:16, nginx:alpine).\nCompose 타입은 yaml 안에 이미지가 여러 개 들어 있어 여기엔 \"(yaml)\"로 표시됩니다."} placement="bottom-start" /></th>
+						<th>설명 <InfoTooltip text={"이 템플릿이 어떤 용도인지, 어떤 옵션을 쓰는지 사용자가 한 줄로 이해할 수 있게 적은 짧은 안내입니다.\n사용자 화면에서 템플릿 선택 시 함께 노출됩니다."} placement="bottom-start" /></th>
+						<th class="col-author">작성자 <InfoTooltip text={"이 템플릿을 등록한 관리자 계정입니다."} placement="bottom-start" /></th>
+						<th class="col-date">수정일 <InfoTooltip text={"이 템플릿이 마지막으로 만들어졌거나 편집된 날짜입니다.\n오래된 템플릿은 이미지 태그가 옛 버전으로 고정되어 있을 수 있으니 가끔 점검해 주세요."} placement="bottom-start" /></th>
 						<th class="col-actions"></th>
 					</tr>
 				</thead>

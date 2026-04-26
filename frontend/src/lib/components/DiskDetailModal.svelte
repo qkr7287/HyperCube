@@ -1,15 +1,22 @@
 <script lang="ts">
+	import MetricTrendChart from './MetricTrendChart.svelte';
+	import InfoTooltip from './InfoTooltip.svelte';
+
 	let {
 		open = false,
 		systemInfo = null,
+		agentId = '',
+		accessToken = '',
 		onClose = () => {},
 	}: {
 		open: boolean;
 		systemInfo: any;
+		agentId?: string;
+		accessToken?: string;
 		onClose: () => void;
 	} = $props();
 
-	let usagePercent = $derived(systemInfo?.disk?.usage ?? 0);
+	let usagePercent = $derived(Math.round(systemInfo?.disk?.usage ?? 0));
 
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') onClose();
@@ -88,6 +95,25 @@
 				</div>
 			</div>
 
+			<div class="section-label">
+				디스크 사용률 추이
+				<InfoTooltip
+					placement="bottom-start"
+					text="디스크(SSD/HDD)가 얼마나 차 있는지 시간 순서로 보여줘요. 90% 넘으면 공간 부족 경고, 꾸준히 올라가기만 하면 로그나 임시 파일이 계속 쌓이는 중이라 정리가 필요할 수 있어요."
+				/>
+				<span class="section-current">현재 {usagePercent}%</span>
+			</div>
+			<MetricTrendChart
+				{agentId}
+				{accessToken}
+				metricField="disk_usage"
+				liveValue={usagePercent}
+				label="디스크 사용률 (%)"
+				color="#f59e0b"
+				unit="percent"
+				defaultRange="1h"
+			/>
+
 			{#if systemInfo.docker}
 				<div class="section-label">Docker 스토리지</div>
 				<div class="stats-row">
@@ -136,8 +162,44 @@
 	.modal-title { font-size: 17px; font-weight: 700; color: #d9d9d9; }
 	.close-btn { background: none; border: none; cursor: pointer; padding: 6px; display: flex; }
 	.close-btn:hover svg { stroke: #cbd5e1; }
-	.modal-content { flex: 1; overflow-y: auto; padding: 28px; display: flex; flex-direction: column; gap: 24px; }
-	.section-label { font-size: 14px; font-weight: 700; color: #64748b; }
+	.modal-content {
+		flex: 1;
+		overflow-y: auto;
+		padding: 28px;
+		display: flex;
+		flex-direction: column;
+		gap: 24px;
+		scrollbar-width: thin;
+		scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+	}
+	.modal-content::-webkit-scrollbar { width: 10px; }
+	.modal-content::-webkit-scrollbar-track { background: transparent; }
+	.modal-content::-webkit-scrollbar-thumb {
+		background: rgba(148, 163, 184, 0.3);
+		border: 2px solid transparent;
+		border-radius: 8px;
+		background-clip: padding-box;
+	}
+	.modal-content::-webkit-scrollbar-thumb:hover {
+		background: rgba(48, 213, 200, 0.55);
+		background-clip: padding-box;
+	}
+
+	.section-label {
+		font-size: 14px;
+		font-weight: 700;
+		color: #64748b;
+		display: flex;
+		align-items: baseline;
+		gap: 10px;
+	}
+	.section-current {
+		margin-left: auto;
+		font-size: 13px;
+		font-weight: 700;
+		color: #f59e0b;
+		font-variant-numeric: tabular-nums;
+	}
 
 	.stats-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 	.stat-card {

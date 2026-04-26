@@ -1,7 +1,11 @@
 <script lang="ts">
 	import favicon from '$lib/assets/favicon.svg';
+	import { navigating } from '$app/stores';
+	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 
 	let { children } = $props();
+
+	const visibleNav = $derived($navigating !== null);
 </script>
 
 <svelte:head>
@@ -11,6 +15,10 @@
 </svelte:head>
 
 {@render children?.()}
+
+{#if visibleNav}
+	<LoadingOverlay />
+{/if}
 
 <style>
 	:global(html, body) {

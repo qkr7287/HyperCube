@@ -7,6 +7,7 @@
 	import type { TopologyNetworkTrafficIndex } from '$lib/topology/traffic-adapter';
 	import type { NetworkPaletteMode } from '$lib/topology/hubs/NetworkHub';
 	import logoHypercube from '$lib/assets/logo_hypercube.png';
+	import InfoTooltip from './InfoTooltip.svelte';
 
 	const STAGE_LABELS: Record<LoadingStage, string> = {
 		models: 'Loading models…',
@@ -234,11 +235,13 @@
 	<div
 		class="health-legend"
 		class:health-legend-visible={loadingStage === 'ready'}
-		aria-hidden="true"
 	>
-		<div class="legend-title">Stack Health</div>
-		<div class="legend-bar"></div>
-		<div class="legend-labels">
+		<div class="legend-title">
+			Stack Health
+			<InfoTooltip text={"각 Stack(Compose 프로젝트)의 \"건강 점수\"를 색으로 보여줍니다.\n\n• 점수 = 실행 중 컨테이너 비율, 평균 CPU·메모리 부하, 재시작/오류 발생 등을 합산\n• 0% (빨강) — 거의 모든 컨테이너가 비정상\n• 50% (노랑) — 일부 컨테이너에 문제 또는 고부하\n• 100% (초록) — 모든 컨테이너가 안정적으로 실행 중\n\n토폴로지 위 Stack 영역의 색이 이 게이지의 색과 매핑됩니다."} placement="top-end" />
+		</div>
+		<div class="legend-bar" aria-hidden="true"></div>
+		<div class="legend-labels" aria-hidden="true">
 			<span>0%</span>
 			<span>50%</span>
 			<span>100%</span>

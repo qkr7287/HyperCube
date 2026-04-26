@@ -4,6 +4,7 @@
 	import { browser } from '$app/environment';
 	import { statusEvents, pendingRequestCount } from '$lib/stores/global-events';
 	import RequestDetailModal from '$lib/components/RequestDetailModal.svelte';
+	import InfoTooltip from '$lib/components/InfoTooltip.svelte';
 
 	type RequestRow = {
 		id: string;
@@ -150,7 +151,7 @@
 <div class="page">
 	<div class="page-header">
 		<div>
-			<h1>컨테이너 요청 승인</h1>
+			<h1>컨테이너 요청 승인 <InfoTooltip text={"일반 사용자가 \"이 컨테이너를 만들어 주세요\" 또는 \"이 컨테이너를 지워 주세요\"라고 보낸 신청을 관리자가 검토하는 화면입니다.\n\n• 승인하면 해당 서버에서 실제로 컨테이너 생성/삭제가 진행됩니다.\n• 반려하면 사용자에게 사유와 함께 거절됩니다.\n• 처리 결과는 사용자 화면에서도 즉시 확인됩니다."} placement="bottom-start" /></h1>
 			<p class="subtitle">사용자가 제출한 컨테이너 생성/삭제 요청을 검토합니다.</p>
 		</div>
 		<div class="controls">
@@ -165,6 +166,7 @@
 					class:active={filter === 'all'}
 					onclick={() => { filter = 'all'; onFilterChange(); }}
 				>전체</button>
+				<InfoTooltip text={"필터 옵션\n\n• 대기중만 — 아직 승인/반려되지 않은 요청만 보여줍니다. 헤더의 빨간 배지 숫자와 같습니다.\n• 전체 — 처리 끝난 요청까지 모두 보여줍니다. 누가 언제 어떤 요청을 했는지 이력 확인용으로 쓰세요."} placement="bottom-end" />
 			</div>
 			<button class="refresh-btn" onclick={load} disabled={loading}>
 				{loading ? '불러오는 중...' : '↻ 새로고침'}
@@ -188,13 +190,13 @@
 			<table>
 				<thead>
 					<tr>
-						<th class="col-user">제출자</th>
-						<th class="col-action">타입</th>
-						<th>템플릿</th>
-						<th>대상 서버</th>
-						<th>이름</th>
-						<th class="col-status">상태</th>
-						<th class="col-time">제출</th>
+						<th class="col-user">제출자 <InfoTooltip text={"이 요청을 보낸 사용자 계정입니다.\n사용자명은 사용자의 로그인 ID와 동일합니다."} placement="bottom-start" /></th>
+						<th class="col-action">타입 <InfoTooltip text={"요청 종류\n\n• 생성 — 새 컨테이너를 띄워 달라는 요청\n• 삭제 — 기존 컨테이너를 내려 달라는 요청"} placement="bottom-start" /></th>
+						<th>템플릿 <InfoTooltip text={"생성 요청 시 어떤 템플릿(이미지 + 기본 옵션 묶음)을 사용했는지 보여줍니다.\n\n삭제 요청에는 적용되지 않아 \"-\"로 표시됩니다.\n\n템플릿 자체는 \"템플릿\" 메뉴에서 만들고 수정할 수 있습니다."} placement="bottom-start" /></th>
+						<th>대상 서버 <InfoTooltip text={"요청이 적용될 서버(Agent)입니다.\n\n• 생성 — 이 서버에 새 컨테이너가 만들어집니다.\n• 삭제 — 이 서버에서 기존 컨테이너가 제거됩니다."} placement="bottom-start" /></th>
+						<th>이름 <InfoTooltip text={"컨테이너 이름입니다.\n\n• 생성 요청 — 사용자가 입력한 새 컨테이너 이름\n• 삭제 요청 — 지우려는 기존 컨테이너 이름"} placement="bottom-start" /></th>
+						<th class="col-status">상태 <InfoTooltip text={"요청의 진행 상태\n\n• 대기 — 관리자 검토 전\n• 승인 — 관리자가 승인했고 곧 배포 시작\n• 배포중 — Agent가 실제로 docker 명령 실행 중\n• 완료 — 컨테이너가 정상적으로 생성/삭제됨\n• 실패 — 배포 도중 오류 발생\n• 반려 — 관리자가 거절"} placement="bottom-start" /></th>
+						<th class="col-time">제출 <InfoTooltip text={"사용자가 이 요청을 제출한 시각입니다 (현재 기준 상대 시간).\n\n오래된 요청부터 처리하고 싶으면 이 컬럼을 기준으로 살펴보세요."} placement="bottom-start" /></th>
 						<th class="col-actions"></th>
 					</tr>
 				</thead>

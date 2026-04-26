@@ -1,14 +1,24 @@
 <script lang="ts">
 	import { sendCommand } from '$lib/stores/ws-store';
 	import { adaptProcessDetail } from '$lib/utils/data-adapter';
+	import MetricTrendChart from './MetricTrendChart.svelte';
+	import InfoTooltip from './InfoTooltip.svelte';
 
 	let {
 		open = false,
+		systemInfo = null,
+		agentId = '',
+		accessToken = '',
 		onClose = () => {},
 	}: {
 		open: boolean;
+		systemInfo?: any;
+		agentId?: string;
+		accessToken?: string;
 		onClose: () => void;
 	} = $props();
+
+	let liveProcessTotal = $derived(systemInfo?.processes?.total ?? 0);
 
 	let loading = $state(true);
 	let data: any = $state(null);
@@ -82,6 +92,25 @@
 		</div>
 
 		<div class="modal-content">
+			<div class="section-label">
+				프로세스 수 추이
+				<InfoTooltip
+					placement="bottom-start"
+					text="서버 위에 돌아가는 모든 프로세스 총 개수의 시간 변화예요. 평소에는 비슷한 수치로 유지되고, 새 컨테이너가 뜨면 살짝 올라가요. 갑자기 튀는 구간은 배포/빌드/백업 작업을 의심해 볼 수 있어요."
+				/>
+				<span class="section-current">현재 {liveProcessTotal}</span>
+			</div>
+			<MetricTrendChart
+				{agentId}
+				{accessToken}
+				metricField="processes_total"
+				liveValue={liveProcessTotal}
+				label="프로세스 수"
+				color="#f87171"
+				unit="count"
+				defaultRange="10m"
+			/>
+
 			{#if loading}
 				<div class="loading-state">프로세스 정보를 불러오는 중...</div>
 			{:else if data}
@@ -190,9 +219,45 @@
 	.modal-title { font-size: 17px; font-weight: 700; color: #d9d9d9; }
 	.close-btn { background: none; border: none; cursor: pointer; padding: 6px; display: flex; }
 	.close-btn:hover svg { stroke: #cbd5e1; }
-	.modal-content { flex: 1; overflow-y: auto; padding: 28px; display: flex; flex-direction: column; gap: 28px; }
+	.modal-content {
+		flex: 1;
+		overflow-y: auto;
+		padding: 28px;
+		display: flex;
+		flex-direction: column;
+		gap: 28px;
+		scrollbar-width: thin;
+		scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+	}
+	.modal-content::-webkit-scrollbar { width: 10px; }
+	.modal-content::-webkit-scrollbar-track { background: transparent; }
+	.modal-content::-webkit-scrollbar-thumb {
+		background: rgba(148, 163, 184, 0.3);
+		border: 2px solid transparent;
+		border-radius: 8px;
+		background-clip: padding-box;
+	}
+	.modal-content::-webkit-scrollbar-thumb:hover {
+		background: rgba(48, 213, 200, 0.55);
+		background-clip: padding-box;
+	}
+
 	.loading-state { text-align: center; color: #64748b; font-size: 14px; padding: 32px; }
-	.section-label { font-size: 14px; font-weight: 700; color: #64748b; }
+	.section-label {
+		font-size: 14px;
+		font-weight: 700;
+		color: #64748b;
+		display: flex;
+		align-items: baseline;
+		gap: 10px;
+	}
+	.section-current {
+		margin-left: auto;
+		font-size: 13px;
+		font-weight: 700;
+		color: #f87171;
+		font-variant-numeric: tabular-nums;
+	}
 
 	.stats-row {
 		display: flex; flex-wrap: wrap; gap: 8px;

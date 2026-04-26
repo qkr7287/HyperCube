@@ -97,6 +97,15 @@ CHANNEL_LAYERS = {
     },
 }
 
+# Cache (Redis DB 2 — DB 0 channels, DB 1 metrics raw cache, DB 2 view cache)
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": config("CACHE_REDIS_URL", default="redis://redis:6379/2"),
+        "TIMEOUT": 60,
+    },
+}
+
 # REST Framework
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
@@ -176,7 +185,10 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_BEAT_SCHEDULE = {
     "flush-metrics-to-db": {
         "task": "apps.metrics.tasks.flush_metrics_to_db",
-        "schedule": 30.0,
+        # 5s cadence so the 1분/10분 trend charts actually have a dozen+
+        # points. DB cost scales linearly (6× the rows vs 30s); at 3 agents
+        # that's ~360k rows/week, well inside Postgres comfort.
+        "schedule": 5.0,
     },
     "cleanup-old-metrics": {
         "task": "apps.metrics.tasks.cleanup_old_metrics",

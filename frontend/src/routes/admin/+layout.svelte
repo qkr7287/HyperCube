@@ -3,7 +3,7 @@
 	import { browser } from '$app/environment';
 	import { base } from '$app/paths';
 	import { goto } from '$app/navigation';
-	import { connectGlobal, disconnectGlobal } from '$lib/stores/global-events';
+	import { connectGlobal, disconnectGlobal, seedActiveAgents, seedStatusEvents } from '$lib/stores/global-events';
 	import AdminHeader from '$lib/components/AdminHeader.svelte';
 	import StatusToasts from '$lib/components/StatusToasts.svelte';
 
@@ -42,12 +42,17 @@
 
 	async function loadAgentCount(token: string) {
 		try {
-			const res = await fetch(`${base}/api/agents/?status=approved&page_size=1`, {
+			const res = await fetch(`${base}/api/agents/?status=approved&page_size=200`, {
 				headers: { Authorization: `Bearer ${token}` },
 			});
 			if (res.ok) {
 				const json = await res.json();
 				totalAgents = json.data?.count ?? 0;
+				const agents = json.data?.results ?? [];
+				seedActiveAgents(agents.filter((agent: any) => agent.is_active).map((agent: any) => agent.id));
+				// offline 인 agent 들을 synthetic 이벤트로 seed → 페이지 첫 진입 때도
+				// "최근 상태 변화" 가 비어있지 않고 현재 offline 상태 reflects.
+				seedStatusEvents(agents);
 			}
 		} catch {
 			/* ignore */

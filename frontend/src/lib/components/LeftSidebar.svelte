@@ -7,18 +7,33 @@
 	import iconNetwork from '$lib/assets/icons/sidebar-network.svg';
 	import iconLogins from '$lib/assets/icons/sidebar-logins.svg';
 	import iconProcess from '$lib/assets/icons/sidebar-process.svg';
+	import iconGpu from '$lib/assets/icons/sidebar-gpu.svg';
+	import LiveSparkline from './LiveSparkline.svelte';
+	import InfoTooltip from './InfoTooltip.svelte';
+	import { base } from '$app/paths';
+	import type { GpuMetric } from '$lib/utils/data-adapter';
 
 	interface SystemInfo {
 		hostname: string;
 		os: string;
 		uptime?: number;
-		cpu: { cores: number; model: string; usage: number };
+		cpu: {
+			cores: number;
+			threads?: number;
+			sockets?: number;
+			isHybrid?: boolean;
+			performanceCores?: number;
+			efficiencyCores?: number;
+			model: string;
+			usage: number;
+		};
 		memory: { total: string; used: string; free: string; usage: number };
 		disk: { total: string; used: string; free: string; usage: number };
 		docker: { version: string; containers: number; images: number };
 		network?: { connections?: number; interfaces?: string[] };
 		logins?: { total?: number; active?: number };
 		processes?: { total?: number; running?: number };
+		gpu?: GpuMetric[];
 	}
 
 	interface AgentOption {
@@ -32,6 +47,7 @@
 		totalContainers = 0,
 		agents = [],
 		selectedServerId = '',
+		accessToken = '',
 		onSwitchServer = (_id: string) => {},
 		onOpenCpu = () => {},
 		onOpenMemory = () => {},
@@ -39,11 +55,13 @@
 		onOpenNetwork = () => {},
 		onOpenLogin = () => {},
 		onOpenProcess = () => {},
+		onOpenGpu = () => {},
 	}: {
 		systemInfo: SystemInfo | null;
 		totalContainers: number;
 		agents?: AgentOption[];
 		selectedServerId?: string;
+		accessToken?: string;
 		onSwitchServer?: (id: string) => void;
 		onOpenCpu: () => void;
 		onOpenMemory: () => void;
@@ -51,7 +69,67 @@
 		onOpenNetwork: () => void;
 		onOpenLogin: () => void;
 		onOpenProcess: () => void;
+		onOpenGpu?: () => void;
 	} = $props();
+
+	// Sidebar sparklines seed themselves from the same 10-minute window that
+	// the detail modals use, so the previews match the chart-in-modal shape
+	// the moment the page loads (instead of starting blank and filling slowly).
+	type Seeded = { t: number; v: number }[];
+	let seedCpu = $state<Seeded>([]);
+	let seedMem = $state<Seeded>([]);
+	let seedDisk = $state<Seeded>([]);
+	let seedNet = $state<Seeded>([]);
+	let seedProc = $state<Seeded>([]);
+	let seedLogins = $state<Seeded>([]);
+	let seedGpu = $state<Seeded>([]);
+
+	async function seedSparklines(agentId: string, token: string) {
+		if (!agentId || !token) return;
+		try {
+			const qs = new URLSearchParams({ agent: agentId, range: '10m', limit: '120' });
+			const res = await fetch(`${base}/api/metrics/system/?${qs.toString()}`, {
+				headers: { Authorization: `Bearer ${token}` },
+			});
+			if (!res.ok) return;
+			const json = await res.json();
+			// Backend wraps list responses as {success, data: [...]} via the
+			// common renderer; when a limit is present the `data` is a flat
+			// array, otherwise it's a paginated `{results: [...]}`.
+			const rows: any[] = Array.isArray(json)
+				? json
+				: Array.isArray(json?.data)
+				  ? json.data
+				  : (json?.data?.results ?? json?.results ?? []);
+			const pick = (key: string): Seeded =>
+				rows
+					.map((r) => ({ t: Date.parse(r.recorded_at), v: Number(r[key]) }))
+					.filter((s) => !Number.isNaN(s.t) && !Number.isNaN(s.v))
+					.sort((a, b) => a.t - b.t);
+			seedCpu = pick('cpu_usage');
+			seedMem = pick('memory_usage');
+			seedDisk = pick('disk_usage');
+			seedNet = pick('network_connections');
+			seedProc = pick('processes_total');
+			seedLogins = pick('logins_total');
+			// GPU seed reads row.gpu[0].usage (array lives inside the list
+			// payload thanks to the `gpu` SerializerMethodField). Rows without
+			// a GPU drop out of the sparkline window.
+			seedGpu = rows
+				.map((r) => {
+					const g = Array.isArray(r.gpu) ? r.gpu[0] : null;
+					return { t: Date.parse(r.recorded_at), v: Number(g?.usage ?? NaN) };
+				})
+				.filter((s) => !Number.isNaN(s.t) && !Number.isNaN(s.v))
+				.sort((a, b) => a.t - b.t);
+		} catch (e) {
+			console.error('[LeftSidebar] seedSparklines failed:', e);
+		}
+	}
+
+	$effect(() => {
+		seedSparklines(selectedServerId, accessToken);
+	});
 
 	let switcherOpen = $state(false);
 	let currentAgent = $derived(agents.find((a) => a.id === selectedServerId) ?? null);
@@ -78,36 +156,37 @@
 		return () => document.removeEventListener('click', handleDocClick);
 	});
 
-	function getHealthPercent(info: SystemInfo): number {
-		const cpuHealth = Math.max(0, 100 - info.cpu.usage);
-		const memHealth = Math.max(0, 100 - info.memory.usage);
-		const diskHealth = Math.max(0, 100 - info.disk.usage);
-		return Math.round((cpuHealth + memHealth + diskHealth) / 3);
+	function formatCpuSpec(cpu: SystemInfo['cpu']): string {
+		const cores = cpu.cores ?? 0;
+		const threads = cpu.threads ?? cores;
+		const sockets = cpu.sockets ?? 1;
+		const hybrid = !!cpu.isHybrid;
+
+		// Hybrid CPU (Intel 12+ / Apple Silicon): emphasise P+E breakdown.
+		if (hybrid) {
+			const p = cpu.performanceCores ?? 0;
+			const e = cpu.efficiencyCores ?? 0;
+			return `${p}P + ${e}E / ${threads} threads`;
+		}
+
+		// Legacy agent: only `cores` field, physical count unknown.
+		if (!cores && threads) return `${threads} threads`;
+
+		// Multi-socket server: call it out.
+		if (sockets > 1) {
+			return `${sockets}× ${cores / sockets} cores / ${threads} threads`;
+		}
+
+		return `${cores} cores / ${threads} threads`;
 	}
 
-	function healthTone(pct: number): string {
-		if (pct >= 75) return 'tone-good';
-		if (pct >= 45) return 'tone-warn';
-		return 'tone-bad';
-	}
-
-	function formatUptime(seconds: number | undefined): string {
-		const s = Math.floor(seconds ?? 0);
-		if (s <= 0) return '—';
-		const days = Math.floor(s / 86400);
-		const hours = Math.floor((s % 86400) / 3600);
-		const mins = Math.floor((s % 3600) / 60);
-		if (days > 0) return `${days}d ${hours}h`;
-		if (hours > 0) return `${hours}h ${mins}m`;
-		return `${mins}m`;
-	}
 </script>
 
 <aside class="sidebar">
 	<div class="server-section">
 		{#if systemInfo}
 			<div class="info-group">
-				<div class="group-label">Identity</div>
+				<div class="group-label">Identity <InfoTooltip text={"이 서버(Agent)가 누구인지 알려주는 정보입니다.\n\n• Hostname — 서버의 호스트 이름\n• IP — 서버의 IP 주소\n• OS — 운영체제 종류·버전\n\n드롭다운(▾)이 보이면 다른 등록된 서버로 즉시 전환할 수 있습니다."} placement="bottom-start" /></div>
 				<div class="info-row">
 					<div class="info-label-group">
 						<img src={iconHostname} alt="" class="icon" />
@@ -158,57 +237,111 @@
 				</div>
 			</div>
 
+			{@const cpuSpec = formatCpuSpec(systemInfo.cpu)}
+			{@const memPct = Math.round(systemInfo.memory.usage ?? 0)}
+			{@const diskPct = Math.round(systemInfo.disk.usage ?? 0)}
+			{@const cpuPct = Math.round(systemInfo.cpu.usage ?? 0)}
+			{@const netCount = systemInfo.network?.connections ?? 0}
+			{@const procCount = systemInfo.processes?.total ?? 0}
+			{@const loginCount = systemInfo.logins?.total ?? 0}
+			{@const gpuList = systemInfo.gpu ?? []}
+			{@const primaryGpu = gpuList[0] ?? null}
+			{@const gpuPct = primaryGpu ? Math.round(primaryGpu.usage ?? 0) : 0}
+			{@const gpuSpec = primaryGpu
+				? (gpuList.length > 1 ? `${primaryGpu.model} · +${gpuList.length - 1}` : primaryGpu.model)
+				: ''}
+
 			<div class="info-group">
-				<div class="group-label">Resources</div>
-				<div class="info-row clickable" onclick={onOpenCpu} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenCpu()}>
-					<div class="info-label-group">
+				<div class="group-label">Resources <InfoTooltip text={"서버 하드웨어가 지금 얼마나 사용되고 있는지 보여줍니다.\n\n• CPU — 코어 사용률 (0~100%)\n• Memory — 사용 중인 RAM 비율\n• Disk — 루트 파티션 사용률\n• GPU — GPU가 있을 때만 표시\n\n각 카드를 클릭하면 자세한 내역(프로세스별 점유, 시간 추이 등)이 모달로 열립니다."} placement="bottom-start" /></div>
+
+				<div class="metric-card clickable" onclick={onOpenCpu} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenCpu()}>
+					<div class="metric-head">
 						<img src={iconCpu} alt="" class="icon" />
-						<span class="label">CPU Cores</span>
+						<span class="metric-name">CPU</span>
+						<span class="metric-spec" title={systemInfo.cpu.model}>{cpuSpec}</span>
+						<span class="metric-value">{cpuPct}%</span>
 					</div>
-					<span class="value">{systemInfo.cpu.cores}</span>
+					<div class="metric-chart">
+						<LiveSparkline value={cpuPct} initialHistory={seedCpu} stroke="#30d5c8" fill="rgba(48,213,200,0.16)" />
+					</div>
 				</div>
 
-				<div class="info-row clickable" onclick={onOpenMemory} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenMemory()}>
-					<div class="info-label-group">
+				<div class="metric-card clickable" onclick={onOpenMemory} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenMemory()}>
+					<div class="metric-head">
 						<img src={iconMemory} alt="" class="icon" />
-						<span class="label">Memory</span>
+						<span class="metric-name">Memory</span>
+						<span class="metric-spec">{systemInfo.memory.total}</span>
+						<span class="metric-value">{memPct}%</span>
 					</div>
-					<span class="value">{systemInfo.memory.total}</span>
+					<div class="metric-chart">
+						<LiveSparkline value={memPct} initialHistory={seedMem} stroke="#8b5cf6" fill="rgba(139,92,246,0.18)" />
+					</div>
 				</div>
 
-				<div class="info-row clickable" onclick={onOpenDisk} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenDisk()}>
-					<div class="info-label-group">
+				<div class="metric-card clickable" onclick={onOpenDisk} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenDisk()}>
+					<div class="metric-head">
 						<img src={iconDisk} alt="" class="icon" />
-						<span class="label">Disk Total</span>
+						<span class="metric-name">Disk</span>
+						<span class="metric-spec">{systemInfo.disk.total}</span>
+						<span class="metric-value">{diskPct}%</span>
 					</div>
-					<span class="value">{systemInfo.disk.total}</span>
+					<div class="metric-chart">
+						<LiveSparkline value={diskPct} initialHistory={seedDisk} stroke="#f59e0b" fill="rgba(245,158,11,0.18)" />
+					</div>
 				</div>
+
+				{#if primaryGpu}
+					<div class="metric-card clickable" onclick={onOpenGpu} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenGpu()}>
+						<div class="metric-head">
+							<img src={iconGpu} alt="" class="icon" />
+							<span class="metric-name">GPU</span>
+							<span class="metric-spec" title={gpuSpec}>{gpuSpec}</span>
+							<span class="metric-value">{gpuPct}%</span>
+						</div>
+						<div class="metric-chart">
+							<LiveSparkline value={gpuPct} initialHistory={seedGpu} stroke="#22d3ee" fill="rgba(34,211,238,0.16)" />
+						</div>
+					</div>
+				{/if}
 			</div>
 
 			<div class="info-group">
-				<div class="group-label">Activity</div>
-				<div class="info-row clickable" onclick={onOpenNetwork} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenNetwork()}>
-					<div class="info-label-group">
+				<div class="group-label">Activity <InfoTooltip text={"서버에서 \"지금 무엇이 돌고 있는가\"를 요약합니다.\n\n• Network — 활성 네트워크 연결(소켓) 수\n• Logins — 현재 SSH/콘솔에 로그인된 세션 수\n• Processes — 실행 중인 모든 프로세스 수\n\n각 카드를 클릭하면 상세 목록 모달이 열립니다."} placement="bottom-start" /></div>
+
+				<div class="metric-card clickable" onclick={onOpenNetwork} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenNetwork()}>
+					<div class="metric-head">
 						<img src={iconNetwork} alt="" class="icon" />
-						<span class="label">Network</span>
+						<span class="metric-name">Network</span>
+						<span class="metric-spec">conns</span>
+						<span class="metric-value">{netCount}</span>
 					</div>
-					<span class="value">{systemInfo.network?.connections ?? '-'}</span>
+					<div class="metric-chart">
+						<LiveSparkline value={netCount} initialHistory={seedNet} min={0} max={Math.max(netCount * 1.4, 10)} stroke="#4ade80" fill="rgba(74,222,128,0.15)" />
+					</div>
 				</div>
 
-				<div class="info-row clickable" onclick={onOpenLogin} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenLogin()}>
-					<div class="info-label-group">
+				<div class="metric-card clickable" onclick={onOpenLogin} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenLogin()}>
+					<div class="metric-head">
 						<img src={iconLogins} alt="" class="icon" />
-						<span class="label">Logins</span>
+						<span class="metric-name">Logins</span>
+						<span class="metric-spec">users</span>
+						<span class="metric-value">{loginCount}</span>
 					</div>
-					<span class="value">{systemInfo.logins?.total ?? 0}</span>
+					<div class="metric-chart">
+						<LiveSparkline value={loginCount} initialHistory={seedLogins} min={0} max={Math.max(loginCount + 2, 5)} stroke="#facc15" fill="rgba(250,204,21,0.14)" />
+					</div>
 				</div>
 
-				<div class="info-row clickable" onclick={onOpenProcess} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenProcess()}>
-					<div class="info-label-group">
+				<div class="metric-card clickable" onclick={onOpenProcess} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onOpenProcess()}>
+					<div class="metric-head">
 						<img src={iconProcess} alt="" class="icon" />
-						<span class="label">Process Total</span>
+						<span class="metric-name">Processes</span>
+						<span class="metric-spec">total</span>
+						<span class="metric-value">{procCount}</span>
 					</div>
-					<span class="value">{systemInfo.processes?.total ?? '-'}</span>
+					<div class="metric-chart">
+						<LiveSparkline value={procCount} initialHistory={seedProc} min={0} max={Math.max(procCount * 1.3, 100)} stroke="#f87171" fill="rgba(248,113,113,0.14)" />
+					</div>
 				</div>
 			</div>
 		{:else}
@@ -224,24 +357,6 @@
 		{/if}
 	</div>
 
-	<div class="spacer"></div>
-
-	{#if systemInfo}
-		{@const healthPct = getHealthPercent(systemInfo)}
-		<div class="health-card">
-			<div class="health-header">
-				<span class="health-label">Health Status</span>
-				<span class="health-percent {healthTone(healthPct)}">{healthPct}%</span>
-			</div>
-			<div class="health-bar-track">
-				<div class="health-bar-fill" style="width: {healthPct}%"></div>
-			</div>
-			<div class="health-footer">
-				<span class="health-caption">Stable</span>
-				<span class="health-uptime">{formatUptime(systemInfo.uptime)}</span>
-			</div>
-		</div>
-	{/if}
 </aside>
 
 <style>
@@ -371,21 +486,6 @@
 		min-height: 32px;
 	}
 
-	.info-row.clickable {
-		cursor: pointer;
-		border-radius: 8px;
-		padding: 6px 10px;
-		margin: -6px -10px;
-		transition: background 0.15s ease;
-	}
-
-	.info-row.clickable:hover {
-		background: rgba(48, 213, 200, 0.08);
-	}
-	.info-row.clickable:hover .icon {
-		filter: drop-shadow(0 0 6px rgba(48, 213, 200, 0.45));
-	}
-
 	.info-label-group {
 		display: flex;
 		align-items: center;
@@ -432,78 +532,73 @@
 		max-width: 180px;
 	}
 
-	.spacer {
-		flex: 1;
-		min-height: 0;
-	}
-
-	.health-card {
-		background: linear-gradient(180deg, rgba(19, 27, 40, 0.94), rgba(13, 17, 23, 0.96));
-		border: 1px solid rgba(148, 163, 184, 0.1);
-		border-radius: var(--radius-md);
-		padding: 14px 16px;
+	/* ---------- Metric card (CPU/Memory/Disk/Network/Processes) ---------- */
+	.metric-card {
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
-	}
-
-	.health-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-	}
-
-	.health-label {
-		font-size: 10px;
-		font-weight: 700;
-		letter-spacing: 0.16em;
-		text-transform: uppercase;
-		color: rgba(148, 163, 184, 0.78);
-	}
-
-	.health-percent {
-		font-size: 15px;
-		font-weight: 700;
-		letter-spacing: 0.01em;
-	}
-	.health-percent.tone-good { color: #4ade80; }
-	.health-percent.tone-warn { color: #facc15; }
-	.health-percent.tone-bad  { color: #f87171; }
-
-	.health-bar-track {
-		height: 6px;
-		background: rgba(15, 23, 42, 0.75);
+		gap: 6px;
+		padding: 8px 10px 6px;
+		margin: -2px -10px;
+		border-radius: 10px;
+		background: rgba(15, 23, 42, 0.55);
 		border: 1px solid rgba(148, 163, 184, 0.08);
-		border-radius: var(--radius-full);
-		overflow: hidden;
+		cursor: pointer;
+		transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
 	}
 
-	.health-bar-fill {
-		height: 100%;
-		background: linear-gradient(90deg, #f87171 0%, #facc15 50%, #4ade80 100%);
-		border-radius: var(--radius-full);
-		transition: width 0.5s ease;
-		box-shadow: 0 0 8px rgba(250, 204, 21, 0.28);
+	.metric-card:hover {
+		background: rgba(48, 213, 200, 0.07);
+		border-color: rgba(48, 213, 200, 0.18);
+		transform: translateY(-1px);
+	}
+	.metric-card:hover .icon {
+		filter: drop-shadow(0 0 6px rgba(48, 213, 200, 0.5));
 	}
 
-	.health-footer {
+	.metric-head {
 		display: flex;
-		justify-content: space-between;
 		align-items: center;
-		font-size: 11px;
+		gap: 8px;
+		min-width: 0;
 	}
 
-	.health-caption {
-		color: var(--text-secondary);
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		font-weight: 600;
+	.metric-head .icon {
+		width: 16px;
+		height: 16px;
+		flex-shrink: 0;
+		opacity: 0.9;
 	}
 
-	.health-uptime {
-		color: var(--accent);
-		font-weight: 600;
-		font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+	.metric-name {
+		font-size: 12px;
+		font-weight: 700;
+		color: var(--text-primary);
+		letter-spacing: 0.02em;
+	}
+
+	.metric-spec {
+		flex: 1;
+		min-width: 0;
+		font-size: 10px;
+		color: rgba(148, 163, 184, 0.72);
+		text-align: left;
+		margin-left: 4px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.metric-value {
+		font-size: 13px;
+		font-weight: 700;
+		color: var(--text-primary);
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+
+	.metric-chart {
+		width: 100%;
+		height: 28px;
 	}
 
 	.loading {

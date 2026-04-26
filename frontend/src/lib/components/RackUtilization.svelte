@@ -1,4 +1,6 @@
 <script lang="ts">
+	import InfoTooltip from './InfoTooltip.svelte';
+
 	interface SystemInfo {
 		hostname: string;
 		os: string;
@@ -18,7 +20,7 @@
 {#if systemInfo}
 <div class="rack-panel">
 	<div class="rack-header">
-		<span class="rack-title">Rack Utilization</span>
+		<span class="rack-title">Rack Utilization <InfoTooltip text={"이 서버 한 대의 CPU·메모리·스토리지가 얼마나 차 있는지 한눈에 보는 게이지입니다.\n\n• 0~70% — 여유 (초록)\n• 70~90% — 주의 (노랑)\n• 90% 이상 — 위험 (빨강)\n\n실시간 값이며, 좌측 사이드바의 같은 지표와 동일한 데이터를 사용합니다."} placement="bottom-end" /></span>
 	</div>
 	<div class="rack-items">
 		<div class="rack-item">
@@ -69,19 +71,19 @@
 <style>
 	.rack-panel {
 		position: absolute;
-		top: 80px;
+		top: 56px;
 		right: 24px;
 		z-index: 10;
 		width: 208px;
-		background: var(--bg-card);
+		background: rgba(13, 17, 23, 0.55);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-md);
-		padding: 20px;
+		padding: 14px 16px;
 		display: flex;
 		flex-direction: column;
-		gap: 16px;
-		backdrop-filter: blur(12px);
-		-webkit-backdrop-filter: blur(12px);
+		gap: 14px;
+		backdrop-filter: blur(6px);
+		-webkit-backdrop-filter: blur(6px);
 		box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
 	}
 
