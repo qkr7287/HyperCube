@@ -181,11 +181,22 @@ def _collect_container_metrics(r, agent):
             raw_data=body,
             recorded_at=_parse_timestamp(payload.get("timestamp")),
         )
-        field_names = {f.name for f in ContainerMetricsHistory._meta.get_fields()}
-        if "cpu_usage_raw" in field_names:
+        # 마이그레이션 적용 여부에 따라 새 컬럼 사용 가능성 분기.
+        from django.db import connection
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT column_name, is_nullable FROM information_schema.columns WHERE table_name = %s",
+                [ContainerMetricsHistory._meta.db_table],
+            )
+            db_col_info = {row[0]: row[1] for row in cur.fetchall()}
+        if "cpu_usage_raw" in db_col_info:
             kwargs["cpu_usage_raw"] = usage_raw
-        if "cpu_cores_quota" in field_names:
+        if "cpu_cores_quota" in db_col_info:
             kwargs["cpu_cores_quota"] = cores_quota_f
+        # cpu_usage가 DB에서 NOT NULL인데 (0003 미적용) usage_norm이 None이면
+        # IntegrityError가 나므로 raw 값으로 fallback.
+        if kwargs.get("cpu_usage") is None and db_col_info.get("cpu_usage", "YES") == "NO":
+            kwargs["cpu_usage"] = usage_raw if usage_raw is not None else 0.0
         records.append(ContainerMetricsHistory(**kwargs))
 
     return records

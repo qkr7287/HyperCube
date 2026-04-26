@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.db import connection
 from django.db.models import Avg, Count, IntegerField, Max
 from django.db.models.expressions import RawSQL
 from django.utils import timezone
@@ -33,6 +34,29 @@ RANGE_SHORTHAND = {
     "7d": timedelta(days=7),
     "30d": timedelta(days=30),
 }
+
+# Cache: which DB columns actually exist on container_metrics_history.
+# 모델에 필드가 있어도 마이그레이션이 안 돌면 DB엔 컬럼이 없음.
+# information_schema 직접 조회로 정확히 검사.
+_DB_COLUMNS_CACHE: dict[str, set[str]] = {}
+
+
+def _db_columns(table_name: str) -> set[str]:
+    cached = _DB_COLUMNS_CACHE.get(table_name)
+    if cached is not None:
+        return cached
+    try:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = %s",
+                [table_name],
+            )
+            cols = {row[0] for row in cur.fetchall()}
+    except Exception:
+        cols = set()
+    _DB_COLUMNS_CACHE[table_name] = cols
+    return cols
+
 
 # Bucket shorthand → seconds. Frontend can also pass a raw integer seconds value.
 BUCKET_SHORTHAND = {
@@ -267,10 +291,10 @@ class ContainerMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet
             output_field=IntegerField(),
         )
         # New columns (cpu_usage_raw / cpu_cores_quota) only exist after the
-        # 0002 migration runs. Detect dynamically so this endpoint stays
-        # functional on environments that have not migrated yet.
-        field_names = {f.name for f in ContainerMetricsHistory._meta.get_fields()}
-        has_raw_cols = {"cpu_usage_raw", "cpu_cores_quota"}.issubset(field_names)
+        # 0002 migration runs. Inspect actual DB columns so this endpoint
+        # stays functional on environments that have not migrated yet.
+        db_cols = _db_columns(ContainerMetricsHistory._meta.db_table)
+        has_raw_cols = {"cpu_usage_raw", "cpu_cores_quota"}.issubset(db_cols)
 
         annotations = dict(
             # cpu_usage 컬럼은 0-100 정규화 값(usage_pct)을 저장하도록 의미가 정해져 있음.
