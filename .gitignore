@@ -43,3 +43,13 @@ vite.config.ts.timestamp-*
 
 # Plans (local only)
 docs/plans/
+
+# MCP / dev tooling local state
+.claude/
+.serena/
+.code-review-graph/
+.playwright-mcp/
+
+# Test artifacts
+frontend/test-results/
+frontend/playwright-report/
