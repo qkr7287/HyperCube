@@ -14,6 +14,7 @@
 		severity = 'ok' as Severity,
 		disabled = false,
 		onOpen = null as null | (() => void),
+		loading = false,
 	}: {
 		label: string;
 		value: number;
@@ -25,6 +26,7 @@
 		severity?: Severity;
 		disabled?: boolean;
 		onOpen?: null | (() => void);
+		loading?: boolean;
 	} = $props();
 
 	const clamped = $derived(Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0)));
@@ -46,7 +48,7 @@
 	</div>
 	<div class="bar"><b style={`width:${clamped}%`}></b></div>
 	<div class="foot">
-		<div class="spark"><MetricSparkline values={sparkValues} color={sparkColor} label={label} /></div>
+		<div class="spark"><MetricSparkline values={sparkValues} color={sparkColor} label={label} {loading} /></div>
 		{#if hint}<small class="hint">{hint}</small>{/if}
 	</div>
 </button>

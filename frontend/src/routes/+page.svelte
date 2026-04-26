@@ -405,10 +405,17 @@
 		box-shadow: 0 0 8px rgba(52, 211, 153, 0.55);
 	}
 	.range-hint {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		color: var(--text-muted);
 		font-size: clamp(10px, 0.68vw, 12px);
 		font-weight: 600;
 		padding: 0 4px;
+		min-width: clamp(150px, 11vw, 200px);
+		flex: 0 0 auto;
+		white-space: nowrap;
+		text-align: center;
 	}
 	.refresh {
 		display: inline-flex;

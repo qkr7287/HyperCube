@@ -27,6 +27,7 @@
 		soloLabel = null,
 		extraPlugins = [],
 		rightPadding = 0,
+		loading = false,
 	}: {
 		title: string;
 		labels: string[];
@@ -37,6 +38,7 @@
 		soloLabel?: string | null;
 		extraPlugins?: Plugin[];
 		rightPadding?: number;
+		loading?: boolean;
 	} = $props();
 
 	let canvas: HTMLCanvasElement | null = null;
@@ -112,8 +114,7 @@
 				backgroundColor: `${color}18`,
 				borderWidth: highlighted ? 2.2 : 1,
 				pointRadius: 0,
-				pointHoverRadius: 0,
-				pointHitRadius: 8,
+				pointHoverRadius: highlighted ? 3 : 0,
 				tension: 0.32,
 				fill: false,
 				hidden: (item.hidden ?? false) || forceHidden,
@@ -232,6 +233,12 @@
 	</div>
 	<div class="canvas-wrap">
 		<canvas bind:this={canvas}></canvas>
+		{#if loading}
+			<div class="loading-overlay" role="status" aria-live="polite">
+				<span class="spinner"></span>
+				<span class="loading-label">갱신 중...</span>
+			</div>
+		{/if}
 	</div>
 </div>
 
@@ -253,7 +260,40 @@
 		font-weight: 800;
 	}
 	.canvas-wrap {
+		position: relative;
 		height: 190px;
 		min-width: 0;
+	}
+	.loading-overlay {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		background: rgba(13, 17, 23, 0.55);
+		backdrop-filter: blur(1px);
+		color: var(--text-primary);
+		font-size: 11px;
+		font-weight: 600;
+		border-radius: 4px;
+		pointer-events: none;
+		z-index: 2;
+	}
+	.spinner {
+		width: 22px;
+		height: 22px;
+		border: 2px solid rgba(48, 213, 200, 0.2);
+		border-top-color: var(--accent);
+		border-radius: 50%;
+		animation: spin 0.85s linear infinite;
+	}
+	.loading-label {
+		color: var(--text-secondary);
+		letter-spacing: 0.4px;
+	}
+	@keyframes spin {
+		to { transform: rotate(360deg); }
 	}
 </style>

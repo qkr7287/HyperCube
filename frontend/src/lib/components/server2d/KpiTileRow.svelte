@@ -42,6 +42,7 @@
 	<button
 		type="button"
 		class="kpi all"
+		class:active={view.stateFilter === 'all'}
 		onclick={() => toggleFilter('all')}
 		title={`전체 컨테이너 수입니다.\n모든 상태(실행·일시정지·문제·중지)를 합친 숫자입니다.\n클릭하면 필터를 해제하고 전체를 표시합니다.`}
 	>

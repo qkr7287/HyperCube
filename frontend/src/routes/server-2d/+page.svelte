@@ -1465,6 +1465,7 @@
 					{accessToken}
 					processCount={Number(systemInfo?.processes?.total ?? 0)}
 					runningProcesses={Number(systemInfo?.processes?.running ?? 0)}
+					loading={historyLoading}
 				/>
 			</div>
 		</section>
@@ -1542,6 +1543,7 @@
 								soloLabel={view.soloStack}
 								extraPlugins={[]}
 								rightPadding={0}
+								loading={historyLoading}
 							/>
 						</div>
 						<div class="trend-chart">
@@ -1559,6 +1561,7 @@
 								soloLabel={view.soloStack}
 								extraPlugins={[]}
 								rightPadding={0}
+								loading={historyLoading}
 							/>
 						</div>
 						<div class="trend-chart">
@@ -1576,6 +1579,7 @@
 								soloLabel={view.soloStack}
 								extraPlugins={[]}
 								rightPadding={0}
+								loading={historyLoading}
 							/>
 						</div>
 						<div class="trend-chart">
@@ -1598,6 +1602,7 @@
 									soloLabel={view.soloStack}
 									extraPlugins={[]}
 									rightPadding={0}
+									loading={historyLoading}
 								/>
 							{:else}
 								<div class="gpu-empty-body">
@@ -1962,7 +1967,9 @@
 	.poll-label {
 		display: inline-flex;
 		align-items: center;
+		justify-content: center;
 		height: 24px;
+		min-width: 110px;
 		color: var(--text-muted);
 		font-size: 10px;
 		font-weight: 700;
@@ -1971,6 +1978,7 @@
 		border: 1px dashed rgba(100, 116, 139, 0.32);
 		border-radius: 999px;
 		white-space: nowrap;
+		flex: 0 0 auto;
 	}
 
 	.ctrl-sep {

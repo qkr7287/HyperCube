@@ -7,10 +7,12 @@
 		history = [],
 		agentSeries = [],
 		summary = null,
+		loading = false,
 	}: {
 		history?: FleetHistoryPoint[];
 		agentSeries?: FleetAgentSeries[];
 		summary?: FleetSummary | null;
+		loading?: boolean;
 	} = $props();
 
 	function labelFor(iso: string): string {
@@ -81,18 +83,21 @@
 			help="CPU utilization by server. Spikes above 90% are classified as critical."
 			{labels}
 			series={cpuSeries}
+			{loading}
 		/>
 		<FleetLineChart
 			title="Memory Usage"
 			help="Memory utilization by server. Sustained pressure above 90% is critical."
 			{labels}
 			series={memorySeries}
+			{loading}
 		/>
 		<FleetLineChart
 			title="Disk Usage"
 			help="Disk utilization by server. High disk pressure is surfaced early because it often causes container failures."
 			{labels}
 			series={diskSeries}
+			{loading}
 		/>
 		<FleetLineChart
 			title="Network Throughput"
@@ -100,6 +105,7 @@
 			{labels}
 			unit="rate"
 			series={networkSeries}
+			{loading}
 		/>
 		{#if hasGpu}
 			<FleetLineChart
@@ -107,6 +113,7 @@
 				help="GPU utilization by server when GPU metrics are available."
 				{labels}
 				series={gpuSeries}
+				{loading}
 			/>
 		{/if}
 	</div>

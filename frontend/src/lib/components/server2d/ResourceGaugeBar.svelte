@@ -36,6 +36,7 @@
 		accessToken = '',
 		processCount = 0,
 		runningProcesses = 0,
+		loading = false,
 	}: {
 		systemInfo: any;
 		systemTrend: SystemTrend;
@@ -43,6 +44,7 @@
 		accessToken?: string;
 		processCount?: number;
 		runningProcesses?: number;
+		loading?: boolean;
 	} = $props();
 
 	let cpuOpen = $state(false);
@@ -98,6 +100,7 @@
 		tooltip="지금 서버 CPU 사용률입니다. 바 아래 작은 선은 선택한 시간 범위의 추이, 평균·최대는 같은 구간 수치입니다. 카드를 누르면 코어별 상세 보기가 열립니다."
 		severity={severityFor(Number(systemInfo?.cpu?.usage ?? 0))}
 		onOpen={() => { cpuOpen = true; }}
+		{loading}
 	/>
 	<ResourceGaugeCard
 		label="메모리"
@@ -108,6 +111,7 @@
 		tooltip="지금 서버 메모리 사용률입니다. hint는 사용/전체 용량을 MB·GB 단위로 보여줍니다. 카드를 누르면 사용량 추이와 스왑 상세가 열립니다."
 		severity={severityFor(Number(systemInfo?.memory?.usage ?? 0))}
 		onOpen={() => { memoryOpen = true; }}
+		{loading}
 	/>
 	<ResourceGaugeCard
 		label="디스크"
@@ -118,6 +122,7 @@
 		tooltip="루트 디스크 사용률입니다. 바가 빨간색이면 용량이 위험합니다. 카드를 누르면 파티션별 사용량을 볼 수 있습니다."
 		severity={severityFor(Number(systemInfo?.disk?.usage ?? 0))}
 		onOpen={() => { diskOpen = true; }}
+		{loading}
 	/>
 	<ResourceGaugeCard
 		label="GPU"
@@ -132,6 +137,7 @@
 		severity={systemInfo?.gpu?.length ? severityFor(gpuAverage) : 'ok'}
 		disabled={!systemInfo?.gpu?.length}
 		onOpen={systemInfo?.gpu?.length ? () => { gpuOpen = true; } : null}
+		{loading}
 	/>
 	<ResourceGaugeCard
 		label="네트워크"
@@ -143,6 +149,7 @@
 		tooltip="서버 전체 네트워크 트래픽(송수신 합산 속도)입니다. 바는 현재 평균이 이 시간 범위 최대치 대비 얼마나 되는지 상대적으로 보여줍니다."
 		severity="ok"
 		onOpen={() => { networkOpen = true; }}
+		{loading}
 	/>
 	<ResourceGaugeCard
 		label="프로세스"
@@ -154,6 +161,7 @@
 		tooltip="서버에 올라온 전체 프로세스 수입니다. hint는 실행 상태 프로세스 수와 현재 로그인한 세션 수입니다. 카드를 누르면 상위 프로세스 목록이 열립니다."
 		severity="ok"
 		onOpen={() => { processOpen = true; }}
+		{loading}
 	/>
 </section>
 

@@ -3,10 +3,12 @@
 		values = [],
 		color = '#30d5c8',
 		label = 'Trend',
+		loading = false,
 	}: {
 		values?: number[];
 		color?: string;
 		label?: string;
+		loading?: boolean;
 	} = $props();
 
 	const width = 92;
@@ -24,16 +26,28 @@
 		.join(' '));
 </script>
 
-<svg class="spark" viewBox="0 0 {width} {height}" role="img" aria-label={label}>
-	<line x1="0" y1={height - 2} x2={width} y2={height - 2} />
-	{#if points}
-		<polyline points={points} style="stroke: {color};" />
-	{:else}
-		<text x="46" y="16" text-anchor="middle">No data</text>
+<div class="spark-wrap">
+	<svg class="spark" viewBox="0 0 {width} {height}" role="img" aria-label={label}>
+		<line x1="0" y1={height - 2} x2={width} y2={height - 2} />
+		{#if points}
+			<polyline points={points} style="stroke: {color};" class:dim={loading} />
+		{:else}
+			<text x="46" y="16" text-anchor="middle">No data</text>
+		{/if}
+	</svg>
+	{#if loading}
+		<span class="spinner" aria-label="갱신 중"></span>
 	{/if}
-</svg>
+</div>
 
 <style>
+	.spark-wrap {
+		position: relative;
+		display: flex;
+		align-items: center;
+		width: 100%;
+		min-width: 0;
+	}
 	.spark {
 		display: block;
 		width: 100%;
@@ -50,9 +64,29 @@
 		stroke-width: 2;
 		stroke-linecap: round;
 		stroke-linejoin: round;
+		transition: opacity 0.18s ease;
+	}
+	polyline.dim {
+		opacity: 0.32;
 	}
 	text {
 		fill: var(--text-muted);
 		font-size: 8px;
+	}
+	.spinner {
+		position: absolute;
+		left: 50%;
+		top: 50%;
+		width: 12px;
+		height: 12px;
+		margin: -6px 0 0 -6px;
+		border: 1.5px solid rgba(48, 213, 200, 0.25);
+		border-top-color: var(--accent);
+		border-radius: 50%;
+		animation: spark-spin 0.8s linear infinite;
+		pointer-events: none;
+	}
+	@keyframes spark-spin {
+		to { transform: rotate(360deg); }
 	}
 </style>
