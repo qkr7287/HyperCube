@@ -6,6 +6,7 @@
 	import { systemStore, containersStore, containerMetricsStore, connect, disconnect } from '$lib/stores/ws-store';
 	import { connectGlobal, disconnectGlobal, seedActiveAgents } from '$lib/stores/global-events';
 	import LeftSidebar from '$lib/components/LeftSidebar.svelte';
+	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import StatusToasts from '$lib/components/StatusToasts.svelte';
 	import AgentStatusBadge from '$lib/components/AgentStatusBadge.svelte';
 	import AdminHeader from '$lib/components/AdminHeader.svelte';
@@ -487,7 +488,7 @@
 <svelte:window on:keydown={handleGlobalKeydown} />
 
 {#if redirecting}
-<!-- redirecting: render nothing to avoid a flash of the login or fallback UI -->
+<LoadingOverlay text="이동 중" />
 {:else if !isLoggedIn}
 <div class="auth-page">
 	<div class="auth-card">
@@ -510,7 +511,7 @@
 	</div>
 </div>
 {:else if !selectedServerId && agentsLoading}
-<!-- agents are still loading; render nothing to avoid a fallback flash before the auto-selected server kicks in -->
+<LoadingOverlay text="서버 정보 불러오는 중" />
 {:else if !selectedServerId}
 <StatusToasts />
 <div class="auth-page">

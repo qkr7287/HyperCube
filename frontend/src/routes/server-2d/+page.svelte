@@ -22,6 +22,7 @@
 	import KpiTileRow from '$lib/components/server2d/KpiTileRow.svelte';
 	import HotContainersList from '$lib/components/server2d/HotContainersList.svelte';
 	import StackSidebar from '$lib/components/server2d/StackSidebar.svelte';
+	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import ContainersGridPanel from '$lib/components/server2d/ContainersGridPanel.svelte';
 	import StackLegendChips from '$lib/components/server2d/StackLegendChips.svelte';
 	import DonutChart from '$lib/components/server2d/DonutChart.svelte';
@@ -688,7 +689,7 @@
 
 	function open3d() {
 		if (browser && selectedServerId) localStorage.setItem('hc_selected_server', selectedServerId);
-		goto(`${base}/`);
+		goto(`${base}/server-3d`);
 	}
 
 	async function fetchPagedRows<T>(endpoint: string, params: URLSearchParams, maxRows: number): Promise<T[]> {
@@ -1292,7 +1293,7 @@
 </svelte:head>
 
 {#if redirecting}
-	<!-- redirecting: render nothing to avoid a flash of the login or fallback UI -->
+	<LoadingOverlay text="이동 중" />
 {:else if !isLoggedIn}
 	<div class="auth-page">
 		<form class="auth-card" onsubmit={(event) => { event.preventDefault(); doLogin(); }}>
@@ -1306,7 +1307,7 @@
 		</form>
 	</div>
 {:else if !selectedServerId && agentsLoading}
-	<!-- agents are still loading; render nothing to avoid a fallback flash before auto-select -->
+	<LoadingOverlay text="서버 정보 불러오는 중" />
 {:else if !selectedServerId}
 	<div class="shell">
 		<AdminHeader totalAgents={agents.length} username={currentUsername} onLogout={doLogout} />

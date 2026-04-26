@@ -28,6 +28,7 @@
 	import MetricHelp from '$lib/components/fleet/MetricHelp.svelte';
 	import AdminHeader from '$lib/components/AdminHeader.svelte';
 	import StatusToasts from '$lib/components/StatusToasts.svelte';
+	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import logoHypercube from '$lib/assets/logo_hypercube.png';
 
 	let range = $state<TimeRange>('1h');
@@ -187,9 +188,9 @@
 </svelte:head>
 
 {#if redirecting}
-	<!-- redirecting away (e.g. user role); render nothing -->
+	<LoadingOverlay text="이동 중" />
 {:else if !ready}
-	<!-- waiting for client mount -->
+	<LoadingOverlay text="초기화 중" />
 {:else if !isLoggedIn}
 	<div class="auth-page">
 		<div class="auth-card">
