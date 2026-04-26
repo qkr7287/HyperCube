@@ -341,7 +341,7 @@
 		box-sizing: border-box;
 		width: 100%;
 		min-height: calc(100vh - 48px);
-		padding: var(--dash-pad);
+		padding: 0 var(--dash-pad) var(--dash-pad);
 		color: var(--text-primary);
 		display: flex;
 		flex-direction: column;
