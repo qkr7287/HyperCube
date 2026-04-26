@@ -13,10 +13,12 @@
 		text,
 		label = '설명',
 		placement = 'bottom-start',
+		maxWidth = 340,
 	}: {
 		text: string;
 		label?: string;
 		placement?: 'top' | 'bottom' | 'left' | 'right' | 'bottom-start' | 'bottom-end' | 'top-start' | 'top-end';
+		maxWidth?: number;
 	} = $props();
 
 	let glyph = $state<HTMLSpanElement | null>(null);
@@ -24,7 +26,6 @@
 	let open = $state(false);
 	let style = $state('');
 
-	const BUBBLE_MAX_WIDTH = 300;
 	const GAP = 8;
 
 	function computePosition() {
@@ -35,7 +36,7 @@
 
 		// Measure bubble natural size
 		const bubbleRect = bubble.getBoundingClientRect();
-		const bw = Math.min(bubbleRect.width || BUBBLE_MAX_WIDTH, BUBBLE_MAX_WIDTH);
+		const bw = Math.min(bubbleRect.width || maxWidth, maxWidth);
 		const bh = bubbleRect.height || 80;
 
 		let top = 0;
@@ -77,7 +78,7 @@
 		left = Math.max(8, Math.min(vw - bw - 8, left));
 		top = Math.max(8, Math.min(vh - bh - 8, top));
 
-		style = `position: fixed; top: ${top}px; left: ${left}px; width: ${bw}px; max-width: ${BUBBLE_MAX_WIDTH}px; z-index: 2000;`;
+		style = `position: fixed; top: ${top}px; left: ${left}px; width: ${bw}px; max-width: ${maxWidth}px; z-index: 2000;`;
 	}
 
 	function handleEnter() {
@@ -162,13 +163,13 @@
 	}
 
 	:global(.info-bubble) {
-		padding: 11px 13px;
-		font-size: 12px;
-		line-height: 1.6;
+		padding: 12px 14px;
+		font-size: 12.5px;
+		line-height: 1.65;
 		color: #e2e8f0;
 		background: rgba(11, 15, 24, 0.98);
-		border: 1px solid rgba(48, 213, 200, 0.4);
-		border-radius: 9px;
+		border: 1px solid rgba(48, 213, 200, 0.42);
+		border-radius: 10px;
 		box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
 		white-space: pre-line;
 		text-align: left;

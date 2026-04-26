@@ -8,6 +8,7 @@
 	import LeftSidebar from '$lib/components/LeftSidebar.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import StatusToasts from '$lib/components/StatusToasts.svelte';
+	import InfoTooltip from '$lib/components/InfoTooltip.svelte';
 	import AgentStatusBadge from '$lib/components/AgentStatusBadge.svelte';
 	import AdminHeader from '$lib/components/AdminHeader.svelte';
 	import RightSidebar from '$lib/components/RightSidebar.svelte';
@@ -568,27 +569,30 @@
 			{/key}
 			<div class="topology-overlay topology-overlay-title">
 				<span class="topology-title">SYSTEM TOPOLOGY</span>
+				<InfoTooltip text={"이 서버에서 돌고 있는 컨테이너들과 그들 사이의 연결을 3D 공간에 그린 그림입니다.\n\n• 점(육면체) = 컨테이너 1개\n• 같은 색 영역 안에 묶여 있으면 같은 Stack 또는 같은 Network·Volume을 공유\n• 선 = 컨테이너 간 네트워크/볼륨 연결\n\n드래그로 회전, 휠로 확대/축소할 수 있습니다."} placement="bottom-start" />
 			</div>
 			<div class="topology-overlay topology-overlay-toggles">
-				<label class="hub-toggle hub-toggle-stack">
+				<label class="hub-toggle hub-toggle-stack" title="같은 Docker Compose 스택(프로젝트) 컨테이너끼리 그룹으로 감싸 보이게/숨기게 합니다.">
 					<input type="checkbox" bind:checked={showStackHub} />
 					<span class="dot"></span>
 					<span class="label">Stack</span>
 				</label>
-				<label class="hub-toggle hub-toggle-network">
+				<label class="hub-toggle hub-toggle-network" title="같은 Docker 네트워크에 연결된 컨테이너끼리 묶음 표시합니다 (네트워크 트래픽 흐름 파악용).">
 					<input type="checkbox" bind:checked={showNetworkHub} />
 					<span class="dot"></span>
 					<span class="label">Network</span>
 				</label>
-				<label class="hub-toggle hub-toggle-volume">
+				<label class="hub-toggle hub-toggle-volume" title="같은 Docker 볼륨을 공유하는 컨테이너끼리 묶음 표시합니다 (DB·파일 공유 관계 파악용).">
 					<input type="checkbox" bind:checked={showVolumeHub} />
 					<span class="dot"></span>
 					<span class="label">Volume</span>
 				</label>
+				<InfoTooltip text={"각 토글을 켜면 그 종류의 그룹이 토폴로지 위에 색깔 영역으로 떠오릅니다.\n\n• Stack — Docker Compose 프로젝트 단위 묶음\n• Network — 같은 docker network에 연결된 컨테이너 묶음\n• Volume — 같은 docker volume을 공유하는 컨테이너 묶음\n\n여러 개 동시에 켜서 어느 컨테이너가 어떤 그룹에 동시에 속해 있는지 한눈에 비교할 수 있습니다."} placement="bottom-end" />
 			</div>
 			<div class="topology-overlay topology-overlay-live">
 				<span class="live-dot"></span>
 				<span class="live-text">LIVE RENDER</span>
+				<InfoTooltip text={"WebSocket으로 Agent 메트릭을 실시간 수신해 토폴로지를 업데이트하고 있다는 표시입니다.\n\n• 점이 깜빡이면 = 연결됨, 새 데이터가 들어오는 중\n• 점이 회색이거나 사라지면 = Agent와의 연결이 끊긴 상태\n\n끊겼을 때는 페이지를 새로고침하거나 Agent 상태를 점검하세요."} placement="bottom-end" />
 			</div>
 			<RackUtilization {systemInfo} />
 			<TopologyToolbar
@@ -720,8 +724,8 @@
 		pointer-events: none;
 		z-index: 5;
 	}
-	.topology-overlay-title { left: 24px; }
-	.topology-overlay-live { right: 24px; }
+	.topology-overlay-title { left: 24px; pointer-events: auto; }
+	.topology-overlay-live { right: 24px; pointer-events: auto; }
 
 	.topology-overlay-toggles {
 		top: 56px;
