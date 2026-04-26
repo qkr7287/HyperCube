@@ -255,35 +255,40 @@ docker compose exec hc-backend python manage.py createsuperuser
 
 ### prod 배포 (16번 서버) — 표준 절차
 
-**현행 방식 (2026-04-27 이후): qkr7287/HyperCube 직접 배포**
+**현행 방식: dev → main 머지만 하면 자동 배포 (deploy-prod.yml)**
 
 ```bash
-# 1. dev → main 머지 (PR + merge). Build and push images workflow 가
-#    sha-<short> 와 latest 태그로 GHCR 에 backend / nginx image push.
+# 1. dev → main PR 생성 + 머지.
 gh pr create --base main --head dev --title "..."
 gh pr merge <num> --merge
 
-# 2. main 머지 commit short SHA 확인 (예: 14e92fa).
-git fetch origin main && git rev-parse origin/main | cut -c1-7
-
-# 3. Build workflow 완료 대기 (~3분).
-gh run list --branch main --limit 1 --workflow "Build and push images"
-
-# 4. 16번 서버 prod 폴더에서 IMAGE_TAG 갱신 + pull/up.
-ssh hc16 "cd /home/agics-ai/docker/hypercube && \
-  cp .env .env.bak.\$(date +%s) && \
-  sed -i 's/^IMAGE_TAG=.*/IMAGE_TAG=sha-<sha>/' .env && \
-  docker compose pull && docker compose up -d"
+# 끝. 자동으로:
+# - Build and push images: GHCR 에 sha-<short> + latest 태그 push (~3분)
+# - Deploy to 16 prod: 16번 self-hosted runner (label: hc16-prod) 가
+#   /home/agics-ai/docker/hypercube .env 의 IMAGE_TAG 갱신 + docker compose
+#   pull && up -d. Health check (curl http://localhost:3334/hypercube/) 통과 시 success.
 ```
 
-- Migration 은 backend container entrypoint 가 자동으로 `python manage.py migrate --noinput` 실행.
-- 배포 완료 검증: `curl http://192.168.0.16:3334/hypercube` 200 + `docker logs hc-backend | grep Applying`.
+수동 redeploy 또는 특정 sha pin:
+```bash
+gh workflow run deploy-prod.yml -f sha=14e92fa
+# 또는 GitHub Actions UI 의 "Run workflow"
+```
+
+- Migration 은 backend container entrypoint 가 자동 처리 (`manage.py migrate --noinput`).
+- workflow 가 health check 까지 통과해야 success — 실패 시 알림 / log 확인.
+
+### 16번 self-hosted runner 운영 메모
+
+- 위치: `/home/agics-ai/actions-runner-hypercube/` (가칭, 실제 경로 확인 필요)
+- 등록: `qkr7287/HyperCube` repo, label `self-hosted`, `hc16-prod`
+- systemd: `actions.runner.qkr7287-HyperCube.<runner-name>.service` 로 자동시작
+- offline 됐을 때 복구: `sudo systemctl start actions.runner.qkr7287-HyperCube.<name>`
 
 **금지 (절대 쓰지 말 것)**: `dev-agics/DCMTool` repo 의 sync-to-dcmtool.yml / deploy.yml 경로.
-구식 배포 chain (HyperCube main → DCMTool dev → DCMTool main → self-hosted runner) 은
-폐지. PR sync 워크플로가 여전히 자동 trigger 되더라도 **DCMTool PR 은 머지하지 않는다**.
-DCMTool 측 deploy.yml 가 최종적으로 같은 폴더 (`/home/agics-ai/docker/hypercube`) 에서
-docker compose 돌리지만, 사이에 불필요한 PR 단계 + image 동기화 race 만 추가됨.
+구식 chain (HyperCube main → DCMTool dev/main → self-hosted runner) 폐지.
+DCMTool 측에 잔여 workflow 파일 / runner 등록은 **무시**. runner 등록 풀려있고
+HyperCube 만 단독으로 배포 책임진다.
 
 ### prod 배포 정보
 - **prod 폴더**: `/home/agics-ai/docker/hypercube` (16번)
