@@ -5,26 +5,7 @@
 
 	let { children } = $props();
 
-	let visibleNav = $state(false);
-	let delayTimer: ReturnType<typeof setTimeout> | null = null;
-
-	$effect(() => {
-		const nav = $navigating;
-		if (nav) {
-			// 30ms 임계값 — 이보다 빨리 끝나면 깜빡임 방지로 로더 미표시
-			if (delayTimer) clearTimeout(delayTimer);
-			delayTimer = setTimeout(() => { visibleNav = true; }, 30);
-		} else {
-			if (delayTimer) {
-				clearTimeout(delayTimer);
-				delayTimer = null;
-			}
-			visibleNav = false;
-		}
-		return () => {
-			if (delayTimer) clearTimeout(delayTimer);
-		};
-	});
+	const visibleNav = $derived($navigating !== null);
 </script>
 
 <svelte:head>

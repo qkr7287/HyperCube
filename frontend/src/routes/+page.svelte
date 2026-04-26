@@ -212,6 +212,8 @@
 			</form>
 		</div>
 	</div>
+{:else if displayedAgents.length === 0 && $fleetLoading}
+	<LoadingOverlay text="서버 정보 불러오는 중" />
 {:else}
 	<div class="admin-shell">
 		<AdminHeader {totalAgents} {username} onLogout={doLogout} />
