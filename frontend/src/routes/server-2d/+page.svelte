@@ -694,33 +694,83 @@
 		goto(`${base}/server-3d`);
 	}
 
-	async function fetchPagedRows<T>(endpoint: string, params: URLSearchParams, maxRows: number): Promise<T[]> {
-		const rows: T[] = [];
-		let page = 1;
+	type SystemBucket = {
+		agent: string;
+		bucket_start: string;
+		bucket_epoch: number;
+		cpu_avg: number;
+		cpu_max: number;
+		memory_avg: number;
+		memory_max: number;
+		memory_used_avg?: number;
+		memory_total_avg?: number;
+		disk_avg: number;
+		disk_max: number;
+		network_rx_max: number;
+		network_tx_max: number;
+		sample_count: number;
+	};
+	type ContainerBucket = {
+		agent: string;
+		container_id: string;
+		bucket_start: string;
+		bucket_epoch: number;
+		cpu_avg: number;
+		cpu_max: number;
+		memory_avg: number;
+		memory_max: number;
+		memory_percent_avg: number;
+		network_rx_max: number;
+		network_tx_max: number;
+		disk_read_max: number;
+		disk_write_max: number;
+		sample_count: number;
+	};
 
-		while (rows.length < maxRows) {
-			const query = new URLSearchParams(params);
-			query.set('page', String(page));
-			query.set('page_size', '1000');
-			const response = await fetch(`${base}${endpoint}?${query.toString()}`, {
-				headers: authHeaders(),
-			});
-			if (response.status === 401) {
-				doLogout();
-				return [];
-			}
-			const json = await response.json().catch(() => ({}));
-			if (!response.ok) {
-				throw new Error(json.error?.detail || json.detail || `HTTP ${response.status}`);
-			}
-			const payload = json.data ?? json;
-			const results = Array.isArray(payload) ? payload : payload?.results ?? [];
-			rows.push(...results);
-			if (Array.isArray(payload) || !payload?.next || results.length === 0) break;
-			page += 1;
+	async function fetchBuckets<T>(endpoint: string, params: URLSearchParams): Promise<T[]> {
+		const response = await fetch(`${base}${endpoint}?${params.toString()}`, {
+			headers: authHeaders(),
+		});
+		if (response.status === 401) {
+			doLogout();
+			return [];
 		}
+		const json = await response.json().catch(() => ({}));
+		if (!response.ok) {
+			throw new Error(json.error?.detail || json.detail || `HTTP ${response.status}`);
+		}
+		const payload = json.data ?? json;
+		return (payload?.results ?? []) as T[];
+	}
 
-		return rows.slice(0, maxRows);
+	function bucketsToSystemRows(buckets: SystemBucket[]): SystemHistoryRow[] {
+		return buckets.map((b) => ({
+			recorded_at: b.bucket_start,
+			cpu_usage: b.cpu_avg,
+			memory_usage: b.memory_avg,
+			disk_usage: b.disk_avg,
+			network_rx: b.network_rx_max,
+			network_tx: b.network_tx_max,
+			processes_total: null,
+			processes_running: null,
+			logins_total: null,
+			gpu: [],
+		}));
+	}
+
+	function bucketsToContainerRows(buckets: ContainerBucket[]): ContainerHistoryRow[] {
+		return buckets.map((b) => ({
+			recorded_at: b.bucket_start,
+			container_id: b.container_id,
+			cpu_usage: b.cpu_avg,
+			memory_usage: b.memory_avg,
+			memory_limit: 0,
+			memory_percent: b.memory_percent_avg,
+			network_rx: b.network_rx_max,
+			network_tx: b.network_tx_max,
+			disk_read: b.disk_read_max,
+			disk_write: b.disk_write_max,
+		}));
 	}
 
 	async function loadHistoricalData() {
@@ -729,8 +779,6 @@
 		historyLoading = true;
 		historyError = '';
 		const anchor = Date.now();
-		const from = new Date(anchor - rangeConfig.windowMs).toISOString();
-		const to = new Date(anchor).toISOString();
 
 		try {
 			if (isDemoServer) {
@@ -743,27 +791,27 @@
 			}
 			if (!accessToken) return;
 
+			// backend가 bucket 단위로 미리 집계해서 보낸다 → frontend는 점들을
+			// 그대로 슬롯에 매핑하기만 하면 된다. raw row 페이징 불필요.
 			const systemParams = new URLSearchParams({
 				agent: selectedServerId,
-				from_time: from,
-				to_time: to,
-				ordering: 'recorded_at',
+				range: selectedRange,
+				bucket: String(rangeConfig.bucketSeconds),
 			});
 			const containerParams = new URLSearchParams({
 				agent: selectedServerId,
-				from_time: from,
-				to_time: to,
-				ordering: 'recorded_at',
+				range: selectedRange,
+				bucket: String(rangeConfig.bucketSeconds),
 			});
 
-			const [systemRows, containerRows] = await Promise.all([
-				fetchPagedRows<SystemHistoryRow>('/api/metrics/system/', systemParams, rangeConfig.maxRawRows),
-				fetchPagedRows<ContainerHistoryRow>('/api/metrics/containers/', containerParams, rangeConfig.maxRawRows),
+			const [systemBuckets, containerBuckets] = await Promise.all([
+				fetchBuckets<SystemBucket>('/api/metrics/system/buckets/', systemParams),
+				fetchBuckets<ContainerBucket>('/api/metrics/containers/buckets/', containerParams),
 			]);
 
 			if (currentSeq !== historyLoadSeq) return;
-			systemHistoryRows = systemRows;
-			containerHistoryRows = containerRows;
+			systemHistoryRows = bucketsToSystemRows(systemBuckets);
+			containerHistoryRows = bucketsToContainerRows(containerBuckets);
 			historyPolledAt = new Date(anchor);
 		} catch (error) {
 			if (currentSeq !== historyLoadSeq) return;
