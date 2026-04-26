@@ -408,16 +408,25 @@
 		gap: 8px;
 		flex: 1;
 		margin-top: 2px;
+		min-width: 0;
 	}
+	/* container-type 을 pl-col 에 두면 자식 .value 가 cqw 로 col 폭 기반 폰트 사용. */
 	.pl-col {
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
 		min-width: 0;
 		flex: 1;
+		container-type: inline-size;
 	}
+	/* "..." 으로 잘리던 문제 → 숫자 자릿수가 늘어도 안 잘리게 cqw 로 폰트 자동 축소.
+	   pl-col 폭이 좁으면 작아지고 넓으면 var(--font-lg) 한계까지 커진다.
+	   25cqw 는 폭의 25% — 4~6자리 숫자가 항상 한 줄에 들어가는 안전 비율. */
 	.pl-col .value {
-		font-size: var(--font-lg);
+		font-size: clamp(12px, 25cqw, 26px);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: clip;
 	}
 	.pl-label {
 		color: var(--text-muted);
