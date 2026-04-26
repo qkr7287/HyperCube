@@ -36,7 +36,7 @@
 
 	// Bucket size in seconds — fleet-store의 BUCKET_SECONDS와 반드시 일치해야
 	// label 시점이 실제 데이터와 맞는다.
-	const BUCKET_SEC: Record<RangeKey, number> = { '1m': 6, '5m': 30, '1h': 300, '24h': 7200, '7d': 43200 };
+	const BUCKET_SEC: Record<RangeKey, number> = { '1m': 60, '5m': 300, '1h': 3600, '24h': 86400, '7d': 604800 };
 
 	function pad(n: number): string {
 		return String(n).padStart(2, '0');
@@ -52,16 +52,10 @@
 			const at = latestBucketStart - (count - 1 - i) * interval;
 			const d = new Date(at);
 			if (range === '7d' || range === '24h') {
-				// 12h / 2h bucket — 날짜 + 시각
-				labels.push(`${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}시`);
-			} else if (range === '1m') {
-				// 5s bucket — 분 단위가 모두 같으니 초까지 표시 (HH:MM:SS)
-				labels.push(`${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`);
-			} else if (range === '5m') {
-				// 30s bucket — HH:MM:SS
-				labels.push(`${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`);
+				// 1d / 1주 bucket — MM/DD
+				labels.push(`${pad(d.getMonth() + 1)}/${pad(d.getDate())}`);
 			} else {
-				// 1h — 5min bucket → HH:MM
+				// 1m / 5m / 1h — HH:MM
 				labels.push(`${pad(d.getHours())}:${pad(d.getMinutes())}`);
 			}
 		}

@@ -12,61 +12,63 @@ export type MonitoringRangeConfig = {
 	maxRawRows: number;
 };
 
+// Bucket size = range 라벨 그 자체. 1m = 1분 단위, 7d = 1주일 단위.
+// 각 range의 표시 점 개수만 살짝씩 다르게 (10~14점).
 export const MONITORING_RANGE_CONFIG: Record<MonitoringRange, MonitoringRangeConfig> = {
 	'1m': {
 		label: '1분',
 		pollMs: 60_000,
 		pollLabel: '1분마다 갱신',
-		bucketSeconds: 5,
-		bucketLabel: '5초',
-		points: 12,
-		windowMs: 12 * 5 * 1000,
-		windowLabel: '1분',
-		maxRawRows: 240,
+		bucketSeconds: 60,
+		bucketLabel: '1분',
+		points: 10,
+		windowMs: 10 * 60 * 1000,
+		windowLabel: '10분',
+		maxRawRows: 600,
 	},
 	'5m': {
 		label: '5분',
 		pollMs: 300_000,
 		pollLabel: '5분마다 갱신',
-		bucketSeconds: 15,
-		bucketLabel: '15초',
-		points: 20,
-		windowMs: 20 * 15 * 1000,
-		windowLabel: '5분',
-		maxRawRows: 400,
+		bucketSeconds: 300,
+		bucketLabel: '5분',
+		points: 10,
+		windowMs: 10 * 300 * 1000,
+		windowLabel: '50분',
+		maxRawRows: 600,
 	},
 	'1h': {
 		label: '1시간',
 		pollMs: 3_600_000,
 		pollLabel: '1시간마다 갱신',
-		bucketSeconds: 60,
-		bucketLabel: '1분',
-		points: 60,
-		windowMs: 60 * 60 * 1000,
-		windowLabel: '1시간',
+		bucketSeconds: 3_600,
+		bucketLabel: '1시간',
+		points: 12,
+		windowMs: 12 * 3_600 * 1000,
+		windowLabel: '12시간',
 		maxRawRows: 1_200,
 	},
 	'24h': {
 		label: '24시간',
 		pollMs: 86_400_000,
 		pollLabel: '24시간마다 갱신',
-		bucketSeconds: 600,
-		bucketLabel: '10분',
-		points: 144,
-		windowMs: 144 * 600 * 1000,
-		windowLabel: '24시간',
-		maxRawRows: 3_000,
+		bucketSeconds: 86_400,
+		bucketLabel: '1일',
+		points: 12,
+		windowMs: 12 * 86_400 * 1000,
+		windowLabel: '12일',
+		maxRawRows: 2_000,
 	},
 	'7d': {
 		label: '7일',
 		pollMs: 604_800_000,
 		pollLabel: '7일마다 갱신',
-		bucketSeconds: 3_600,
-		bucketLabel: '1시간',
-		points: 168,
-		windowMs: 168 * 3_600 * 1000,
-		windowLabel: '7일',
-		maxRawRows: 4_000,
+		bucketSeconds: 604_800,
+		bucketLabel: '1주일',
+		points: 14,
+		windowMs: 14 * 604_800 * 1000,
+		windowLabel: '14주',
+		maxRawRows: 2_000,
 	},
 };
 
@@ -89,11 +91,10 @@ export function formatRangeTick(epochSeconds: number, range: MonitoringRange): s
 	if (Number.isNaN(date.getTime())) return '';
 	const pad = (value: number) => value.toString().padStart(2, '0');
 
-	if (range === '7d') {
+	// 1m / 5m / 1h → HH:MM
+	// 24h / 7d → MM/DD
+	if (range === '24h' || range === '7d') {
 		return `${pad(date.getMonth() + 1)}/${pad(date.getDate())}`;
-	}
-	if (range === '24h') {
-		return `${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 	}
 	return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
