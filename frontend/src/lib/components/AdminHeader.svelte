@@ -49,11 +49,11 @@
 	}
 
 	const navItems = [
-		{ href: `${base}/admin/dashboard`, label: '전체 서버 모니터링', match: '/admin/dashboard' },
+		{ href: `${base}/`, label: '전체 서버 모니터링', match: '/' },
 		{ href: `${base}/admin/requests`, label: '서버 승인', match: '/admin/requests', badge: () => pending },
 		{ href: `${base}/admin/templates`, label: '템플릿', match: '/admin/templates' },
 		{ href: `${base}/server-2d`, label: '2D 관제 대시보드', match: '/server-2d' },
-		{ href: `${base}/`, label: '3D 상세 모니터링', match: '/' },
+		{ href: `${base}/server-3d`, label: '3D 상세 모니터링', match: '/server-3d' },
 	];
 
 	function toggleMenu(e: MouseEvent) {
@@ -76,10 +76,10 @@
 <header class="admin-header">
 	<div
 		class="brand"
-		onclick={() => goto(`${base}/admin/dashboard`)}
+		onclick={() => goto(`${base}/`)}
 		role="button"
 		tabindex="0"
-		onkeydown={(e) => e.key === 'Enter' && goto(`${base}/admin/dashboard`)}
+		onkeydown={(e) => e.key === 'Enter' && goto(`${base}/`)}
 	>
 		<img class="brand-logo" src={logoHypercube} alt="HyperCube" />
 	</div>

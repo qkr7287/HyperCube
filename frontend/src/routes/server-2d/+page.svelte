@@ -559,7 +559,7 @@
 			isLoggedIn = true;
 			currentUsername = decodeUsername(accessToken);
 			connectGlobal(accessToken);
-			goto(`${base}/admin/dashboard`);
+			goto(`${base}/`);
 		} catch {
 			loginError = '서버에 연결할 수 없습니다.';
 		}
@@ -1313,7 +1313,7 @@
 		<main class="server-picker">
 			<h1>서버 없음</h1>
 			<p>아직 등록·승인된 서버가 없습니다. Agent를 실행하면 자동으로 등록됩니다.</p>
-			<button type="button" class="empty-state" onclick={() => goto(`${base}/admin/dashboard`)}>전체 서버 모니터링으로 이동</button>
+			<button type="button" class="empty-state" onclick={() => goto(`${base}/`)}>전체 서버 모니터링으로 이동</button>
 		</main>
 	</div>
 {:else}
