@@ -45,7 +45,20 @@ class ContainerMetricsHistory(models.Model):
         related_name="container_metrics",
     )
     container_id = models.CharField(max_length=64, db_index=True)
-    cpu_usage = models.FloatField(help_text="컨테이너 CPU 사용률 (%)")
+    cpu_usage = models.FloatField(
+        help_text=(
+            "컨테이너 CPU 사용률. 신규 Agent는 0~100 정규화 값(usage_pct)을 저장하고, "
+            "구버전 Agent는 Docker stats raw(코어 합산 %) 그대로 저장. 표시는 항상 0-100을 가정."
+        )
+    )
+    cpu_usage_raw = models.FloatField(
+        null=True, blank=True,
+        help_text="Docker stats raw 코어 합산 % (정보 보존용). Agent v2 이상에서 채움.",
+    )
+    cpu_cores_quota = models.FloatField(
+        null=True, blank=True,
+        help_text="이 컨테이너에 허용된 논리 코어 수. cgroup 한도 또는 호스트 코어 수.",
+    )
     memory_usage = models.BigIntegerField(help_text="메모리 사용량 (bytes)")
     memory_limit = models.BigIntegerField(help_text="메모리 한도 (bytes)")
     memory_percent = models.FloatField(help_text="메모리 사용률 (%)")

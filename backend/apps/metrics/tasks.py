@@ -137,10 +137,32 @@ def _collect_container_metrics(r, agent):
         network = body.get("network") or {}
         disk = body.get("disk") or {}
 
+        # Agent v2 이상은 cpu.usage_pct(정규화 0-100) + cpu.cores_quota를 같이 보냄.
+        # 구버전 호환: usage_pct가 없으면 raw usage를 cores로 나눠 정규화 시도, 그래도
+        # 결정 못하면 raw 값을 0-100으로 clamp.
+        usage_raw = _as_float(cpu.get("usage"))
+        usage_pct = cpu.get("usage_pct")
+        cores_quota = cpu.get("cores_quota")
+        if cores_quota is None:
+            cores_quota = cpu.get("cores")
+        cores_quota_f = _as_float(cores_quota) if cores_quota is not None else None
+
+        if usage_pct is not None:
+            usage_norm = _as_float(usage_pct)
+        elif cores_quota_f and cores_quota_f >= 1:
+            usage_norm = usage_raw / cores_quota_f
+        else:
+            usage_norm = usage_raw
+        # Display layer expects 0-100; clamp defensively.
+        if usage_norm is not None:
+            usage_norm = max(0.0, min(100.0, usage_norm))
+
         records.append(ContainerMetricsHistory(
             agent=agent,
             container_id=body.get("containerId", ""),
-            cpu_usage=_as_float(cpu.get("usage")),
+            cpu_usage=usage_norm,
+            cpu_usage_raw=usage_raw,
+            cpu_cores_quota=cores_quota_f,
             memory_usage=_as_int(memory.get("usage")),
             memory_limit=_as_int(memory.get("limit")),
             memory_percent=_as_float(memory.get("percent")),

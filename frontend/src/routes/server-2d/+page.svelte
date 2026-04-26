@@ -840,10 +840,16 @@
 	}
 
 	function metricCpu(metric: any): number {
+		// Agent v2 이상: cpu.usage_pct가 이미 0-100 정규화 값. 그대로 사용.
+		const pct = metric?.cpu?.usage_pct ?? metric?.cpu_usage_pct;
+		if (pct !== null && pct !== undefined && Number.isFinite(Number(pct))) {
+			return Math.max(0, Math.min(100, Number(pct)));
+		}
+		// Legacy: raw 코어 합산 % → cores_quota 또는 cores로 나눠 정규화.
 		const raw = Number(metric?.cpu?.usage ?? metric?.cpu_usage ?? metric?.cpu ?? 0);
 		if (!Number.isFinite(raw)) return 0;
-		const cores = Number(metric?.cpu?.cores ?? 0);
-		const value = cores >= 1 ? raw / cores : raw;
+		const quota = Number(metric?.cpu?.cores_quota ?? metric?.cpu?.cores ?? 0);
+		const value = quota >= 1 ? raw / quota : raw;
 		return Math.max(0, Math.min(100, value));
 	}
 
