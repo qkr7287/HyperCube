@@ -38,16 +38,33 @@
 	let canvas = $state<HTMLCanvasElement | null>(null);
 	let chart: Chart | null = null;
 
+	function percentDecimals(): number {
+		// y축이 모두 "0%" 로 뭉개지지 않도록, 데이터 절대 최댓값에 맞춰 소수 자릿수를 조정한다.
+		// 모두 0 인 경우엔 axis 가 자동으로 0~1 까지 그려지므로 "0%" 정수로 표기.
+		let maxAbs = 0;
+		for (const ds of datasets) {
+			for (const v of ds.values) {
+				if (Number.isFinite(v) && Math.abs(v) > maxAbs) maxAbs = Math.abs(v);
+			}
+		}
+		if (maxAbs === 0) return 0;
+		if (maxAbs < 0.1) return 3;
+		if (maxAbs < 1) return 2;
+		if (maxAbs < 10) return 1;
+		return 0;
+	}
+
 	function formatValue(value: number, format: ValueFormat): string {
 		if (format === 'bytes') return formatBytesValue(value);
 		if (format === 'count') return `${Math.round(value)}`;
-		return `${value.toFixed(1)}%`;
+		const decimals = format === 'percent' ? Math.max(percentDecimals(), 2) : 1;
+		return `${value.toFixed(decimals)}%`;
 	}
 
 	function axisLabel(value: number): string {
 		if (yFormat === 'bytes') return formatBytesValue(value);
 		if (yFormat === 'count') return `${Math.round(value)}`;
-		return `${value.toFixed(0)}%`;
+		return `${value.toFixed(percentDecimals())}%`;
 	}
 
 	function buildDatasets(): ChartDataset<'line'>[] {

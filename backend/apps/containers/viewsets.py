@@ -143,6 +143,8 @@ class MyContainerViewSet(ReadOnlyModelViewSet):
             limit = 240
 
         range_map = {
+            "1m": timedelta(minutes=1),
+            "5m": timedelta(minutes=5),
             "1h": timedelta(hours=1),
             "6h": timedelta(hours=6),
             "24h": timedelta(hours=24),
