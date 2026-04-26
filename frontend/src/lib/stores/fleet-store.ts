@@ -182,22 +182,22 @@ export const fleetError = writable('');
 export const fleetConnected = writable(false);
 export const lastFleetUpdate = writable<Date | null>(null);
 
-// Bucket size — 카드 sparkline에 너무 빽빽하지 않도록 적당히 큰 bucket을 쓴다.
-// BUCKET × POINTS ≈ 해당 range의 실제 표시 창(window).
+// Bucket size — 카드 sparkline 점이 ~10-14개로 일정하도록.
+// BUCKET × POINTS = 해당 range의 실제 표시 창(window).
 const BUCKET_SECONDS: Record<TimeRange, number> = {
-	'1m': 5,        // 5초 bucket → 1분 창에 12점
-	'5m': 30,       // 30초 bucket → 5분 창에 10점
-	'1h': 300,      // 5분 bucket → 1시간 창에 12점
-	'24h': 7200,    // 2시간 bucket → 24시간 창에 12점
-	'7d': 86400,    // 1일 bucket → 7일 창에 7점
+	'1m': 6,        // 6초 bucket → 1분 / 10점
+	'5m': 30,       // 30초 bucket → 5분 / 10점
+	'1h': 300,      // 5분 bucket → 1시간 / 12점
+	'24h': 7200,    // 2시간 bucket → 24시간 / 12점
+	'7d': 43200,    // 12시간 bucket → 7일 / 14점
 };
 // 차트에 표시할 bucket 개수.
 export const SPARKLINE_POINTS: Record<TimeRange, number> = {
-	'1m': 12,   // 1 min window
+	'1m': 10,   // 1 min window
 	'5m': 10,   // 5 min window
 	'1h': 12,   // 1 h window
 	'24h': 12,  // 24 h window
-	'7d': 7,    // 7 d window
+	'7d': 14,   // 7 d window
 };
 // Backend retention에 맞춘 raw data 요청 범위. bucket × points 보다 조금 더 넉넉히.
 const API_RANGE: Record<TimeRange, string> = {
@@ -207,8 +207,8 @@ const API_RANGE: Record<TimeRange, string> = {
 	'24h': '7d',
 	'7d': '7d',
 };
-// raw row 상한. bucket 집계 전 원본 데이터 개수.
-const RANGE_LIMITS: Record<TimeRange, number> = { '1m': 500, '5m': 2000, '1h': 4000, '24h': 8000, '7d': 15000 };
+// raw row 상한. backend `limit` 한도(2000)에 맞춰 모두 2000으로 클램프.
+const RANGE_LIMITS: Record<TimeRange, number> = { '1m': 500, '5m': 2000, '1h': 2000, '24h': 2000, '7d': 2000 };
 // Per-agent 상세 history에서 사용할 bucket 개수.
 const HISTORY_LIMITS: Record<TimeRange, number> = { '1m': 30, '5m': 24, '1h': 24, '24h': 7, '7d': 4 };
 // Poll 주기 — bucket 크기에 맞춰 점점 느리게. 너무 자주 polling 하면 백엔드 부담.
