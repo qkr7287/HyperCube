@@ -99,8 +99,9 @@ def _collect_system_metrics(r, agent):
     memory = body.get("memory") or {}
     disk = body.get("disk") or {}
     network = body.get("network") or {}
+    gpus = body.get("gpu") or []  # Agent payload contract: array of GPU dicts. 없으면 [].
 
-    return [SystemMetricsHistory(
+    kwargs = dict(
         agent=agent,
         cpu_usage=_as_float(cpu.get("usage")),
         memory_usage=_as_float(memory.get("usage")),
@@ -111,7 +112,60 @@ def _collect_system_metrics(r, agent):
         network_tx=_as_int(network.get("tx")),
         raw_data=body,
         recorded_at=_parse_timestamp(payload.get("timestamp")),
-    )]
+    )
+
+    # 신규 nullable 컬럼 — migration 0005 적용된 환경에서만 채움. 구버전 Agent /
+    # 미적용 환경에선 그대로 raw_data 에만 보존.
+    db_cols = _system_db_columns()
+    if "memory_available" in db_cols:
+        # Agent 가 안 보내면 None. Linux 에서 정확한 사용률 계산용 (MemAvailable).
+        avail = memory.get("available")
+        kwargs["memory_available"] = _as_int(avail) if avail is not None else None
+
+    if gpus and isinstance(gpus, list):
+        # 다중 GPU 호스트도 단일 컬럼으로 aggregation 가능하게 평균·합산·최대값 정규화.
+        usage_vals = [_as_float(g.get("usage")) for g in gpus if g.get("usage") is not None]
+        mem_used_vals = [_as_int(g.get("memoryUsed")) for g in gpus if g.get("memoryUsed") is not None]
+        mem_total_vals = [_as_int(g.get("memoryTotal")) for g in gpus if g.get("memoryTotal") is not None]
+        temp_vals = [_as_float(g.get("temperature")) for g in gpus if g.get("temperature") is not None]
+        if "gpu_count" in db_cols:
+            kwargs["gpu_count"] = len(gpus)
+        if "gpu_usage" in db_cols and usage_vals:
+            kwargs["gpu_usage"] = sum(usage_vals) / len(usage_vals)
+        if "gpu_memory_used" in db_cols and mem_used_vals:
+            kwargs["gpu_memory_used"] = sum(mem_used_vals)
+        if "gpu_memory_total" in db_cols and mem_total_vals:
+            kwargs["gpu_memory_total"] = sum(mem_total_vals)
+        if "gpu_temperature_max" in db_cols and temp_vals:
+            kwargs["gpu_temperature_max"] = max(temp_vals)
+    else:
+        # 호스트에 GPU 없음. count=0 만 채워서 "GPU 보고는 했고 0대" 표시.
+        if "gpu_count" in db_cols:
+            kwargs["gpu_count"] = 0
+
+    return [SystemMetricsHistory(**kwargs)]
+
+
+_SYSTEM_DB_COLUMNS_CACHE: set[str] | None = None
+
+
+def _system_db_columns() -> set[str]:
+    """system_metrics_history 의 실제 컬럼. tasks.py 안에서 캐시."""
+    global _SYSTEM_DB_COLUMNS_CACHE
+    if _SYSTEM_DB_COLUMNS_CACHE is not None:
+        return _SYSTEM_DB_COLUMNS_CACHE
+    from django.db import connection
+    try:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = %s",
+                ["system_metrics_history"],
+            )
+            cols = {row[0] for row in cur.fetchall()}
+    except Exception:
+        cols = set()
+    _SYSTEM_DB_COLUMNS_CACHE = cols
+    return cols
 
 
 def _collect_container_metrics(r, agent):

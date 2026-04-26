@@ -18,9 +18,40 @@ class SystemMetricsHistory(models.Model):
     memory_usage = models.FloatField(help_text="메모리 사용률 (%)")
     memory_used = models.BigIntegerField(help_text="사용 메모리 (MB)")
     memory_total = models.BigIntegerField(help_text="전체 메모리 (MB)")
+    memory_available = models.BigIntegerField(
+        null=True, blank=True,
+        help_text=(
+            "Linux MemAvailable (bytes). buffer/cache 를 사용으로 잘못 카운트하지 않도록 "
+            "정확한 메모리 사용률 = (total - available) / total. Agent v3+ 에서 채움. "
+            "구버전 Agent 는 null."
+        ),
+    )
     disk_usage = models.FloatField(help_text="디스크 사용률 (%)")
     network_rx = models.BigIntegerField(help_text="누적 수신 bytes")
     network_tx = models.BigIntegerField(help_text="누적 송신 bytes")
+    # GPU (선택). 다중 GPU 호스트는 array 평균 / 최대값 / 합산값 으로 단일화해 저장.
+    # 호스트 자체에 GPU 가 없거나 Agent 가 보고 안 하면 null. 모든 fleet 차트가
+    # gpu_usage 컬럼 단일을 보고 sparkline/aggregation 결정.
+    gpu_usage = models.FloatField(
+        null=True, blank=True,
+        help_text="GPU 사용률 (%) — 다중 GPU 평균. GPU 없으면 null.",
+    )
+    gpu_count = models.IntegerField(
+        null=True, blank=True,
+        help_text="장착 GPU 개수.",
+    )
+    gpu_memory_used = models.BigIntegerField(
+        null=True, blank=True,
+        help_text="GPU VRAM 사용 합산 (bytes).",
+    )
+    gpu_memory_total = models.BigIntegerField(
+        null=True, blank=True,
+        help_text="GPU VRAM 전체 합산 (bytes).",
+    )
+    gpu_temperature_max = models.FloatField(
+        null=True, blank=True,
+        help_text="GPU 최고 온도 (°C). 다중 GPU 중 가장 뜨거운 값.",
+    )
     raw_data = models.JSONField(help_text="Agent로부터 받은 system_metrics 전체 payload")
     recorded_at = models.DateTimeField(db_index=True, help_text="Agent가 수집한 시각")
 

@@ -257,10 +257,18 @@ type SystemBucketRow = {
 	cpu_max: number;
 	memory_avg: number;
 	memory_max: number;
+	memory_used_avg?: number;
+	memory_total_avg?: number;
+	memory_available_avg?: number | null;     // migration 0005, agent v3+ 에서만 채워짐
 	disk_avg: number;
 	disk_max: number;
 	network_rx_max: number;
 	network_tx_max: number;
+	gpu_avg?: number | null;                  // migration 0005, GPU 없는 호스트는 null
+	gpu_max?: number | null;
+	gpu_memory_used_avg?: number | null;
+	gpu_memory_total_avg?: number | null;
+	gpu_temperature_max?: number | null;
 	sample_count: number;
 };
 
@@ -416,8 +424,9 @@ function buildRows(
 					cpu: bucketsToSparkline(agentBuckets, rangeKey, (b) => b.cpu_avg),
 					memory: bucketsToSparkline(agentBuckets, rangeKey, (b) => b.memory_avg),
 					disk: bucketsToSparkline(agentBuckets, rangeKey, (b) => b.disk_avg),
-					// GPU 는 system buckets 에 없어 0 fallback. agent series 의 gpu 도 동일.
-					gpu: bucketsToSparkline(agentBuckets, rangeKey, () => 0),
+					// migration 0005 적용 + agent gpu 보고 시 채워짐. 미적용/GPU 없으면 null
+					// → 0 fallback (sparkline 평탄선).
+					gpu: bucketsToSparkline(agentBuckets, rangeKey, (b) => b.gpu_avg ?? 0),
 					// network_rx_max / tx_max 는 boot 이후 누적 바이트. sparkline 은 rate 이므로
 					// bucket 간 delta / bucket 길이로 변환.
 					rx: bucketsToRateSparkline(agentBuckets, rangeKey, (b) => b.network_rx_max),
@@ -661,10 +670,11 @@ function buildHistoryFromBuckets(rows: SystemBucketRow[], rangeKey: TimeRange): 
 			const memMax = clampPct(max(items.map((it) => it.memory_max)));
 			const diskAvg = clampPct(avg(items.map((it) => it.disk_avg)));
 			const diskMax = clampPct(max(items.map((it) => it.disk_max)));
-			// GPU 는 system_metrics 에 별도 컬럼이 없어 buckets 응답에도 없음 → 0.
-			// 정확한 fleet GPU trend 가 필요하면 backend 에 gpu_usage 컬럼 추가 후 buckets 에 포함시켜야 함.
-			const gpuAvg = 0;
-			const gpuMax = 0;
+			// GPU 보고 있는 호스트만 평균에 포함 (null 은 "GPU 없음" 으로 제외).
+			const gpuVals = items.map((it) => it.gpu_avg).filter((v): v is number => v != null);
+			const gpuMaxes = items.map((it) => it.gpu_max).filter((v): v is number => v != null);
+			const gpuAvg = clampPct(gpuVals.length ? avg(gpuVals) : 0);
+			const gpuMax = clampPct(gpuMaxes.length ? max(gpuMaxes) : 0);
 			lastReal = { cpuAvg, cpuMax, memAvg, memMax, diskAvg, diskMax, gpuAvg, gpuMax, agents: items.length };
 			if (firstRealIdx < 0) firstRealIdx = i;
 			series.push({
@@ -757,14 +767,31 @@ function buildAgentSeriesFromBuckets(
 		const disk: (number | null)[] = new Array(slots.length).fill(null);
 		const gpu: (number | null)[] = new Array(slots.length).fill(null);
 		const net: (number | null)[] = new Array(slots.length).fill(null);
-		for (const [bucket, row] of m) {
-			const idx = slotIndex.get(bucket);
+		// network rate (bytes/s) 는 인접 bucket 누적 차이를 bucket 길이로 나눠 산출.
+		const sortedBuckets = [...m.keys()].sort((a, b) => a - b);
+		const bucketSec = BUCKET_SECONDS[rangeKey];
+		for (let i = 0; i < sortedBuckets.length; i += 1) {
+			const epoch = sortedBuckets[i];
+			const row = m.get(epoch)!;
+			const idx = slotIndex.get(epoch);
 			if (idx === undefined) continue;
 			cpu[idx] = row.cpu_avg;
 			mem[idx] = row.memory_avg;
 			disk[idx] = row.disk_avg;
-			gpu[idx] = 0;
-			net[idx] = 0;
+			gpu[idx] = row.gpu_avg ?? 0;
+			if (i > 0) {
+				const prev = m.get(sortedBuckets[i - 1])!;
+				const dt = (epoch - sortedBuckets[i - 1]);
+				if (dt > 0) {
+					const rxRate = Math.max(0, (row.network_rx_max - prev.network_rx_max)) / dt;
+					const txRate = Math.max(0, (row.network_tx_max - prev.network_tx_max)) / dt;
+					net[idx] = rxRate + txRate;
+				} else {
+					net[idx] = 0;
+				}
+			} else {
+				net[idx] = 0;
+			}
 		}
 		return {
 			agent_id: agent.id,

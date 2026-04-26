@@ -202,26 +202,42 @@ class SystemMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet):
             (bucket_sec, bucket_sec),
             output_field=IntegerField(),
         )
+        # 신규 GPU / memory_available 컬럼은 migration 0005 적용된 환경만. 미적용
+        # 환경에선 annotation 자체를 건너뛰어 OperationalError 회피.
+        sys_cols = _db_columns(SystemMetricsHistory._meta.db_table)
+        annotations = dict(
+            cpu_avg=Avg("cpu_usage"),
+            cpu_max=Max("cpu_usage"),
+            memory_avg=Avg("memory_usage"),
+            memory_max=Max("memory_usage"),
+            memory_used_avg=Avg("memory_used"),
+            memory_total_avg=Avg("memory_total"),
+            disk_avg=Avg("disk_usage"),
+            disk_max=Max("disk_usage"),
+            network_rx_max=Max("network_rx"),
+            network_tx_max=Max("network_tx"),
+            sample_count=Count("id"),
+        )
+        if "memory_available" in sys_cols:
+            annotations["memory_available_avg"] = Avg("memory_available")
+        if "gpu_usage" in sys_cols:
+            annotations["gpu_avg"] = Avg("gpu_usage")
+            annotations["gpu_max"] = Max("gpu_usage")
+        if "gpu_memory_used" in sys_cols:
+            annotations["gpu_memory_used_avg"] = Avg("gpu_memory_used")
+        if "gpu_memory_total" in sys_cols:
+            annotations["gpu_memory_total_avg"] = Avg("gpu_memory_total")
+        if "gpu_temperature_max" in sys_cols:
+            annotations["gpu_temperature_max"] = Max("gpu_temperature_max")
         rows = (
             qs.annotate(bucket_epoch=bucket_expr)
             .values("agent_id", "bucket_epoch")
-            .annotate(
-                cpu_avg=Avg("cpu_usage"),
-                cpu_max=Max("cpu_usage"),
-                memory_avg=Avg("memory_usage"),
-                memory_max=Max("memory_usage"),
-                memory_used_avg=Avg("memory_used"),
-                memory_total_avg=Avg("memory_total"),
-                disk_avg=Avg("disk_usage"),
-                disk_max=Max("disk_usage"),
-                network_rx_max=Max("network_rx"),
-                network_tx_max=Max("network_tx"),
-                sample_count=Count("id"),
-            )
+            .annotate(**annotations)
             .order_by("agent_id", "bucket_epoch")
         )
-        results = [
-            {
+        results = []
+        for r in rows:
+            row = {
                 "agent": str(r["agent_id"]),
                 "bucket_epoch": int(r["bucket_epoch"]),
                 "bucket_start": timezone.datetime.fromtimestamp(
@@ -239,8 +255,27 @@ class SystemMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet):
                 "network_tx_max": int(r["network_tx_max"] or 0),
                 "sample_count": int(r["sample_count"] or 0),
             }
-            for r in rows
-        ]
+            # null 은 그대로 전달 — frontend 가 "데이터 없음" 으로 처리하도록.
+            if "memory_available_avg" in r:
+                row["memory_available_avg"] = (
+                    int(r["memory_available_avg"]) if r["memory_available_avg"] is not None else None
+                )
+            if "gpu_avg" in r:
+                row["gpu_avg"] = round(r["gpu_avg"], 2) if r["gpu_avg"] is not None else None
+                row["gpu_max"] = round(r["gpu_max"], 2) if r["gpu_max"] is not None else None
+            if "gpu_memory_used_avg" in r:
+                row["gpu_memory_used_avg"] = (
+                    int(r["gpu_memory_used_avg"]) if r["gpu_memory_used_avg"] is not None else None
+                )
+            if "gpu_memory_total_avg" in r:
+                row["gpu_memory_total_avg"] = (
+                    int(r["gpu_memory_total_avg"]) if r["gpu_memory_total_avg"] is not None else None
+                )
+            if "gpu_temperature_max" in r:
+                row["gpu_temperature_max"] = (
+                    round(r["gpu_temperature_max"], 1) if r["gpu_temperature_max"] is not None else None
+                )
+            results.append(row)
         payload = {"bucket_seconds": bucket_sec, "results": results}
         cache.set(cache_key, payload, _BUCKET_CACHE_TTL)
         return Response(payload)
