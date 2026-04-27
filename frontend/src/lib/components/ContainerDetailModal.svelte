@@ -3,13 +3,11 @@
 	import { base } from '$app/paths';
 	import { sendCommand, containerMetricsStore } from '$lib/stores/ws-store';
 	import { adaptContainerInspect } from '$lib/utils/data-adapter';
-	import { Chart, LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend, ScatterController } from 'chart.js';
+	import { Chart, LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend } from 'chart.js';
 	import MetricTrendChart from './MetricTrendChart.svelte';
-	import MetricSparkline from './fleet/MetricSparkline.svelte';
-	import ResourceRadarChart from './server2d/ResourceRadarChart.svelte';
 	import InfoTooltip from './InfoTooltip.svelte';
 
-	Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend, ScatterController);
+	Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend);
 
 	interface Container {
 		id: string;
@@ -82,12 +80,32 @@
 	let peakLoading = $state(false);
 	type HistoryPoint = { ts: string; cpu: number; mem: number; netRate: number; diskRate: number; gpu: number };
 	let historyRows = $state<HistoryPoint[]>([]);
-	let scatterCanvas = $state<HTMLCanvasElement | null>(null);
-	let scatterChart: any = null;
 	let netRateSeries = $state<number[]>([]);
 	let diskRateSeries = $state<number[]>([]);
-	let netRateLabels = $state<string[]>([]);
-	let diskRateLabels = $state<string[]>([]);
+	let metricsStats = $state<{
+		cpu: { avg: number; min: number };
+		memory: { avg: number; min: number };
+		network: { avg: number; min: number };
+		disk: { avg: number; min: number };
+		gpu: { avg: number; min: number };
+		cpuMinTs: string | null;
+		memMinTs: string | null;
+		netMinTs: string | null;
+		diskMinTs: string | null;
+		gpuMinTs: string | null;
+		idleRatio: number;
+		normalRatio: number;
+		busyRatio: number;
+		idleSeconds: number;
+		normalSeconds: number;
+		busySeconds: number;
+	}>({
+		cpu: { avg: 0, min: 0 }, memory: { avg: 0, min: 0 }, network: { avg: 0, min: 0 },
+		disk: { avg: 0, min: 0 }, gpu: { avg: 0, min: 0 },
+		cpuMinTs: null, memMinTs: null, netMinTs: null, diskMinTs: null, gpuMinTs: null,
+		idleRatio: 0, normalRatio: 0, busyRatio: 0,
+		idleSeconds: 0, normalSeconds: 0, busySeconds: 0,
+	});
 
 	// Logs data - raw string array like old project
 	let logs: string[] = $state([]);
@@ -254,71 +272,6 @@
 	function destroyCharts() {
 		if (cpuChart) { cpuChart.destroy(); cpuChart = null; }
 		if (memChart) { memChart.destroy(); memChart = null; }
-		if (scatterChart) { scatterChart.destroy(); scatterChart = null; }
-	}
-
-	function renderScatter() {
-		if (scatterChart) { scatterChart.destroy(); scatterChart = null; }
-		if (!scatterCanvas || historyRows.length === 0) return;
-		const last = historyRows[historyRows.length - 1];
-		const points = historyRows.map((p, i) => ({
-			x: p.cpu,
-			y: p.mem,
-			r: i === historyRows.length - 1 ? 5 : 3,
-		}));
-		const colors = historyRows.map((_, i) => {
-			const t = historyRows.length > 1 ? i / (historyRows.length - 1) : 1;
-			const r = Math.round(48 + (244 - 48) * t);
-			const g = Math.round(213 + (114 - 213) * t);
-			const b = Math.round(200 + (182 - 200) * t);
-			return `rgba(${r}, ${g}, ${b}, ${0.35 + t * 0.55})`;
-		});
-		scatterChart = new Chart(scatterCanvas, {
-			type: 'scatter',
-			data: {
-				datasets: [{
-					label: 'CPU × MEM',
-					data: points as any,
-					backgroundColor: colors as any,
-					borderColor: colors as any,
-					pointRadius: points.map((p) => p.r),
-					pointHoverRadius: 6,
-				} as any],
-			},
-			options: {
-				responsive: true,
-				maintainAspectRatio: false,
-				animation: { duration: 200 },
-				plugins: {
-					legend: { display: false },
-					tooltip: {
-						backgroundColor: 'rgba(13,17,23,0.96)',
-						borderColor: 'rgba(48,213,200,0.35)',
-						borderWidth: 1,
-						callbacks: {
-							label: (ctx: any) => `CPU ${ctx.parsed.x.toFixed(1)}% · MEM ${ctx.parsed.y.toFixed(1)}%`,
-						},
-					},
-				},
-				scales: {
-					x: {
-						title: { display: true, text: 'CPU (%)', color: '#64748b', font: { size: 9 } },
-						min: 0,
-						suggestedMax: Math.max(10, Math.ceil(Math.max(...points.map(p => p.x)) * 1.2)),
-						grid: { color: 'rgba(100,116,139,0.08)' },
-						ticks: { color: '#64748b', font: { size: 9 }, maxTicksLimit: 5 },
-					},
-					y: {
-						title: { display: true, text: 'MEM (%)', color: '#64748b', font: { size: 9 } },
-						min: 0,
-						suggestedMax: Math.max(10, Math.ceil(Math.max(...points.map(p => p.y)) * 1.2)),
-						grid: { color: 'rgba(100,116,139,0.12)' },
-						ticks: { color: '#64748b', font: { size: 9 }, maxTicksLimit: 5 },
-					},
-				},
-			},
-		});
-		void last;
 	}
 
 	// Safe accessors for details
@@ -406,6 +359,13 @@
 		return (bytes / 1048576).toFixed(1);
 	}
 
+	function formatDuration(s: number): string {
+		if (!Number.isFinite(s) || s <= 0) return '0초';
+		if (s < 60) return `${Math.round(s)}초`;
+		if (s < 3600) return `${Math.round(s / 60)}분`;
+		return `${Math.floor(s / 3600)}시간 ${Math.round((s % 3600) / 60)}분`;
+	}
+
 	function formatPeakTime(ts: string | null): string {
 		if (!ts) return '-';
 		const d = new Date(ts);
@@ -448,18 +408,35 @@
 				historyRows = [];
 				netRateSeries = [];
 				diskRateSeries = [];
-				netRateLabels = [];
-				diskRateLabels = [];
+				metricsStats = {
+					cpu: { avg: 0, min: 0 }, memory: { avg: 0, min: 0 }, network: { avg: 0, min: 0 },
+					disk: { avg: 0, min: 0 }, gpu: { avg: 0, min: 0 },
+					cpuMinTs: null, memMinTs: null, netMinTs: null, diskMinTs: null, gpuMinTs: null,
+					idleRatio: 0, normalRatio: 0, busyRatio: 0,
+					idleSeconds: 0, normalSeconds: 0, busySeconds: 0,
+				};
 				return;
 			}
 			const p = { cpu: { ...empty }, memory: { ...empty }, network: { ...empty }, disk: { ...empty }, gpu: { ...empty }, samples: rows.length };
+			const mins = {
+				cpu: { value: Infinity, ts: null as string | null },
+				memory: { value: Infinity, ts: null as string | null },
+				network: { value: Infinity, ts: null as string | null },
+				disk: { value: Infinity, ts: null as string | null },
+				gpu: { value: Infinity, ts: null as string | null },
+			};
+			const sums = { cpu: 0, memory: 0, gpu: 0, gpuCount: 0 };
+			const rateSums = { network: 0, networkCount: 0, disk: 0, diskCount: 0 };
 			const points: HistoryPoint[] = [];
 			const netSeries: number[] = [];
 			const diskSeries: number[] = [];
-			const labels: string[] = [];
+			let idleCount = 0, normalCount = 0, busyCount = 0;
 			let prevNet = -1, prevDisk = -1, prevTs = '';
+			let firstTs = '', lastTs = '';
 			for (const row of rows) {
 				const ts = row.recorded_at as string;
+				if (!firstTs) firstTs = ts;
+				lastTs = ts;
 				const cpu = Number(row.cpu_usage ?? 0);
 				const mem = Number(row.memory_percent ?? 0);
 				const netCum = Number(row.network_rx ?? 0) + Number(row.network_tx ?? 0);
@@ -468,30 +445,57 @@
 				if (cpu > p.cpu.value) p.cpu = { value: cpu, ts };
 				if (mem > p.memory.value) p.memory = { value: mem, ts };
 				if (gpu > p.gpu.value) p.gpu = { value: gpu, ts };
+				if (cpu < mins.cpu.value) mins.cpu = { value: cpu, ts };
+				if (mem < mins.memory.value) mins.memory = { value: mem, ts };
+				const hasGpuRow = row.gpu_usage !== null && row.gpu_usage !== undefined;
+				if (hasGpuRow && gpu < mins.gpu.value) mins.gpu = { value: gpu, ts };
+				sums.cpu += cpu; sums.memory += mem;
+				if (hasGpuRow) { sums.gpu += gpu; sums.gpuCount += 1; }
+				if (cpu < 1) idleCount += 1;
+				else if (cpu < 10) normalCount += 1;
+				else busyCount += 1;
 				let netRate = 0, diskRate = 0;
+				let hasRate = false;
 				if (prevNet >= 0 && prevTs) {
 					const dt = (new Date(ts).getTime() - new Date(prevTs).getTime()) / 1000;
 					if (dt > 0) {
 						netRate = Math.max(0, (netCum - prevNet) / dt);
 						diskRate = Math.max(0, (diskCum - prevDisk) / dt);
+						hasRate = true;
 						if (netRate > p.network.value) p.network = { value: netRate, ts };
 						if (diskRate > p.disk.value) p.disk = { value: diskRate, ts };
+						if (netRate < mins.network.value) mins.network = { value: netRate, ts };
+						if (diskRate < mins.disk.value) mins.disk = { value: diskRate, ts };
+						rateSums.network += netRate; rateSums.networkCount += 1;
+						rateSums.disk += diskRate; rateSums.diskCount += 1;
 					}
 				}
 				points.push({ ts, cpu, mem, netRate, diskRate, gpu });
 				netSeries.push(netRate);
 				diskSeries.push(diskRate);
-				const dts = new Date(ts);
-				const pad = (n: number) => n.toString().padStart(2, '0');
-				labels.push(`${pad(dts.getHours())}:${pad(dts.getMinutes())}:${pad(dts.getSeconds())}`);
 				prevNet = netCum; prevDisk = diskCum; prevTs = ts;
+				void hasRate;
 			}
 			peakHistory = p;
 			historyRows = points;
 			netRateSeries = netSeries;
 			diskRateSeries = diskSeries;
-			netRateLabels = labels;
-			diskRateLabels = labels;
+
+			const totalSec = firstTs && lastTs ? Math.max(0, (new Date(lastTs).getTime() - new Date(firstTs).getTime()) / 1000) : 0;
+			const total = idleCount + normalCount + busyCount;
+			const ratio = (n: number) => (total > 0 ? n / total : 0);
+			metricsStats = {
+				cpu: { avg: rows.length > 0 ? sums.cpu / rows.length : 0, min: mins.cpu.value === Infinity ? 0 : mins.cpu.value },
+				memory: { avg: rows.length > 0 ? sums.memory / rows.length : 0, min: mins.memory.value === Infinity ? 0 : mins.memory.value },
+				gpu: { avg: sums.gpuCount > 0 ? sums.gpu / sums.gpuCount : 0, min: mins.gpu.value === Infinity ? 0 : mins.gpu.value },
+				network: { avg: rateSums.networkCount > 0 ? rateSums.network / rateSums.networkCount : 0, min: mins.network.value === Infinity ? 0 : mins.network.value },
+				disk: { avg: rateSums.diskCount > 0 ? rateSums.disk / rateSums.diskCount : 0, min: mins.disk.value === Infinity ? 0 : mins.disk.value },
+				cpuMinTs: mins.cpu.ts, memMinTs: mins.memory.ts, netMinTs: mins.network.ts, diskMinTs: mins.disk.ts, gpuMinTs: mins.gpu.ts,
+				idleRatio: ratio(idleCount), normalRatio: ratio(normalCount), busyRatio: ratio(busyCount),
+				idleSeconds: ratio(idleCount) * totalSec,
+				normalSeconds: ratio(normalCount) * totalSec,
+				busySeconds: ratio(busyCount) * totalSec,
+			};
 		} catch (e) {
 			console.error('[ContainerDetailModal] peak fetch failed:', e);
 		} finally {
@@ -611,21 +615,6 @@
 		const c = container;
 		untrack(() => {
 			if (tab === 'metrics' && c) fetchPeakHistory(r);
-		});
-	});
-
-	// Render scatter when historyRows / canvas ready
-	$effect(() => {
-		const tab = activeTab;
-		const sc = scatterCanvas;
-		const rows = historyRows;
-		untrack(() => {
-			if (tab === 'metrics' && sc && rows.length > 0) {
-				setTimeout(() => renderScatter(), 0);
-			} else if (scatterChart) {
-				scatterChart.destroy();
-				scatterChart = null;
-			}
 		});
 	});
 
@@ -992,87 +981,87 @@
 						</div>
 
 						<aside class="metrics-summary">
-							<div class="summary-row two">
-								<section class="summary-section radar-section">
-									<div class="summary-section-head">
-										<h4 class="summary-h4">자원 균형 (현재)</h4>
-										<InfoTooltip placement="bottom-end" text="지금 이 순간 CPU/메모리/네트워크/디스크/GPU 사용률을 한 번에 비교해요. 외곽선은 현재값, 점선은 {rangeLabel} 동안의 피크값입니다. NET·DISK는 화면 안에서 본 최대 rate를 100%로 정규화했어요." />
-									</div>
-									<div class="radar-host"><ResourceRadarChart axes={radarAxes} primaryColor="#30d5c8" /></div>
-								</section>
-								<section class="summary-section scatter-section">
-									<div class="summary-section-head">
-										<h4 class="summary-h4">CPU × 메모리 분포</h4>
-										<InfoTooltip placement="bottom-end" text="{rangeLabel} 동안 매 샘플의 (CPU, MEM) 좌표를 점으로 찍어요. 점이 한쪽에 몰리면 일관된 패턴, 흩어지면 변동이 큰 워크로드입니다. 색이 진해질수록 최근 샘플." />
-									</div>
-									{#if historyRows.length === 0}
-										<div class="summary-empty small">데이터 없음</div>
-									{:else}
-										<div class="scatter-host"><canvas bind:this={scatterCanvas}></canvas></div>
-									{/if}
-								</section>
-							</div>
+							{#if peakLoading}
+								<section class="summary-section"><div class="summary-loading">불러오는 중...</div></section>
+							{:else if peakHistory.samples === 0}
+								<section class="summary-section"><div class="summary-empty">{rangeLabel} 동안 기록된 데이터가 없어요.</div></section>
+							{:else}
+								{@const stableSec = Math.round(metricsStats.idleSeconds + metricsStats.normalSeconds + metricsStats.busySeconds)}
+								{@const memSwing = peakHistory.memory.value - metricsStats.memory.min}
 
-							<section class="summary-section">
-								<div class="summary-section-head">
-									<h4 class="summary-h4">처리량 추이 (rate)</h4>
-									<InfoTooltip placement="bottom-end" text="누적 트래픽이 아니라 인접 샘플의 변화량(B/s)으로 변환한 추이예요. 누적 그래프가 우상향만 보였던 이유는 '누적값은 줄어들 수 없어서'이고, 의미 있는 정보는 기울기(rate)예요." />
-								</div>
-								<div class="rate-row">
-									<span class="rate-label net">NET</span>
-									<div class="rate-spark"><MetricSparkline values={netRateSeries} color="#fbbf24" label="네트워크 rate" /></div>
-									<span class="rate-current">{formatRate(netRate)}</span>
-								</div>
-								<div class="rate-row">
-									<span class="rate-label disk">DISK</span>
-									<div class="rate-spark"><MetricSparkline values={diskRateSeries} color="#a78bfa" label="디스크 rate" /></div>
-									<span class="rate-current">{formatRate(diskRate)}</span>
-								</div>
-							</section>
-
-							<section class="summary-section">
-								<div class="summary-section-head">
-									<h4 class="summary-h4">{rangeLabel} 피크 값</h4>
-									<InfoTooltip placement="bottom-end" text="선택한 조회 단위 동안 가장 높았던 값과 그 시각이에요. NET·DISK는 인접 샘플의 변화량(rate)으로 환산한 최대 처리량입니다." />
-								</div>
-								{#if peakLoading}
-									<div class="summary-loading">불러오는 중...</div>
-								{:else if peakHistory.samples === 0}
-									<div class="summary-empty">{rangeLabel} 동안 기록된 데이터가 없어요.</div>
-								{:else}
+								<section class="summary-section">
+									<div class="summary-section-head">
+										<h4 class="summary-h4">{rangeLabel} 평균값</h4>
+										<InfoTooltip placement="bottom-end" text="선택한 시간 동안 매 샘플의 평균이에요. 일상적인 부하가 어느 정도인지 가늠하는 기준선이 돼요." />
+									</div>
 									<ul class="summary-list">
-										<li>
-											<span class="summary-key">CPU</span>
-											<span class="summary-val">{peakHistory.cpu.value.toFixed(1)}%</span>
-											<small class="summary-when">{formatPeakTime(peakHistory.cpu.ts)}</small>
-										</li>
-										<li>
-											<span class="summary-key">메모리</span>
-											<span class="summary-val">{peakHistory.memory.value.toFixed(1)}%</span>
-											<small class="summary-when">{formatPeakTime(peakHistory.memory.ts)}</small>
-										</li>
-										<li>
-											<span class="summary-key">네트워크</span>
-											<span class="summary-val">{formatRate(peakHistory.network.value)}</span>
-											<small class="summary-when">{formatPeakTime(peakHistory.network.ts)}</small>
-										</li>
-										<li>
-											<span class="summary-key">디스크</span>
-											<span class="summary-val">{formatRate(peakHistory.disk.value)}</span>
-											<small class="summary-when">{formatPeakTime(peakHistory.disk.ts)}</small>
-										</li>
+										<li><span class="summary-key">CPU</span><span class="summary-val">{metricsStats.cpu.avg.toFixed(2)}%</span><small class="summary-when">현재 {cpuPct.toFixed(1)}%</small></li>
+										<li><span class="summary-key">메모리</span><span class="summary-val">{metricsStats.memory.avg.toFixed(2)}%</span><small class="summary-when">현재 {memPct.toFixed(1)}%</small></li>
+										<li><span class="summary-key">네트워크</span><span class="summary-val">{formatRate(metricsStats.network.avg)}</span><small class="summary-when">현재 {formatRate(netRate)}</small></li>
+										<li><span class="summary-key">디스크</span><span class="summary-val">{formatRate(metricsStats.disk.avg)}</span><small class="summary-when">현재 {formatRate(diskRate)}</small></li>
 										{#if hasGpu}
-											<li>
-												<span class="summary-key">GPU</span>
-												<span class="summary-val">{peakHistory.gpu.value.toFixed(1)}%</span>
-												<small class="summary-when">{formatPeakTime(peakHistory.gpu.ts)}</small>
-											</li>
+											<li><span class="summary-key">GPU</span><span class="summary-val">{metricsStats.gpu.avg.toFixed(2)}%</span><small class="summary-when">현재 {gpuPct.toFixed(1)}%</small></li>
 										{/if}
 									</ul>
-									<small class="summary-meta">샘플 {peakHistory.samples}개</small>
-								{/if}
-							</section>
+								</section>
 
+								<section class="summary-section">
+									<div class="summary-section-head">
+										<h4 class="summary-h4">{rangeLabel} 피크 값</h4>
+										<InfoTooltip placement="bottom-end" text="선택한 시간 동안 가장 높았던 값과 그 시각이에요. NET·DISK는 인접 샘플의 변화량(rate)으로 환산한 최대 처리량입니다." />
+									</div>
+									<ul class="summary-list">
+										<li><span class="summary-key">CPU</span><span class="summary-val">{peakHistory.cpu.value.toFixed(1)}%</span><small class="summary-when">{formatPeakTime(peakHistory.cpu.ts)}</small></li>
+										<li><span class="summary-key">메모리</span><span class="summary-val">{peakHistory.memory.value.toFixed(1)}%</span><small class="summary-when">{formatPeakTime(peakHistory.memory.ts)}</small></li>
+										<li><span class="summary-key">네트워크</span><span class="summary-val">{formatRate(peakHistory.network.value)}</span><small class="summary-when">{formatPeakTime(peakHistory.network.ts)}</small></li>
+										<li><span class="summary-key">디스크</span><span class="summary-val">{formatRate(peakHistory.disk.value)}</span><small class="summary-when">{formatPeakTime(peakHistory.disk.ts)}</small></li>
+										{#if hasGpu}
+											<li><span class="summary-key">GPU</span><span class="summary-val">{peakHistory.gpu.value.toFixed(1)}%</span><small class="summary-when">{formatPeakTime(peakHistory.gpu.ts)}</small></li>
+										{/if}
+									</ul>
+								</section>
+
+								<section class="summary-section">
+									<div class="summary-section-head">
+										<h4 class="summary-h4">{rangeLabel} 최저값</h4>
+										<InfoTooltip placement="bottom-end" text="선택한 시간 동안 가장 한가했던 값이에요. 평소 idle 수준이 어느 정도인지 가늠할 수 있어요." />
+									</div>
+									<ul class="summary-list">
+										<li><span class="summary-key">CPU</span><span class="summary-val">{metricsStats.cpu.min.toFixed(2)}%</span><small class="summary-when">{formatPeakTime(metricsStats.cpuMinTs)}</small></li>
+										<li><span class="summary-key">메모리</span><span class="summary-val">{metricsStats.memory.min.toFixed(2)}%</span><small class="summary-when">{formatPeakTime(metricsStats.memMinTs)}</small></li>
+										<li><span class="summary-key">네트워크</span><span class="summary-val">{formatRate(metricsStats.network.min)}</span><small class="summary-when">{formatPeakTime(metricsStats.netMinTs)}</small></li>
+										<li><span class="summary-key">디스크</span><span class="summary-val">{formatRate(metricsStats.disk.min)}</span><small class="summary-when">{formatPeakTime(metricsStats.diskMinTs)}</small></li>
+										{#if hasGpu}
+											<li><span class="summary-key">GPU</span><span class="summary-val">{metricsStats.gpu.min.toFixed(2)}%</span><small class="summary-when">{formatPeakTime(metricsStats.gpuMinTs)}</small></li>
+										{/if}
+									</ul>
+								</section>
+
+								<section class="summary-section">
+									<div class="summary-section-head">
+										<h4 class="summary-h4">{rangeLabel} 활동 분포</h4>
+										<InfoTooltip placement="bottom-end" text="CPU 사용률 기준으로 시간 비중을 분류해요. 한가(<1%) / 보통(1~10%) / 바쁨(≥10%). 한가 비율이 높으면 컨테이너가 대부분 idle, 바쁨 비율이 자주 보이면 워크로드가 활발해요." />
+									</div>
+									<div class="dist-bar" aria-hidden="true">
+										<span class="dist-seg dist-idle" style={`flex: ${Math.max(0.001, metricsStats.idleRatio)}`}></span>
+										<span class="dist-seg dist-normal" style={`flex: ${Math.max(0.001, metricsStats.normalRatio)}`}></span>
+										<span class="dist-seg dist-busy" style={`flex: ${Math.max(0.001, metricsStats.busyRatio)}`}></span>
+									</div>
+									<ul class="summary-list dist-list">
+										<li><span class="summary-key dist-key idle">한가 &lt;1%</span><span class="summary-val">{(metricsStats.idleRatio * 100).toFixed(1)}%</span><small class="summary-when">{formatDuration(metricsStats.idleSeconds)}</small></li>
+										<li><span class="summary-key dist-key normal">보통 1~10%</span><span class="summary-val">{(metricsStats.normalRatio * 100).toFixed(1)}%</span><small class="summary-when">{formatDuration(metricsStats.normalSeconds)}</small></li>
+										<li><span class="summary-key dist-key busy">바쁨 ≥10%</span><span class="summary-val">{(metricsStats.busyRatio * 100).toFixed(1)}%</span><small class="summary-when">{formatDuration(metricsStats.busySeconds)}</small></li>
+									</ul>
+									<div class="summary-tail">
+										<span class="summary-meta">샘플 {peakHistory.samples}개 · 약 {formatDuration(stableSec)}</span>
+										{#if memSwing > 5}
+											<span class="summary-pill warn">메모리 변동 폭 {memSwing.toFixed(1)}% — 누수 의심</span>
+										{:else if memSwing > 0}
+											<span class="summary-pill">메모리 변동 폭 {memSwing.toFixed(1)}%</span>
+										{/if}
+									</div>
+								</section>
+							{/if}
 						</aside>
 					</div>
 				{/if}
@@ -1388,8 +1377,8 @@
 		display: flex;
 		align-items: center;
 		gap: 10px;
-		margin-bottom: 6px;
-		padding-bottom: 6px;
+		margin-bottom: 0;
+		padding-bottom: 4px;
 		border-bottom: 1px dashed rgba(100, 116, 139, 0.2);
 	}
 	.metrics-range-label {
@@ -1480,22 +1469,14 @@
 		gap: 10px;
 		min-width: 0;
 	}
-	.metrics-summary > .summary-row.two {
-		flex: 1.4 1 0;
-		min-height: 200px;
-	}
 	.metrics-summary > .summary-section {
-		flex: 1 1 0;
+		flex: 0 0 auto;
 		min-height: 0;
 		display: flex;
 		flex-direction: column;
 	}
 	.metrics-summary .summary-list {
-		flex: 1 1 auto;
-		justify-content: space-around;
-	}
-	.metrics-summary .rate-row {
-		flex: 1 1 0;
+		flex: 0 0 auto;
 	}
 	.summary-section {
 		background: #121720;
@@ -1575,6 +1556,56 @@
 		color: #475569;
 		text-align: right;
 	}
+	.summary-tail {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 5px;
+		margin-top: 8px;
+	}
+	.summary-pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 2px 8px;
+		border: 1px solid rgba(100, 116, 139, 0.3);
+		border-radius: 999px;
+		background: rgba(13, 17, 23, 0.6);
+		color: var(--text-muted);
+		font-size: 10px;
+		font-weight: 800;
+	}
+	.summary-pill.warn {
+		border-color: rgba(251, 191, 36, 0.45);
+		background: rgba(251, 191, 36, 0.12);
+		color: #fbbf24;
+	}
+	.dist-bar {
+		display: flex;
+		gap: 2px;
+		height: 12px;
+		border-radius: 999px;
+		overflow: hidden;
+		margin-bottom: 8px;
+	}
+	.dist-seg {
+		display: block;
+		min-width: 2px;
+	}
+	.dist-seg.dist-idle { background: rgba(100, 116, 139, 0.55); }
+	.dist-seg.dist-normal { background: rgba(48, 213, 200, 0.7); }
+	.dist-seg.dist-busy { background: rgba(251, 113, 133, 0.85); }
+	.dist-list li {
+		grid-template-columns: 92px minmax(0, 1fr) auto;
+	}
+	.dist-list .dist-key {
+		text-transform: none;
+		letter-spacing: 0;
+		font-size: 11px;
+	}
+	.dist-key.idle { color: #94a3b8; }
+	.dist-key.normal { color: #30d5c8; }
+	.dist-key.busy { color: #fb7185; }
 	.summary-empty.small { font-size: 10px; padding: 4px 2px; }
 	.summary-row.two {
 		display: grid;
