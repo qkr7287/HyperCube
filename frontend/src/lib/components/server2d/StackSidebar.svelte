@@ -27,28 +27,41 @@
 	const FOCUS_TICK = 80;
 
 	const soloed = $derived(view.soloStack);
-	const externalPaused = $derived(Boolean(view.soloStack));
 	const sortDir = $derived(view.stackSortDir);
 	const focusPaused = $derived(view.stackFocusPaused);
 
 	let focusIndex = $state(0);
 	let focusProgress = $state(0);
+	let focusOwnedSolo = $state(false);
 	let focusTimer: ReturnType<typeof setInterval> | null = null;
 	let listEl: HTMLDivElement | null = null;
 	let itemEls: (HTMLButtonElement | null)[] = [];
 
-	const focusRunning = $derived(!focusPaused && !externalPaused && stacks.length > 1);
+	const focusRunning = $derived(!focusPaused && stacks.length > 1);
 
 	function setSortDir(next: Server2dSortDir) {
 		view.stackSortDir = next;
 	}
 
 	function toggleFocus() {
-		view.stackFocusPaused = !view.stackFocusPaused;
+		const wasPaused = view.stackFocusPaused;
+		view.stackFocusPaused = !wasPaused;
 		focusProgress = 0;
+		if (wasPaused) {
+			const target = sorted[focusIndex]?.name ?? null;
+			if (target) {
+				focusOwnedSolo = true;
+				view.soloStack = target;
+			}
+		} else {
+			focusOwnedSolo = false;
+			view.soloStack = null;
+		}
 	}
 
 	function toggleSolo(name: string) {
+		focusOwnedSolo = false;
+		if (!view.stackFocusPaused) view.stackFocusPaused = true;
 		view.soloStack = view.soloStack === name ? null : name;
 	}
 
@@ -111,6 +124,11 @@
 		}
 		focusIndex = (focusIndex + 1) % sorted.length;
 		focusProgress = 0;
+		const next = sorted[focusIndex]?.name ?? null;
+		if (next) {
+			focusOwnedSolo = true;
+			view.soloStack = next;
+		}
 	}
 
 	function focusTick() {
@@ -154,6 +172,20 @@
 		const el = itemEls[idx];
 		if (el && typeof el.scrollIntoView === 'function') {
 			el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+		}
+	});
+
+	$effect(() => {
+		const current = view.soloStack;
+		if (!focusOwnedSolo) return;
+		const expected = sorted[focusIndex]?.name ?? null;
+		if (current === expected) return;
+		focusOwnedSolo = false;
+		if (!view.stackFocusPaused) view.stackFocusPaused = true;
+		focusProgress = 0;
+		if (current) {
+			const idx = sorted.findIndex((s) => s.name === current);
+			if (idx >= 0) focusIndex = idx;
 		}
 	});
 

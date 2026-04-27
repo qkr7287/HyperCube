@@ -97,7 +97,7 @@
 
 	function dimColor(color: string): string {
 		if (color.startsWith('#') && color.length === 7) {
-			return color + '22';
+			return color + '7a';
 		}
 		return color;
 	}
@@ -112,7 +112,7 @@
 				data: [...item.values],
 				borderColor: color,
 				backgroundColor: `${color}18`,
-				borderWidth: highlighted ? 2.2 : 1,
+				borderWidth: highlighted ? 2.4 : 1.4,
 				pointRadius: 0,
 				pointHoverRadius: highlighted ? 3 : 0,
 				tension: 0.32,

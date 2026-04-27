@@ -1553,7 +1553,7 @@
 						<div class="trend-chart">
 							<div class="chart-head">
 								<strong>CPU</strong>
-								<StackLegendChips entries={cpuLegend} maxChips={3} />
+								<StackLegendChips entries={cpuLegend} maxChips={0} />
 							</div>
 							<FleetLineChart
 								title={`CPU 평균 / ${rangeConfig.label}`}
@@ -1571,7 +1571,7 @@
 						<div class="trend-chart">
 							<div class="chart-head">
 								<strong>메모리</strong>
-								<StackLegendChips entries={memoryLegend} maxChips={3} />
+								<StackLegendChips entries={memoryLegend} maxChips={0} />
 							</div>
 							<FleetLineChart
 								title={`메모리 평균 / ${rangeConfig.label}`}
@@ -1589,7 +1589,7 @@
 						<div class="trend-chart">
 							<div class="chart-head">
 								<strong>트래픽</strong>
-								<StackLegendChips entries={networkLegend} format={formatRateCompact} maxChips={3} />
+								<StackLegendChips entries={networkLegend} format={formatRateCompact} maxChips={0} />
 							</div>
 							<FleetLineChart
 								title={`트래픽 평균 / ${rangeConfig.label}`}
@@ -1608,7 +1608,7 @@
 							<div class="chart-head">
 								<strong>GPU</strong>
 								{#if hasAnyGpu}
-									<StackLegendChips entries={gpuLegend} maxChips={3} />
+									<StackLegendChips entries={gpuLegend} maxChips={0} />
 								{:else}
 									<small class="muted gpu-empty">GPU 데이터 없음</small>
 								{/if}
