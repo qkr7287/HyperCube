@@ -401,14 +401,14 @@
 				<div class="chart-card">
 					<div class="chart-head">
 						<h3>네트워크 트래픽</h3>
-						<span>현재 누적 {formatBytesValue(currentMetrics?.network?.rx)} / {formatBytesValue(currentMetrics?.network?.tx)}</span>
+						<span>수신 {formatBytesValue(currentMetrics?.network?.rx)} · 송신 {formatBytesValue(currentMetrics?.network?.tx)}</span>
 					</div>
 					<UserMetricChart labels={historyLabels} datasets={networkDatasets} yFormat="bytes" />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
 						<h3>디스크 처리량</h3>
-						<span>현재 누적 {formatBytesValue(currentMetrics?.disk?.read)} / {formatBytesValue(currentMetrics?.disk?.write)}</span>
+						<span>읽기 {formatBytesValue(currentMetrics?.disk?.read)} · 쓰기 {formatBytesValue(currentMetrics?.disk?.write)}</span>
 					</div>
 					<UserMetricChart labels={historyLabels} datasets={diskDatasets} yFormat="bytes" />
 				</div>

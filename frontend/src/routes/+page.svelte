@@ -182,8 +182,13 @@
 		disconnectGlobal();
 		stopFleetMonitoring();
 		isLoggedIn = false;
-		ready = false;
+		ready = true;
+		redirecting = false;
 		username = '';
+		totalAgents = 0;
+		loginError = '';
+		loginLoading = false;
+		loginPassword = '';
 	}
 
 	$effect(() => {
