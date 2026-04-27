@@ -33,12 +33,11 @@
 
 	let focusIndex = $state(0);
 	let focusProgress = $state(0);
-	let hovered = $state(false);
 	let focusTimer: ReturnType<typeof setInterval> | null = null;
 	let listEl: HTMLDivElement | null = null;
 	let itemEls: (HTMLButtonElement | null)[] = [];
 
-	const focusRunning = $derived(!focusPaused && !externalPaused && !hovered && stacks.length > 1);
+	const focusRunning = $derived(!focusPaused && !externalPaused && stacks.length > 1);
 
 	function setSortDir(next: Server2dSortDir) {
 		view.stackSortDir = next;
@@ -182,13 +181,7 @@
 		</div>
 	</div>
 
-	<div
-		class="body"
-		bind:this={listEl}
-		role="list"
-		onmouseenter={() => (hovered = true)}
-		onmouseleave={() => (hovered = false)}
-	>
+	<div class="body" bind:this={listEl} role="list">
 		{#each sorted as stack, idx (stack.name)}
 			{@const isFocused = focusedName === stack.name}
 			{@const isSoloed = soloed === stack.name}
