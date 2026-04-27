@@ -81,6 +81,7 @@
 		memory?: { usage?: number; limit?: number; percent?: number };
 		network?: { rx?: number; tx?: number };
 		disk?: { read?: number; write?: number };
+		gpu?: Array<{ usage?: number | null }> | { usage?: number | null } | null;
 	};
 
 	type MetricsHistoryRow = {
@@ -93,16 +94,25 @@
 		network_tx: number;
 		disk_read: number;
 		disk_write: number;
+		gpu_usage: number | null;
 	};
 
 	const RANGE_OPTIONS = [
 		{ key: '1m', label: '1분' },
 		{ key: '5m', label: '5분' },
 		{ key: '1h', label: '1시간' },
-		{ key: '6h', label: '6시간' },
 		{ key: '24h', label: '24시간' },
 		{ key: '7d', label: '7일' },
 	] as const;
+
+	// range = 데이터 sample 간격(bucket). window는 그 단위에 맞게 적당한 양으로 자동.
+	const RANGE_BUCKET_MAP: Record<(typeof RANGE_OPTIONS)[number]['key'], { window: string; bucket: string }> = {
+		'1m': { window: '1h', bucket: '1m' },
+		'5m': { window: '6h', bucket: '5m' },
+		'1h': { window: '24h', bucket: '1h' },
+		'24h': { window: '7d', bucket: '1d' },
+		'7d': { window: '7d', bucket: '1d' },
+	};
 
 	let container = $state<ContainerDetail | null>(null);
 	let currentMetrics = $state<MetricsSnapshot | null>(null);
@@ -133,6 +143,13 @@
 		return json.data as T;
 	}
 
+	function snapshotGpu(snap: MetricsSnapshot | null): number | null {
+		const list = snap?.gpu;
+		if (Array.isArray(list)) return Number(list[0]?.usage ?? 0) || 0;
+		if (list && typeof list === 'object') return Number((list as any).usage ?? 0) || 0;
+		return null;
+	}
+
 	function normalizeHistory(rows: MetricsHistoryRow[], snapshot: MetricsSnapshot | null): MetricsHistoryRow[] {
 		if (rows.length > 0 || !snapshot?.timestamp) return rows;
 		return [
@@ -146,6 +163,7 @@
 				network_tx: snapshot.network?.tx ?? 0,
 				disk_read: snapshot.disk?.read ?? 0,
 				disk_write: snapshot.disk?.write ?? 0,
+				gpu_usage: snapshotGpu(snapshot),
 			},
 		];
 	}
@@ -159,9 +177,27 @@
 	}
 
 	async function loadHistory() {
-		history = await api<MetricsHistoryRow[]>(
-			`/api/my-containers/${containerId}/metrics-history/?range=${selectedRange}&limit=240`,
-		);
+		const map = RANGE_BUCKET_MAP[selectedRange];
+		const cid = (container?.container_id ?? '').slice(0, 12);
+		if (!cid) {
+			history = [];
+			return;
+		}
+		const url = `/api/metrics/containers/buckets/?range=${map.window}&bucket=${map.bucket}&container_id=${encodeURIComponent(cid)}`;
+		const payload = await api<{ bucket_seconds: number; results: any[] }>(url);
+		const rows = Array.isArray(payload?.results) ? payload.results : [];
+		history = rows.map((r) => ({
+			recorded_at: r.bucket_start,
+			cpu_usage: Number(r.cpu_usage_pct_avg ?? r.cpu_avg ?? 0),
+			memory_usage: Number(r.memory_avg ?? 0),
+			memory_limit: 0,
+			memory_percent: Number(r.memory_percent_avg ?? 0),
+			network_rx: Number(r.network_rx_max ?? 0),
+			network_tx: Number(r.network_tx_max ?? 0),
+			disk_read: Number(r.disk_read_max ?? 0),
+			disk_write: Number(r.disk_write_max ?? 0),
+			gpu_usage: r.gpu_usage_avg !== undefined && r.gpu_usage_avg !== null ? Number(r.gpu_usage_avg) : null,
+		}));
 	}
 
 	async function loadDashboard(options: { withDetail?: boolean } = {}) {
@@ -171,9 +207,9 @@
 		else refreshing = true;
 		errorMsg = '';
 		try {
-			const tasks: Promise<unknown>[] = [loadCurrentMetrics(), loadHistory()];
-			if (withDetail || !container) tasks.unshift(loadDetail());
-			await Promise.all(tasks);
+			// loadHistory가 container.container_id 필요 → detail 먼저 await
+			if (withDetail || !container) await loadDetail();
+			await Promise.all([loadCurrentMetrics(), loadHistory()]);
 			history = normalizeHistory(history, currentMetrics);
 		} catch (error: any) {
 			errorMsg = error?.message || '대시보드를 불러오지 못했습니다.';
@@ -243,6 +279,18 @@
 		},
 	]);
 
+	let hasGpuHistory = $derived(history.some((row) => typeof row.gpu_usage === 'number'));
+	let gpuDatasets = $derived([
+		{
+			label: 'GPU 사용률',
+			color: '#f472b6',
+			values: history.map((row) => (typeof row.gpu_usage === 'number' ? row.gpu_usage : 0)),
+			fill: true,
+			format: 'percent' as const,
+		},
+	]);
+	let currentGpuUsage = $derived(snapshotGpu(currentMetrics));
+
 	onMount(() => {
 		loadDashboard({ withDetail: true });
 		refreshTimer = setInterval(() => loadDashboard(), 15000);
@@ -263,13 +311,13 @@
 		<section class="hero">
 			<div class="hero-left">
 				<div class="hero-title">
-					<div>
-						<p class="eyebrow">2D 모니터링 대시보드</p>
+					<p class="eyebrow">2D 모니터링 대시보드</p>
+					<div class="hero-name-row">
 						<h1>{container.name}</h1>
+						<span class="status-pill" style="background: {statusTone(container.status)};">
+							{statusLabel(container.status)}
+						</span>
 					</div>
-					<span class="status-pill" style="background: {statusTone(container.status)};">
-						{statusLabel(container.status)}
-					</span>
 				</div>
 				<p class="hero-subtitle">{container.selected_image || container.image}</p>
 				<div class="hero-meta">
@@ -318,17 +366,20 @@
 		<section class="panel">
 			<div class="panel-header">
 				<div>
-					<h2>시계열 추이<InfoTooltip text={timeSeriesHelp} placement="bottom-start" /></h2>
-					<p>아래 4개 지표가 선택한 기간 동안 어떻게 변했는지 그래프로 보여줍니다.</p>
+					<h2>성능 지표 추이<InfoTooltip text={timeSeriesHelp} placement="bottom-start" /></h2>
+					<p>선택한 조회 단위마다 한 점씩 집계된 평균값을 보여줍니다.</p>
 				</div>
-				<div class="range-tabs">
-					{#each RANGE_OPTIONS as option}
-						<button
-							class="range-btn"
-							class:active={selectedRange === option.key}
-							onclick={() => handleRangeChange(option.key)}
-						>{option.label}</button>
-					{/each}
+				<div class="range-tools">
+					<span class="range-label">조회 단위</span>
+					<div class="range-tabs">
+						{#each RANGE_OPTIONS as option}
+							<button
+								class="range-btn"
+								class:active={selectedRange === option.key}
+								onclick={() => handleRangeChange(option.key)}
+							>{option.label}</button>
+						{/each}
+					</div>
 				</div>
 			</div>
 
@@ -361,6 +412,15 @@
 					</div>
 					<UserMetricChart labels={historyLabels} datasets={diskDatasets} yFormat="bytes" />
 				</div>
+				{#if hasGpuHistory || (currentGpuUsage !== null && currentGpuUsage !== undefined)}
+					<div class="chart-card">
+						<div class="chart-head">
+							<h3>GPU 사용률</h3>
+							<span>현재 {currentGpuUsage !== null ? formatPercent(currentGpuUsage, 2) : '-'}</span>
+						</div>
+						<UserMetricChart labels={historyLabels} datasets={gpuDatasets} yFormat="percent" />
+					</div>
+				{/if}
 			</div>
 		</section>
 
@@ -496,8 +556,14 @@
 
 	.hero-title {
 		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 4px;
+	}
+	.hero-name-row {
+		display: inline-flex;
 		align-items: center;
-		gap: 12px;
+		gap: 14px;
 		flex-wrap: wrap;
 	}
 
@@ -633,6 +699,17 @@
 		color: var(--text-secondary);
 	}
 
+	.range-tools {
+		display: inline-flex;
+		align-items: center;
+		gap: 10px;
+	}
+	.range-label {
+		font-size: 12px;
+		font-weight: 800;
+		color: var(--text-muted);
+		letter-spacing: 0.02em;
+	}
 	.range-tabs {
 		display: flex;
 		gap: 6px;
@@ -669,7 +746,9 @@
 		justify-content: space-between;
 		align-items: center;
 		gap: 12px;
-		margin-bottom: 12px;
+		margin-bottom: 20px;
+		padding-bottom: 8px;
+		border-bottom: 1px solid rgba(100, 116, 139, 0.12);
 	}
 
 	.chart-head h3 {
