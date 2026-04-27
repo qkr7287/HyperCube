@@ -41,6 +41,8 @@
 		accessToken = '',
 		endpoint = '/api/metrics/system/',
 		extraQuery = '',
+		hideRangeTabs = false,
+		compact = false,
 	}: {
 		agentId: string;
 		/** field name in the backend metrics response (cpu_usage, memory_usage, etc.).
@@ -60,6 +62,8 @@
 		endpoint?: string;
 		/** extra query string fragment (no leading &) — e.g. "container_id=abc" */
 		extraQuery?: string;
+		hideRangeTabs?: boolean;
+		compact?: boolean;
 	} = $props();
 
 	const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
@@ -311,26 +315,28 @@
 </script>
 
 <div class="trend">
-	<div class="tabs" role="tablist">
-		{#each RANGE_OPTIONS as opt}
-			<button
-				type="button"
-				role="tab"
-				aria-selected={range === opt.key}
-				class="tab"
-				class:active={range === opt.key}
-				onclick={() => (range = opt.key)}
-			>
-				{opt.label}
-			</button>
-		{/each}
-		{#if loading}
-			<span class="loading-mark">로딩…</span>
-		{:else if values.length === 0}
-			<span class="loading-mark muted">이 구간에 기록된 데이터 없음</span>
-		{/if}
-	</div>
-	<div class="canvas-wrap">
+	{#if !hideRangeTabs}
+		<div class="tabs" role="tablist">
+			{#each RANGE_OPTIONS as opt}
+				<button
+					type="button"
+					role="tab"
+					aria-selected={range === opt.key}
+					class="tab"
+					class:active={range === opt.key}
+					onclick={() => (range = opt.key)}
+				>
+					{opt.label}
+				</button>
+			{/each}
+			{#if loading}
+				<span class="loading-mark">로딩…</span>
+			{:else if values.length === 0}
+				<span class="loading-mark muted">이 구간에 기록된 데이터 없음</span>
+			{/if}
+		</div>
+	{/if}
+	<div class="canvas-wrap" class:compact>
 		<canvas bind:this={canvasEl}></canvas>
 	</div>
 </div>
@@ -381,6 +387,10 @@
 		color: #475569;
 	}
 
+	.canvas-wrap.compact {
+		height: 110px;
+		min-height: 110px;
+	}
 	.canvas-wrap {
 		position: relative;
 		width: 100%;
