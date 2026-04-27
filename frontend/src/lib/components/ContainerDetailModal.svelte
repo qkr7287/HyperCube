@@ -689,29 +689,29 @@
 						<div class="info-card">
 							<div class="info-grid">
 								<div class="info-item">
-									<span class="info-label">이름 <InfoTooltip placement="top-start" text="Docker가 이 컨테이너에 붙인 사람이 읽기 쉬운 이름이에요. 보통 docker-compose가 '프로젝트-서비스-번호' 형식으로 자동 생성해요." /></span>
+									<span class="info-label">이름</span>
 									<span class="info-value">{containerName}</span>
 								</div>
 								<div class="info-item">
-									<span class="info-label">상태 <InfoTooltip placement="top-start" text="컨테이너의 현재 실행 상태예요.\n• 실행 중: 정상 동작\n• 일시정지: 프로세스 멈춤(메모리는 유지)\n• 중지: 종료됨\n• 장애: 비정상 종료\n• 재시작: 자동 재시작 중" /></span>
+									<span class="info-label">상태</span>
 									<span class="info-value status" class:running={containerState === 'running'} class:stopped={containerState === 'exited' || containerState === 'dead'} class:paused={containerState === 'paused'}>
 										{containerState === 'running' ? '실행 중' : containerState === 'paused' ? '일시정지' : containerState === 'exited' ? '중지' : containerState === 'dead' ? '장애' : containerState === 'restarting' ? '재시작' : containerState || '-'}
 									</span>
 								</div>
 								<div class="info-item full">
-									<span class="info-label">ID <InfoTooltip placement="top-start" text="Docker가 컨테이너를 구별하는 64자리 고유 식별자예요. 같은 이미지로 여러 컨테이너를 띄워도 ID는 모두 달라요. docker logs/exec 같은 명령에 쓸 수 있어요." /></span>
+									<span class="info-label">ID</span>
 									<span class="info-value mono">{details?.inspect?.Id || container.id}</span>
 								</div>
 								<div class="info-item">
-									<span class="info-label">이미지 <InfoTooltip placement="top-start" text="이 컨테이너를 만든 Docker 이미지(이름:태그)예요. 이미지 = 같은 실행 환경을 어디서나 똑같이 재현할 수 있는 청사진." /></span>
+									<span class="info-label">이미지</span>
 									<span class="info-value">{container.image}</span>
 								</div>
 								<div class="info-item">
-									<span class="info-label">생성일 <InfoTooltip placement="top-start" text="컨테이너를 docker run / docker-compose up 으로 처음 만든 시각이에요. 재시작해도 이 값은 바뀌지 않아요." /></span>
+									<span class="info-label">생성일</span>
 									<span class="info-value">{details?.inspect?.Created ? new Date(details?.inspect?.Created).toLocaleString('ko-KR') : '-'}</span>
 								</div>
 								<div class="info-item">
-									<span class="info-label">시작 시각 <InfoTooltip placement="top-start" text="컨테이너가 마지막으로 시작된 시각이에요. 재시작하면 갱신되며, 현재 시각과의 차이가 가동 시간(uptime)이에요." /></span>
+									<span class="info-label">시작 시각</span>
 									<span class="info-value">{details?.inspect?.State?.StartedAt ? new Date(details?.inspect?.State?.StartedAt).toLocaleString('ko-KR') : '-'}</span>
 								</div>
 							</div>
@@ -727,17 +727,17 @@
 							</div>
 							<div class="settings-grid">
 								<div class="info-card compact">
-									<span class="info-label">명령어 <InfoTooltip placement="top-start" text="컨테이너가 시작될 때 실행한 첫 명령(ENTRYPOINT + CMD). 보통 서비스의 메인 프로세스예요. 예: python app.py, nginx -g 'daemon off;'" /></span>
+									<span class="info-label">명령어</span>
 									<span class="info-value">{inspectConfig?.Cmd?.join(' ') || '-'}</span>
 								</div>
 								<div class="info-card compact">
-									<span class="info-label">작업 디렉토리 <InfoTooltip placement="top-start" text="위 명령어가 실행되는 컨테이너 내부 폴더 경로예요. 컨테이너 안의 'pwd(현재 위치)'와 같아요." /></span>
+									<span class="info-label">작업 디렉토리</span>
 									<span class="info-value">{inspectConfig?.WorkingDir || '-'}</span>
 								</div>
 							</div>
 							<div class="info-card">
 								<div class="env-header">
-									<span class="info-label">환경 변수 <InfoTooltip placement="top-start" text="컨테이너에 주입된 KEY=VALUE 형태의 설정값들이에요. DB 접속 정보·API 키·비밀번호 같은 환경별 설정을 코드 수정 없이 전달할 때 써요." /></span>
+									<span class="info-label">환경 변수</span>
 									{#if envVars.length > 3}
 										<button class="env-toggle" onclick={() => envExpanded = !envExpanded}>
 											{envExpanded ? '접기' : `전체 보기 (${envVars.length})`}
@@ -766,15 +766,15 @@
 							</div>
 							<div class="resource-grid">
 								<div class="resource-card">
-									<span class="info-label">CPU 사용률 <InfoTooltip placement="top-start" text="컨테이너가 호스트 CPU를 얼마나 쓰는지 (%). 100% = 한 코어를 가득 사용. 다중 코어를 동시에 쓰면 100%를 넘을 수도 있어요." /></span>
+									<span class="info-label">CPU 사용률</span>
 									<span class="resource-value">{metricsData?.cpu?.usage?.toFixed(2) || '0.00'}%</span>
 								</div>
 								<div class="resource-card">
-									<span class="info-label">메모리 사용량 <InfoTooltip placement="top-start" text="컨테이너가 실제로 점유 중인 메모리(RAM)예요. 컨테이너에 설정된 메모리 한도에 가까워지면 OOM(메모리 부족 종료) 위험이 생겨요." /></span>
+									<span class="info-label">메모리 사용량</span>
 									<span class="resource-value">{metricsData?.memory ? formatMemoryMB(metricsData.memory.usage) : (inspectStats?.memory_stats ? formatBytes(inspectStats.memory_stats.usage) : '-')} <small class="resource-unit">{metricsData?.memory ? 'MB' : ''}</small></span>
 								</div>
 								<div class="resource-card">
-									<span class="info-label">네트워크 (RX/TX) <InfoTooltip placement="top-start" text="컨테이너가 시작된 이후 누적된 트래픽이에요.\n• RX(Receive): 받은 데이터\n• TX(Transmit): 보낸 데이터\n실시간 속도가 아니라 누적 합계입니다." /></span>
+									<span class="info-label">네트워크 (RX/TX)</span>
 									<span class="resource-value plain">{metricsData?.network ? formatBytes(metricsData.network.rx) + ' / ' + formatBytes(metricsData.network.tx) : '-'}</span>
 								</div>
 							</div>
@@ -802,23 +802,23 @@
 							<div class="info-card">
 								<div class="info-grid">
 									<div class="info-item">
-										<span class="info-label">가동 시간 <InfoTooltip placement="top-start" text="마지막 시작 시점부터 지금까지 누적된 시간이에요. 재시작하면 0으로 초기화돼요." /></span>
+										<span class="info-label">가동 시간</span>
 										<span class="info-value">{formatUptime(startedAt2)}</span>
 									</div>
 									<div class="info-item">
-										<span class="info-label">재시작 횟수 <InfoTooltip placement="top-start" text="Docker가 자동으로 다시 시작한 횟수예요. 0이 정상이고, 자주 늘어나면 컨테이너가 죽었다 살아나는 패턴(헬스체크 실패·OOM 등)을 의심해 보세요." /></span>
+										<span class="info-label">재시작 횟수</span>
 										<span class="info-value" class:warn-text={restartCount2 > 0}>{restartCount2}</span>
 									</div>
 									<div class="info-item">
-										<span class="info-label">종료 코드 <InfoTooltip placement="top-start" text="가장 최근 종료 시 프로세스가 반환한 exit code. 0 = 정상 종료, 그 외 = 오류. 137 = OOMKilled, 143 = SIGTERM." /></span>
+										<span class="info-label">종료 코드</span>
 										<span class="info-value">{exitCode2 === undefined || exitCode2 === null ? '-' : exitCode2}</span>
 									</div>
 									<div class="info-item">
-										<span class="info-label">PID <InfoTooltip placement="top-start" text="컨테이너 메인 프로세스의 호스트 PID. 호스트에서 ps/top으로 추적할 때 써요." /></span>
+										<span class="info-label">PID</span>
 										<span class="info-value mono">{pid2 || '-'}</span>
 									</div>
 									<div class="info-item">
-										<span class="info-label">컨테이너 IP <InfoTooltip placement="top-start" text="Docker 네트워크 안에서 이 컨테이너에 할당된 내부 IP. 호스트의 외부 IP와는 다르고, 같은 Docker 네트워크의 다른 컨테이너만 이 주소로 접근할 수 있어요." /></span>
+										<span class="info-label">컨테이너 IP</span>
 										<span class="info-value mono">{ipAddr2}</span>
 									</div>
 								</div>
@@ -835,7 +835,7 @@
 								<div class="info-card">
 									{#if portEntries2.length > 0}
 										<div class="info-block">
-											<span class="info-label">노출 포트 <InfoTooltip placement="top-start" text="호스트 포트 → 컨테이너 포트 매핑이에요. 예: 8080 → 80/tcp = 호스트의 8080으로 들어온 요청이 컨테이너 안의 80으로 전달됨." /></span>
+											<span class="info-label">노출 포트</span>
 											<div class="port-chips">
 												{#each portEntries2 as [containerPort, bindings]}
 													{#each (bindings as any[]) as b}
@@ -850,7 +850,7 @@
 									{/if}
 									{#if networkEntries2.length > 0}
 										<div class="info-block">
-											<span class="info-label">Docker 네트워크 <InfoTooltip placement="top-start" text="이 컨테이너가 가입된 Docker 네트워크 목록이에요. 같은 네트워크의 다른 컨테이너끼리는 컨테이너 이름으로 서로 호출할 수 있어요." /></span>
+											<span class="info-label">Docker 네트워크</span>
 											<ul class="kv-list">
 												{#each networkEntries2 as [name, info]}
 													<li>
@@ -863,7 +863,7 @@
 									{/if}
 									{#if mounts2.length > 0}
 										<div class="info-block">
-											<span class="info-label">마운트 ({mounts2.length}) <InfoTooltip placement="top-start" text="호스트 디렉터리 또는 Docker 볼륨이 컨테이너 내부 경로에 연결된 목록이에요. 컨테이너가 재시작되어도 데이터가 유지되는 영역입니다." /></span>
+											<span class="info-label">마운트 ({mounts2.length})</span>
 											<ul class="kv-list">
 												{#each mounts2 as m}
 													<li>
@@ -1300,33 +1300,79 @@
 	/* Info Cards */
 	.info-card {
 		background: #121720;
+		border: 1px solid rgba(100, 116, 139, 0.16);
 		border-radius: 8px;
-		padding: 16px;
+		padding: 12px 14px;
 		display: flex;
 		flex-direction: column;
-		gap: 16px;
+		gap: 12px;
 	}
 
 	.info-card.compact { gap: 4px; }
 
 	.info-grid {
 		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 16px;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 10px 14px;
 	}
 
-	.info-item { display: flex; flex-direction: column; gap: 4px; }
+	.info-item {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		padding: 6px 8px;
+		border-radius: 6px;
+		background: rgba(13, 17, 23, 0.55);
+	}
 	.info-item.full { grid-column: 1 / -1; }
 
-	.info-label { font-size: 13px; color: #64748b; }
+	.info-label {
+		font-size: 10px;
+		font-weight: 800;
+		color: var(--text-muted);
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+	}
 
-	.info-value { font-size: 14px; color: #cbd5e1; }
-	.info-value.mono { font-size: 12px; font-family: monospace; word-break: break-all; }
+	.info-value {
+		font-size: 13px;
+		font-weight: 700;
+		color: #e2e8f0;
+		word-break: break-word;
+	}
+	.info-value.mono {
+		font-size: 11px;
+		font-family: 'JetBrains Mono', 'Consolas', monospace;
+		font-weight: 600;
+		word-break: break-all;
+		color: #cbd5e1;
+	}
 
-	.info-value.status { font-size: 12px; font-weight: 700; }
-	.info-value.status.running { color: #30d5c8; }
-	.info-value.status.stopped { color: #64748b; }
-	.info-value.status.paused { color: #f59e0b; }
+	.info-value.status {
+		font-size: 12px;
+		font-weight: 800;
+		display: inline-block;
+		padding: 2px 8px;
+		border-radius: 999px;
+		width: fit-content;
+		background: rgba(13, 17, 23, 0.65);
+		border: 1px solid rgba(100, 116, 139, 0.3);
+	}
+	.info-value.status.running {
+		color: #30d5c8;
+		border-color: rgba(48, 213, 200, 0.4);
+		background: rgba(48, 213, 200, 0.1);
+	}
+	.info-value.status.stopped {
+		color: #94a3b8;
+		border-color: rgba(148, 163, 184, 0.35);
+	}
+	.info-value.status.paused {
+		color: #f59e0b;
+		border-color: rgba(245, 158, 11, 0.4);
+		background: rgba(245, 158, 11, 0.08);
+	}
+	.info-value.warn-text { color: #fbbf24; }
 
 	/* Settings */
 	.settings-grid {
