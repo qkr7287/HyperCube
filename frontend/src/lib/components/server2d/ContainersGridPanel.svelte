@@ -371,7 +371,7 @@
 				{/if}
 			</button>
 			<div class="scroll-progress" class:idle={!metricRotating} aria-hidden="true">
-				<i style={`width:${metricRotating ? metricProgress.toFixed(1) : metricAutoPaused ? 100 : 0}%`}></i>
+				<i style={`width:${metricRotating ? metricProgress.toFixed(1) : 100}%`}></i>
 			</div>
 		</div>
 	{/if}
