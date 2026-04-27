@@ -100,6 +100,7 @@
 				maintainAspectRatio: false,
 				animation: { duration: 250 },
 				interaction: { intersect: false, mode: 'index' },
+				layout: { padding: { top: datasets.length > 1 ? 12 : 4 } },
 				plugins: {
 					legend: {
 						display: datasets.length > 1,
@@ -111,6 +112,7 @@
 							boxHeight: 10,
 							usePointStyle: true,
 							pointStyle: 'circle',
+							padding: 14,
 						},
 					},
 					tooltip: {

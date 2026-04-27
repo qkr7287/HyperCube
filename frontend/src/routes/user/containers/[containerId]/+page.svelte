@@ -81,6 +81,7 @@
 		memory?: { usage?: number; limit?: number; percent?: number };
 		network?: { rx?: number; tx?: number };
 		disk?: { read?: number; write?: number };
+		gpu?: Array<{ usage?: number | null }> | { usage?: number | null } | null;
 	};
 
 	type MetricsHistoryRow = {
@@ -93,6 +94,7 @@
 		network_tx: number;
 		disk_read: number;
 		disk_write: number;
+		gpu_usage: number | null;
 	};
 
 	const RANGE_OPTIONS = [
@@ -141,6 +143,13 @@
 		return json.data as T;
 	}
 
+	function snapshotGpu(snap: MetricsSnapshot | null): number | null {
+		const list = snap?.gpu;
+		if (Array.isArray(list)) return Number(list[0]?.usage ?? 0) || 0;
+		if (list && typeof list === 'object') return Number((list as any).usage ?? 0) || 0;
+		return null;
+	}
+
 	function normalizeHistory(rows: MetricsHistoryRow[], snapshot: MetricsSnapshot | null): MetricsHistoryRow[] {
 		if (rows.length > 0 || !snapshot?.timestamp) return rows;
 		return [
@@ -154,6 +163,7 @@
 				network_tx: snapshot.network?.tx ?? 0,
 				disk_read: snapshot.disk?.read ?? 0,
 				disk_write: snapshot.disk?.write ?? 0,
+				gpu_usage: snapshotGpu(snapshot),
 			},
 		];
 	}
@@ -186,6 +196,7 @@
 			network_tx: Number(r.network_tx_max ?? 0),
 			disk_read: Number(r.disk_read_max ?? 0),
 			disk_write: Number(r.disk_write_max ?? 0),
+			gpu_usage: r.gpu_usage_avg !== undefined && r.gpu_usage_avg !== null ? Number(r.gpu_usage_avg) : null,
 		}));
 	}
 
@@ -288,13 +299,13 @@
 		<section class="hero">
 			<div class="hero-left">
 				<div class="hero-title">
-					<div>
-						<p class="eyebrow">2D 모니터링 대시보드</p>
+					<p class="eyebrow">2D 모니터링 대시보드</p>
+					<div class="hero-name-row">
 						<h1>{container.name}</h1>
+						<span class="status-pill" style="background: {statusTone(container.status)};">
+							{statusLabel(container.status)}
+						</span>
 					</div>
-					<span class="status-pill" style="background: {statusTone(container.status)};">
-						{statusLabel(container.status)}
-					</span>
 				</div>
 				<p class="hero-subtitle">{container.selected_image || container.image}</p>
 				<div class="hero-meta">
@@ -524,8 +535,14 @@
 
 	.hero-title {
 		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 4px;
+	}
+	.hero-name-row {
+		display: inline-flex;
 		align-items: center;
-		gap: 12px;
+		gap: 14px;
 		flex-wrap: wrap;
 	}
 
@@ -708,7 +725,9 @@
 		justify-content: space-between;
 		align-items: center;
 		gap: 12px;
-		margin-bottom: 12px;
+		margin-bottom: 20px;
+		padding-bottom: 8px;
+		border-bottom: 1px solid rgba(100, 116, 139, 0.12);
 	}
 
 	.chart-head h3 {
