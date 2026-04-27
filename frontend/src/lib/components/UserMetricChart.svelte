@@ -95,12 +95,26 @@
 				labels: [...labels],
 				datasets: buildDatasets(),
 			},
+			plugins: datasets.length > 1
+				? [
+						{
+							id: 'legendMargin',
+							beforeInit(c: any) {
+								const orig = c.legend.fit;
+								c.legend.fit = function () {
+									orig.bind(c.legend)();
+									this.height += 10;
+								};
+							},
+						},
+					]
+				: [],
 			options: {
 				responsive: true,
 				maintainAspectRatio: false,
 				animation: { duration: 250 },
 				interaction: { intersect: false, mode: 'index' },
-				layout: { padding: { top: datasets.length > 1 ? 12 : 4 } },
+				layout: { padding: { top: 4 } },
 				plugins: {
 					legend: {
 						display: datasets.length > 1,
