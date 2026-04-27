@@ -368,7 +368,7 @@
 					{range}
 				/>
 
-				<div class="fleet-view" class:fleet-view-card={viewMode === 'card'}>
+				<div class="fleet-view">
 					<div class="fleet-view-tabs" role="tablist" aria-label="서버 보기 방식">
 						<button
 							type="button"
@@ -706,7 +706,7 @@
 	}
 	.fleet-view {
 		--tab-border: rgba(148, 163, 184, 0.22);
-		flex: 0 0 auto;
+		flex: 1 1 0;
 		display: flex;
 		flex-direction: column;
 		min-height: 0;
@@ -715,8 +715,7 @@
 	.fleet-view-tabs {
 		display: flex;
 		gap: 2px;
-		padding: 0 4px;
-		border-bottom: 1px solid var(--tab-border);
+		padding: 0;
 	}
 	.fleet-tab {
 		appearance: none;
@@ -788,14 +787,17 @@
 		color: var(--accent);
 	}
 	.fleet-view-body {
-		min-height: 0;
+		flex: 1 1 0;
+		min-height: clamp(440px, 60vh, 760px);
 		min-width: 0;
 		display: flex;
 		flex-direction: column;
-		padding-top: 12px;
-	}
-	.fleet-view-card .fleet-view-body {
-		height: clamp(440px, 64vh, 760px);
+		padding: clamp(12px, 0.9vw, 18px);
+		border: 1px solid rgba(148, 163, 184, 0.32);
+		border-radius: 0 var(--radius-md) var(--radius-md) var(--radius-md);
+		background: var(--bg-card);
+		box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
+		box-sizing: border-box;
 	}
 	.page-head {
 		display: flex;
