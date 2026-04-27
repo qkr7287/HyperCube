@@ -3,11 +3,13 @@
 	import { base } from '$app/paths';
 	import { sendCommand, containerMetricsStore } from '$lib/stores/ws-store';
 	import { adaptContainerInspect } from '$lib/utils/data-adapter';
-	import { Chart, LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend } from 'chart.js';
+	import { Chart, LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend, ScatterController } from 'chart.js';
 	import MetricTrendChart from './MetricTrendChart.svelte';
+	import MetricSparkline from './fleet/MetricSparkline.svelte';
+	import ResourceRadarChart from './server2d/ResourceRadarChart.svelte';
 	import InfoTooltip from './InfoTooltip.svelte';
 
-	Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend);
+	Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend, ScatterController);
 
 	interface Container {
 		id: string;
@@ -78,6 +80,14 @@
 		samples: 0,
 	});
 	let peakLoading = $state(false);
+	type HistoryPoint = { ts: string; cpu: number; mem: number; netRate: number; diskRate: number; gpu: number };
+	let historyRows = $state<HistoryPoint[]>([]);
+	let scatterCanvas = $state<HTMLCanvasElement | null>(null);
+	let scatterChart: any = null;
+	let netRateSeries = $state<number[]>([]);
+	let diskRateSeries = $state<number[]>([]);
+	let netRateLabels = $state<string[]>([]);
+	let diskRateLabels = $state<string[]>([]);
 
 	// Logs data - raw string array like old project
 	let logs: string[] = $state([]);
@@ -244,6 +254,71 @@
 	function destroyCharts() {
 		if (cpuChart) { cpuChart.destroy(); cpuChart = null; }
 		if (memChart) { memChart.destroy(); memChart = null; }
+		if (scatterChart) { scatterChart.destroy(); scatterChart = null; }
+	}
+
+	function renderScatter() {
+		if (scatterChart) { scatterChart.destroy(); scatterChart = null; }
+		if (!scatterCanvas || historyRows.length === 0) return;
+		const last = historyRows[historyRows.length - 1];
+		const points = historyRows.map((p, i) => ({
+			x: p.cpu,
+			y: p.mem,
+			r: i === historyRows.length - 1 ? 5 : 3,
+		}));
+		const colors = historyRows.map((_, i) => {
+			const t = historyRows.length > 1 ? i / (historyRows.length - 1) : 1;
+			const r = Math.round(48 + (244 - 48) * t);
+			const g = Math.round(213 + (114 - 213) * t);
+			const b = Math.round(200 + (182 - 200) * t);
+			return `rgba(${r}, ${g}, ${b}, ${0.35 + t * 0.55})`;
+		});
+		scatterChart = new Chart(scatterCanvas, {
+			type: 'scatter',
+			data: {
+				datasets: [{
+					label: 'CPU × MEM',
+					data: points as any,
+					backgroundColor: colors as any,
+					borderColor: colors as any,
+					pointRadius: points.map((p) => p.r),
+					pointHoverRadius: 6,
+				} as any],
+			},
+			options: {
+				responsive: true,
+				maintainAspectRatio: false,
+				animation: { duration: 200 },
+				plugins: {
+					legend: { display: false },
+					tooltip: {
+						backgroundColor: 'rgba(13,17,23,0.96)',
+						borderColor: 'rgba(48,213,200,0.35)',
+						borderWidth: 1,
+						callbacks: {
+							label: (ctx: any) => `CPU ${ctx.parsed.x.toFixed(1)}% · MEM ${ctx.parsed.y.toFixed(1)}%`,
+						},
+					},
+				},
+				scales: {
+					x: {
+						title: { display: true, text: 'CPU (%)', color: '#64748b', font: { size: 9 } },
+						min: 0,
+						suggestedMax: Math.max(10, Math.ceil(Math.max(...points.map(p => p.x)) * 1.2)),
+						grid: { color: 'rgba(100,116,139,0.08)' },
+						ticks: { color: '#64748b', font: { size: 9 }, maxTicksLimit: 5 },
+					},
+					y: {
+						title: { display: true, text: 'MEM (%)', color: '#64748b', font: { size: 9 } },
+						min: 0,
+						suggestedMax: Math.max(10, Math.ceil(Math.max(...points.map(p => p.y)) * 1.2)),
+						grid: { color: 'rgba(100,116,139,0.12)' },
+						ticks: { color: '#64748b', font: { size: 9 }, maxTicksLimit: 5 },
+					},
+				},
+			},
+		});
+		void last;
 	}
 
 	// Safe accessors for details
@@ -366,9 +441,18 @@
 			const empty = { value: 0, ts: null as string | null };
 			if (rows.length === 0) {
 				peakHistory = { cpu: { ...empty }, memory: { ...empty }, network: { ...empty }, disk: { ...empty }, gpu: { ...empty }, samples: 0 };
+				historyRows = [];
+				netRateSeries = [];
+				diskRateSeries = [];
+				netRateLabels = [];
+				diskRateLabels = [];
 				return;
 			}
 			const p = { cpu: { ...empty }, memory: { ...empty }, network: { ...empty }, disk: { ...empty }, gpu: { ...empty }, samples: rows.length };
+			const points: HistoryPoint[] = [];
+			const netSeries: number[] = [];
+			const diskSeries: number[] = [];
+			const labels: string[] = [];
 			let prevNet = -1, prevDisk = -1, prevTs = '';
 			for (const row of rows) {
 				const ts = row.recorded_at as string;
@@ -380,18 +464,30 @@
 				if (cpu > p.cpu.value) p.cpu = { value: cpu, ts };
 				if (mem > p.memory.value) p.memory = { value: mem, ts };
 				if (gpu > p.gpu.value) p.gpu = { value: gpu, ts };
+				let netRate = 0, diskRate = 0;
 				if (prevNet >= 0 && prevTs) {
 					const dt = (new Date(ts).getTime() - new Date(prevTs).getTime()) / 1000;
 					if (dt > 0) {
-						const netRate = (netCum - prevNet) / dt;
+						netRate = Math.max(0, (netCum - prevNet) / dt);
+						diskRate = Math.max(0, (diskCum - prevDisk) / dt);
 						if (netRate > p.network.value) p.network = { value: netRate, ts };
-						const diskRate = (diskCum - prevDisk) / dt;
 						if (diskRate > p.disk.value) p.disk = { value: diskRate, ts };
 					}
 				}
+				points.push({ ts, cpu, mem, netRate, diskRate, gpu });
+				netSeries.push(netRate);
+				diskSeries.push(diskRate);
+				const dts = new Date(ts);
+				const pad = (n: number) => n.toString().padStart(2, '0');
+				labels.push(`${pad(dts.getHours())}:${pad(dts.getMinutes())}:${pad(dts.getSeconds())}`);
 				prevNet = netCum; prevDisk = diskCum; prevTs = ts;
 			}
 			peakHistory = p;
+			historyRows = points;
+			netRateSeries = netSeries;
+			diskRateSeries = diskSeries;
+			netRateLabels = labels;
+			diskRateLabels = labels;
 		} catch (e) {
 			console.error('[ContainerDetailModal] peak fetch failed:', e);
 		} finally {
@@ -511,6 +607,21 @@
 		const c = container;
 		untrack(() => {
 			if (tab === 'metrics' && c) fetchPeakHistory(r);
+		});
+	});
+
+	// Render scatter when historyRows / canvas ready
+	$effect(() => {
+		const tab = activeTab;
+		const sc = scatterCanvas;
+		const rows = historyRows;
+		untrack(() => {
+			if (tab === 'metrics' && sc && rows.length > 0) {
+				setTimeout(() => renderScatter(), 0);
+			} else if (scatterChart) {
+				scatterChart.destroy();
+				scatterChart = null;
+			}
 		});
 	});
 
@@ -704,7 +815,20 @@
 					{@const exitCode = inspect?.State?.ExitCode}
 					{@const pid = inspect?.State?.Pid}
 					{@const startedAt = inspect?.State?.StartedAt}
-					{@const ipAddr = inspect?.NetworkSettings?.IPAddress || Object.values(inspect?.NetworkSettings?.Networks || {})?.[0]?.IPAddress || '-'}
+					{@const ipAddr = (inspect?.NetworkSettings?.IPAddress as string) || ((Object.values((inspect?.NetworkSettings?.Networks as any) || {})[0] as any)?.IPAddress) || '-'}
+					{@const networkMax = Math.max(1, ...netRateSeries)}
+					{@const diskMax = Math.max(1, ...diskRateSeries)}
+					{@const radarAxes = [
+						{ label: 'CPU', value: cpuPct, reference: peakHistory.cpu.value },
+						{ label: '메모리', value: memPct, reference: peakHistory.memory.value },
+						{ label: '네트워크', value: Math.min(100, (netRate / networkMax) * 100), reference: Math.min(100, (peakHistory.network.value / networkMax) * 100) },
+						{ label: '디스크', value: Math.min(100, (diskRate / diskMax) * 100), reference: Math.min(100, (peakHistory.disk.value / diskMax) * 100) },
+						{ label: 'GPU', value: gpuPct, reference: peakHistory.gpu.value },
+					]}
+					{@const ports = inspect?.NetworkSettings?.Ports || {}}
+					{@const portEntries = Object.entries(ports).filter(([, v]) => Array.isArray(v) && (v as any[]).length > 0) as [string, any[]][]}
+					{@const mounts = (Array.isArray(inspect?.Mounts) ? inspect.Mounts : []) as any[]}
+					{@const networkEntries = Object.entries((inspect?.NetworkSettings?.Networks as any) || {}) as [string, any][]}
 
 					<div class="metrics-layout">
 						<div class="metrics-charts">
@@ -768,6 +892,44 @@
 						</div>
 
 						<aside class="metrics-summary">
+							<div class="summary-row two">
+								<section class="summary-section radar-section">
+									<div class="summary-section-head">
+										<h4 class="summary-h4">자원 균형 (현재)</h4>
+										<InfoTooltip placement="bottom-end" text="지금 이 순간 CPU/메모리/네트워크/디스크/GPU 사용률을 한 번에 비교해요. 외곽선은 현재값, 점선은 {rangeLabel} 동안의 피크값입니다. NET·DISK는 화면 안에서 본 최대 rate를 100%로 정규화했어요." />
+									</div>
+									<div class="radar-host"><ResourceRadarChart axes={radarAxes} primaryColor="#30d5c8" /></div>
+								</section>
+								<section class="summary-section scatter-section">
+									<div class="summary-section-head">
+										<h4 class="summary-h4">CPU × 메모리 분포</h4>
+										<InfoTooltip placement="bottom-end" text="{rangeLabel} 동안 매 샘플의 (CPU, MEM) 좌표를 점으로 찍어요. 점이 한쪽에 몰리면 일관된 패턴, 흩어지면 변동이 큰 워크로드입니다. 색이 진해질수록 최근 샘플." />
+									</div>
+									{#if historyRows.length === 0}
+										<div class="summary-empty small">데이터 없음</div>
+									{:else}
+										<div class="scatter-host"><canvas bind:this={scatterCanvas}></canvas></div>
+									{/if}
+								</section>
+							</div>
+
+							<section class="summary-section">
+								<div class="summary-section-head">
+									<h4 class="summary-h4">처리량 추이 (rate)</h4>
+									<InfoTooltip placement="bottom-end" text="누적 트래픽이 아니라 인접 샘플의 변화량(B/s)으로 변환한 추이예요. 누적 그래프가 우상향만 보였던 이유는 '누적값은 줄어들 수 없어서'이고, 의미 있는 정보는 기울기(rate)예요." />
+								</div>
+								<div class="rate-row">
+									<span class="rate-label net">NET</span>
+									<div class="rate-spark"><MetricSparkline values={netRateSeries} color="#fbbf24" label="네트워크 rate" /></div>
+									<span class="rate-current">{formatRate(netRate)}</span>
+								</div>
+								<div class="rate-row">
+									<span class="rate-label disk">DISK</span>
+									<div class="rate-spark"><MetricSparkline values={diskRateSeries} color="#a78bfa" label="디스크 rate" /></div>
+									<span class="rate-current">{formatRate(diskRate)}</span>
+								</div>
+							</section>
+
 							<section class="summary-section">
 								<div class="summary-section-head">
 									<h4 class="summary-h4">{rangeLabel} 피크 값</h4>
@@ -839,6 +1001,59 @@
 									</li>
 								</ul>
 							</section>
+
+							{#if portEntries.length > 0 || networkEntries.length > 0 || mounts.length > 0}
+								<section class="summary-section">
+									<div class="summary-section-head">
+										<h4 class="summary-h4">네트워크 · 마운트</h4>
+										<InfoTooltip placement="bottom-end" text="컨테이너가 노출한 포트, 연결된 Docker 네트워크, 마운트된 볼륨이에요." />
+									</div>
+									{#if portEntries.length > 0}
+										<div class="port-block">
+											<div class="port-block-label">노출 포트</div>
+											<div class="port-chips">
+												{#each portEntries as [containerPort, bindings]}
+													{#each (bindings as any[]) as b}
+														<span class="port-chip" title={`컨테이너 ${containerPort} → 호스트 ${b.HostIp || '0.0.0.0'}:${b.HostPort}`}>
+															<b>{b.HostPort}</b>
+															<small>→ {containerPort}</small>
+														</span>
+													{/each}
+												{/each}
+											</div>
+										</div>
+									{/if}
+									{#if networkEntries.length > 0}
+										<div class="port-block">
+											<div class="port-block-label">Docker 네트워크</div>
+											<ul class="summary-list compact">
+												{#each networkEntries as [name, info]}
+													<li>
+														<span class="summary-key">{name}</span>
+														<span class="summary-val mono-summary">{(info as any)?.IPAddress || '-'}</span>
+													</li>
+												{/each}
+											</ul>
+										</div>
+									{/if}
+									{#if mounts.length > 0}
+										<div class="port-block">
+											<div class="port-block-label">마운트 ({mounts.length})</div>
+											<ul class="mount-list">
+												{#each mounts.slice(0, 4) as m}
+													<li>
+														<span class="mount-type">{m.Type}</span>
+														<span class="mount-path mono-summary" title={m.Source}>{m.Destination}</span>
+													</li>
+												{/each}
+												{#if mounts.length > 4}
+													<li class="mount-more">외 {mounts.length - 4}개</li>
+												{/if}
+											</ul>
+										</div>
+									{/if}
+								</section>
+							{/if}
 						</aside>
 					</div>
 				{/if}
@@ -1190,8 +1405,8 @@
 
 	.metrics-layout {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) 280px;
-		gap: 16px;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+		gap: 14px;
 		min-width: 0;
 	}
 	.metrics-charts {
@@ -1319,6 +1534,128 @@
 		font-size: 10px;
 		color: #475569;
 		text-align: right;
+	}
+	.summary-empty.small { font-size: 10px; padding: 4px 2px; }
+	.summary-row.two {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+		gap: 10px;
+	}
+	.radar-host {
+		height: 180px;
+		min-width: 0;
+	}
+	.scatter-section {
+		min-width: 0;
+	}
+	.scatter-host {
+		height: 180px;
+		min-width: 0;
+		position: relative;
+	}
+	.scatter-host canvas {
+		width: 100% !important;
+		height: 100% !important;
+	}
+	.rate-row {
+		display: grid;
+		grid-template-columns: 36px minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 8px;
+		padding: 4px 0;
+	}
+	.rate-row + .rate-row {
+		border-top: 1px dashed rgba(100, 116, 139, 0.18);
+	}
+	.rate-label {
+		font-size: 9px;
+		font-weight: 900;
+		letter-spacing: 0.06em;
+	}
+	.rate-label.net { color: #fbbf24; }
+	.rate-label.disk { color: #a78bfa; }
+	.rate-spark {
+		min-width: 0;
+		height: 24px;
+	}
+	.rate-current {
+		font-size: 11px;
+		font-weight: 800;
+		color: #cbd5e1;
+		font-variant-numeric: tabular-nums;
+		min-width: 64px;
+		text-align: right;
+	}
+	.summary-list.compact li {
+		grid-template-columns: minmax(0, 1fr) auto;
+	}
+	.port-block + .port-block {
+		margin-top: 8px;
+		padding-top: 8px;
+		border-top: 1px dashed rgba(100, 116, 139, 0.18);
+	}
+	.port-block-label {
+		font-size: 10px;
+		font-weight: 800;
+		color: var(--text-muted);
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		margin-bottom: 5px;
+	}
+	.port-chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+	}
+	.port-chip {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 4px;
+		padding: 2px 8px;
+		border: 1px solid rgba(48, 213, 200, 0.4);
+		border-radius: 999px;
+		background: rgba(48, 213, 200, 0.08);
+		font-size: 11px;
+		font-variant-numeric: tabular-nums;
+	}
+	.port-chip b { color: #30d5c8; font-weight: 900; }
+	.port-chip small { color: #64748b; font-size: 9px; }
+	.mount-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+	}
+	.mount-list li {
+		display: grid;
+		grid-template-columns: 64px minmax(0, 1fr);
+		gap: 6px;
+		align-items: baseline;
+		padding: 3px 6px;
+		border-radius: 4px;
+		background: rgba(13, 17, 23, 0.55);
+		font-size: 11px;
+	}
+	.mount-type {
+		font-size: 9px;
+		font-weight: 800;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+	}
+	.mount-path {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: #cbd5e1;
+	}
+	.mount-more {
+		justify-self: center;
+		font-size: 10px;
+		color: var(--text-muted);
+		background: transparent;
 	}
 	@media (max-width: 980px) {
 		.metrics-layout {
