@@ -61,6 +61,17 @@
 		{ key: '7d', label: '7d', kor: '7일' },
 	];
 	let metricsRange = $state<MetricsRange>('1h');
+
+	// 사용자가 선택한 range는 sample 간격(=bucket). window는 그 단위로 50~70개 정도
+	// 점이 보이도록 자동 매핑한다. Backend는 ?range=window&bucket=size 두 파라미터
+	// 모두 받는 buckets endpoint를 지원.
+	const RANGE_BUCKET_MAP: Record<MetricsRange, { window: string; bucket: string }> = {
+		'1m': { window: '1h', bucket: '1m' },   // 60 points, 1분 갭
+		'5m': { window: '6h', bucket: '5m' },   // 72 points, 5분 갭
+		'1h': { window: '24h', bucket: '1h' },  // 24 points, 1시간 갭
+		'24h': { window: '7d', bucket: '1d' },  // 7 points, 1일 갭
+		'7d': { window: '7d', bucket: '1d' },   // 7d 이상은 backend 미지원 → 1d 갭으로 fallback
+	};
 	let peakHistory = $state<{
 		cpu: { value: number; ts: string | null };
 		memory: { value: number; ts: string | null };
@@ -933,7 +944,7 @@
 										</span>
 										<strong class="metric-stack-current cpu">{cpuPct.toFixed(1)}%</strong>
 									</div>
-									<MetricTrendChart {agentId} {accessToken} endpoint="/api/metrics/containers/" extraQuery={`container_id=${cid}`} metricField="cpu_usage" liveValue={cpuPct} label="CPU 사용률 (%)" color="#30d5c8" unit="percent" defaultRange={metricsRange} hideRangeTabs compact />
+									<MetricTrendChart {agentId} {accessToken} endpoint="/api/metrics/containers/" extraQuery={`container_id=${cid}`} metricField="cpu_usage" liveValue={cpuPct} label="CPU 사용률 (%)" color="#30d5c8" unit="percent" defaultRange={metricsRange} windowRange={RANGE_BUCKET_MAP[metricsRange].window} bucket={RANGE_BUCKET_MAP[metricsRange].bucket} bucketField="cpu_usage_pct_avg" hideRangeTabs compact />
 								</div>
 							{/key}
 							{#key `mem-${metricsRange}`}
@@ -944,7 +955,7 @@
 										</span>
 										<strong class="metric-stack-current memory">{memPct.toFixed(1)}%</strong>
 									</div>
-									<MetricTrendChart {agentId} {accessToken} endpoint="/api/metrics/containers/" extraQuery={`container_id=${cid}`} metricField="memory_percent" liveValue={memPct} label="메모리 사용률 (%)" color="#8b5cf6" unit="percent" defaultRange={metricsRange} hideRangeTabs compact />
+									<MetricTrendChart {agentId} {accessToken} endpoint="/api/metrics/containers/" extraQuery={`container_id=${cid}`} metricField="memory_percent" liveValue={memPct} label="메모리 사용률 (%)" color="#8b5cf6" unit="percent" defaultRange={metricsRange} windowRange={RANGE_BUCKET_MAP[metricsRange].window} bucket={RANGE_BUCKET_MAP[metricsRange].bucket} bucketField="memory_percent_avg" hideRangeTabs compact />
 								</div>
 							{/key}
 							{#key `net-${metricsRange}`}
@@ -978,7 +989,7 @@
 											</span>
 											<strong class="metric-stack-current gpu">{gpuPct.toFixed(1)}%</strong>
 										</div>
-										<MetricTrendChart {agentId} {accessToken} endpoint="/api/metrics/containers/" extraQuery={`container_id=${cid}`} metricField="gpu_usage" liveValue={gpuPct} label="GPU 사용률 (%)" color="#f472b6" unit="percent" defaultRange={metricsRange} hideRangeTabs compact />
+										<MetricTrendChart {agentId} {accessToken} endpoint="/api/metrics/containers/" extraQuery={`container_id=${cid}`} metricField="gpu_usage" liveValue={gpuPct} label="GPU 사용률 (%)" color="#f472b6" unit="percent" defaultRange={metricsRange} windowRange={RANGE_BUCKET_MAP[metricsRange].window} bucket={RANGE_BUCKET_MAP[metricsRange].bucket} bucketField="gpu_usage_avg" hideRangeTabs compact />
 									</div>
 								{/key}
 							{/if}

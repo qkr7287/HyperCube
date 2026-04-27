@@ -44,6 +44,9 @@
 		hideRangeTabs = false,
 		compact = false,
 		derivative = false,
+		bucket = '',
+		windowRange = '',
+		bucketField = '',
 	}: {
 		agentId: string;
 		/** field name in the backend metrics response (cpu_usage, memory_usage, etc.).
@@ -69,6 +72,13 @@
 		 *  cumulative series. Useful for cumulative counters like network bytes
 		 *  or disk I/O so the user sees throughput instead of an ever-rising line. */
 		derivative?: boolean;
+		/** When set, the chart fetches `${endpoint}buckets/?range=${windowRange}&bucket=${bucket}`
+		 *  and reads `bucketField` from each aggregated row instead of using
+		 *  metricField/metricExtractor on raw rows. Lets the parent control
+		 *  sample density (e.g. 5분 단위 평균). */
+		bucket?: string;
+		windowRange?: string;
+		bucketField?: string;
 	} = $props();
 
 	const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
@@ -113,25 +123,40 @@
 		if (!agentId || !accessToken) return;
 		loading = true;
 		try {
+			const useBuckets = Boolean(bucket && (windowRange || forRange));
 			const limit = forRange === '7d' || forRange === '24h' ? 500 : 240;
 			const extra = extraQuery ? `&${extraQuery}` : '';
-			const res = await fetch(
-				`${base}${endpoint}?agent=${encodeURIComponent(agentId)}&range=${forRange}&limit=${limit}&ordering=recorded_at${extra}`,
-				{ headers: { Authorization: `Bearer ${accessToken}` } },
-			);
+			const url = useBuckets
+				? `${base}${endpoint}buckets/?agent=${encodeURIComponent(agentId)}&range=${windowRange || forRange}&bucket=${bucket}${extra}`
+				: `${base}${endpoint}?agent=${encodeURIComponent(agentId)}&range=${forRange}&limit=${limit}&ordering=recorded_at${extra}`;
+			const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
 			if (!res.ok) return;
 			const payload = await res.json();
-			const rows: any[] = payload?.data ?? payload?.results ?? payload ?? [];
+			// buckets endpoint: { success, data: { bucket_seconds, results: [...] } }
+			// list endpoint:    { success, data: [...] }   |   raw [...] /  paginated { results: [...] }
+			const rows: any[] = Array.isArray(payload?.data?.results)
+				? payload.data.results
+				: Array.isArray(payload?.data)
+					? payload.data
+					: Array.isArray(payload?.results)
+						? payload.results
+						: Array.isArray(payload)
+							? payload
+							: [];
 			// Backend returns oldest→newest when limit is set (see paginate override).
+			const useBucketsParse = Boolean(bucket && (windowRange || forRange));
+			const tsField = useBucketsParse ? 'bucket_start' : 'recorded_at';
 			const kept = downsample(rows);
-			const read = metricExtractor
-				? (r: any) => {
-					const v = metricExtractor(r);
-					return typeof v === 'number' && !Number.isNaN(v) ? v : NaN;
-				}
-				: (r: any) => Number(r?.[metricField] ?? 0);
+			const read = useBucketsParse && bucketField
+				? (r: any) => Number(r?.[bucketField] ?? 0)
+				: metricExtractor
+					? (r: any) => {
+						const v = metricExtractor(r);
+						return typeof v === 'number' && !Number.isNaN(v) ? v : NaN;
+					}
+					: (r: any) => Number(r?.[metricField] ?? 0);
 			const paired = kept
-				.map((r) => [read(r), formatClockLabel(r?.recorded_at, forRange), new Date(r?.recorded_at).getTime()] as const)
+				.map((r) => [read(r), formatClockLabel(r?.[tsField], forRange), new Date(r?.[tsField]).getTime()] as const)
 				.filter(([v, , t]) => !Number.isNaN(v) && Number.isFinite(t));
 			if (derivative) {
 				const rateValues: number[] = [];
@@ -390,6 +415,16 @@
 	{/if}
 	<div class="canvas-wrap" class:compact>
 		<canvas bind:this={canvasEl}></canvas>
+		{#if loading}
+			<div class="chart-loading" role="status" aria-live="polite">
+				<span class="chart-spinner"></span>
+				<span>데이터 불러오는 중…</span>
+			</div>
+		{:else if values.length === 0}
+			<div class="chart-loading muted" role="status">
+				<span>이 구간에 기록된 데이터 없음</span>
+			</div>
+		{/if}
 	</div>
 </div>
 
@@ -439,6 +474,36 @@
 		color: #475569;
 	}
 
+	.canvas-wrap { position: relative; }
+	.chart-loading {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		background: rgba(13, 17, 23, 0.6);
+		backdrop-filter: blur(2px);
+		color: var(--text-secondary);
+		font-size: 11px;
+		font-weight: 700;
+		pointer-events: none;
+		z-index: 2;
+	}
+	.chart-loading.muted {
+		background: rgba(13, 17, 23, 0.35);
+		color: var(--text-muted);
+	}
+	.chart-spinner {
+		width: 18px;
+		height: 18px;
+		border: 2px solid rgba(48, 213, 200, 0.18);
+		border-top-color: var(--accent);
+		border-radius: 50%;
+		animation: chart-spin 0.85s linear infinite;
+	}
+	@keyframes chart-spin { to { transform: rotate(360deg); } }
 	.canvas-wrap.compact {
 		height: 110px;
 		min-height: 110px;
