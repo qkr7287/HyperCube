@@ -1,9 +1,8 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import InfoTooltip from '$lib/components/InfoTooltip.svelte';
-	import AutoSlideCarousel from './AutoSlideCarousel.svelte';
 	import SortDirToggle from './SortDirToggle.svelte';
-	import { view, type Server2dMetric, type Server2dSortDir } from '$lib/stores/server2d-view.svelte';
+	import { view, type Server2dSortDir } from '$lib/stores/server2d-view.svelte';
 
 	type StackItem = {
 		name: string;
@@ -14,105 +13,55 @@
 		cpuAvg: number;
 		memoryAvg: number;
 		networkAvg: number;
+		gpuAvg: number | null;
 	};
 
 	let {
 		stacks = [] as StackItem[],
-		pageSize = 10,
-		intervalMs = 12000,
-		metricRotateMs = 27000,
+		focusIntervalMs = 2400,
 	}: {
 		stacks?: StackItem[];
-		pageSize?: number;
-		intervalMs?: number;
-		metricRotateMs?: number;
+		focusIntervalMs?: number;
 	} = $props();
 
-	const metric = $derived(view.selectedMetric);
+	const FOCUS_TICK = 80;
+
 	const soloed = $derived(view.soloStack);
 	const externalPaused = $derived(Boolean(view.soloStack));
 	const sortDir = $derived(view.stackSortDir);
+	const focusPaused = $derived(view.stackFocusPaused);
 
-	const METRIC_CYCLE: Server2dMetric[] = ['cpu', 'memory', 'network'];
-	const METRIC_TICK = 80;
+	let focusIndex = $state(0);
+	let focusProgress = $state(0);
+	let hovered = $state(false);
+	let focusTimer: ReturnType<typeof setInterval> | null = null;
+	let listEl: HTMLDivElement | null = null;
+	let itemEls: (HTMLButtonElement | null)[] = [];
 
-	let metricProgress = $state(0);
-	let metricTimer: ReturnType<typeof setInterval> | null = null;
-	const metricAutoPaused = $derived(view.metricAutoPaused);
-	const metricRotating = $derived(!metricAutoPaused && !externalPaused);
-
-	function setMetric(next: Server2dMetric) {
-		view.selectedMetric = next;
-		view.metricAutoPaused = true;
-		metricProgress = 0;
-	}
-
-	function toggleMetricAutoRotate() {
-		view.metricAutoPaused = !view.metricAutoPaused;
-		metricProgress = 0;
-	}
+	const focusRunning = $derived(!focusPaused && !externalPaused && !hovered && stacks.length > 1);
 
 	function setSortDir(next: Server2dSortDir) {
 		view.stackSortDir = next;
 	}
 
-	function advanceMetric() {
-		const idx = METRIC_CYCLE.indexOf(view.selectedMetric);
-		const next = METRIC_CYCLE[(idx + 1) % METRIC_CYCLE.length];
-		view.selectedMetric = next;
-		metricProgress = 0;
+	function toggleFocus() {
+		view.stackFocusPaused = !view.stackFocusPaused;
+		focusProgress = 0;
 	}
-
-	function metricTick() {
-		if (!metricRotating) return;
-		const steps = Math.max(1, Math.floor(metricRotateMs / METRIC_TICK));
-		const next = metricProgress + 100 / steps;
-		if (next >= 100) advanceMetric();
-		else metricProgress = next;
-	}
-
-	$effect(() => {
-		metricRotateMs;
-		if (metricTimer) clearInterval(metricTimer);
-		metricTimer = setInterval(metricTick, METRIC_TICK);
-		return () => {
-			if (metricTimer) clearInterval(metricTimer);
-		};
-	});
-
-	onMount(() => {
-		metricTimer = setInterval(metricTick, METRIC_TICK);
-	});
-
-	onDestroy(() => {
-		if (metricTimer) clearInterval(metricTimer);
-	});
 
 	function toggleSolo(name: string) {
 		view.soloStack = view.soloStack === name ? null : name;
 	}
 
-	function valueFor(stack: StackItem): number {
-		if (metric === 'memory') return stack.memoryAvg;
-		if (metric === 'network') return stack.networkAvg;
-		return stack.cpuAvg;
+	function networkPct(value: number, max: number): number {
+		if (!Number.isFinite(value) || value <= 0 || max <= 0) return 0;
+		return Math.min(100, (value / max) * 100);
 	}
 
-	function intensityStyle(stack: StackItem, networkMax: number): string {
-		const raw = valueFor(stack);
-		let pct = 0;
-		if (metric === 'network') {
-			pct = networkMax > 0 ? Math.min(100, (raw / networkMax) * 100) : 0;
-		} else {
-			pct = Math.min(100, Math.max(0, raw));
-		}
-		return `--intensity:${pct.toFixed(0)}%`;
-	}
-
-	function formatValue(stack: StackItem): string {
-		const raw = valueFor(stack);
-		if (metric === 'network') return formatRate(raw);
-		return `${raw.toFixed(1)}%`;
+	function totalScore(stack: StackItem, networkMax: number): number {
+		const net = networkPct(stack.networkAvg, networkMax);
+		const gpu = typeof stack.gpuAvg === 'number' ? stack.gpuAvg : 0;
+		return stack.cpuAvg + stack.memoryAvg + net + gpu;
 	}
 
 	function formatRate(value: number): string {
@@ -127,15 +76,85 @@
 		return `${next.toFixed(next >= 10 || idx === 0 ? 0 : 1)} ${units[idx]}`;
 	}
 
+	function formatPercent(value: number): string {
+		if (!Number.isFinite(value)) return '0%';
+		return `${Math.max(0, Math.min(999, value)).toFixed(0)}%`;
+	}
+
+	function levelOf(value: number): 'low' | 'mid' | 'high' {
+		if (value >= 80) return 'high';
+		if (value >= 50) return 'mid';
+		return 'low';
+	}
+
+	const networkMax = $derived(Math.max(1, ...stacks.map((s) => s.networkAvg)));
+
 	const sorted = $derived.by(() => {
 		const list = [...stacks];
 		const sign = sortDir === 'asc' ? 1 : -1;
-		return list.sort((a, b) => sign * (valueFor(a) - valueFor(b)));
+		return list.sort((a, b) => sign * (totalScore(a, networkMax) - totalScore(b, networkMax)));
 	});
-	const networkMax = $derived(Math.max(1, ...stacks.map((s) => s.networkAvg)));
+
 	const total = $derived(stacks.reduce((sum, s) => sum + s.total, 0));
 	const runningAll = $derived(stacks.reduce((sum, s) => sum + s.running, 0));
 	const problemAll = $derived(stacks.reduce((sum, s) => sum + s.problem, 0));
+
+	const focusedName = $derived.by(() => {
+		if (sorted.length === 0) return null;
+		const safeIdx = Math.max(0, Math.min(sorted.length - 1, focusIndex));
+		return sorted[safeIdx]?.name ?? null;
+	});
+
+	function advanceFocus() {
+		if (sorted.length === 0) {
+			focusIndex = 0;
+			return;
+		}
+		focusIndex = (focusIndex + 1) % sorted.length;
+		focusProgress = 0;
+	}
+
+	function focusTick() {
+		if (!focusRunning) return;
+		const steps = Math.max(1, Math.floor(focusIntervalMs / FOCUS_TICK));
+		const next = focusProgress + 100 / steps;
+		if (next >= 100) advanceFocus();
+		else focusProgress = next;
+	}
+
+	$effect(() => {
+		focusIntervalMs;
+		if (focusTimer) clearInterval(focusTimer);
+		focusTimer = setInterval(focusTick, FOCUS_TICK);
+		return () => {
+			if (focusTimer) clearInterval(focusTimer);
+		};
+	});
+
+	$effect(() => {
+		if (!focusRunning) focusProgress = 0;
+	});
+
+	$effect(() => {
+		if (focusIndex >= sorted.length) focusIndex = 0;
+	});
+
+	$effect(() => {
+		if (!focusRunning || !focusedName) return;
+		const idx = sorted.findIndex((s) => s.name === focusedName);
+		const el = itemEls[idx];
+		if (el && typeof el.scrollIntoView === 'function') {
+			el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+		}
+	});
+
+	onMount(() => {
+		focusTimer = setInterval(focusTick, FOCUS_TICK);
+	});
+
+	onDestroy(() => {
+		if (focusTimer) clearInterval(focusTimer);
+	});
 </script>
 
 <aside class="sidebar">
@@ -143,83 +162,86 @@
 		<div class="head-top">
 			<div class="title">
 				<span>스택 현황</span>
-				<InfoTooltip text={`서버의 모든 Docker Compose 스택 목록입니다.\n\n• 부하 큰 스택 순으로 정렬\n• 스택이 많으면 자동 슬라이드 순환\n• 클릭 = 해당 스택만 보는 Solo 모드\n• Solo 모드일 때 자동 순환 정지`} placement="bottom-start" />
+				<InfoTooltip text={`서버의 모든 Docker Compose 스택 목록입니다.\n\n• 통합 사용량(CPU+MEM+NET+GPU) 기준 정렬\n• 각 카드에 4개 자원 사용량 미니타일 표시\n• 클릭 = 해당 스택만 보는 Solo 모드\n• 하단 ▶︎ = 스택 포커스 애니메이션 (디폴트 OFF)`} placement="bottom-start" />
 			</div>
 			<small>{stacks.length}개 · 실행 {runningAll}/{total}{#if problemAll > 0} · <b class="warn">문제 {problemAll}</b>{/if}</small>
 		</div>
 		<div class="head-tools">
-			<div class="metric-switch" role="tablist" aria-label="사이드바 지표">
-				{#each ['cpu', 'memory', 'network'] as key (key)}
-					<button
-						type="button"
-						role="tab"
-						aria-selected={metric === key}
-						class:active={metric === key}
-						onclick={() => setMetric(key as Server2dMetric)}
-					>
-						{key === 'cpu' ? 'CPU' : key === 'memory' ? '메모리' : '트래픽'}
-					</button>
-				{/each}
-			</div>
+			<span class="sort-label">통합 사용량 정렬</span>
 			<SortDirToggle value={sortDir} onChange={setSortDir} />
 		</div>
 	</div>
 
-	<div class="body">
-		<AutoSlideCarousel
-			items={sorted}
-			pageSize={pageSize}
-			intervalMs={intervalMs}
-			paused={externalPaused}
-			userPaused={view.stacksPaused}
-			hideBar={true}
-			pauseLabel="스택 슬라이드"
-		>
-			{#snippet children(pageItems: StackItem[])}
-				<div class="list" role="list">
-					{#each pageItems as stack (stack.name)}
-						<button
-							type="button"
-							role="listitem"
-							class="item"
-							class:active={soloed === stack.name}
-							class:dim={soloed && soloed !== stack.name}
-							class:problem={stack.problem > 0}
-							style={`--stack-color:${stack.color}; ${intensityStyle(stack, networkMax)}`}
-							onclick={() => toggleSolo(stack.name)}
-						>
-							<div class="head-row">
-								<i class="stripe"></i>
-								<strong class="name">{stack.name}</strong>
-								<span class="count">
-									<em class="running">{stack.running}/{stack.total}</em>
-									{#if stack.problem > 0}<em class="problem-badge">!{stack.problem}</em>{/if}
-								</span>
-							</div>
-							<div class="metric-row">
-								<i class="bar"><u></u></i>
-								<small class="value">{formatValue(stack)}</small>
-							</div>
-						</button>
-					{/each}
-					{#if pageItems.length === 0}
-						<div class="empty">스택 정보가 없습니다.</div>
+	<div
+		class="body"
+		bind:this={listEl}
+		role="list"
+		onmouseenter={() => (hovered = true)}
+		onmouseleave={() => (hovered = false)}
+	>
+		{#each sorted as stack, idx (stack.name)}
+			{@const isFocused = focusedName === stack.name}
+			{@const isSoloed = soloed === stack.name}
+			{@const dimmed = soloed && !isSoloed}
+			{@const hasGpu = typeof stack.gpuAvg === 'number'}
+			<button
+				type="button"
+				role="listitem"
+				class="item"
+				class:active={isSoloed}
+				class:dim={dimmed}
+				class:focused={isFocused && focusRunning}
+				class:problem={stack.problem > 0}
+				class:has-gpu={hasGpu}
+				style={`--stack-color:${stack.color};`}
+				bind:this={itemEls[idx]}
+				onclick={() => toggleSolo(stack.name)}
+			>
+				<div class="head-row">
+					<i class="stripe"></i>
+					<strong class="name">{stack.name}</strong>
+					<span class="count">
+						<em class="running">{stack.running}/{stack.total}</em>
+						{#if stack.problem > 0}<em class="problem-badge">!{stack.problem}</em>{/if}
+					</span>
+				</div>
+				<div class="metric-tiles" class:has-gpu={hasGpu}>
+					<div class="tile" data-level={levelOf(stack.cpuAvg)} data-kind="cpu">
+						<span class="tile-label">CPU</span>
+						<strong class="tile-value">{formatPercent(stack.cpuAvg)}</strong>
+					</div>
+					<div class="tile" data-level={levelOf(stack.memoryAvg)} data-kind="mem">
+						<span class="tile-label">MEM</span>
+						<strong class="tile-value">{formatPercent(stack.memoryAvg)}</strong>
+					</div>
+					<div class="tile" data-level={levelOf(networkPct(stack.networkAvg, networkMax))} data-kind="net">
+						<span class="tile-label">NET</span>
+						<strong class="tile-value">{formatRate(stack.networkAvg)}</strong>
+					</div>
+					{#if hasGpu}
+						<div class="tile" data-level={levelOf(stack.gpuAvg as number)} data-kind="gpu">
+							<span class="tile-label">GPU</span>
+							<strong class="tile-value">{formatPercent(stack.gpuAvg as number)}</strong>
+						</div>
 					{/if}
 				</div>
-			{/snippet}
-		</AutoSlideCarousel>
+			</button>
+		{/each}
+		{#if sorted.length === 0}
+			<div class="empty">스택 정보가 없습니다.</div>
+		{/if}
 	</div>
 
-	<div class="metric-foot">
+	<div class="focus-foot">
 		<button
 			type="button"
-			class="metric-pause"
-			class:paused={metricAutoPaused}
-			title={metricAutoPaused ? '지표 자동 전환 재개' : '지표 자동 전환 일시정지'}
-			aria-label={metricAutoPaused ? '재개' : '일시정지'}
-			onclick={toggleMetricAutoRotate}
+			class="focus-btn"
+			class:paused={focusPaused}
+			title={focusPaused ? '스택 포커스 애니메이션 재생' : '스택 포커스 애니메이션 정지'}
+			aria-label={focusPaused ? '재생' : '정지'}
+			onclick={toggleFocus}
 		>
-			{#if metricAutoPaused}
+			{#if focusPaused}
 				<svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>
 				<span>재생</span>
 			{:else}
@@ -227,9 +249,16 @@
 				<span>정지</span>
 			{/if}
 		</button>
-		<div class="metric-progress" class:idle={!metricRotating} aria-hidden="true">
-			<i style={`width:${metricRotating ? metricProgress.toFixed(1) : metricAutoPaused ? 100 : 0}%`}></i>
+		<div class="focus-progress" class:idle={!focusRunning} aria-hidden="true">
+			<i style={`width:${focusRunning ? focusProgress.toFixed(1) : focusPaused ? 0 : 100}%`}></i>
 		</div>
+		<small class="focus-count">
+			{#if sorted.length > 0 && focusRunning}
+				{Math.min(focusIndex + 1, sorted.length)} / {sorted.length}
+			{:else if sorted.length > 0}
+				{sorted.length}
+			{/if}
+		</small>
 	</div>
 </aside>
 
@@ -259,7 +288,15 @@
 	.head-tools {
 		display: flex;
 		align-items: center;
-		gap: 6px;
+		gap: 8px;
+		justify-content: space-between;
+	}
+
+	.sort-label {
+		color: var(--text-muted);
+		font-size: 11px;
+		font-weight: 800;
+		letter-spacing: 0.02em;
 	}
 
 	.title {
@@ -282,135 +319,21 @@
 		font-weight: 800;
 	}
 
-	.metric-foot {
-		flex: 0 0 auto;
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		gap: 8px;
-		padding-top: 6px;
-		border-top: 1px dashed rgba(100, 116, 139, 0.25);
-	}
-
-	.metric-pause {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 5px;
-		height: 22px;
-		padding: 0 9px 0 8px;
-		border: 1px solid rgba(248, 113, 113, 0.5);
-		border-radius: 999px;
-		background: rgba(248, 113, 113, 0.16);
-		color: #f87171;
-		cursor: pointer;
-		flex: 0 0 auto;
-		font-size: 10px;
-		font-weight: 800;
-		letter-spacing: 0.02em;
-		transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
-	}
-
-	.metric-pause:hover {
-		background: rgba(248, 113, 113, 0.26);
-	}
-
-	.metric-pause.paused {
-		background: rgba(52, 211, 153, 0.2);
-		border-color: rgba(52, 211, 153, 0.6);
-		color: #34d399;
-		box-shadow: 0 0 12px rgba(52, 211, 153, 0.35);
-		animation: metric-paused-glow 1.6s ease-in-out infinite;
-	}
-
-	.metric-pause.paused:hover {
-		background: rgba(52, 211, 153, 0.3);
-	}
-
-	@keyframes metric-paused-glow {
-		0%, 100% { box-shadow: 0 0 12px rgba(52, 211, 153, 0.3); }
-		50% { box-shadow: 0 0 18px rgba(52, 211, 153, 0.55); }
-	}
-
-	.metric-pause span {
-		line-height: 1;
-	}
-
-	.metric-progress {
-		flex: 1;
-		height: 5px;
-		border-radius: 999px;
-		background: rgba(30, 41, 59, 0.65);
-		overflow: hidden;
-	}
-
-	.metric-progress i {
-		display: block;
-		height: 100%;
-		background: linear-gradient(90deg, #30d5c8, #60a5fa);
-		width: 0%;
-		transition: width 80ms linear;
-	}
-
-	.metric-progress.idle i {
-		background: repeating-linear-gradient(
-			-45deg,
-			rgba(52, 211, 153, 0.4) 0,
-			rgba(52, 211, 153, 0.4) 4px,
-			rgba(52, 211, 153, 0.15) 4px,
-			rgba(52, 211, 153, 0.15) 8px
-		);
-	}
-
-	.metric-switch {
-		display: inline-flex;
-		border: 1px solid rgba(100, 116, 139, 0.24);
-		border-radius: 999px;
-		padding: 2px;
-		background: rgba(15, 23, 42, 0.65);
-		flex: 1;
-	}
-
-	.metric-switch button {
-		border: none;
-		background: transparent;
-		color: var(--text-muted);
-		font-size: 11px;
-		font-weight: 800;
-		padding: 4px 11px;
-		border-radius: 999px;
-		cursor: pointer;
-		flex: 1;
-	}
-
-	.metric-switch button.active {
-		background: rgba(48, 213, 200, 0.22);
-		color: #30d5c8;
-	}
-
 	.body {
 		min-height: 0;
 		flex: 1;
 		display: flex;
 		flex-direction: column;
-		overflow: hidden;
-	}
-
-	.list {
-		display: flex;
-		flex-direction: column;
 		gap: 7px;
 		overflow-y: auto;
 		padding-right: 2px;
-		min-height: 0;
-		flex: 1;
 	}
 
-	.list::-webkit-scrollbar {
+	.body::-webkit-scrollbar {
 		width: 4px;
 	}
 
-	.list::-webkit-scrollbar-thumb {
+	.body::-webkit-scrollbar-thumb {
 		background: rgba(148, 163, 184, 0.22);
 		border-radius: 2px;
 	}
@@ -418,8 +341,8 @@
 	.item {
 		display: grid;
 		grid-template-rows: auto auto;
-		gap: 4px;
-		padding: 7px 11px 8px;
+		gap: 6px;
+		padding: 7px 10px 8px;
 		border: 1px solid rgba(100, 116, 139, 0.2);
 		border-radius: 8px;
 		background: rgba(15, 23, 42, 0.58);
@@ -438,6 +361,31 @@
 		border-color: var(--stack-color);
 		background: color-mix(in srgb, var(--stack-color) 15%, rgba(15, 23, 42, 0.65));
 		box-shadow: 0 0 0 1px var(--stack-color) inset, 0 0 12px color-mix(in srgb, var(--stack-color) 45%, transparent);
+	}
+
+	.item.focused {
+		border-color: var(--stack-color);
+		transform: translateY(-1px) scale(1.01);
+		box-shadow:
+			0 0 0 1px var(--stack-color) inset,
+			0 0 16px color-mix(in srgb, var(--stack-color) 60%, transparent),
+			0 0 28px color-mix(in srgb, var(--stack-color) 35%, transparent);
+		animation: focus-pulse 1.6s ease-in-out infinite;
+	}
+
+	@keyframes focus-pulse {
+		0%, 100% {
+			box-shadow:
+				0 0 0 1px var(--stack-color) inset,
+				0 0 12px color-mix(in srgb, var(--stack-color) 50%, transparent),
+				0 0 22px color-mix(in srgb, var(--stack-color) 25%, transparent);
+		}
+		50% {
+			box-shadow:
+				0 0 0 1px var(--stack-color) inset,
+				0 0 18px color-mix(in srgb, var(--stack-color) 70%, transparent),
+				0 0 32px color-mix(in srgb, var(--stack-color) 45%, transparent);
+		}
 	}
 
 	.item.dim {
@@ -495,38 +443,65 @@
 		color: #f87171;
 	}
 
-	.metric-row {
+	.metric-tiles {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
-		gap: 8px;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 4px;
+	}
+
+	.metric-tiles.has-gpu {
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+	}
+
+	.tile {
+		display: flex;
+		flex-direction: column;
 		align-items: center;
+		justify-content: center;
+		gap: 1px;
+		padding: 4px 2px 5px;
+		border-radius: 6px;
+		border: 1px solid rgba(148, 163, 184, 0.2);
+		background: rgba(2, 6, 23, 0.55);
+		min-width: 0;
 	}
 
-	.bar {
-		display: block;
-		height: 8px;
-		border-radius: 999px;
-		background: rgba(30, 41, 59, 0.92);
-		overflow: hidden;
-		position: relative;
+	.tile-label {
+		font-size: 9px;
+		font-weight: 800;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--text-muted);
 	}
 
-	.bar u {
-		display: block;
-		height: 100%;
-		width: var(--intensity, 0%);
-		text-decoration: none;
-		background: linear-gradient(90deg, color-mix(in srgb, var(--stack-color) 70%, #30d5c8), var(--stack-color));
-		transition: width 0.2s ease;
-		box-shadow: 0 0 6px color-mix(in srgb, var(--stack-color) 45%, transparent);
-	}
-
-	.value {
-		font-size: 13px;
+	.tile-value {
+		font-size: 11px;
 		font-weight: 900;
 		color: var(--text-primary);
-		min-width: 62px;
-		text-align: right;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 100%;
+	}
+
+	.tile[data-kind='cpu'] .tile-label { color: #30d5c8; }
+	.tile[data-kind='mem'] .tile-label { color: #60a5fa; }
+	.tile[data-kind='net'] .tile-label { color: #fbbf24; }
+	.tile[data-kind='gpu'] .tile-label { color: #f472b6; }
+
+	.tile[data-level='mid'] {
+		border-color: rgba(251, 191, 36, 0.4);
+		background: rgba(251, 191, 36, 0.08);
+	}
+
+	.tile[data-level='high'] {
+		border-color: rgba(248, 113, 113, 0.5);
+		background: rgba(248, 113, 113, 0.12);
+	}
+
+	.tile[data-level='high'] .tile-value {
+		color: #fca5a5;
 	}
 
 	.empty {
@@ -536,5 +511,87 @@
 		color: var(--text-muted);
 		font-size: 12px;
 		text-align: center;
+	}
+
+	.focus-foot {
+		flex: 0 0 auto;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 8px;
+		padding-top: 6px;
+		border-top: 1px dashed rgba(100, 116, 139, 0.25);
+	}
+
+	.focus-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 5px;
+		height: 22px;
+		padding: 0 9px 0 8px;
+		border: 1px solid rgba(52, 211, 153, 0.5);
+		border-radius: 999px;
+		background: rgba(52, 211, 153, 0.16);
+		color: #34d399;
+		cursor: pointer;
+		flex: 0 0 auto;
+		font-size: 10px;
+		font-weight: 800;
+		letter-spacing: 0.02em;
+		transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+	}
+
+	.focus-btn:hover {
+		background: rgba(52, 211, 153, 0.26);
+	}
+
+	.focus-btn.paused {
+		background: rgba(248, 113, 113, 0.16);
+		border-color: rgba(248, 113, 113, 0.5);
+		color: #f87171;
+	}
+
+	.focus-btn.paused:hover {
+		background: rgba(248, 113, 113, 0.26);
+	}
+
+	.focus-btn span {
+		line-height: 1;
+	}
+
+	.focus-progress {
+		flex: 1;
+		height: 5px;
+		border-radius: 999px;
+		background: rgba(30, 41, 59, 0.65);
+		overflow: hidden;
+	}
+
+	.focus-progress i {
+		display: block;
+		height: 100%;
+		background: linear-gradient(90deg, #30d5c8, #60a5fa);
+		width: 0%;
+		transition: width 80ms linear;
+	}
+
+	.focus-progress.idle i {
+		background: repeating-linear-gradient(
+			-45deg,
+			rgba(248, 113, 113, 0.4) 0,
+			rgba(248, 113, 113, 0.4) 4px,
+			rgba(248, 113, 113, 0.15) 4px,
+			rgba(248, 113, 113, 0.15) 8px
+		);
+	}
+
+	.focus-count {
+		color: var(--text-muted);
+		font-size: 10px;
+		font-weight: 800;
+		min-width: 38px;
+		text-align: right;
+		font-variant-numeric: tabular-nums;
 	}
 </style>

@@ -307,6 +307,13 @@
 			const networkAvg = trend
 				? latestNonZero(trend.network, avg(stackRows.map((row) => row.network)))
 				: avg(stackRows.map((row) => row.network));
+			const gpuRows = stackRows.filter((row) => typeof row.gpu === 'number');
+			const liveGpu = gpuRows.length > 0 ? avg(gpuRows.map((row) => row.gpu as number)) : 0;
+			const gpuAvg = trend?.gpuMeasured
+				? latestNonZero(trend.gpu, liveGpu)
+				: gpuRows.length > 0
+					? liveGpu
+					: null;
 			return {
 				name: stack.name,
 				color: stack.color,
@@ -316,6 +323,7 @@
 				cpuAvg,
 				memoryAvg,
 				networkAvg,
+				gpuAvg,
 			};
 		}),
 	);

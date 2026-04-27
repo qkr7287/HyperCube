@@ -18,7 +18,7 @@ type Server2dView = {
 	containersPaused: boolean;
 	stacksPaused: boolean;
 	eventsPaused: boolean;
-	metricAutoPaused: boolean;
+	stackFocusPaused: boolean;
 };
 
 export const view: Server2dView = $state({
@@ -35,7 +35,7 @@ export const view: Server2dView = $state({
 	containersPaused: false,
 	stacksPaused: false,
 	eventsPaused: false,
-	metricAutoPaused: false,
+	stackFocusPaused: true,
 });
 
 export function resetViewForServerChange(): void {
@@ -51,7 +51,7 @@ export function resetViewForServerChange(): void {
 	view.containersPaused = false;
 	view.stacksPaused = false;
 	view.eventsPaused = false;
-	view.metricAutoPaused = false;
+	view.stackFocusPaused = true;
 }
 
 export function stateFilterLabel(value: Server2dStateFilter): string {
