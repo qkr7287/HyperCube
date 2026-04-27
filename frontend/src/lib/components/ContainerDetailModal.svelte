@@ -777,6 +777,104 @@
 							</div>
 						</section>
 					{/if}
+
+					{#if details?.inspect}
+						{@const inspect2 = details.inspect}
+						{@const restartCount2 = inspect2?.RestartCount ?? 0}
+						{@const exitCode2 = inspect2?.State?.ExitCode}
+						{@const pid2 = inspect2?.State?.Pid}
+						{@const startedAt2 = inspect2?.State?.StartedAt}
+						{@const ipAddr2 = (inspect2?.NetworkSettings?.IPAddress as string) || ((Object.values((inspect2?.NetworkSettings?.Networks as any) || {})[0] as any)?.IPAddress) || '-'}
+						{@const ports2 = inspect2?.NetworkSettings?.Ports || {}}
+						{@const portEntries2 = Object.entries(ports2).filter(([, v]) => Array.isArray(v) && (v as any[]).length > 0) as [string, any[]][]}
+						{@const mounts2 = (Array.isArray(inspect2?.Mounts) ? inspect2.Mounts : []) as any[]}
+						{@const networkEntries2 = Object.entries((inspect2?.NetworkSettings?.Networks as any) || {}) as [string, any][]}
+
+						<section class="section">
+							<div class="section-title">
+								<div class="section-dot"></div>
+								<span>운영 현황</span>
+								<InfoTooltip placement="bottom-start" text="컨테이너의 런타임 상태(Docker inspect 정보)예요. 재시작 횟수가 자주 늘면 비정상 종료를 의심해 보세요." />
+							</div>
+							<div class="info-card">
+								<div class="info-grid">
+									<div class="info-item">
+										<span class="info-label">가동 시간 <InfoTooltip placement="top-start" text="마지막 시작 시점부터 지금까지 누적된 시간이에요. 재시작하면 0으로 초기화돼요." /></span>
+										<span class="info-value">{formatUptime(startedAt2)}</span>
+									</div>
+									<div class="info-item">
+										<span class="info-label">재시작 횟수 <InfoTooltip placement="top-start" text="Docker가 자동으로 다시 시작한 횟수예요. 0이 정상이고, 자주 늘어나면 컨테이너가 죽었다 살아나는 패턴(헬스체크 실패·OOM 등)을 의심해 보세요." /></span>
+										<span class="info-value" class:warn-text={restartCount2 > 0}>{restartCount2}</span>
+									</div>
+									<div class="info-item">
+										<span class="info-label">종료 코드 <InfoTooltip placement="top-start" text="가장 최근 종료 시 프로세스가 반환한 exit code. 0 = 정상 종료, 그 외 = 오류. 137 = OOMKilled, 143 = SIGTERM." /></span>
+										<span class="info-value">{exitCode2 === undefined || exitCode2 === null ? '-' : exitCode2}</span>
+									</div>
+									<div class="info-item">
+										<span class="info-label">PID <InfoTooltip placement="top-start" text="컨테이너 메인 프로세스의 호스트 PID. 호스트에서 ps/top으로 추적할 때 써요." /></span>
+										<span class="info-value mono">{pid2 || '-'}</span>
+									</div>
+									<div class="info-item">
+										<span class="info-label">컨테이너 IP <InfoTooltip placement="top-start" text="Docker 네트워크 안에서 이 컨테이너에 할당된 내부 IP. 호스트의 외부 IP와는 다르고, 같은 Docker 네트워크의 다른 컨테이너만 이 주소로 접근할 수 있어요." /></span>
+										<span class="info-value mono">{ipAddr2}</span>
+									</div>
+								</div>
+							</div>
+						</section>
+
+						{#if portEntries2.length > 0 || networkEntries2.length > 0 || mounts2.length > 0}
+							<section class="section">
+								<div class="section-title">
+									<div class="section-dot"></div>
+									<span>네트워크 · 마운트</span>
+									<InfoTooltip placement="bottom-start" text="컨테이너가 노출한 포트, 연결된 Docker 네트워크, 마운트된 볼륨이에요." />
+								</div>
+								<div class="info-card">
+									{#if portEntries2.length > 0}
+										<div class="info-block">
+											<span class="info-label">노출 포트 <InfoTooltip placement="top-start" text="호스트 포트 → 컨테이너 포트 매핑이에요. 예: 8080 → 80/tcp = 호스트의 8080으로 들어온 요청이 컨테이너 안의 80으로 전달됨." /></span>
+											<div class="port-chips">
+												{#each portEntries2 as [containerPort, bindings]}
+													{#each (bindings as any[]) as b}
+														<span class="port-chip" title={`컨테이너 ${containerPort} → 호스트 ${b.HostIp || '0.0.0.0'}:${b.HostPort}`}>
+															<b>{b.HostPort}</b>
+															<small>→ {containerPort}</small>
+														</span>
+													{/each}
+												{/each}
+											</div>
+										</div>
+									{/if}
+									{#if networkEntries2.length > 0}
+										<div class="info-block">
+											<span class="info-label">Docker 네트워크 <InfoTooltip placement="top-start" text="이 컨테이너가 가입된 Docker 네트워크 목록이에요. 같은 네트워크의 다른 컨테이너끼리는 컨테이너 이름으로 서로 호출할 수 있어요." /></span>
+											<ul class="kv-list">
+												{#each networkEntries2 as [name, info]}
+													<li>
+														<span class="kv-key">{name}</span>
+														<span class="kv-val mono">{(info as any)?.IPAddress || '-'}</span>
+													</li>
+												{/each}
+											</ul>
+										</div>
+									{/if}
+									{#if mounts2.length > 0}
+										<div class="info-block">
+											<span class="info-label">마운트 ({mounts2.length}) <InfoTooltip placement="top-start" text="호스트 디렉터리 또는 Docker 볼륨이 컨테이너 내부 경로에 연결된 목록이에요. 컨테이너가 재시작되어도 데이터가 유지되는 영역입니다." /></span>
+											<ul class="kv-list">
+												{#each mounts2 as m}
+													<li>
+														<span class="kv-key">{m.Type}</span>
+														<span class="kv-val mono" title={m.Source}>{m.Destination}</span>
+													</li>
+												{/each}
+											</ul>
+										</div>
+									{/if}
+								</div>
+							</section>
+						{/if}
+					{/if}
 				{/if}
 
 			{:else if activeTab === 'metrics'}
@@ -857,23 +955,23 @@
 							{#key `net-${metricsRange}`}
 								<div class="metric-stack">
 									<div class="metric-stack-head">
-										<span class="metric-stack-label">네트워크 (RX+TX)
-											<InfoTooltip placement="top-start" text="네트워크 누적 트래픽 RX+TX (bytes). 그래프는 누적이라 우상향이 정상이고, 기울기가 가팔라지면 트래픽이 늘고 있다는 뜻이에요." />
+										<span class="metric-stack-label">네트워크 처리량
+											<InfoTooltip placement="top-start" text="현재 초당 네트워크 처리량(RX+TX, B/s)이에요. Docker는 누적값만 노출하기 때문에 인접 샘플의 변화량으로 환산했어요. 평평 = 트래픽 없음, 솟아오름 = 활발한 통신." />
 										</span>
 										<strong class="metric-stack-current net">{netRate > 0 ? formatRate(netRate) : '-'}</strong>
 									</div>
-									<MetricTrendChart {agentId} {accessToken} endpoint="/api/metrics/containers/" extraQuery={`container_id=${cid}`} metricField="" metricExtractor={(row) => Number(row?.network_rx ?? 0) + Number(row?.network_tx ?? 0)} liveValue={Number(metricsData?.network?.rx ?? 0) + Number(metricsData?.network?.tx ?? 0)} label="네트워크 누적 (bytes)" color="#fbbf24" unit="bytes" defaultRange={metricsRange} hideRangeTabs compact />
+									<MetricTrendChart {agentId} {accessToken} endpoint="/api/metrics/containers/" extraQuery={`container_id=${cid}`} metricField="" metricExtractor={(row) => Number(row?.network_rx ?? 0) + Number(row?.network_tx ?? 0)} liveValue={netRate} label="네트워크 처리량 (B/s)" color="#fbbf24" unit="rate" defaultRange={metricsRange} hideRangeTabs compact derivative />
 								</div>
 							{/key}
 							{#key `disk-${metricsRange}`}
 								<div class="metric-stack">
 									<div class="metric-stack-head">
-										<span class="metric-stack-label">디스크 (READ+WRITE)
-											<InfoTooltip placement="top-start" text="누적 디스크 입출력 (bytes). 그래프 기울기로 I/O 강도를 읽을 수 있어요. 평평하면 디스크 접근이 거의 없다는 뜻." />
+										<span class="metric-stack-label">디스크 처리량
+											<InfoTooltip placement="top-start" text="현재 초당 디스크 I/O 처리량(읽기+쓰기, B/s)이에요. Docker는 누적값만 노출해서 인접 샘플 변화량으로 환산했고, 평평하면 디스크 접근이 거의 없다는 뜻이에요." />
 										</span>
 										<strong class="metric-stack-current disk">{diskRate > 0 ? formatRate(diskRate) : '-'}</strong>
 									</div>
-									<MetricTrendChart {agentId} {accessToken} endpoint="/api/metrics/containers/" extraQuery={`container_id=${cid}`} metricField="" metricExtractor={(row) => Number(row?.disk_read ?? 0) + Number(row?.disk_write ?? 0)} liveValue={Number(metricsData?.disk?.read ?? 0) + Number(metricsData?.disk?.write ?? 0)} label="디스크 누적 (bytes)" color="#a78bfa" unit="bytes" defaultRange={metricsRange} hideRangeTabs compact />
+									<MetricTrendChart {agentId} {accessToken} endpoint="/api/metrics/containers/" extraQuery={`container_id=${cid}`} metricField="" metricExtractor={(row) => Number(row?.disk_read ?? 0) + Number(row?.disk_write ?? 0)} liveValue={diskRate} label="디스크 처리량 (B/s)" color="#a78bfa" unit="rate" defaultRange={metricsRange} hideRangeTabs compact derivative />
 								</div>
 							{/key}
 							{#if hasGpu}
@@ -973,87 +1071,6 @@
 								{/if}
 							</section>
 
-							<section class="summary-section">
-								<div class="summary-section-head">
-									<h4 class="summary-h4">운영 현황</h4>
-									<InfoTooltip placement="bottom-end" text="컨테이너의 런타임 상태(Docker inspect 정보)예요. 재시작 횟수가 자주 늘면 비정상 종료를 의심해 보세요." />
-								</div>
-								<ul class="summary-list">
-									<li>
-										<span class="summary-key">가동 시간</span>
-										<span class="summary-val">{formatUptime(startedAt)}</span>
-									</li>
-									<li>
-										<span class="summary-key">재시작 횟수</span>
-										<span class="summary-val" class:warn={restartCount > 0}>{restartCount}</span>
-									</li>
-									<li>
-										<span class="summary-key">종료 코드</span>
-										<span class="summary-val">{exitCode === undefined || exitCode === null ? '-' : exitCode}</span>
-									</li>
-									<li>
-										<span class="summary-key">PID</span>
-										<span class="summary-val mono-summary">{pid || '-'}</span>
-									</li>
-									<li>
-										<span class="summary-key">IP</span>
-										<span class="summary-val mono-summary">{ipAddr}</span>
-									</li>
-								</ul>
-							</section>
-
-							{#if portEntries.length > 0 || networkEntries.length > 0 || mounts.length > 0}
-								<section class="summary-section">
-									<div class="summary-section-head">
-										<h4 class="summary-h4">네트워크 · 마운트</h4>
-										<InfoTooltip placement="bottom-end" text="컨테이너가 노출한 포트, 연결된 Docker 네트워크, 마운트된 볼륨이에요." />
-									</div>
-									{#if portEntries.length > 0}
-										<div class="port-block">
-											<div class="port-block-label">노출 포트</div>
-											<div class="port-chips">
-												{#each portEntries as [containerPort, bindings]}
-													{#each (bindings as any[]) as b}
-														<span class="port-chip" title={`컨테이너 ${containerPort} → 호스트 ${b.HostIp || '0.0.0.0'}:${b.HostPort}`}>
-															<b>{b.HostPort}</b>
-															<small>→ {containerPort}</small>
-														</span>
-													{/each}
-												{/each}
-											</div>
-										</div>
-									{/if}
-									{#if networkEntries.length > 0}
-										<div class="port-block">
-											<div class="port-block-label">Docker 네트워크</div>
-											<ul class="summary-list compact">
-												{#each networkEntries as [name, info]}
-													<li>
-														<span class="summary-key">{name}</span>
-														<span class="summary-val mono-summary">{(info as any)?.IPAddress || '-'}</span>
-													</li>
-												{/each}
-											</ul>
-										</div>
-									{/if}
-									{#if mounts.length > 0}
-										<div class="port-block">
-											<div class="port-block-label">마운트 ({mounts.length})</div>
-											<ul class="mount-list">
-												{#each mounts.slice(0, 4) as m}
-													<li>
-														<span class="mount-type">{m.Type}</span>
-														<span class="mount-path mono-summary" title={m.Source}>{m.Destination}</span>
-													</li>
-												{/each}
-												{#if mounts.length > 4}
-													<li class="mount-more">외 {mounts.length - 4}개</li>
-												{/if}
-											</ul>
-										</div>
-									{/if}
-								</section>
-							{/if}
 						</aside>
 					</div>
 				{/if}

@@ -27,7 +27,7 @@
 	Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip);
 
 	type RangeKey = '1m' | '10m' | '1h' | '6h' | '24h' | '7d';
-	type Unit = 'percent' | 'count' | 'bytes';
+	type Unit = 'percent' | 'count' | 'bytes' | 'rate';
 
 	let {
 		agentId,
@@ -43,6 +43,7 @@
 		extraQuery = '',
 		hideRangeTabs = false,
 		compact = false,
+		derivative = false,
 	}: {
 		agentId: string;
 		/** field name in the backend metrics response (cpu_usage, memory_usage, etc.).
@@ -64,6 +65,10 @@
 		extraQuery?: string;
 		hideRangeTabs?: boolean;
 		compact?: boolean;
+		/** Render the chart as a derivative (rate per second) of the underlying
+		 *  cumulative series. Useful for cumulative counters like network bytes
+		 *  or disk I/O so the user sees throughput instead of an ever-rising line. */
+		derivative?: boolean;
 	} = $props();
 
 	const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
@@ -126,10 +131,26 @@
 				}
 				: (r: any) => Number(r?.[metricField] ?? 0);
 			const paired = kept
-				.map((r) => [read(r), formatClockLabel(r?.recorded_at, forRange)] as const)
-				.filter(([v]) => !Number.isNaN(v));
-			values = paired.map(([v]) => v as number);
-			labels = paired.map(([, l]) => l);
+				.map((r) => [read(r), formatClockLabel(r?.recorded_at, forRange), new Date(r?.recorded_at).getTime()] as const)
+				.filter(([v, , t]) => !Number.isNaN(v) && Number.isFinite(t));
+			if (derivative) {
+				const rateValues: number[] = [];
+				const rateLabels: string[] = [];
+				for (let i = 1; i < paired.length; i += 1) {
+					const [v0, , t0] = paired[i - 1];
+					const [v1, l1, t1] = paired[i];
+					const dt = (t1 - t0) / 1000;
+					if (dt > 0) {
+						rateValues.push(Math.max(0, ((v1 as number) - (v0 as number)) / dt));
+						rateLabels.push(l1);
+					}
+				}
+				values = rateValues;
+				labels = rateLabels;
+			} else {
+				values = paired.map(([v]) => v as number);
+				labels = paired.map(([, l]) => l);
+			}
 			loadedKey = `${agentId}|${forRange}`;
 		} catch (err) {
 			console.error('[MetricTrendChart] history fetch failed', err);
@@ -139,6 +160,11 @@
 	}
 
 	function appendLive(v: number | undefined) {
+		// In derivative mode the chart shows rate (per-second slope of a
+		// cumulative counter). Live ticks arrive as cumulative bytes which
+		// would jump straight up; skip live appends and rely on the periodic
+		// history reload (loadHistory + range refresh) to keep the line fresh.
+		if (derivative) return;
 		if (typeof v !== 'number' || Number.isNaN(v)) return;
 		// Skip the "no data yet" stub (e.g. systemInfo.memory.usage before the
 		// first WS tick). Without this, a leading 0 drags the Y-axis floor down
@@ -210,6 +236,7 @@
 								const v = Number(ctx.parsed.y ?? 0);
 								if (unit === 'percent') return `${ctx.dataset.label}: ${v.toFixed(1)}%`;
 								if (unit === 'bytes') return `${ctx.dataset.label}: ${formatBytes(v)}`;
+								if (unit === 'rate') return `${ctx.dataset.label}: ${formatRate(v)}`;
 								return `${ctx.dataset.label}: ${v.toFixed(0)}`;
 							},
 						},
@@ -241,6 +268,7 @@
 							callback: (v) => {
 								if (unit === 'percent') return `${v}%`;
 								if (unit === 'bytes') return formatBytes(Number(v));
+								if (unit === 'rate') return formatRate(Number(v));
 								return v;
 							},
 						},
@@ -284,6 +312,16 @@
 			units.length - 1,
 		);
 		return `${(bytes / Math.pow(1024, idx)).toFixed(1)} ${units[idx]}`;
+	}
+
+	function formatRate(bps: number): string {
+		if (!bps) return '0 B/s';
+		const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+		const idx = Math.min(
+			Math.floor(Math.log(Math.abs(bps)) / Math.log(1024)),
+			units.length - 1,
+		);
+		return `${(bps / Math.pow(1024, idx)).toFixed(1)} ${units[idx]}`;
 	}
 
 	// Fetch history when agent/range changes.
