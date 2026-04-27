@@ -67,8 +67,7 @@
 	let metricTimer: ReturnType<typeof setInterval> | null = null;
 
 	const metricAutoPaused = $derived(view.containersPaused);
-	const externallyHalted = $derived(Boolean(view.soloStack));
-	const metricRotating = $derived(!metricAutoPaused && !externallyHalted);
+	const metricRotating = $derived(!metricAutoPaused);
 
 	function scrollToTop() {
 		if (scrollContainer) scrollContainer.scrollTop = 0;
@@ -751,10 +750,10 @@
 	.scroll-progress.idle i {
 		background: repeating-linear-gradient(
 			-45deg,
-			rgba(52, 211, 153, 0.4) 0,
-			rgba(52, 211, 153, 0.4) 4px,
-			rgba(52, 211, 153, 0.15) 4px,
-			rgba(52, 211, 153, 0.15) 8px
+			rgba(248, 113, 113, 0.4) 0,
+			rgba(248, 113, 113, 0.4) 4px,
+			rgba(248, 113, 113, 0.15) 4px,
+			rgba(248, 113, 113, 0.15) 8px
 		);
 	}
 </style>
