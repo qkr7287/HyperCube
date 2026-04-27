@@ -55,7 +55,7 @@
 	} = $props();
 
 	const METRIC_TICK_MS = 80;
-	const ROTATION_CYCLE: Server2dContainerSort[] = ['gpu', 'memory', 'cpu', 'network'];
+	const ROTATION_CYCLE: Server2dContainerSort[] = ['cpu', 'memory', 'network', 'gpu'];
 
 	const soloed = $derived(view.soloStack);
 	const search = $derived(view.searchQuery.trim().toLowerCase());
@@ -100,7 +100,7 @@
 	}
 
 	function setContainerSort(next: Server2dContainerSort) {
-		view.containerSort = view.containerSort === next ? 'default' : next;
+		view.containerSort = view.containerSort === next ? 'total' : next;
 		view.containersPaused = true;
 		metricProgress = 0;
 		scrollToTop();
@@ -277,24 +277,9 @@
 				type="button"
 				class="sort-chip"
 				class:active={containerSort === 'total'}
-				title="종합 점수(CPU+MEM+GPU+NET%) 우선"
+				title="종합 점수(CPU+MEM+NET%+GPU) 우선"
 				onclick={() => setContainerSort('total')}
 			>TOTAL</button>
-			<button
-				type="button"
-				class="sort-chip"
-				class:active={containerSort === 'gpu'}
-				disabled={!hasGpuData}
-				title={hasGpuData ? 'GPU 사용량 우선' : 'GPU 데이터 없음'}
-				onclick={() => setContainerSort('gpu')}
-			>GPU</button>
-			<button
-				type="button"
-				class="sort-chip"
-				class:active={containerSort === 'memory'}
-				title="메모리 사용량 우선"
-				onclick={() => setContainerSort('memory')}
-			>MEM</button>
 			<button
 				type="button"
 				class="sort-chip"
@@ -305,10 +290,25 @@
 			<button
 				type="button"
 				class="sort-chip"
+				class:active={containerSort === 'memory'}
+				title="메모리 사용량 우선"
+				onclick={() => setContainerSort('memory')}
+			>MEM</button>
+			<button
+				type="button"
+				class="sort-chip"
 				class:active={containerSort === 'network'}
 				title="네트워크 트래픽 우선"
 				onclick={() => setContainerSort('network')}
 			>NET</button>
+			<button
+				type="button"
+				class="sort-chip"
+				class:active={containerSort === 'gpu'}
+				disabled={!hasGpuData}
+				title={hasGpuData ? 'GPU 사용량 우선' : 'GPU 데이터 없음'}
+				onclick={() => setContainerSort('gpu')}
+			>GPU</button>
 		</div>
 		<SortDirToggle value={containerSortDir} onChange={setContainerSortDir} />
 	</div>

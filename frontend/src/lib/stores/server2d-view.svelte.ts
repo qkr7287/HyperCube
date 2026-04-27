@@ -29,7 +29,7 @@ export const view: Server2dView = $state({
 	searchQuery: '',
 	sortMode: 'load',
 	stackSortDir: 'desc',
-	containerSort: 'default',
+	containerSort: 'total',
 	containerSortDir: 'desc',
 	matrixShowAll: false,
 	containersPaused: false,
@@ -45,7 +45,7 @@ export function resetViewForServerChange(): void {
 	view.stateFilter = 'all';
 	view.sortMode = 'load';
 	view.stackSortDir = 'desc';
-	view.containerSort = 'default';
+	view.containerSort = 'total';
 	view.containerSortDir = 'desc';
 	view.matrixShowAll = false;
 	view.containersPaused = false;
