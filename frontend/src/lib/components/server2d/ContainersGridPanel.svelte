@@ -55,7 +55,7 @@
 	} = $props();
 
 	const METRIC_TICK_MS = 80;
-	const ROTATION_CYCLE: Server2dContainerSort[] = ['load', 'cpu', 'memory', 'network', 'gpu'];
+	const ROTATION_CYCLE: Server2dContainerSort[] = ['total', 'cpu', 'memory', 'network', 'gpu'];
 
 	const soloed = $derived(view.soloStack);
 	const search = $derived(view.searchQuery.trim().toLowerCase());
@@ -100,7 +100,7 @@
 	}
 
 	function setContainerSort(next: Server2dContainerSort) {
-		view.containerSort = view.containerSort === next ? 'load' : next;
+		view.containerSort = view.containerSort === next ? 'total' : next;
 		view.containersPaused = true;
 		metricProgress = 0;
 		scrollToTop();
@@ -209,7 +209,7 @@
 			const sign = containerSortDir === 'asc' ? 1 : -1;
 			const netMax = Math.max(1, ...out.map((c) => c.network));
 			const score = (c: ContainerCard) => {
-				if (containerSort === 'load') {
+				if (containerSort === 'total') {
 					const gpu = typeof c.gpu === 'number' ? c.gpu : 0;
 					const netPct = Math.min(100, (c.network / netMax) * 100);
 					return c.cpu + c.memory + gpu + netPct;
@@ -246,7 +246,7 @@
 	<div class="head">
 		<div class="title">
 			<span>전체 컨테이너</span>
-			<InfoTooltip text={`서버의 모든 컨테이너를 한 화면에.\n\n• 세로 스크롤로 전체 탐색\n• LOAD/CPU/MEM/NET/GPU 정렬 + 오름·내림 토글\n• 카드 왼쪽 컬러 스트립 = 소속 스택\n• 카드 클릭 = 상세 모달`} placement="bottom-end" />
+			<InfoTooltip text={`서버의 모든 컨테이너를 한 화면에.\n\n• 세로 스크롤로 전체 탐색\n• TOTAL/CPU/MEM/NET/GPU 정렬 + 오름·내림 토글\n• 카드 왼쪽 컬러 스트립 = 소속 스택\n• 카드 클릭 = 상세 모달`} placement="bottom-end" />
 		</div>
 		<small>{totalVisible}개 표시</small>
 	</div>
@@ -276,10 +276,10 @@
 			<button
 				type="button"
 				class="sort-chip"
-				class:active={containerSort === 'load'}
-				title="종합 부하(CPU+MEM+NET%+GPU) 우선"
-				onclick={() => setContainerSort('load')}
-			>LOAD</button>
+				class:active={containerSort === 'total'}
+				title="종합 점수(CPU+MEM+NET%+GPU) 우선"
+				onclick={() => setContainerSort('total')}
+			>TOTAL</button>
 			<button
 				type="button"
 				class="sort-chip"
