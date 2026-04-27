@@ -307,7 +307,7 @@
 			await fetchDetails();
 			onStateChange();
 		} catch (e: any) {
-			errorMsg = e?.message || 'Control action failed';
+			errorMsg = e?.message || '컨테이너 제어에 실패했습니다.';
 			console.error('[ContainerDetailModal] control failed:', e);
 		} finally {
 			controlLoading = '';
@@ -457,9 +457,9 @@
 				</button>
 			</div>
 			<div class="tabs">
-				<button class="tab" class:active={activeTab === 'info'} onclick={() => activeTab = 'info'}>Info</button>
-				<button class="tab" class:active={activeTab === 'metrics'} onclick={() => activeTab = 'metrics'}>Metrics</button>
-				<button class="tab" class:active={activeTab === 'logs'} onclick={() => activeTab = 'logs'}>Logs</button>
+				<button class="tab" class:active={activeTab === 'info'} onclick={() => activeTab = 'info'}>정보</button>
+				<button class="tab" class:active={activeTab === 'metrics'} onclick={() => activeTab = 'metrics'}>메트릭</button>
+				<button class="tab" class:active={activeTab === 'logs'} onclick={() => activeTab = 'logs'}>로그</button>
 			</div>
 		</div>
 
@@ -486,7 +486,7 @@
 								<div class="info-item">
 									<span class="info-label">상태</span>
 									<span class="info-value status" class:running={containerState === 'running'} class:stopped={containerState === 'exited' || containerState === 'dead'} class:paused={containerState === 'paused'}>
-										{containerState}
+										{containerState === 'running' ? '실행 중' : containerState === 'paused' ? '일시정지' : containerState === 'exited' ? '중지' : containerState === 'dead' ? '장애' : containerState === 'restarting' ? '재시작' : containerState || '-'}
 									</span>
 								</div>
 								<div class="info-item full">
@@ -518,11 +518,11 @@
 							<div class="settings-grid">
 								<div class="info-card compact">
 									<span class="info-label">명령어</span>
-									<span class="info-value">{inspectConfig?.Cmd?.join(' ') || 'N/A'}</span>
+									<span class="info-value">{inspectConfig?.Cmd?.join(' ') || '-'}</span>
 								</div>
 								<div class="info-card compact">
 									<span class="info-label">작업 디렉토리</span>
-									<span class="info-value">{inspectConfig?.WorkingDir || 'N/A'}</span>
+									<span class="info-value">{inspectConfig?.WorkingDir || '-'}</span>
 								</div>
 							</div>
 							<div class="info-card">
@@ -560,11 +560,11 @@
 								</div>
 								<div class="resource-card">
 									<span class="info-label">메모리 사용량</span>
-									<span class="resource-value">{metricsData?.memory ? formatMemoryMB(metricsData.memory.usage) : (inspectStats?.memory_stats ? formatBytes(inspectStats.memory_stats.usage) : 'N/A')} <small class="resource-unit">{metricsData?.memory ? 'MB' : ''}</small></span>
+									<span class="resource-value">{metricsData?.memory ? formatMemoryMB(metricsData.memory.usage) : (inspectStats?.memory_stats ? formatBytes(inspectStats.memory_stats.usage) : '-')} <small class="resource-unit">{metricsData?.memory ? 'MB' : ''}</small></span>
 								</div>
 								<div class="resource-card">
 									<span class="info-label">네트워크 (RX/TX)</span>
-									<span class="resource-value plain">{metricsData?.network ? formatBytes(metricsData.network.rx) + ' / ' + formatBytes(metricsData.network.tx) : 'N/A'}</span>
+									<span class="resource-value plain">{metricsData?.network ? formatBytes(metricsData.network.rx) + ' / ' + formatBytes(metricsData.network.tx) : '-'}</span>
 								</div>
 							</div>
 						</section>
@@ -584,7 +584,7 @@
 					<div class="metrics-grid-top">
 						<div class="metrics-card">
 							<div class="metrics-card-header">
-								<span class="metrics-card-title">CPU Usage</span>
+								<span class="metrics-card-title">CPU 사용률</span>
 								<InfoTooltip
 									placement="bottom-start"
 									text="이 컨테이너가 호스트 CPU를 얼마나 쓰고 있는지예요. 100%면 단일 코어 한 개를 가득 쓰는 중이고, 다중 코어면 100%를 넘을 수도 있어요. 오래 높게 머물면 로직이 과부하라는 신호예요."
@@ -606,7 +606,7 @@
 						</div>
 						<div class="metrics-card">
 							<div class="metrics-card-header">
-								<span class="metrics-card-title">Memory Usage</span>
+								<span class="metrics-card-title">메모리 사용률</span>
 								<InfoTooltip
 									placement="bottom-start"
 									text="컨테이너에 할당된 메모리 중 실제 사용하는 비율이에요. 100%에 가까우면 OOM (메모리 부족으로 컨테이너가 죽을 위험)이 생길 수 있어요."
@@ -630,7 +630,7 @@
 					<div class="metrics-grid-bottom">
 						<div class="metrics-card">
 							<div class="metrics-card-header">
-								<span class="metrics-card-title muted">Network Traffic</span>
+								<span class="metrics-card-title muted">네트워크 트래픽</span>
 								<InfoTooltip
 									placement="bottom-start"
 									text="컨테이너가 주고받은 네트워크 총량 (누적). Inbound는 받은 데이터, Outbound는 보낸 데이터예요. 숫자가 꾸준히 커지면 계속 트래픽이 오가는 중이고, 평평하면 통신이 없거나 적은 상태예요."
@@ -638,7 +638,7 @@
 							</div>
 							<div class="network-stats">
 								<div class="network-col">
-									<span class="network-label">Inbound</span>
+									<span class="network-label">수신</span>
 									<div class="network-value-row">
 										<span class="network-big">{formatBytes(netRxBytes)}</span>
 									</div>
@@ -646,7 +646,7 @@
 								</div>
 								<div class="network-divider"></div>
 								<div class="network-col">
-									<span class="network-label">Outbound</span>
+									<span class="network-label">송신</span>
 									<div class="network-value-row">
 										<span class="network-big">{formatBytes(netTxBytes)}</span>
 									</div>
@@ -656,7 +656,7 @@
 						</div>
 						<div class="metrics-card">
 							<div class="metrics-card-header">
-								<span class="metrics-card-title muted">Disk I/O</span>
+								<span class="metrics-card-title muted">디스크 I/O</span>
 								<InfoTooltip
 									placement="bottom-start"
 									text="컨테이너가 디스크를 읽고 쓴 누적 양. READ는 읽은 데이터, WRITE는 쓴 데이터예요. 숫자가 꾸준히 올라가면 지금 디스크 접근 중이고, 멈춰 있으면 I/O가 없는 상태예요."
@@ -664,11 +664,11 @@
 							</div>
 							<div class="disk-stats">
 								<div class="disk-row">
-									<span class="disk-label">READ</span>
+									<span class="disk-label">읽기</span>
 									<span class="disk-value">{formatBytes(metricsData?.disk?.read || 0)}</span>
 								</div>
 								<div class="disk-row">
-									<span class="disk-label">WRITE</span>
+									<span class="disk-label">쓰기</span>
 									<span class="disk-value">{formatBytes(metricsData?.disk?.write || 0)}</span>
 								</div>
 							</div>
@@ -683,17 +683,17 @@
 						<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2">
 							<circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
 						</svg>
-						<input type="text" placeholder="Search logs..." bind:value={logSearchQuery} />
+						<input type="text" placeholder="로그 검색..." bind:value={logSearchQuery} />
 					</div>
 					<div class="logs-controls">
 						<label class="auto-scroll-toggle">
-							<span>Auto-refresh</span>
+							<span>자동 새로고침</span>
 							<div class="switch" class:on={autoRefreshLogs} onclick={toggleAutoRefreshLogs}>
 								<div class="switch-thumb"></div>
 							</div>
 						</label>
 						<label class="auto-scroll-toggle">
-							<span>Auto-scroll</span>
+							<span>자동 스크롤</span>
 							<div class="switch" class:on={autoScroll} onclick={() => autoScroll = !autoScroll}>
 								<div class="switch-thumb"></div>
 							</div>
@@ -702,7 +702,7 @@
 							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 								<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
 							</svg>
-							Download
+							다운로드
 						</button>
 					</div>
 				</div>
@@ -713,7 +713,7 @@
 							<span class="dot yellow"></span>
 							<span class="dot green"></span>
 						</div>
-						<span class="terminal-title">bash — log-viewer — {filteredLogs.length} lines</span>
+						<span class="terminal-title">bash — 로그 뷰어 — {filteredLogs.length} 줄</span>
 					</div>
 					<div class="terminal-body" bind:this={logContainer}>
 						{#if loadingLogs}
