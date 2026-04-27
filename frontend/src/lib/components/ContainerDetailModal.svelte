@@ -991,7 +991,6 @@
 							{:else if peakHistory.samples === 0}
 								<section class="summary-section"><div class="summary-empty">{rangeLabel} 동안 기록된 데이터가 없어요.</div></section>
 							{:else}
-								{@const stableSec = Math.round(metricsStats.idleSeconds + metricsStats.normalSeconds + metricsStats.busySeconds)}
 								{@const memSwing = peakHistory.memory.value - metricsStats.memory.min}
 
 								<section class="summary-section">
@@ -1057,14 +1056,15 @@
 										<li><span class="summary-key dist-key normal">가벼운 작업</span><span class="summary-val">{(metricsStats.normalRatio * 100).toFixed(1)}%</span><small class="summary-when">{formatDuration(metricsStats.normalSeconds)}</small></li>
 										<li><span class="summary-key dist-key busy">활발히 작동</span><span class="summary-val">{(metricsStats.busyRatio * 100).toFixed(1)}%</span><small class="summary-when">{formatDuration(metricsStats.busySeconds)}</small></li>
 									</ul>
-									<div class="summary-tail">
-										<span class="summary-meta">샘플 {peakHistory.samples}개 · 약 {formatDuration(stableSec)}</span>
-										{#if memSwing > 5}
+									{#if memSwing > 5}
+										<div class="summary-tail">
 											<span class="summary-pill warn">메모리 변동 폭 {memSwing.toFixed(1)}% — 누수 의심</span>
-										{:else if memSwing > 0}
+										</div>
+									{:else if memSwing > 0}
+										<div class="summary-tail">
 											<span class="summary-pill">메모리 변동 폭 {memSwing.toFixed(1)}%</span>
-										{/if}
-									</div>
+										</div>
+									{/if}
 								</section>
 							{/if}
 						</aside>
@@ -1525,8 +1525,7 @@
 	}
 	.summary-list li {
 		display: grid;
-		grid-template-columns: 48px auto auto;
-		justify-content: start;
+		grid-template-columns: 48px minmax(0, 1fr) auto;
 		align-items: baseline;
 		gap: 6px;
 		padding: 3px 8px;
@@ -1534,8 +1533,11 @@
 		background: rgba(13, 17, 23, 0.55);
 		min-width: 0;
 	}
+	.summary-list li .summary-val {
+		text-align: right;
+	}
 	.summary-list li .summary-when {
-		margin-left: 4px;
+		margin-left: 0;
 	}
 	.summary-key {
 		font-size: 10px;
@@ -1622,8 +1624,7 @@
 	.dist-seg.dist-normal { background: rgba(48, 213, 200, 0.7); }
 	.dist-seg.dist-busy { background: rgba(251, 113, 133, 0.85); }
 	.dist-list li {
-		grid-template-columns: 92px auto auto;
-		justify-content: start;
+		grid-template-columns: 92px minmax(0, 1fr) auto;
 	}
 	.dist-list .dist-key {
 		text-transform: none;
