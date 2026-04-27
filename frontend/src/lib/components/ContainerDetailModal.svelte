@@ -1012,6 +1012,7 @@
 								<section class="summary-section"><div class="summary-empty">{rangeLabel} 동안 기록된 데이터가 없어요.</div></section>
 							{:else}
 								{@const memSwing = peakHistory.memory.value - metricsStats.memory.min}
+								{@const diagnosis = diagnoseActivity(metricsStats)}
 
 								<section class="summary-section">
 									<div class="summary-section-head">
@@ -1076,7 +1077,6 @@
 										<li><span class="summary-key dist-key normal">가벼운 작업</span><span class="summary-val">{(metricsStats.normalRatio * 100).toFixed(1)}%</span><small class="summary-when">{formatDuration(metricsStats.normalSeconds)}</small></li>
 										<li><span class="summary-key dist-key busy">활발히 작동</span><span class="summary-val">{(metricsStats.busyRatio * 100).toFixed(1)}%</span><small class="summary-when">{formatDuration(metricsStats.busySeconds)}</small></li>
 									</ul>
-									{@const diagnosis = diagnoseActivity(metricsStats)}
 									<div class="summary-diagnosis">
 										<span class="diag-icon" data-tone={diagnosis.tone}>●</span>
 										<span class="diag-text">{diagnosis.text}</span>
