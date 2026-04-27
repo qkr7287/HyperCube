@@ -834,44 +834,38 @@
 								</div>
 								<div class="info-card">
 									{#if portEntries2.length > 0}
-										<div class="info-block">
-											<span class="info-label">노출 포트</span>
-											<div class="port-chips">
-												{#each portEntries2 as [containerPort, bindings]}
-													{#each (bindings as any[]) as b}
-														<span class="port-chip" title={`컨테이너 ${containerPort} → 호스트 ${b.HostIp || '0.0.0.0'}:${b.HostPort}`}>
-															<b>{b.HostPort}</b>
-															<small>→ {containerPort}</small>
-														</span>
-													{/each}
+										<div class="sub-title">노출 포트</div>
+										<div class="port-chips">
+											{#each portEntries2 as [containerPort, bindings]}
+												{#each (bindings as any[]) as b}
+													<span class="port-chip" title={`컨테이너 ${containerPort} → 호스트 ${b.HostIp || '0.0.0.0'}:${b.HostPort}`}>
+														<b>{b.HostPort}</b>
+														<small>→ {containerPort}</small>
+													</span>
 												{/each}
-											</div>
+											{/each}
 										</div>
 									{/if}
 									{#if networkEntries2.length > 0}
-										<div class="info-block">
-											<span class="info-label">Docker 네트워크</span>
-											<ul class="kv-list">
-												{#each networkEntries2 as [name, info]}
-													<li>
-														<span class="kv-key">{name}</span>
-														<span class="kv-val mono">{(info as any)?.IPAddress || '-'}</span>
-													</li>
-												{/each}
-											</ul>
+										<div class="sub-title">Docker 네트워크</div>
+										<div class="info-grid">
+											{#each networkEntries2 as [name, info]}
+												<div class="info-item">
+													<span class="info-label">{name}</span>
+													<span class="info-value mono">{(info as any)?.IPAddress || '-'}</span>
+												</div>
+											{/each}
 										</div>
 									{/if}
 									{#if mounts2.length > 0}
-										<div class="info-block">
-											<span class="info-label">마운트 ({mounts2.length})</span>
-											<ul class="kv-list">
-												{#each mounts2 as m}
-													<li>
-														<span class="kv-key">{m.Type}</span>
-														<span class="kv-val mono" title={m.Source}>{m.Destination}</span>
-													</li>
-												{/each}
-											</ul>
+										<div class="sub-title">마운트</div>
+										<div class="info-grid">
+											{#each mounts2 as m}
+												<div class="info-item">
+													<span class="info-label">{m.Type}</span>
+													<span class="info-value mono" title={m.Source}>{m.Destination}</span>
+												</div>
+											{/each}
 										</div>
 									{/if}
 								</div>
@@ -1320,16 +1314,37 @@
 
 	.info-item {
 		display: grid;
-		grid-template-columns: 90px minmax(0, 1fr);
+		grid-template-columns: 100px minmax(0, 1fr);
 		align-items: baseline;
-		gap: 10px;
-		padding: 7px 8px;
+		gap: 12px;
+		padding: 9px 10px;
 		border-radius: 0;
 		background: transparent;
 		border-bottom: 1px solid rgba(100, 116, 139, 0.08);
 	}
 	.info-item:last-child { border-bottom: none; }
 	.info-item.full { grid-column: 1 / -1; }
+	.info-item.full.ports-item {
+		grid-template-columns: 100px minmax(0, 1fr);
+	}
+
+	.sub-title {
+		font-size: 12px;
+		font-weight: 800;
+		color: var(--text-muted);
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		padding: 9px 10px 4px;
+		border-bottom: 1px solid rgba(100, 116, 139, 0.08);
+		margin-bottom: 0;
+	}
+	.sub-title + .info-grid { margin-bottom: 4px; }
+	.sub-title + .port-chips {
+		padding: 6px 10px 9px;
+		border-bottom: 1px solid rgba(100, 116, 139, 0.08);
+		margin-bottom: 0;
+	}
+	.sub-title + .port-chips:last-child { border-bottom: none; }
 
 	.info-label {
 		font-size: 13px;
@@ -1407,12 +1422,12 @@
 
 	.env-toggle:hover { text-decoration: underline; }
 
-	.env-list { display: flex; flex-direction: column; gap: 2px; }
+	.env-list { display: flex; flex-direction: column; gap: 3px; padding-top: 4px; }
 
 	.env-item {
 		display: flex;
 		justify-content: space-between;
-		padding: 3px 8px;
+		padding: 5px 10px;
 		background: #151c27;
 		border-radius: 4px;
 	}
