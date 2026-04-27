@@ -207,6 +207,15 @@
 		}
 		if (containerSort !== 'default') {
 			const sign = containerSortDir === 'asc' ? 1 : -1;
+			const netMax = Math.max(1, ...out.map((c) => c.network));
+			const score = (c: ContainerCard) => {
+				if (containerSort === 'total') {
+					const gpu = typeof c.gpu === 'number' ? c.gpu : 0;
+					const netPct = Math.min(100, (c.network / netMax) * 100);
+					return c.cpu + c.memory + gpu + netPct;
+				}
+				return sortKey(c, containerSort);
+			};
 			out.sort((a, b) => {
 				if (containerSort === 'gpu') {
 					const aNull = isGpuNull(a);
@@ -215,7 +224,7 @@
 					if (!aNull && bNull) return -1;
 					if (aNull && bNull) return 0;
 				}
-				return sign * (sortKey(a, containerSort) - sortKey(b, containerSort));
+				return sign * (score(a) - score(b));
 			});
 		}
 		return out;
@@ -264,6 +273,13 @@
 	<div class="sort-row" role="group" aria-label="컨테이너 정렬">
 		<div class="sort-chips">
 			<small class="sort-label">정렬</small>
+			<button
+				type="button"
+				class="sort-chip"
+				class:active={containerSort === 'total'}
+				title="종합 점수(CPU+MEM+GPU+NET%) 우선"
+				onclick={() => setContainerSort('total')}
+			>TOTAL</button>
 			<button
 				type="button"
 				class="sort-chip"

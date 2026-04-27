@@ -2,7 +2,7 @@ export type Server2dMetric = 'cpu' | 'memory' | 'network';
 export type Server2dStateFilter = 'all' | 'running' | 'paused' | 'problem' | 'stopped';
 export type Server2dSortMode = 'load' | 'name' | 'problem';
 export type Server2dSortDir = 'desc' | 'asc';
-export type Server2dContainerSort = 'default' | 'gpu' | 'memory' | 'cpu' | 'network';
+export type Server2dContainerSort = 'default' | 'gpu' | 'memory' | 'cpu' | 'network' | 'total';
 
 type Server2dView = {
 	soloStack: string | null;
