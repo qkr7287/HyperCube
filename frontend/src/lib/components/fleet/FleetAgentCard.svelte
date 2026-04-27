@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { FleetAgentRow } from '$lib/stores/fleet-store';
-	import { formatPercent, formatRelative, healthLabel, humanizeReason, shortReason } from '$lib/utils/fleet-format';
+	import { formatPercent, formatRate, formatRelative, healthLabel, humanizeReason, shortReason } from '$lib/utils/fleet-format';
 	import MetricHelp from './MetricHelp.svelte';
+	import MetricSparkline from './MetricSparkline.svelte';
 
 	let {
 		agent,
@@ -27,24 +28,80 @@
 
 	let cpuLevel = $derived(severity(agent.latest?.cpu_usage ?? 0, 70, 90));
 	let memLevel = $derived(severity(agent.latest?.memory_usage ?? 0, 75, 90));
-	let diskLevel = $derived(severity(agent.latest?.disk_usage ?? 0, 80, 90));
 	let gpuLevel = $derived(severity(agent.latest?.gpu_usage ?? 0, 80, 95));
 
 	const CHART_COLORS = {
 		cpu: '#30d5c8',
 		memory: '#60a5fa',
-		disk: '#a78bfa',
+		network: '#fbbf24',
 		gpu: '#f472b6',
 	};
 
+	let networkTotal = $derived((agent.latest?.network_rx_rate ?? 0) + (agent.latest?.network_tx_rate ?? 0));
+	let networkSeries = $derived.by(() => {
+		const rx = agent.sparkline.rx ?? [];
+		const tx = agent.sparkline.tx ?? [];
+		const len = Math.max(rx.length, tx.length);
+		const out: number[] = [];
+		for (let i = 0; i < len; i += 1) {
+			out.push((rx[i] ?? 0) + (tx[i] ?? 0));
+		}
+		return out;
+	});
+
+	type CompactRow = {
+		key: string;
+		label: string;
+		display: string;
+		title: string;
+		level: 'normal' | 'warn' | 'danger';
+		color: string;
+		series: number[];
+	};
+
 	let compactRows = $derived.by(() => {
-		const rows: { key: string; label: string; value: number; level: 'normal' | 'warn' | 'danger'; color: string }[] = [
-			{ key: 'cpu', label: 'CPU', value: agent.latest?.cpu_usage ?? 0, level: cpuLevel, color: CHART_COLORS.cpu },
-			{ key: 'mem', label: 'MEM', value: agent.latest?.memory_usage ?? 0, level: memLevel, color: CHART_COLORS.memory },
-			{ key: 'dsk', label: 'DSK', value: agent.latest?.disk_usage ?? 0, level: diskLevel, color: CHART_COLORS.disk },
+		const cpuValue = agent.latest?.cpu_usage ?? 0;
+		const memValue = agent.latest?.memory_usage ?? 0;
+		const gpuValue = agent.latest?.gpu_usage ?? 0;
+		const rows: CompactRow[] = [
+			{
+				key: 'cpu',
+				label: 'CPU',
+				display: formatPercent(cpuValue, 0),
+				title: `CPU 사용률 ${formatPercent(cpuValue, 1)}`,
+				level: cpuLevel,
+				color: CHART_COLORS.cpu,
+				series: agent.sparkline.cpu,
+			},
+			{
+				key: 'mem',
+				label: 'MEM',
+				display: formatPercent(memValue, 0),
+				title: `메모리 사용률 ${formatPercent(memValue, 1)}`,
+				level: memLevel,
+				color: CHART_COLORS.memory,
+				series: agent.sparkline.memory,
+			},
+			{
+				key: 'net',
+				label: 'NET',
+				display: formatRate(networkTotal),
+				title: `네트워크 ↓ ${formatRate(agent.latest?.network_rx_rate)} · ↑ ${formatRate(agent.latest?.network_tx_rate)}`,
+				level: 'normal',
+				color: CHART_COLORS.network,
+				series: networkSeries,
+			},
 		];
 		if (hasGpu) {
-			rows.push({ key: 'gpu', label: 'GPU', value: agent.latest?.gpu_usage ?? 0, level: gpuLevel, color: CHART_COLORS.gpu });
+			rows.push({
+				key: 'gpu',
+				label: 'GPU',
+				display: formatPercent(gpuValue, 0),
+				title: `GPU 사용률 ${formatPercent(gpuValue, 1)}`,
+				level: gpuLevel,
+				color: CHART_COLORS.gpu,
+				series: agent.sparkline.gpu,
+			});
 		}
 		return rows;
 	});
@@ -126,14 +183,16 @@
 	</header>
 
 	<div class="compact-body">
-		<div class="bar-rows">
+		<div class="metric-cards" class:has-gpu={hasGpu}>
 			{#each compactRows as row}
-				<div class="bar-row" data-level={row.level} title={`${row.label} 사용률 ${formatPercent(row.value, 1)}`}>
-					<span class="br-label">{row.label}</span>
-					<div class="br-track">
-						<span class="br-fill" style={`width: ${Math.min(100, row.value)}%; background: ${row.color};`}></span>
+				<div class="metric-card" data-level={row.level} title={row.title}>
+					<div class="mc-head">
+						<span class="mc-label" style={`color: ${row.color};`}>{row.label}</span>
+						<strong class="mc-value">{row.display}</strong>
 					</div>
-					<span class="br-value">{formatPercent(row.value, 0)}</span>
+					<div class="mc-chart">
+						<MetricSparkline values={row.series} color={row.color} label={row.label} />
+					</div>
 				</div>
 			{/each}
 		</div>
@@ -351,57 +410,77 @@
 		gap: clamp(5px, 0.4vw, 10px);
 		overflow: hidden;
 	}
-	.bar-rows {
+	.metric-cards {
 		display: grid;
-		gap: clamp(3px, 0.3vw, 7px);
-		grid-auto-rows: minmax(0, 1fr);
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: clamp(4px, 0.4vw, 8px);
 		flex: 1;
 		min-height: 0;
+		min-width: 0;
+	}
+	.metric-cards.has-gpu {
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+	}
+	.metric-card {
+		min-width: 0;
+		min-height: 0;
+		padding: clamp(5px, 0.45vw, 9px);
+		background: rgba(13, 17, 23, 0.55);
+		border: 1px solid rgba(148, 163, 184, 0.12);
+		border-radius: var(--radius-sm);
+		display: flex;
+		flex-direction: column;
+		justify-content: space-between;
+		gap: clamp(4px, 0.35vw, 7px);
 		overflow: hidden;
 	}
-	.bar-row {
-		display: grid;
-		grid-template-columns: 34px 1fr 50px;
-		align-items: center;
-		gap: 8px;
-		min-height: 0;
-		line-height: 1;
+	.metric-card[data-level='warn'] {
+		border-color: rgba(251, 191, 36, 0.3);
 	}
-	.br-label {
-		color: var(--text-muted);
+	.metric-card[data-level='warn'] .mc-value {
+		color: #fbbf24;
+	}
+	.metric-card[data-level='danger'] {
+		border-color: rgba(248, 113, 113, 0.35);
+	}
+	.metric-card[data-level='danger'] .mc-value {
+		color: #f87171;
+	}
+	.mc-head {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		gap: 4px;
+		min-width: 0;
+	}
+	.mc-label {
 		font-size: calc(var(--font-xs) - 1px);
 		font-weight: 800;
 		letter-spacing: 0.3px;
-		line-height: 1.1;
 	}
-	.br-track {
-		height: 8px;
-		border-radius: var(--radius-full);
-		background: rgba(100, 116, 139, 0.2);
-		overflow: hidden;
-	}
-	.br-fill {
-		display: block;
-		height: 100%;
-		border-radius: inherit;
-		transition: width 0.4s ease;
-		box-shadow: 0 0 6px currentColor;
-		opacity: 0.92;
-	}
-	.br-value {
+	.mc-value {
 		color: var(--text-primary);
-		font-size: var(--font-xs);
+		font-size: var(--font-sm);
 		font-weight: 800;
 		font-variant-numeric: tabular-nums;
-		text-align: right;
+		line-height: 1;
 		white-space: nowrap;
-		line-height: 1.1;
 	}
-	.bar-row[data-level='warn'] .br-value {
-		color: #fbbf24;
+	.mc-chart {
+		flex: 1;
+		min-height: 22px;
+		display: flex;
+		overflow: hidden;
 	}
-	.bar-row[data-level='danger'] .br-value {
-		color: #f87171;
+	.mc-chart :global(.spark-wrap) {
+		width: 100%;
+		height: 100%;
+	}
+	.mc-chart :global(svg.spark) {
+		width: 100%;
+		height: 100%;
+		max-width: none;
+		min-width: 0;
 	}
 	.compact-foot {
 		display: flex;
