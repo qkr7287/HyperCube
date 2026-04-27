@@ -462,6 +462,15 @@
 		flex: none;
 		overflow: visible;
 	}
+	@media (max-width: 1100px) {
+		.table-wrap {
+			overflow-x: auto;
+			overflow-y: visible;
+		}
+		table {
+			min-width: 720px;
+		}
+	}
 	table {
 		width: 100%;
 		table-layout: fixed;
