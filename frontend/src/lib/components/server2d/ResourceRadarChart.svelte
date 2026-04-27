@@ -39,13 +39,13 @@
 		const datasets: any[] = [
 			{
 				label: '현재',
-				data: axes.map((a) => Math.max(0, Math.min(100, a.value))),
-				backgroundColor: `${primaryColor}33`,
+				data: axes.map((a) => Math.max(0, a.value)),
+				backgroundColor: `${primaryColor}55`,
 				borderColor: primaryColor,
-				borderWidth: 2,
+				borderWidth: 2.4,
 				pointBackgroundColor: primaryColor,
 				pointBorderColor: 'rgba(15, 23, 42, 0.9)',
-				pointBorderWidth: 1.2,
+				pointBorderWidth: 1.4,
 				pointRadius: 3,
 				pointHoverRadius: 5,
 				fill: true,
@@ -54,7 +54,7 @@
 		if (hasReference) {
 			datasets.push({
 				label: '평균',
-				data: axes.map((a) => Math.max(0, Math.min(100, a.reference ?? 0))),
+				data: axes.map((a) => Math.max(0, a.reference ?? 0)),
 				backgroundColor: `${referenceColor}14`,
 				borderColor: `${referenceColor}88`,
 				borderWidth: 1,
@@ -74,12 +74,12 @@
 		for (const a of axes) {
 			peak = Math.max(peak, a.value || 0, a.reference || 0);
 		}
-		if (peak <= 0) return 10;
-		// 보기 좋은 ceiling: 5/10/20/30/50/75/100
-		const padded = peak * 1.3;
-		const stops = [5, 10, 20, 30, 50, 75, 100];
+		if (peak <= 0) return 1;
+		// peak에 padding을 거의 주지 않음 — 작은 값일수록 화면에 큼직하게
+		// 그려지도록 가장 가까운 다음 stop만 사용
+		const stops = [1, 2, 5, 10, 15, 20, 30, 50, 75, 100];
 		for (const s of stops) {
-			if (padded <= s) return s;
+			if (peak <= s) return s;
 		}
 		return 100;
 	}

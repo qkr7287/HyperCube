@@ -923,8 +923,6 @@
 					{@const radarAxes = [
 						{ label: 'CPU', value: cpuPct, reference: peakHistory.cpu.value },
 						{ label: '메모리', value: memPct, reference: peakHistory.memory.value },
-						{ label: '네트워크', value: Math.min(100, (netRate / networkMax) * 100), reference: Math.min(100, (peakHistory.network.value / networkMax) * 100) },
-						{ label: '디스크', value: Math.min(100, (diskRate / diskMax) * 100), reference: Math.min(100, (peakHistory.disk.value / diskMax) * 100) },
 						{ label: 'GPU', value: gpuPct, reference: peakHistory.gpu.value },
 					]}
 					{@const ports = inspect?.NetworkSettings?.Ports || {}}
@@ -1528,12 +1526,13 @@
 	}
 	.summary-list li {
 		display: grid;
-		grid-template-columns: 64px 1fr auto;
+		grid-template-columns: 56px minmax(0, 1fr) auto;
 		align-items: baseline;
-		gap: 6px;
-		padding: 4px 6px;
+		gap: 8px;
+		padding: 5px 8px;
 		border-radius: 5px;
 		background: rgba(13, 17, 23, 0.55);
+		min-width: 0;
 	}
 	.summary-key {
 		font-size: 10px;
@@ -1556,11 +1555,12 @@
 		color: #94a3b8;
 	}
 	.summary-when {
-		font-size: 9px;
+		font-size: 10px;
 		color: #64748b;
 		font-weight: 700;
 		text-align: right;
-		grid-column: 1 / -1;
+		white-space: nowrap;
+		font-variant-numeric: tabular-nums;
 	}
 	.summary-loading,
 	.summary-empty {
