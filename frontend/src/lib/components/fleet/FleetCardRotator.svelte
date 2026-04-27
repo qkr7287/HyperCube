@@ -25,7 +25,9 @@
 		{ value: 30000, label: '30초' },
 		{ value: 60000, label: '1분' },
 	];
-	const PAGE_SIZE = 10;
+	const PAGE_SIZE = 15;
+	const GRID_COLS = 5;
+	const GRID_ROWS = 3;
 
 	let rotateInterval = $state(10000);
 	let currentPage = $state(0);
@@ -40,70 +42,15 @@
 	let showDots = $derived(pagesCount <= 8);
 
 	let pages = $derived.by(() => {
-		const out: FleetAgentRow[][] = [];
+		const out: (FleetAgentRow | null)[][] = [];
 		for (let i = 0; i < pagesCount; i += 1) {
-			out.push(agents.slice(i * PAGE_SIZE, i * PAGE_SIZE + PAGE_SIZE));
+			const slice = agents.slice(i * PAGE_SIZE, i * PAGE_SIZE + PAGE_SIZE);
+			const padded: (FleetAgentRow | null)[] = [...slice];
+			while (padded.length < PAGE_SIZE) padded.push(null);
+			out.push(padded);
 		}
 		return out;
 	});
-
-	type Variant = 'full' | 'medium' | 'compact';
-	type GridLayout = {
-		cols: number;
-		rows: number;
-		firstSpans: boolean;
-		variants: Variant[];
-	};
-
-	function calcGrid(count: number): GridLayout {
-		// firstSpans 가 true 인 경우 첫 카드는 row 2개 차지 → 세로로 긴 공간 확보 →
-		// full variant 로 승격. 그래야 "2대일 때와 같은 느낌"으로 metrics + extra 섹션
-		// (컨테이너 분포 · 피크값 · 프로세스/네트워크/에이전트) 모두 노출.
-		if (count <= 0) return { cols: 1, rows: 1, firstSpans: false, variants: ['full'] };
-		if (count === 1) return { cols: 1, rows: 1, firstSpans: false, variants: ['full'] };
-		if (count === 2) return { cols: 2, rows: 1, firstSpans: false, variants: ['full', 'full'] };
-		if (count === 3) return { cols: 2, rows: 2, firstSpans: true, variants: ['full', 'medium', 'medium'] };
-		if (count === 4) return { cols: 2, rows: 2, firstSpans: false, variants: ['medium', 'medium', 'medium', 'medium'] };
-		if (count === 5) return {
-			cols: 3,
-			rows: 2,
-			firstSpans: true,
-			variants: ['full', 'medium', 'medium', 'medium', 'medium'],
-		};
-		if (count === 6) return {
-			cols: 3,
-			rows: 2,
-			firstSpans: false,
-			variants: Array(6).fill('compact') as Variant[],
-		};
-		// count 7, 9 는 cols=4/5 라 span 카드가 너무 좁아(~460/365px) full/medium
-		// 의 multi-col extras 가 쪼개져 글자·chip 이 깨짐. span 대신 전부 compact
-		// 균등 배치 — 빈 cell 1개는 감수.
-		if (count === 7) return {
-			cols: 4,
-			rows: 2,
-			firstSpans: false,
-			variants: Array(7).fill('compact') as Variant[],
-		};
-		if (count === 8) return {
-			cols: 4,
-			rows: 2,
-			firstSpans: false,
-			variants: Array(8).fill('compact') as Variant[],
-		};
-		if (count === 9) return {
-			cols: 5,
-			rows: 2,
-			firstSpans: false,
-			variants: Array(9).fill('compact') as Variant[],
-		};
-		return {
-			cols: 5,
-			rows: 2,
-			firstSpans: false,
-			variants: Array(count).fill('compact') as Variant[],
-		};
-	}
 
 	function clampPage(p: number): number {
 		if (p < 0) return pagesCount - 1;
@@ -180,23 +127,31 @@
 				style={`--pages-count: ${pagesCount}; width: ${pagesCount * 100}%; transform: translateX(-${pagesCount > 0 ? (100 / pagesCount) * safePage : 0}%);`}
 			>
 				{#each pages as pageAgents, pageIdx (pageIdx)}
-					{@const layout = calcGrid(pageAgents.length)}
 					<div class="page">
 						<div
 							class="grid"
-							class:first-span={layout.firstSpans}
-							style={`--cols: ${layout.cols}; --rows: ${layout.rows};`}
+							style={`--cols: ${GRID_COLS}; --rows: ${GRID_ROWS};`}
 						>
-							{#each pageAgents as agent, idx (agent.agent.id)}
-								<FleetAgentCard
-									{agent}
-									variant={layout.variants[idx] ?? 'compact'}
-									selected={selectedId === agent.agent.id}
-									{range}
-									{onSelect}
-									{onOpen2d}
-									{onOpen3d}
-								/>
+							{#each pageAgents as agent, idx (agent ? agent.agent.id : `empty-${pageIdx}-${idx}`)}
+								{#if agent}
+									<FleetAgentCard
+										{agent}
+										selected={selectedId === agent.agent.id}
+										{onSelect}
+										{onOpen2d}
+										{onOpen3d}
+									/>
+								{:else}
+									<div class="empty-slot" aria-label="빈 슬롯">
+										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+											<rect x="3" y="4" width="18" height="6" rx="1.5" />
+											<rect x="3" y="14" width="18" height="6" rx="1.5" />
+											<line x1="7" y1="7" x2="7.01" y2="7" />
+											<line x1="7" y1="17" x2="7.01" y2="17" />
+										</svg>
+										<span>서버 없음</span>
+									</div>
+								{/if}
 							{/each}
 						</div>
 					</div>
@@ -305,12 +260,30 @@
 	.grid {
 		height: 100%;
 		display: grid;
-		grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr));
-		grid-template-rows: repeat(var(--rows, 1), minmax(0, 1fr));
+		grid-template-columns: repeat(var(--cols, 5), minmax(0, 1fr));
+		grid-template-rows: repeat(var(--rows, 3), minmax(0, 1fr));
 		gap: clamp(8px, 0.6vw, 14px);
 	}
-	.grid.first-span > :global(:first-child) {
-		grid-row: span 2;
+	.empty-slot {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		min-height: 0;
+		min-width: 0;
+		border: 1px dashed rgba(148, 163, 184, 0.18);
+		border-radius: var(--radius-md);
+		background: rgba(13, 17, 23, 0.4);
+		color: var(--text-muted);
+		font-size: clamp(10px, 0.62vw, 11px);
+		font-weight: 700;
+		letter-spacing: 0.3px;
+	}
+	.empty-slot svg {
+		width: 22px;
+		height: 22px;
+		opacity: 0.35;
 	}
 	.empty {
 		flex: 1;
