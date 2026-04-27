@@ -203,12 +203,12 @@
 		<div class="head-top">
 			<div class="title">
 				<span>스택 현황</span>
-				<InfoTooltip text={`서버의 모든 Docker Compose 스택 목록입니다.\n\n• 통합 사용량(CPU+MEM+NET+GPU) 기준 정렬\n• 각 카드에 4개 자원 사용량 미니타일 표시\n• 클릭 = 해당 스택만 보는 Solo 모드\n• 하단 ▶︎ = 스택 포커스 애니메이션 (디폴트 OFF)`} placement="bottom-start" />
+				<InfoTooltip text={`서버의 모든 Docker Compose 스택 목록입니다.\n\n• 종합 사용량(CPU+MEM+NET+GPU) 기준 정렬\n• 각 카드에 4개 자원 사용량 미니타일 표시\n• 클릭 = 해당 스택만 보는 Solo 모드\n• 하단 ▶︎ = 스택 포커스 애니메이션 (디폴트 OFF)`} placement="bottom-start" />
 			</div>
 			<small>{stacks.length}개 · 실행 {runningAll}/{total}{#if problemAll > 0} · <b class="warn">문제 {problemAll}</b>{/if}</small>
 		</div>
 		<div class="head-tools">
-			<span class="sort-label">통합 사용량 정렬</span>
+			<span class="sort-label">종합 사용량 정렬</span>
 			<SortDirToggle value={sortDir} onChange={setSortDir} />
 		</div>
 	</div>

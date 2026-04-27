@@ -277,7 +277,7 @@
 				type="button"
 				class="sort-chip"
 				class:active={containerSort === 'total'}
-				title="종합 점수(CPU+MEM+NET%+GPU) 우선"
+				title="종합 사용량(CPU+MEM+NET%+GPU) 우선"
 				onclick={() => setContainerSort('total')}
 			>TOTAL</button>
 			<button
