@@ -1044,8 +1044,8 @@
 
 								<section class="summary-section activity">
 									<div class="summary-section-head">
-										<h4 class="summary-h4">{rangeLabel} 활동 분포</h4>
-										<InfoTooltip placement="bottom-end" text="CPU 사용률 기준으로 시간 비중을 분류해요. 한가(<1%) / 보통(1~10%) / 바쁨(≥10%). 한가 비율이 높으면 컨테이너가 대부분 idle, 바쁨 비율이 자주 보이면 워크로드가 활발해요." />
+										<h4 class="summary-h4">{rangeLabel} 활동 패턴</h4>
+										<InfoTooltip placement="bottom-end" text="컨테이너가 시간 동안 얼마나 일했는지 보여줘요.\n\n• 거의 쉬는 중 — CPU를 거의 안 쓰는 한가한 시간\n• 가벼운 작업 — 잠깐씩 작업이 들어오는 보통 시간\n• 활발히 작동 — 처리량이 많은 바쁜 시간\n\n쉬는 시간이 길면 idle, 활발히 작동이 자주 보이면 워크로드가 많이 들어왔다는 뜻이에요." />
 									</div>
 									<div class="dist-bar" aria-hidden="true">
 										<span class="dist-seg dist-idle" style={`flex: ${Math.max(0.001, metricsStats.idleRatio)}`}></span>
@@ -1053,9 +1053,9 @@
 										<span class="dist-seg dist-busy" style={`flex: ${Math.max(0.001, metricsStats.busyRatio)}`}></span>
 									</div>
 									<ul class="summary-list dist-list">
-										<li><span class="summary-key dist-key idle">한가 &lt;1%</span><span class="summary-val">{(metricsStats.idleRatio * 100).toFixed(1)}%</span><small class="summary-when">{formatDuration(metricsStats.idleSeconds)}</small></li>
-										<li><span class="summary-key dist-key normal">보통 1~10%</span><span class="summary-val">{(metricsStats.normalRatio * 100).toFixed(1)}%</span><small class="summary-when">{formatDuration(metricsStats.normalSeconds)}</small></li>
-										<li><span class="summary-key dist-key busy">바쁨 ≥10%</span><span class="summary-val">{(metricsStats.busyRatio * 100).toFixed(1)}%</span><small class="summary-when">{formatDuration(metricsStats.busySeconds)}</small></li>
+										<li><span class="summary-key dist-key idle">거의 쉬는 중</span><span class="summary-val">{(metricsStats.idleRatio * 100).toFixed(1)}%</span><small class="summary-when">{formatDuration(metricsStats.idleSeconds)}</small></li>
+										<li><span class="summary-key dist-key normal">가벼운 작업</span><span class="summary-val">{(metricsStats.normalRatio * 100).toFixed(1)}%</span><small class="summary-when">{formatDuration(metricsStats.normalSeconds)}</small></li>
+										<li><span class="summary-key dist-key busy">활발히 작동</span><span class="summary-val">{(metricsStats.busyRatio * 100).toFixed(1)}%</span><small class="summary-when">{formatDuration(metricsStats.busySeconds)}</small></li>
 									</ul>
 									<div class="summary-tail">
 										<span class="summary-meta">샘플 {peakHistory.samples}개 · 약 {formatDuration(stableSec)}</span>
@@ -1418,8 +1418,8 @@
 
 	.metrics-layout {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-		gap: 12px;
+		grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+		gap: 14px;
 		min-width: 0;
 		flex: 1 1 auto;
 		align-items: stretch;
