@@ -289,19 +289,29 @@
 	 * - Non-percent series (counts / bytes) let Chart.js auto-pick.
 	 */
 	function computeYBounds(values: number[], u: Unit): { min?: number; max?: number } {
-		if (u !== 'percent') return {};
 		const nums = values.filter((v) => typeof v === 'number' && !Number.isNaN(v));
-		if (nums.length === 0) return { min: 0, max: 10 };
-		let dmin = Math.min(...nums);
-		let dmax = Math.max(...nums);
-		// Padding: ±10 percentage points, rounded to the nearest 10.
-		const pad = 10;
-		let lo = Math.max(0, Math.floor((dmin - pad) / 10) * 10);
-		let hi = Math.min(100, Math.ceil((dmax + pad) / 10) * 10);
-		// Always show at least a 20-point window so tiny variation stays legible.
-		if (hi - lo < 20) hi = Math.min(100, lo + 20);
-		if (hi - lo < 20) lo = Math.max(0, hi - 20);
-		return { min: lo, max: hi };
+		if (u === 'percent') {
+			if (nums.length === 0) return { min: 0, max: 10 };
+			const dmin = Math.min(...nums);
+			const dmax = Math.max(...nums);
+			const pad = 10;
+			let lo = Math.max(0, Math.floor((dmin - pad) / 10) * 10);
+			let hi = Math.min(100, Math.ceil((dmax + pad) / 10) * 10);
+			if (hi - lo < 20) hi = Math.min(100, lo + 20);
+			if (hi - lo < 20) lo = Math.max(0, hi - 20);
+			return { min: lo, max: hi };
+		}
+		if (u === 'rate' || u === 'bytes') {
+			if (nums.length === 0) return { min: 0, max: 1024 };
+			const dmax = Math.max(...nums);
+			if (dmax <= 0) return { min: 0, max: 1024 };
+			// 다음 1024^n 단위 ceiling: 1KB → 1MB → 1GB
+			const padded = dmax * 1.25;
+			const pow = Math.pow(1024, Math.floor(Math.log(padded) / Math.log(1024)));
+			const ceiled = Math.ceil(padded / pow) * pow;
+			return { min: 0, max: ceiled };
+		}
+		return {};
 	}
 
 	function formatBytes(bytes: number): string {

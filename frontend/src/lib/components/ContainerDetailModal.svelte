@@ -1468,15 +1468,25 @@
 		flex-direction: column;
 		gap: 10px;
 		min-width: 0;
+		min-height: 0;
 	}
 	.metrics-summary > .summary-section {
-		flex: 0 0 auto;
+		flex: 1 1 0;
 		min-height: 0;
 		display: flex;
 		flex-direction: column;
+		overflow: hidden;
 	}
 	.metrics-summary .summary-list {
-		flex: 0 0 auto;
+		flex: 1 1 auto;
+		display: flex;
+		flex-direction: column;
+		justify-content: space-between;
+		gap: 4px;
+	}
+	.metrics-summary .summary-list li {
+		padding-top: 4px;
+		padding-bottom: 4px;
 	}
 	.summary-section {
 		background: #121720;
@@ -1562,6 +1572,10 @@
 		align-items: flex-end;
 		gap: 5px;
 		margin-top: 8px;
+		flex: 0 0 auto;
+	}
+	.metrics-summary .summary-list.dist-list {
+		flex: 0 0 auto;
 	}
 	.summary-pill {
 		display: inline-flex;
