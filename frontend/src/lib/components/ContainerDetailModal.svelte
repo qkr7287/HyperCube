@@ -1185,7 +1185,7 @@
 
 	/* Metrics tab gets the full real estate so the two charts side-by-side
 	   still have room for the range tab row + Y-axis labels. */
-	.modal-metrics { width: min(1180px, 90vw); }
+	.modal-metrics { width: min(1040px, 88vw); }
 	.modal-logs { width: min(1200px, 94vw); }
 
 	/* Header */
@@ -1525,13 +1525,17 @@
 	}
 	.summary-list li {
 		display: grid;
-		grid-template-columns: 56px minmax(0, 1fr) auto;
+		grid-template-columns: 48px auto auto;
+		justify-content: start;
 		align-items: baseline;
-		gap: 8px;
+		gap: 6px;
 		padding: 3px 8px;
 		border-radius: 5px;
 		background: rgba(13, 17, 23, 0.55);
 		min-width: 0;
+	}
+	.summary-list li .summary-when {
+		margin-left: 4px;
 	}
 	.summary-key {
 		font-size: 10px;
@@ -1618,7 +1622,8 @@
 	.dist-seg.dist-normal { background: rgba(48, 213, 200, 0.7); }
 	.dist-seg.dist-busy { background: rgba(251, 113, 133, 0.85); }
 	.dist-list li {
-		grid-template-columns: 92px minmax(0, 1fr) auto;
+		grid-template-columns: 92px auto auto;
+		justify-content: start;
 	}
 	.dist-list .dist-key {
 		text-transform: none;
