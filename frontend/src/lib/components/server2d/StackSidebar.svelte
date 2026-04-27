@@ -18,7 +18,7 @@
 
 	let {
 		stacks = [] as StackItem[],
-		focusIntervalMs = 2400,
+		focusIntervalMs = 27000,
 	}: {
 		stacks?: StackItem[];
 		focusIntervalMs?: number;
@@ -142,6 +142,16 @@
 	$effect(() => {
 		if (!focusRunning || !focusedName) return;
 		const idx = sorted.findIndex((s) => s.name === focusedName);
+		const el = itemEls[idx];
+		if (el && typeof el.scrollIntoView === 'function') {
+			el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+		}
+	});
+
+	$effect(() => {
+		if (!soloed) return;
+		const idx = sorted.findIndex((s) => s.name === soloed);
+		if (idx < 0) return;
 		const el = itemEls[idx];
 		if (el && typeof el.scrollIntoView === 'function') {
 			el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -357,14 +367,10 @@
 		transform: translateY(-1px);
 	}
 
-	.item.active {
-		border-color: var(--stack-color);
-		background: color-mix(in srgb, var(--stack-color) 15%, rgba(15, 23, 42, 0.65));
-		box-shadow: 0 0 0 1px var(--stack-color) inset, 0 0 12px color-mix(in srgb, var(--stack-color) 45%, transparent);
-	}
-
+	.item.active,
 	.item.focused {
 		border-color: var(--stack-color);
+		background: color-mix(in srgb, var(--stack-color) 15%, rgba(15, 23, 42, 0.65));
 		transform: translateY(-1px) scale(1.01);
 		box-shadow:
 			0 0 0 1px var(--stack-color) inset,
@@ -530,10 +536,10 @@
 		gap: 5px;
 		height: 22px;
 		padding: 0 9px 0 8px;
-		border: 1px solid rgba(52, 211, 153, 0.5);
+		border: 1px solid rgba(248, 113, 113, 0.5);
 		border-radius: 999px;
-		background: rgba(52, 211, 153, 0.16);
-		color: #34d399;
+		background: rgba(248, 113, 113, 0.16);
+		color: #f87171;
 		cursor: pointer;
 		flex: 0 0 auto;
 		font-size: 10px;
@@ -543,17 +549,24 @@
 	}
 
 	.focus-btn:hover {
-		background: rgba(52, 211, 153, 0.26);
+		background: rgba(248, 113, 113, 0.26);
 	}
 
 	.focus-btn.paused {
-		background: rgba(248, 113, 113, 0.16);
-		border-color: rgba(248, 113, 113, 0.5);
-		color: #f87171;
+		background: rgba(52, 211, 153, 0.2);
+		border-color: rgba(52, 211, 153, 0.6);
+		color: #34d399;
+		box-shadow: 0 0 12px rgba(52, 211, 153, 0.35);
+		animation: focus-btn-paused-glow 1.6s ease-in-out infinite;
 	}
 
 	.focus-btn.paused:hover {
-		background: rgba(248, 113, 113, 0.26);
+		background: rgba(52, 211, 153, 0.3);
+	}
+
+	@keyframes focus-btn-paused-glow {
+		0%, 100% { box-shadow: 0 0 12px rgba(52, 211, 153, 0.3); }
+		50% { box-shadow: 0 0 18px rgba(52, 211, 153, 0.55); }
 	}
 
 	.focus-btn span {
