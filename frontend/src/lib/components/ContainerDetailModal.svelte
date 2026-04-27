@@ -53,10 +53,7 @@
 	// Logs data - raw string array like old project
 	let logs: string[] = $state([]);
 	let logSearchQuery = $state('');
-	let autoScroll = $state(true);
-	let autoRefreshLogs = $state(false);
 	let logContainer: HTMLDivElement | undefined = $state(undefined);
-	let logsInterval: ReturnType<typeof setInterval> | null = null;
 
 	// Env vars expand
 	let envExpanded = $state(false);
@@ -263,9 +260,6 @@
 			console.error('[ContainerDetailModal] get_logs failed:', e);
 			logs = ['로그를 불러오는 중 오류가 발생했습니다: ' + (e?.message || '')];
 		}
-		if (autoScroll && logContainer) {
-			setTimeout(() => { if (logContainer) logContainer.scrollTop = logContainer.scrollHeight; }, 50);
-		}
 	}
 
 	function parseLogLine(line: string): { timestamp: string; level: string; message: string } {
@@ -311,16 +305,6 @@
 			console.error('[ContainerDetailModal] control failed:', e);
 		} finally {
 			controlLoading = '';
-		}
-	}
-
-	function toggleAutoRefreshLogs() {
-		autoRefreshLogs = !autoRefreshLogs;
-		if (autoRefreshLogs) {
-			logsInterval = setInterval(fetchLogs, 3000);
-		} else if (logsInterval) {
-			clearInterval(logsInterval);
-			logsInterval = null;
 		}
 	}
 
@@ -394,11 +378,6 @@
 				containerStatus = current.status;
 
 				loadData();
-
-				if (logsInterval) clearInterval(logsInterval);
-			} else {
-				if (logsInterval) clearInterval(logsInterval);
-				logsInterval = null;
 			}
 		});
 	});
@@ -431,7 +410,6 @@
 	});
 
 	onDestroy(() => {
-		if (logsInterval) clearInterval(logsInterval);
 		if (unsubMetrics) { unsubMetrics(); unsubMetrics = null; }
 		destroyCharts();
 		document.removeEventListener('keydown', handleKeydown);
@@ -476,33 +454,34 @@
 						<div class="section-title">
 							<div class="section-dot"></div>
 							<span>기본정보</span>
+							<InfoTooltip placement="bottom-start" text="컨테이너의 신원(어떤 이미지로 언제 만들어졌는지)을 한눈에 보는 영역이에요." />
 						</div>
 						<div class="info-card">
 							<div class="info-grid">
 								<div class="info-item">
-									<span class="info-label">이름</span>
+									<span class="info-label">이름 <InfoTooltip placement="top-start" text="Docker가 이 컨테이너에 붙인 사람이 읽기 쉬운 이름이에요. 보통 docker-compose가 '프로젝트-서비스-번호' 형식으로 자동 생성해요." /></span>
 									<span class="info-value">{containerName}</span>
 								</div>
 								<div class="info-item">
-									<span class="info-label">상태</span>
+									<span class="info-label">상태 <InfoTooltip placement="top-start" text="컨테이너의 현재 실행 상태예요.\n• 실행 중: 정상 동작\n• 일시정지: 프로세스 멈춤(메모리는 유지)\n• 중지: 종료됨\n• 장애: 비정상 종료\n• 재시작: 자동 재시작 중" /></span>
 									<span class="info-value status" class:running={containerState === 'running'} class:stopped={containerState === 'exited' || containerState === 'dead'} class:paused={containerState === 'paused'}>
 										{containerState === 'running' ? '실행 중' : containerState === 'paused' ? '일시정지' : containerState === 'exited' ? '중지' : containerState === 'dead' ? '장애' : containerState === 'restarting' ? '재시작' : containerState || '-'}
 									</span>
 								</div>
 								<div class="info-item full">
-									<span class="info-label">ID</span>
+									<span class="info-label">ID <InfoTooltip placement="top-start" text="Docker가 컨테이너를 구별하는 64자리 고유 식별자예요. 같은 이미지로 여러 컨테이너를 띄워도 ID는 모두 달라요. docker logs/exec 같은 명령에 쓸 수 있어요." /></span>
 									<span class="info-value mono">{details?.inspect?.Id || container.id}</span>
 								</div>
 								<div class="info-item">
-									<span class="info-label">이미지</span>
+									<span class="info-label">이미지 <InfoTooltip placement="top-start" text="이 컨테이너를 만든 Docker 이미지(이름:태그)예요. 이미지 = 같은 실행 환경을 어디서나 똑같이 재현할 수 있는 청사진." /></span>
 									<span class="info-value">{container.image}</span>
 								</div>
 								<div class="info-item">
-									<span class="info-label">생성일</span>
+									<span class="info-label">생성일 <InfoTooltip placement="top-start" text="컨테이너를 docker run / docker-compose up 으로 처음 만든 시각이에요. 재시작해도 이 값은 바뀌지 않아요." /></span>
 									<span class="info-value">{details?.inspect?.Created ? new Date(details?.inspect?.Created).toLocaleString('ko-KR') : '-'}</span>
 								</div>
 								<div class="info-item">
-									<span class="info-label">시작 시각</span>
+									<span class="info-label">시작 시각 <InfoTooltip placement="top-start" text="컨테이너가 마지막으로 시작된 시각이에요. 재시작하면 갱신되며, 현재 시각과의 차이가 가동 시간(uptime)이에요." /></span>
 									<span class="info-value">{details?.inspect?.State?.StartedAt ? new Date(details?.inspect?.State?.StartedAt).toLocaleString('ko-KR') : '-'}</span>
 								</div>
 							</div>
@@ -514,20 +493,21 @@
 							<div class="section-title">
 								<div class="section-dot"></div>
 								<span>설정</span>
+								<InfoTooltip placement="bottom-start" text="컨테이너가 시작될 때 사용한 실행 설정이에요. Dockerfile이나 docker-compose.yml에 적힌 값이 그대로 들어와요." />
 							</div>
 							<div class="settings-grid">
 								<div class="info-card compact">
-									<span class="info-label">명령어</span>
+									<span class="info-label">명령어 <InfoTooltip placement="top-start" text="컨테이너가 시작될 때 실행한 첫 명령(ENTRYPOINT + CMD). 보통 서비스의 메인 프로세스예요. 예: python app.py, nginx -g 'daemon off;'" /></span>
 									<span class="info-value">{inspectConfig?.Cmd?.join(' ') || '-'}</span>
 								</div>
 								<div class="info-card compact">
-									<span class="info-label">작업 디렉토리</span>
+									<span class="info-label">작업 디렉토리 <InfoTooltip placement="top-start" text="위 명령어가 실행되는 컨테이너 내부 폴더 경로예요. 컨테이너 안의 'pwd(현재 위치)'와 같아요." /></span>
 									<span class="info-value">{inspectConfig?.WorkingDir || '-'}</span>
 								</div>
 							</div>
 							<div class="info-card">
 								<div class="env-header">
-									<span class="info-label">환경 변수</span>
+									<span class="info-label">환경 변수 <InfoTooltip placement="top-start" text="컨테이너에 주입된 KEY=VALUE 형태의 설정값들이에요. DB 접속 정보·API 키·비밀번호 같은 환경별 설정을 코드 수정 없이 전달할 때 써요." /></span>
 									{#if envVars.length > 3}
 										<button class="env-toggle" onclick={() => envExpanded = !envExpanded}>
 											{envExpanded ? '접기' : `전체 보기 (${envVars.length})`}
@@ -552,18 +532,19 @@
 							<div class="section-title">
 								<div class="section-dot"></div>
 								<span>리소스 사용량</span>
+								<InfoTooltip placement="bottom-start" text="지금 이 순간 컨테이너가 쓰고 있는 자원 한 컷이에요. 시간에 따른 추이는 위 '메트릭' 탭에서 그래프로 볼 수 있어요." />
 							</div>
 							<div class="resource-grid">
 								<div class="resource-card">
-									<span class="info-label">CPU 사용률</span>
+									<span class="info-label">CPU 사용률 <InfoTooltip placement="top-start" text="컨테이너가 호스트 CPU를 얼마나 쓰는지 (%). 100% = 한 코어를 가득 사용. 다중 코어를 동시에 쓰면 100%를 넘을 수도 있어요." /></span>
 									<span class="resource-value">{metricsData?.cpu?.usage?.toFixed(2) || '0.00'}%</span>
 								</div>
 								<div class="resource-card">
-									<span class="info-label">메모리 사용량</span>
+									<span class="info-label">메모리 사용량 <InfoTooltip placement="top-start" text="컨테이너가 실제로 점유 중인 메모리(RAM)예요. 컨테이너에 설정된 메모리 한도에 가까워지면 OOM(메모리 부족 종료) 위험이 생겨요." /></span>
 									<span class="resource-value">{metricsData?.memory ? formatMemoryMB(metricsData.memory.usage) : (inspectStats?.memory_stats ? formatBytes(inspectStats.memory_stats.usage) : '-')} <small class="resource-unit">{metricsData?.memory ? 'MB' : ''}</small></span>
 								</div>
 								<div class="resource-card">
-									<span class="info-label">네트워크 (RX/TX)</span>
+									<span class="info-label">네트워크 (RX/TX) <InfoTooltip placement="top-start" text="컨테이너가 시작된 이후 누적된 트래픽이에요.\n• RX(Receive): 받은 데이터\n• TX(Transmit): 보낸 데이터\n실시간 속도가 아니라 누적 합계입니다." /></span>
 									<span class="resource-value plain">{metricsData?.network ? formatBytes(metricsData.network.rx) + ' / ' + formatBytes(metricsData.network.tx) : '-'}</span>
 								</div>
 							</div>
@@ -686,19 +667,7 @@
 						<input type="text" placeholder="로그 검색..." bind:value={logSearchQuery} />
 					</div>
 					<div class="logs-controls">
-						<label class="auto-scroll-toggle">
-							<span>자동 새로고침</span>
-							<div class="switch" class:on={autoRefreshLogs} onclick={toggleAutoRefreshLogs}>
-								<div class="switch-thumb"></div>
-							</div>
-						</label>
-						<label class="auto-scroll-toggle">
-							<span>자동 스크롤</span>
-							<div class="switch" class:on={autoScroll} onclick={() => autoScroll = !autoScroll}>
-								<div class="switch-thumb"></div>
-							</div>
-						</label>
-						<button class="download-btn" onclick={downloadLogs}>
+						<button class="download-btn" onclick={downloadLogs} title="현재 표시된 로그를 .txt 파일로 저장합니다.">
 							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 								<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
 							</svg>
@@ -742,32 +711,32 @@
 		<!-- Footer -->
 		<div class="modal-footer">
 			{#if containerState === 'running'}
-				<button class="action-btn danger" onclick={() => handleControl('stop')} disabled={!!controlLoading}>
+				<button class="action-btn danger" onclick={() => handleControl('stop')} disabled={!!controlLoading} title="컨테이너 프로세스를 정상 종료(SIGTERM)합니다. 데이터는 유지되고 다시 '시작'으로 켤 수 있어요.">
 					{controlLoading === 'stop' ? '처리 중...' : '중지'}
 				</button>
 				<div class="action-right">
-					<button class="action-btn secondary" onclick={() => handleControl('restart')} disabled={!!controlLoading}>
+					<button class="action-btn secondary" onclick={() => handleControl('restart')} disabled={!!controlLoading} title="중지 후 즉시 다시 시작합니다. 설정 파일을 다시 읽거나 메모리 누수를 초기화할 때 써요.">
 						{controlLoading === 'restart' ? '처리 중...' : '재시작'}
 					</button>
-					<button class="action-btn secondary" onclick={() => handleControl('pause')} disabled={!!controlLoading}>
+					<button class="action-btn secondary" onclick={() => handleControl('pause')} disabled={!!controlLoading} title="컨테이너의 모든 프로세스를 동결(freeze)합니다. CPU 사용은 멈추지만 메모리는 유지돼요. '재개'로 즉시 복귀.">
 						{controlLoading === 'pause' ? '처리 중...' : '일시정지'}
 					</button>
 				</div>
 			{:else if containerState === 'paused'}
-				<button class="action-btn danger" onclick={() => handleControl('stop')} disabled={!!controlLoading}>
+				<button class="action-btn danger" onclick={() => handleControl('stop')} disabled={!!controlLoading} title="일시정지 상태에서 컨테이너를 정상 종료합니다.">
 					{controlLoading === 'stop' ? '처리 중...' : '중지'}
 				</button>
 				<div class="action-right">
-					<button class="action-btn accent" onclick={() => handleControl('unpause')} disabled={!!controlLoading}>
+					<button class="action-btn accent" onclick={() => handleControl('unpause')} disabled={!!controlLoading} title="일시정지 상태에서 프로세스를 다시 깨워 실행 중으로 되돌립니다.">
 						{controlLoading === 'unpause' ? '처리 중...' : '재개'}
 					</button>
 				</div>
 			{:else}
-				<button class="action-btn accent" onclick={() => handleControl('start')} disabled={!!controlLoading}>
+				<button class="action-btn accent" onclick={() => handleControl('start')} disabled={!!controlLoading} title="중지된 컨테이너를 다시 시작합니다. 동일한 설정과 데이터로 부팅돼요.">
 					{controlLoading === 'start' ? '처리 중...' : '시작'}
 				</button>
 				<div class="action-right">
-					<button class="action-btn secondary" onclick={() => handleControl('restart')} disabled={!!controlLoading}>
+					<button class="action-btn secondary" onclick={() => handleControl('restart')} disabled={!!controlLoading} title="현재 상태와 무관하게 컨테이너를 재시작합니다.">
 						{controlLoading === 'restart' ? '처리 중...' : '재시작'}
 					</button>
 				</div>
