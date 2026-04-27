@@ -52,14 +52,13 @@
 	let memoryHistory: number[] = $state([]);
 
 	// 성능 지표 탭 — 모달 전체 조회 단위
-	type MetricsRange = '1m' | '10m' | '1h' | '6h' | '24h' | '7d';
+	type MetricsRange = '1m' | '5m' | '1h' | '24h' | '7d';
 	const METRICS_RANGE_OPTIONS: { key: MetricsRange; label: string }[] = [
-		{ key: '1m', label: '1분' },
-		{ key: '10m', label: '10분' },
-		{ key: '1h', label: '1시간' },
-		{ key: '6h', label: '6시간' },
-		{ key: '24h', label: '24시간' },
-		{ key: '7d', label: '7일' },
+		{ key: '1m', label: '1m' },
+		{ key: '5m', label: '5m' },
+		{ key: '1h', label: '1h' },
+		{ key: '24h', label: '24h' },
+		{ key: '7d', label: '7d' },
 	];
 	let metricsRange = $state<MetricsRange>('1h');
 	let peakHistory = $state<{
@@ -357,6 +356,27 @@
 
 	function formatMemoryMB(bytes: number): string {
 		return (bytes / 1048576).toFixed(1);
+	}
+
+	function diagnoseActivity(stats: { idleRatio: number; normalRatio: number; busyRatio: number; cpu: { avg: number } }): { tone: 'idle' | 'normal' | 'busy' | 'mixed'; text: string } {
+		const { idleRatio, normalRatio, busyRatio } = stats;
+		const cpuAvg = stats.cpu.avg;
+		if (busyRatio >= 0.3) {
+			return { tone: 'busy', text: `활발한 작업이 꽤 자주 일어났어요. 평균 CPU ${cpuAvg.toFixed(1)}%로 부하가 있는 워크로드입니다.` };
+		}
+		if (idleRatio >= 0.9) {
+			return { tone: 'idle', text: '대부분의 시간을 쉬고 있어요. 안정적인 idle 워크로드입니다.' };
+		}
+		if (busyRatio >= 0.1) {
+			return { tone: 'busy', text: `간헐적으로 활발한 작업이 있었어요. 평균 CPU ${cpuAvg.toFixed(1)}%.` };
+		}
+		if (normalRatio >= 0.5) {
+			return { tone: 'normal', text: `꾸준한 가벼운 작업이 들어왔어요. 평균 CPU ${cpuAvg.toFixed(1)}%.` };
+		}
+		if (idleRatio >= 0.5) {
+			return { tone: 'idle', text: `대체로 한가했어요. 가끔 가벼운 작업만 있었습니다 (평균 CPU ${cpuAvg.toFixed(2)}%).` };
+		}
+		return { tone: 'mixed', text: `한가한 시간과 가벼운 작업이 섞인 패턴이에요. 평균 CPU ${cpuAvg.toFixed(2)}%.` };
 	}
 
 	function formatDuration(s: number): string {
@@ -1056,11 +1076,16 @@
 										<li><span class="summary-key dist-key normal">가벼운 작업</span><span class="summary-val">{(metricsStats.normalRatio * 100).toFixed(1)}%</span><small class="summary-when">{formatDuration(metricsStats.normalSeconds)}</small></li>
 										<li><span class="summary-key dist-key busy">활발히 작동</span><span class="summary-val">{(metricsStats.busyRatio * 100).toFixed(1)}%</span><small class="summary-when">{formatDuration(metricsStats.busySeconds)}</small></li>
 									</ul>
+									{@const diagnosis = diagnoseActivity(metricsStats)}
+									<div class="summary-diagnosis">
+										<span class="diag-icon" data-tone={diagnosis.tone}>●</span>
+										<span class="diag-text">{diagnosis.text}</span>
+									</div>
 									{#if memSwing > 5}
 										<div class="summary-tail">
 											<span class="summary-pill warn">메모리 변동 폭 {memSwing.toFixed(1)}% — 누수 의심</span>
 										</div>
-									{:else if memSwing > 0}
+									{:else if memSwing > 0.5}
 										<div class="summary-tail">
 											<span class="summary-pill">메모리 변동 폭 {memSwing.toFixed(1)}%</span>
 										</div>
@@ -1625,6 +1650,36 @@
 	.dist-seg.dist-busy { background: rgba(251, 113, 133, 0.85); }
 	.dist-list li {
 		grid-template-columns: 92px minmax(0, 1fr) auto;
+	}
+	.summary-diagnosis {
+		display: flex;
+		align-items: flex-start;
+		gap: 6px;
+		margin-top: 10px;
+		padding: 8px 10px;
+		border-radius: 6px;
+		background: rgba(13, 17, 23, 0.7);
+		border-left: 3px solid rgba(100, 116, 139, 0.4);
+	}
+	.diag-icon {
+		font-size: 8px;
+		line-height: 1.4;
+		color: var(--text-muted);
+		flex: 0 0 auto;
+	}
+	.diag-icon[data-tone='idle'] { color: #94a3b8; }
+	.diag-icon[data-tone='normal'] { color: #30d5c8; }
+	.diag-icon[data-tone='busy'] { color: #fb7185; }
+	.diag-icon[data-tone='mixed'] { color: #fbbf24; }
+	.summary-diagnosis:has(.diag-icon[data-tone='busy']) { border-left-color: rgba(251, 113, 133, 0.6); background: rgba(251, 113, 133, 0.06); }
+	.summary-diagnosis:has(.diag-icon[data-tone='normal']) { border-left-color: rgba(48, 213, 200, 0.55); background: rgba(48, 213, 200, 0.05); }
+	.summary-diagnosis:has(.diag-icon[data-tone='idle']) { border-left-color: rgba(148, 163, 184, 0.4); }
+	.summary-diagnosis:has(.diag-icon[data-tone='mixed']) { border-left-color: rgba(251, 191, 36, 0.55); background: rgba(251, 191, 36, 0.05); }
+	.diag-text {
+		font-size: 11px;
+		line-height: 1.5;
+		color: var(--text-secondary);
+		font-weight: 600;
 	}
 	.dist-list .dist-key {
 		text-transform: none;
