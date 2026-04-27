@@ -54,7 +54,7 @@
 		onSelectContainer?: (container: any) => void;
 	} = $props();
 
-	const METRIC_TICK_MS = 80;
+	const METRIC_TICK_MS = 50;
 	const ROTATION_CYCLE: Server2dContainerSort[] = ['total', 'cpu', 'memory', 'network', 'gpu'];
 
 	const soloed = $derived(view.soloStack);
@@ -64,6 +64,7 @@
 	const containerSortDir = $derived(view.containerSortDir);
 	let scrollContainer = $state<HTMLDivElement | null>(null);
 	let metricProgress = $state(0);
+	let metricStartedAt = $state(Date.now());
 	let metricTimer: ReturnType<typeof setInterval> | null = null;
 
 	const metricAutoPaused = $derived(view.containersPaused);
@@ -83,26 +84,28 @@
 	function advanceMetric() {
 		view.containerSort = nextMetric(view.containerSort, hasGpuData);
 		metricProgress = 0;
+		metricStartedAt = Date.now();
 		scrollToTop();
 	}
 
 	function metricTick() {
 		if (!metricRotating) return;
-		const steps = Math.max(1, Math.floor(metricRotateMs / METRIC_TICK_MS));
-		const next = metricProgress + 100 / steps;
-		if (next >= 100) advanceMetric();
-		else metricProgress = next;
+		const elapsed = Date.now() - metricStartedAt;
+		if (elapsed >= metricRotateMs) advanceMetric();
+		else metricProgress = (elapsed / metricRotateMs) * 100;
 	}
 
 	function togglePause() {
 		view.containersPaused = !view.containersPaused;
 		metricProgress = 0;
+		metricStartedAt = Date.now();
 	}
 
 	function setContainerSort(next: Server2dContainerSort) {
 		view.containerSort = view.containerSort === next ? 'total' : next;
 		view.containersPaused = true;
 		metricProgress = 0;
+		metricStartedAt = Date.now();
 		scrollToTop();
 	}
 
@@ -110,6 +113,7 @@
 		view.containerSortDir = next;
 		view.containersPaused = true;
 		metricProgress = 0;
+		metricStartedAt = Date.now();
 		scrollToTop();
 	}
 
@@ -744,7 +748,7 @@
 		height: 100%;
 		background: linear-gradient(90deg, #30d5c8, #60a5fa);
 		width: 0%;
-		transition: width 80ms linear;
+		transition: width 100ms linear;
 	}
 
 	.scroll-progress.idle i {

@@ -24,7 +24,7 @@
 		focusIntervalMs?: number;
 	} = $props();
 
-	const FOCUS_TICK = 80;
+	const FOCUS_TICK = 50;
 
 	const soloed = $derived(view.soloStack);
 	const sortDir = $derived(view.stackSortDir);
@@ -32,6 +32,7 @@
 
 	let focusIndex = $state(0);
 	let focusProgress = $state(0);
+	let focusStartedAt = $state(Date.now());
 	let focusOwnedSolo = $state(false);
 	let focusTimer: ReturnType<typeof setInterval> | null = null;
 	let listEl: HTMLDivElement | null = null;
@@ -47,6 +48,7 @@
 		const wasPaused = view.stackFocusPaused;
 		view.stackFocusPaused = !wasPaused;
 		focusProgress = 0;
+		focusStartedAt = Date.now();
 		if (wasPaused) {
 			const target = sorted[focusIndex]?.name ?? null;
 			if (target) {
@@ -124,6 +126,7 @@
 		}
 		focusIndex = (focusIndex + 1) % sorted.length;
 		focusProgress = 0;
+		focusStartedAt = Date.now();
 		const next = sorted[focusIndex]?.name ?? null;
 		if (next) {
 			focusOwnedSolo = true;
@@ -133,10 +136,9 @@
 
 	function focusTick() {
 		if (!focusRunning) return;
-		const steps = Math.max(1, Math.floor(focusIntervalMs / FOCUS_TICK));
-		const next = focusProgress + 100 / steps;
-		if (next >= 100) advanceFocus();
-		else focusProgress = next;
+		const elapsed = Date.now() - focusStartedAt;
+		if (elapsed >= focusIntervalMs) advanceFocus();
+		else focusProgress = (elapsed / focusIntervalMs) * 100;
 	}
 
 	$effect(() => {
@@ -149,7 +151,10 @@
 	});
 
 	$effect(() => {
-		if (!focusRunning) focusProgress = 0;
+		if (!focusRunning) {
+			focusProgress = 0;
+			focusStartedAt = Date.now();
+		}
 	});
 
 	$effect(() => {
@@ -183,6 +188,7 @@
 		focusOwnedSolo = false;
 		if (!view.stackFocusPaused) view.stackFocusPaused = true;
 		focusProgress = 0;
+		focusStartedAt = Date.now();
 		if (current) {
 			const idx = sorted.findIndex((s) => s.name === current);
 			if (idx >= 0) focusIndex = idx;
@@ -611,7 +617,7 @@
 		height: 100%;
 		background: linear-gradient(90deg, #30d5c8, #60a5fa);
 		width: 0%;
-		transition: width 80ms linear;
+		transition: width 100ms linear;
 	}
 
 	.focus-progress.idle i {
