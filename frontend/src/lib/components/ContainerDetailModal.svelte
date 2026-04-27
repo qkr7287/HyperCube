@@ -894,8 +894,13 @@
 				{:else}
 					{@const cpuPct = Number(metricsData?.cpu?.usage ?? 0)}
 					{@const memPct = Number(metricsData?.memory?.percent ?? 0)}
-					{@const netRate = Number(metricsData?.network?.rx_rate ?? 0) + Number(metricsData?.network?.tx_rate ?? 0)}
-					{@const diskRate = Number(metricsData?.disk?.read_rate ?? 0) + Number(metricsData?.disk?.write_rate ?? 0)}
+					{@const lastRow = historyRows.length > 0 ? historyRows[historyRows.length - 1] : null}
+					{@const netRate = Number(metricsData?.network?.rx_rate ?? metricsData?.network?.rx_rate_bps ?? 0)
+						+ Number(metricsData?.network?.tx_rate ?? metricsData?.network?.tx_rate_bps ?? 0)
+						|| (lastRow?.netRate ?? 0)}
+					{@const diskRate = Number(metricsData?.disk?.read_rate ?? metricsData?.disk?.read_rate_bps ?? 0)
+						+ Number(metricsData?.disk?.write_rate ?? metricsData?.disk?.write_rate_bps ?? 0)
+						|| (lastRow?.diskRate ?? 0)}
 					{@const gpuList = Array.isArray(metricsData?.gpu) ? metricsData.gpu : (metricsData?.gpu ? [metricsData.gpu] : [])}
 					{@const gpuPct = gpuList.length > 0 ? Number(gpuList[0]?.usage ?? 0) : 0}
 					{@const hasGpu = gpuList.length > 0}
@@ -949,7 +954,7 @@
 										<span class="metric-stack-label">네트워크 처리량
 											<InfoTooltip placement="top-start" text="현재 초당 네트워크 처리량(RX+TX, B/s)이에요. Docker는 누적값만 노출하기 때문에 인접 샘플의 변화량으로 환산했어요. 평평 = 트래픽 없음, 솟아오름 = 활발한 통신." />
 										</span>
-										<strong class="metric-stack-current net">{netRate > 0 ? formatRate(netRate) : '-'}</strong>
+										<strong class="metric-stack-current net">{formatRate(netRate)}</strong>
 									</div>
 									<MetricTrendChart {agentId} {accessToken} endpoint="/api/metrics/containers/" extraQuery={`container_id=${cid}`} metricField="" metricExtractor={(row) => Number(row?.network_rx ?? 0) + Number(row?.network_tx ?? 0)} liveValue={netRate} label="네트워크 처리량 (B/s)" color="#fbbf24" unit="rate" defaultRange={metricsRange} hideRangeTabs compact derivative />
 								</div>
@@ -960,7 +965,7 @@
 										<span class="metric-stack-label">디스크 처리량
 											<InfoTooltip placement="top-start" text="현재 초당 디스크 I/O 처리량(읽기+쓰기, B/s)이에요. Docker는 누적값만 노출해서 인접 샘플 변화량으로 환산했고, 평평하면 디스크 접근이 거의 없다는 뜻이에요." />
 										</span>
-										<strong class="metric-stack-current disk">{diskRate > 0 ? formatRate(diskRate) : '-'}</strong>
+										<strong class="metric-stack-current disk">{formatRate(diskRate)}</strong>
 									</div>
 									<MetricTrendChart {agentId} {accessToken} endpoint="/api/metrics/containers/" extraQuery={`container_id=${cid}`} metricField="" metricExtractor={(row) => Number(row?.disk_read ?? 0) + Number(row?.disk_write ?? 0)} liveValue={diskRate} label="디스크 처리량 (B/s)" color="#a78bfa" unit="rate" defaultRange={metricsRange} hideRangeTabs compact derivative />
 								</div>
@@ -1037,7 +1042,7 @@
 									</ul>
 								</section>
 
-								<section class="summary-section">
+								<section class="summary-section activity">
 									<div class="summary-section-head">
 										<h4 class="summary-h4">{rangeLabel} 활동 분포</h4>
 										<InfoTooltip placement="bottom-end" text="CPU 사용률 기준으로 시간 비중을 분류해요. 한가(<1%) / 보통(1~10%) / 바쁨(≥10%). 한가 비율이 높으면 컨테이너가 대부분 idle, 바쁨 비율이 자주 보이면 워크로드가 활발해요." />
@@ -1180,7 +1185,7 @@
 
 	/* Metrics tab gets the full real estate so the two charts side-by-side
 	   still have room for the range tab row + Y-axis labels. */
-	.modal-metrics { width: min(1400px, 96vw); }
+	.modal-metrics { width: min(1180px, 90vw); }
 	.modal-logs { width: min(1200px, 94vw); }
 
 	/* Header */
@@ -1477,22 +1482,25 @@
 		flex-direction: column;
 		overflow: hidden;
 	}
+	.metrics-summary > .summary-section.activity {
+		flex: 1.4 1 0;
+	}
 	.metrics-summary .summary-list {
 		flex: 1 1 auto;
 		display: flex;
 		flex-direction: column;
 		justify-content: space-between;
-		gap: 4px;
+		gap: 3px;
 	}
 	.metrics-summary .summary-list li {
-		padding-top: 4px;
-		padding-bottom: 4px;
+		padding-top: 3px;
+		padding-bottom: 3px;
 	}
 	.summary-section {
 		background: #121720;
 		border: 1px solid rgba(100, 116, 139, 0.18);
 		border-radius: 8px;
-		padding: 10px 12px 12px;
+		padding: 8px 10px 10px;
 	}
 	.summary-section-head {
 		display: flex;
@@ -1520,7 +1528,7 @@
 		grid-template-columns: 56px minmax(0, 1fr) auto;
 		align-items: baseline;
 		gap: 8px;
-		padding: 5px 8px;
+		padding: 3px 8px;
 		border-radius: 5px;
 		background: rgba(13, 17, 23, 0.55);
 		min-width: 0;

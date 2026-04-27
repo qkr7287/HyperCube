@@ -263,7 +263,9 @@
 						ticks: {
 							color: '#64748b',
 							font: { size: 10 },
-							stepSize: unit === 'percent' ? 10 : undefined,
+							stepSize: unit === 'percent'
+								? (bounds.max && bounds.max <= 2 ? 0.5 : bounds.max && bounds.max <= 5 ? 1 : bounds.max && bounds.max <= 15 ? 2 : bounds.max && bounds.max <= 30 ? 5 : 10)
+								: undefined,
 							autoSkip: false,
 							callback: (v) => {
 								if (unit === 'percent') return `${v}%`;
@@ -291,15 +293,17 @@
 	function computeYBounds(values: number[], u: Unit): { min?: number; max?: number } {
 		const nums = values.filter((v) => typeof v === 'number' && !Number.isNaN(v));
 		if (u === 'percent') {
-			if (nums.length === 0) return { min: 0, max: 10 };
-			const dmin = Math.min(...nums);
+			if (nums.length === 0) return { min: 0, max: 1 };
 			const dmax = Math.max(...nums);
-			const pad = 10;
-			let lo = Math.max(0, Math.floor((dmin - pad) / 10) * 10);
-			let hi = Math.min(100, Math.ceil((dmax + pad) / 10) * 10);
-			if (hi - lo < 20) hi = Math.min(100, lo + 20);
-			if (hi - lo < 20) lo = Math.max(0, hi - 20);
-			return { min: lo, max: hi };
+			if (dmax <= 0) return { min: 0, max: 1 };
+			// 작은 값에서도 정점이 보이도록 dmax 위에 약간만 여유 — 가장 가까운 stop 사용
+			const padded = dmax * 1.25;
+			const stops = [1, 2, 3, 5, 7, 10, 15, 20, 30, 50, 75, 100];
+			let hi = 100;
+			for (const s of stops) {
+				if (padded <= s) { hi = s; break; }
+			}
+			return { min: 0, max: hi };
 		}
 		if (u === 'rate' || u === 'bytes') {
 			if (nums.length === 0) return { min: 0, max: 1024 };
