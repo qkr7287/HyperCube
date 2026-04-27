@@ -307,6 +307,13 @@
 			const networkAvg = trend
 				? latestNonZero(trend.network, avg(stackRows.map((row) => row.network)))
 				: avg(stackRows.map((row) => row.network));
+			const gpuRows = stackRows.filter((row) => typeof row.gpu === 'number');
+			const liveGpu = gpuRows.length > 0 ? avg(gpuRows.map((row) => row.gpu as number)) : 0;
+			const gpuAvg = trend?.gpuMeasured
+				? latestNonZero(trend.gpu, liveGpu)
+				: gpuRows.length > 0
+					? liveGpu
+					: null;
 			return {
 				name: stack.name,
 				color: stack.color,
@@ -316,6 +323,7 @@
 				cpuAvg,
 				memoryAvg,
 				networkAvg,
+				gpuAvg,
 			};
 		}),
 	);
@@ -1451,10 +1459,6 @@
 					<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.74 10h-2.08A6 6 0 1 1 12 6a5.96 5.96 0 0 1 4.22 1.78L13 11h7V4z"/></svg>
 					<span>새로고침</span>
 				</button>
-				<button type="button" class="ctrl-btn primary" onclick={open3d} title="3D 상세 모니터링" aria-label="3D 상세">
-					<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M12 2 2 7v10l10 5 10-5V7zm0 2.18 7.55 3.78L12 11.74 4.45 7.96zM4 9.5l7 3.5v7.34L4 16.66zm9 10.84V13l7-3.5v7.16z"/></svg>
-					<span>3D 상세</span>
-				</button>
 			</div>
 		</section>
 
@@ -1545,7 +1549,7 @@
 						<div class="trend-chart">
 							<div class="chart-head">
 								<strong>CPU</strong>
-								<StackLegendChips entries={cpuLegend} maxChips={3} />
+								<StackLegendChips entries={cpuLegend} maxChips={0} />
 							</div>
 							<FleetLineChart
 								title={`CPU 평균 / ${rangeConfig.label}`}
@@ -1563,7 +1567,7 @@
 						<div class="trend-chart">
 							<div class="chart-head">
 								<strong>메모리</strong>
-								<StackLegendChips entries={memoryLegend} maxChips={3} />
+								<StackLegendChips entries={memoryLegend} maxChips={0} />
 							</div>
 							<FleetLineChart
 								title={`메모리 평균 / ${rangeConfig.label}`}
@@ -1581,7 +1585,7 @@
 						<div class="trend-chart">
 							<div class="chart-head">
 								<strong>트래픽</strong>
-								<StackLegendChips entries={networkLegend} format={formatRateCompact} maxChips={3} />
+								<StackLegendChips entries={networkLegend} format={formatRateCompact} maxChips={0} />
 							</div>
 							<FleetLineChart
 								title={`트래픽 평균 / ${rangeConfig.label}`}
@@ -1600,7 +1604,7 @@
 							<div class="chart-head">
 								<strong>GPU</strong>
 								{#if hasAnyGpu}
-									<StackLegendChips entries={gpuLegend} maxChips={3} />
+									<StackLegendChips entries={gpuLegend} maxChips={0} />
 								{:else}
 									<small class="muted gpu-empty">GPU 데이터 없음</small>
 								{/if}

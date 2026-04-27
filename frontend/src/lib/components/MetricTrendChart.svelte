@@ -27,7 +27,7 @@
 	Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip);
 
 	type RangeKey = '1m' | '10m' | '1h' | '6h' | '24h' | '7d';
-	type Unit = 'percent' | 'count' | 'bytes';
+	type Unit = 'percent' | 'count' | 'bytes' | 'rate';
 
 	let {
 		agentId,
@@ -41,6 +41,12 @@
 		accessToken = '',
 		endpoint = '/api/metrics/system/',
 		extraQuery = '',
+		hideRangeTabs = false,
+		compact = false,
+		derivative = false,
+		bucket = '',
+		windowRange = '',
+		bucketField = '',
 	}: {
 		agentId: string;
 		/** field name in the backend metrics response (cpu_usage, memory_usage, etc.).
@@ -60,6 +66,19 @@
 		endpoint?: string;
 		/** extra query string fragment (no leading &) — e.g. "container_id=abc" */
 		extraQuery?: string;
+		hideRangeTabs?: boolean;
+		compact?: boolean;
+		/** Render the chart as a derivative (rate per second) of the underlying
+		 *  cumulative series. Useful for cumulative counters like network bytes
+		 *  or disk I/O so the user sees throughput instead of an ever-rising line. */
+		derivative?: boolean;
+		/** When set, the chart fetches `${endpoint}buckets/?range=${windowRange}&bucket=${bucket}`
+		 *  and reads `bucketField` from each aggregated row instead of using
+		 *  metricField/metricExtractor on raw rows. Lets the parent control
+		 *  sample density (e.g. 5분 단위 평균). */
+		bucket?: string;
+		windowRange?: string;
+		bucketField?: string;
 	} = $props();
 
 	const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
@@ -104,28 +123,59 @@
 		if (!agentId || !accessToken) return;
 		loading = true;
 		try {
+			const useBuckets = Boolean(bucket && (windowRange || forRange));
 			const limit = forRange === '7d' || forRange === '24h' ? 500 : 240;
 			const extra = extraQuery ? `&${extraQuery}` : '';
-			const res = await fetch(
-				`${base}${endpoint}?agent=${encodeURIComponent(agentId)}&range=${forRange}&limit=${limit}&ordering=recorded_at${extra}`,
-				{ headers: { Authorization: `Bearer ${accessToken}` } },
-			);
+			const url = useBuckets
+				? `${base}${endpoint}buckets/?agent=${encodeURIComponent(agentId)}&range=${windowRange || forRange}&bucket=${bucket}${extra}`
+				: `${base}${endpoint}?agent=${encodeURIComponent(agentId)}&range=${forRange}&limit=${limit}&ordering=recorded_at${extra}`;
+			const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
 			if (!res.ok) return;
 			const payload = await res.json();
-			const rows: any[] = payload?.data ?? payload?.results ?? payload ?? [];
+			// buckets endpoint: { success, data: { bucket_seconds, results: [...] } }
+			// list endpoint:    { success, data: [...] }   |   raw [...] /  paginated { results: [...] }
+			const rows: any[] = Array.isArray(payload?.data?.results)
+				? payload.data.results
+				: Array.isArray(payload?.data)
+					? payload.data
+					: Array.isArray(payload?.results)
+						? payload.results
+						: Array.isArray(payload)
+							? payload
+							: [];
 			// Backend returns oldest→newest when limit is set (see paginate override).
+			const useBucketsParse = Boolean(bucket && (windowRange || forRange));
+			const tsField = useBucketsParse ? 'bucket_start' : 'recorded_at';
 			const kept = downsample(rows);
-			const read = metricExtractor
-				? (r: any) => {
-					const v = metricExtractor(r);
-					return typeof v === 'number' && !Number.isNaN(v) ? v : NaN;
-				}
-				: (r: any) => Number(r?.[metricField] ?? 0);
+			const read = useBucketsParse && bucketField
+				? (r: any) => Number(r?.[bucketField] ?? 0)
+				: metricExtractor
+					? (r: any) => {
+						const v = metricExtractor(r);
+						return typeof v === 'number' && !Number.isNaN(v) ? v : NaN;
+					}
+					: (r: any) => Number(r?.[metricField] ?? 0);
 			const paired = kept
-				.map((r) => [read(r), formatClockLabel(r?.recorded_at, forRange)] as const)
-				.filter(([v]) => !Number.isNaN(v));
-			values = paired.map(([v]) => v as number);
-			labels = paired.map(([, l]) => l);
+				.map((r) => [read(r), formatClockLabel(r?.[tsField], forRange), new Date(r?.[tsField]).getTime()] as const)
+				.filter(([v, , t]) => !Number.isNaN(v) && Number.isFinite(t));
+			if (derivative) {
+				const rateValues: number[] = [];
+				const rateLabels: string[] = [];
+				for (let i = 1; i < paired.length; i += 1) {
+					const [v0, , t0] = paired[i - 1];
+					const [v1, l1, t1] = paired[i];
+					const dt = (t1 - t0) / 1000;
+					if (dt > 0) {
+						rateValues.push(Math.max(0, ((v1 as number) - (v0 as number)) / dt));
+						rateLabels.push(l1);
+					}
+				}
+				values = rateValues;
+				labels = rateLabels;
+			} else {
+				values = paired.map(([v]) => v as number);
+				labels = paired.map(([, l]) => l);
+			}
 			loadedKey = `${agentId}|${forRange}`;
 		} catch (err) {
 			console.error('[MetricTrendChart] history fetch failed', err);
@@ -135,6 +185,11 @@
 	}
 
 	function appendLive(v: number | undefined) {
+		// In derivative mode the chart shows rate (per-second slope of a
+		// cumulative counter). Live ticks arrive as cumulative bytes which
+		// would jump straight up; skip live appends and rely on the periodic
+		// history reload (loadHistory + range refresh) to keep the line fresh.
+		if (derivative) return;
 		if (typeof v !== 'number' || Number.isNaN(v)) return;
 		// Skip the "no data yet" stub (e.g. systemInfo.memory.usage before the
 		// first WS tick). Without this, a leading 0 drags the Y-axis floor down
@@ -206,6 +261,7 @@
 								const v = Number(ctx.parsed.y ?? 0);
 								if (unit === 'percent') return `${ctx.dataset.label}: ${v.toFixed(1)}%`;
 								if (unit === 'bytes') return `${ctx.dataset.label}: ${formatBytes(v)}`;
+								if (unit === 'rate') return `${ctx.dataset.label}: ${formatRate(v)}`;
 								return `${ctx.dataset.label}: ${v.toFixed(0)}`;
 							},
 						},
@@ -232,11 +288,14 @@
 						ticks: {
 							color: '#64748b',
 							font: { size: 10 },
-							stepSize: unit === 'percent' ? 10 : undefined,
+							stepSize: unit === 'percent'
+								? (bounds.max && bounds.max <= 2 ? 0.5 : bounds.max && bounds.max <= 5 ? 1 : bounds.max && bounds.max <= 15 ? 2 : bounds.max && bounds.max <= 30 ? 5 : 10)
+								: undefined,
 							autoSkip: false,
 							callback: (v) => {
 								if (unit === 'percent') return `${v}%`;
 								if (unit === 'bytes') return formatBytes(Number(v));
+								if (unit === 'rate') return formatRate(Number(v));
 								return v;
 							},
 						},
@@ -257,19 +316,31 @@
 	 * - Non-percent series (counts / bytes) let Chart.js auto-pick.
 	 */
 	function computeYBounds(values: number[], u: Unit): { min?: number; max?: number } {
-		if (u !== 'percent') return {};
 		const nums = values.filter((v) => typeof v === 'number' && !Number.isNaN(v));
-		if (nums.length === 0) return { min: 0, max: 10 };
-		let dmin = Math.min(...nums);
-		let dmax = Math.max(...nums);
-		// Padding: ±10 percentage points, rounded to the nearest 10.
-		const pad = 10;
-		let lo = Math.max(0, Math.floor((dmin - pad) / 10) * 10);
-		let hi = Math.min(100, Math.ceil((dmax + pad) / 10) * 10);
-		// Always show at least a 20-point window so tiny variation stays legible.
-		if (hi - lo < 20) hi = Math.min(100, lo + 20);
-		if (hi - lo < 20) lo = Math.max(0, hi - 20);
-		return { min: lo, max: hi };
+		if (u === 'percent') {
+			if (nums.length === 0) return { min: 0, max: 1 };
+			const dmax = Math.max(...nums);
+			if (dmax <= 0) return { min: 0, max: 1 };
+			// 작은 값에서도 정점이 보이도록 dmax 위에 약간만 여유 — 가장 가까운 stop 사용
+			const padded = dmax * 1.25;
+			const stops = [1, 2, 3, 5, 7, 10, 15, 20, 30, 50, 75, 100];
+			let hi = 100;
+			for (const s of stops) {
+				if (padded <= s) { hi = s; break; }
+			}
+			return { min: 0, max: hi };
+		}
+		if (u === 'rate' || u === 'bytes') {
+			if (nums.length === 0) return { min: 0, max: 1024 };
+			const dmax = Math.max(...nums);
+			if (dmax <= 0) return { min: 0, max: 1024 };
+			// 다음 1024^n 단위 ceiling: 1KB → 1MB → 1GB
+			const padded = dmax * 1.25;
+			const pow = Math.pow(1024, Math.floor(Math.log(padded) / Math.log(1024)));
+			const ceiled = Math.ceil(padded / pow) * pow;
+			return { min: 0, max: ceiled };
+		}
+		return {};
 	}
 
 	function formatBytes(bytes: number): string {
@@ -280,6 +351,16 @@
 			units.length - 1,
 		);
 		return `${(bytes / Math.pow(1024, idx)).toFixed(1)} ${units[idx]}`;
+	}
+
+	function formatRate(bps: number): string {
+		if (!bps) return '0 B/s';
+		const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+		const idx = Math.min(
+			Math.floor(Math.log(Math.abs(bps)) / Math.log(1024)),
+			units.length - 1,
+		);
+		return `${(bps / Math.pow(1024, idx)).toFixed(1)} ${units[idx]}`;
 	}
 
 	// Fetch history when agent/range changes.
@@ -311,27 +392,39 @@
 </script>
 
 <div class="trend">
-	<div class="tabs" role="tablist">
-		{#each RANGE_OPTIONS as opt}
-			<button
-				type="button"
-				role="tab"
-				aria-selected={range === opt.key}
-				class="tab"
-				class:active={range === opt.key}
-				onclick={() => (range = opt.key)}
-			>
-				{opt.label}
-			</button>
-		{/each}
-		{#if loading}
-			<span class="loading-mark">로딩…</span>
-		{:else if values.length === 0}
-			<span class="loading-mark muted">이 구간에 기록된 데이터 없음</span>
-		{/if}
-	</div>
-	<div class="canvas-wrap">
+	{#if !hideRangeTabs}
+		<div class="tabs" role="tablist">
+			{#each RANGE_OPTIONS as opt}
+				<button
+					type="button"
+					role="tab"
+					aria-selected={range === opt.key}
+					class="tab"
+					class:active={range === opt.key}
+					onclick={() => (range = opt.key)}
+				>
+					{opt.label}
+				</button>
+			{/each}
+			{#if loading}
+				<span class="loading-mark">로딩…</span>
+			{:else if values.length === 0}
+				<span class="loading-mark muted">이 구간에 기록된 데이터 없음</span>
+			{/if}
+		</div>
+	{/if}
+	<div class="canvas-wrap" class:compact>
 		<canvas bind:this={canvasEl}></canvas>
+		{#if loading}
+			<div class="chart-loading" role="status" aria-live="polite">
+				<span class="chart-spinner"></span>
+				<span>데이터 불러오는 중…</span>
+			</div>
+		{:else if values.length === 0}
+			<div class="chart-loading muted" role="status">
+				<span>이 구간에 기록된 데이터 없음</span>
+			</div>
+		{/if}
 	</div>
 </div>
 
@@ -381,6 +474,40 @@
 		color: #475569;
 	}
 
+	.canvas-wrap { position: relative; }
+	.chart-loading {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		background: rgba(13, 17, 23, 0.6);
+		backdrop-filter: blur(2px);
+		color: var(--text-secondary);
+		font-size: 11px;
+		font-weight: 700;
+		pointer-events: none;
+		z-index: 2;
+	}
+	.chart-loading.muted {
+		background: rgba(13, 17, 23, 0.35);
+		color: var(--text-muted);
+	}
+	.chart-spinner {
+		width: 18px;
+		height: 18px;
+		border: 2px solid rgba(48, 213, 200, 0.18);
+		border-top-color: var(--accent);
+		border-radius: 50%;
+		animation: chart-spin 0.85s linear infinite;
+	}
+	@keyframes chart-spin { to { transform: rotate(360deg); } }
+	.canvas-wrap.compact {
+		height: 110px;
+		min-height: 110px;
+	}
 	.canvas-wrap {
 		position: relative;
 		width: 100%;

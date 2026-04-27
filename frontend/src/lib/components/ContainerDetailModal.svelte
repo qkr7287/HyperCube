@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy, untrack } from 'svelte';
+	import { base } from '$app/paths';
 	import { sendCommand, containerMetricsStore } from '$lib/stores/ws-store';
 	import { adaptContainerInspect } from '$lib/utils/data-adapter';
 	import { Chart, LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend } from 'chart.js';
@@ -50,13 +51,76 @@
 	let cpuHistory: number[] = $state([]);
 	let memoryHistory: number[] = $state([]);
 
+	// 성능 지표 탭 — 모달 전체 조회 단위
+	type MetricsRange = '1m' | '5m' | '1h' | '24h' | '7d';
+	const METRICS_RANGE_OPTIONS: { key: MetricsRange; label: string; kor: string }[] = [
+		{ key: '1m', label: '1m', kor: '1분' },
+		{ key: '5m', label: '5m', kor: '5분' },
+		{ key: '1h', label: '1h', kor: '1시간' },
+		{ key: '24h', label: '24h', kor: '24시간' },
+		{ key: '7d', label: '7d', kor: '7일' },
+	];
+	let metricsRange = $state<MetricsRange>('1h');
+
+	// 사용자가 선택한 range는 sample 간격(=bucket). window는 그 단위로 50~70개 정도
+	// 점이 보이도록 자동 매핑한다. Backend는 ?range=window&bucket=size 두 파라미터
+	// 모두 받는 buckets endpoint를 지원.
+	const RANGE_BUCKET_MAP: Record<MetricsRange, { window: string; bucket: string }> = {
+		'1m': { window: '1h', bucket: '1m' },   // 60 points, 1분 갭
+		'5m': { window: '6h', bucket: '5m' },   // 72 points, 5분 갭
+		'1h': { window: '24h', bucket: '1h' },  // 24 points, 1시간 갭
+		'24h': { window: '7d', bucket: '1d' },  // 7 points, 1일 갭
+		'7d': { window: '7d', bucket: '1d' },   // 7d 이상은 backend 미지원 → 1d 갭으로 fallback
+	};
+	let peakHistory = $state<{
+		cpu: { value: number; ts: string | null };
+		memory: { value: number; ts: string | null };
+		network: { value: number; ts: string | null };
+		disk: { value: number; ts: string | null };
+		gpu: { value: number; ts: string | null };
+		samples: number;
+	}>({
+		cpu: { value: 0, ts: null },
+		memory: { value: 0, ts: null },
+		network: { value: 0, ts: null },
+		disk: { value: 0, ts: null },
+		gpu: { value: 0, ts: null },
+		samples: 0,
+	});
+	let peakLoading = $state(false);
+	type HistoryPoint = { ts: string; cpu: number; mem: number; netRate: number; diskRate: number; gpu: number };
+	let historyRows = $state<HistoryPoint[]>([]);
+	let netRateSeries = $state<number[]>([]);
+	let diskRateSeries = $state<number[]>([]);
+	let metricsStats = $state<{
+		cpu: { avg: number; min: number };
+		memory: { avg: number; min: number };
+		network: { avg: number; min: number };
+		disk: { avg: number; min: number };
+		gpu: { avg: number; min: number };
+		cpuMinTs: string | null;
+		memMinTs: string | null;
+		netMinTs: string | null;
+		diskMinTs: string | null;
+		gpuMinTs: string | null;
+		idleRatio: number;
+		normalRatio: number;
+		busyRatio: number;
+		idleSeconds: number;
+		normalSeconds: number;
+		busySeconds: number;
+	}>({
+		cpu: { avg: 0, min: 0 }, memory: { avg: 0, min: 0 }, network: { avg: 0, min: 0 },
+		disk: { avg: 0, min: 0 }, gpu: { avg: 0, min: 0 },
+		cpuMinTs: null, memMinTs: null, netMinTs: null, diskMinTs: null, gpuMinTs: null,
+		idleRatio: 0, normalRatio: 0, busyRatio: 0,
+		idleSeconds: 0, normalSeconds: 0, busySeconds: 0,
+	});
+
 	// Logs data - raw string array like old project
 	let logs: string[] = $state([]);
 	let logSearchQuery = $state('');
-	let autoScroll = $state(true);
-	let autoRefreshLogs = $state(false);
 	let logContainer: HTMLDivElement | undefined = $state(undefined);
-	let logsInterval: ReturnType<typeof setInterval> | null = null;
 
 	// Env vars expand
 	let envExpanded = $state(false);
@@ -263,9 +327,6 @@
 			console.error('[ContainerDetailModal] get_logs failed:', e);
 			logs = ['로그를 불러오는 중 오류가 발생했습니다: ' + (e?.message || '')];
 		}
-		if (autoScroll && logContainer) {
-			setTimeout(() => { if (logContainer) logContainer.scrollTop = logContainer.scrollHeight; }, 50);
-		}
 	}
 
 	function parseLogLine(line: string): { timestamp: string; level: string; message: string } {
@@ -295,8 +356,161 @@
 		return (bytes / 1073741824).toFixed(1) + ' GB';
 	}
 
+	function formatRate(bytesPerSec: number): string {
+		if (!Number.isFinite(bytesPerSec) || bytesPerSec <= 0) return '0 B/s';
+		const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+		let v = bytesPerSec;
+		let i = 0;
+		while (v >= 1024 && i < units.length - 1) { v /= 1024; i += 1; }
+		return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+	}
+
 	function formatMemoryMB(bytes: number): string {
 		return (bytes / 1048576).toFixed(1);
+	}
+
+	function formatDuration(s: number): string {
+		if (!Number.isFinite(s) || s <= 0) return '0초';
+		if (s < 60) return `${Math.round(s)}초`;
+		if (s < 3600) return `${Math.round(s / 60)}분`;
+		return `${Math.floor(s / 3600)}시간 ${Math.round((s % 3600) / 60)}분`;
+	}
+
+	function formatPeakTime(ts: string | null): string {
+		if (!ts) return '-';
+		const d = new Date(ts);
+		if (Number.isNaN(d.getTime())) return '-';
+		const pad = (n: number) => n.toString().padStart(2, '0');
+		return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+	}
+
+	function formatUptime(startedAt: string | null | undefined): string {
+		if (!startedAt) return '-';
+		const start = new Date(startedAt).getTime();
+		if (!start) return '-';
+		const sec = Math.max(0, Math.floor((Date.now() - start) / 1000));
+		const d = Math.floor(sec / 86400);
+		const h = Math.floor((sec % 86400) / 3600);
+		const m = Math.floor((sec % 3600) / 60);
+		if (d > 0) return `${d}일 ${h}시간`;
+		if (h > 0) return `${h}시간 ${m}분`;
+		if (m > 0) return `${m}분 ${sec % 60}초`;
+		return `${sec}초`;
+	}
+
+	async function fetchPeakHistory(forRange: MetricsRange) {
+		if (!container || !agentId || !accessToken) return;
+		peakLoading = true;
+		try {
+			const limit = forRange === '7d' || forRange === '24h' ? 500 : 240;
+			const cid = container.shortId ?? container.id.slice(0, 12);
+			const url = `${base}/api/metrics/containers/?agent=${encodeURIComponent(agentId)}&container_id=${cid}&range=${forRange}&limit=${limit}&ordering=recorded_at`;
+			const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+			const data = await res.json();
+			const rows: any[] = Array.isArray(data?.data)
+				? data.data
+				: Array.isArray(data?.results)
+					? data.results
+					: Array.isArray(data) ? data : [];
+			const empty = { value: 0, ts: null as string | null };
+			if (rows.length === 0) {
+				peakHistory = { cpu: { ...empty }, memory: { ...empty }, network: { ...empty }, disk: { ...empty }, gpu: { ...empty }, samples: 0 };
+				historyRows = [];
+				netRateSeries = [];
+				diskRateSeries = [];
+				metricsStats = {
+					cpu: { avg: 0, min: 0 }, memory: { avg: 0, min: 0 }, network: { avg: 0, min: 0 },
+					disk: { avg: 0, min: 0 }, gpu: { avg: 0, min: 0 },
+					cpuMinTs: null, memMinTs: null, netMinTs: null, diskMinTs: null, gpuMinTs: null,
+					idleRatio: 0, normalRatio: 0, busyRatio: 0,
+					idleSeconds: 0, normalSeconds: 0, busySeconds: 0,
+				};
+				return;
+			}
+			const p = { cpu: { ...empty }, memory: { ...empty }, network: { ...empty }, disk: { ...empty }, gpu: { ...empty }, samples: rows.length };
+			const mins = {
+				cpu: { value: Infinity, ts: null as string | null },
+				memory: { value: Infinity, ts: null as string | null },
+				network: { value: Infinity, ts: null as string | null },
+				disk: { value: Infinity, ts: null as string | null },
+				gpu: { value: Infinity, ts: null as string | null },
+			};
+			const sums = { cpu: 0, memory: 0, gpu: 0, gpuCount: 0 };
+			const rateSums = { network: 0, networkCount: 0, disk: 0, diskCount: 0 };
+			const points: HistoryPoint[] = [];
+			const netSeries: number[] = [];
+			const diskSeries: number[] = [];
+			let idleCount = 0, normalCount = 0, busyCount = 0;
+			let prevNet = -1, prevDisk = -1, prevTs = '';
+			let firstTs = '', lastTs = '';
+			for (const row of rows) {
+				const ts = row.recorded_at as string;
+				if (!firstTs) firstTs = ts;
+				lastTs = ts;
+				const cpu = Number(row.cpu_usage ?? 0);
+				const mem = Number(row.memory_percent ?? 0);
+				const netCum = Number(row.network_rx ?? 0) + Number(row.network_tx ?? 0);
+				const diskCum = Number(row.disk_read ?? 0) + Number(row.disk_write ?? 0);
+				const gpu = Number(row.gpu_usage ?? 0);
+				if (cpu > p.cpu.value) p.cpu = { value: cpu, ts };
+				if (mem > p.memory.value) p.memory = { value: mem, ts };
+				if (gpu > p.gpu.value) p.gpu = { value: gpu, ts };
+				if (cpu < mins.cpu.value) mins.cpu = { value: cpu, ts };
+				if (mem < mins.memory.value) mins.memory = { value: mem, ts };
+				const hasGpuRow = row.gpu_usage !== null && row.gpu_usage !== undefined;
+				if (hasGpuRow && gpu < mins.gpu.value) mins.gpu = { value: gpu, ts };
+				sums.cpu += cpu; sums.memory += mem;
+				if (hasGpuRow) { sums.gpu += gpu; sums.gpuCount += 1; }
+				if (cpu < 1) idleCount += 1;
+				else if (cpu < 10) normalCount += 1;
+				else busyCount += 1;
+				let netRate = 0, diskRate = 0;
+				let hasRate = false;
+				if (prevNet >= 0 && prevTs) {
+					const dt = (new Date(ts).getTime() - new Date(prevTs).getTime()) / 1000;
+					if (dt > 0) {
+						netRate = Math.max(0, (netCum - prevNet) / dt);
+						diskRate = Math.max(0, (diskCum - prevDisk) / dt);
+						hasRate = true;
+						if (netRate > p.network.value) p.network = { value: netRate, ts };
+						if (diskRate > p.disk.value) p.disk = { value: diskRate, ts };
+						if (netRate < mins.network.value) mins.network = { value: netRate, ts };
+						if (diskRate < mins.disk.value) mins.disk = { value: diskRate, ts };
+						rateSums.network += netRate; rateSums.networkCount += 1;
+						rateSums.disk += diskRate; rateSums.diskCount += 1;
+					}
+				}
+				points.push({ ts, cpu, mem, netRate, diskRate, gpu });
+				netSeries.push(netRate);
+				diskSeries.push(diskRate);
+				prevNet = netCum; prevDisk = diskCum; prevTs = ts;
+				void hasRate;
+			}
+			peakHistory = p;
+			historyRows = points;
+			netRateSeries = netSeries;
+			diskRateSeries = diskSeries;
+
+			const totalSec = firstTs && lastTs ? Math.max(0, (new Date(lastTs).getTime() - new Date(firstTs).getTime()) / 1000) : 0;
+			const total = idleCount + normalCount + busyCount;
+			const ratio = (n: number) => (total > 0 ? n / total : 0);
+			metricsStats = {
+				cpu: { avg: rows.length > 0 ? sums.cpu / rows.length : 0, min: mins.cpu.value === Infinity ? 0 : mins.cpu.value },
+				memory: { avg: rows.length > 0 ? sums.memory / rows.length : 0, min: mins.memory.value === Infinity ? 0 : mins.memory.value },
+				gpu: { avg: sums.gpuCount > 0 ? sums.gpu / sums.gpuCount : 0, min: mins.gpu.value === Infinity ? 0 : mins.gpu.value },
+				network: { avg: rateSums.networkCount > 0 ? rateSums.network / rateSums.networkCount : 0, min: mins.network.value === Infinity ? 0 : mins.network.value },
+				disk: { avg: rateSums.diskCount > 0 ? rateSums.disk / rateSums.diskCount : 0, min: mins.disk.value === Infinity ? 0 : mins.disk.value },
+				cpuMinTs: mins.cpu.ts, memMinTs: mins.memory.ts, netMinTs: mins.network.ts, diskMinTs: mins.disk.ts, gpuMinTs: mins.gpu.ts,
+				idleRatio: ratio(idleCount), normalRatio: ratio(normalCount), busyRatio: ratio(busyCount),
+				idleSeconds: ratio(idleCount) * totalSec,
+				normalSeconds: ratio(normalCount) * totalSec,
+				busySeconds: ratio(busyCount) * totalSec,
+			};
+		} catch (e) {
+			console.error('[ContainerDetailModal] peak fetch failed:', e);
+		} finally {
+			peakLoading = false;
+		}
 	}
 
 	async function handleControl(action: string) {
@@ -307,20 +521,10 @@
 			await fetchDetails();
 			onStateChange();
 		} catch (e: any) {
-			errorMsg = e?.message || 'Control action failed';
+			errorMsg = e?.message || '컨테이너 제어에 실패했습니다.';
 			console.error('[ContainerDetailModal] control failed:', e);
 		} finally {
 			controlLoading = '';
-		}
-	}
-
-	function toggleAutoRefreshLogs() {
-		autoRefreshLogs = !autoRefreshLogs;
-		if (autoRefreshLogs) {
-			logsInterval = setInterval(fetchLogs, 3000);
-		} else if (logsInterval) {
-			clearInterval(logsInterval);
-			logsInterval = null;
 		}
 	}
 
@@ -394,11 +598,6 @@
 				containerStatus = current.status;
 
 				loadData();
-
-				if (logsInterval) clearInterval(logsInterval);
-			} else {
-				if (logsInterval) clearInterval(logsInterval);
-				logsInterval = null;
 			}
 		});
 	});
@@ -419,6 +618,16 @@
 		});
 	});
 
+	// Refetch peak history when metrics tab is active and the modal range changes
+	$effect(() => {
+		const tab = activeTab;
+		const r = metricsRange;
+		const c = container;
+		untrack(() => {
+			if (tab === 'metrics' && c) fetchPeakHistory(r);
+		});
+	});
+
 	onMount(() => {
 		document.addEventListener('keydown', handleKeydown);
 		unsubMetrics = containerMetricsStore.subscribe((map) => {
@@ -431,7 +640,6 @@
 	});
 
 	onDestroy(() => {
-		if (logsInterval) clearInterval(logsInterval);
 		if (unsubMetrics) { unsubMetrics(); unsubMetrics = null; }
 		destroyCharts();
 		document.removeEventListener('keydown', handleKeydown);
@@ -457,9 +665,9 @@
 				</button>
 			</div>
 			<div class="tabs">
-				<button class="tab" class:active={activeTab === 'info'} onclick={() => activeTab = 'info'}>Info</button>
-				<button class="tab" class:active={activeTab === 'metrics'} onclick={() => activeTab = 'metrics'}>Metrics</button>
-				<button class="tab" class:active={activeTab === 'logs'} onclick={() => activeTab = 'logs'}>Logs</button>
+				<button class="tab" class:active={activeTab === 'info'} onclick={() => activeTab = 'info'}>정보</button>
+				<button class="tab" class:active={activeTab === 'metrics'} onclick={() => activeTab = 'metrics'}>성능 지표</button>
+				<button class="tab" class:active={activeTab === 'logs'} onclick={() => activeTab = 'logs'}>로그</button>
 			</div>
 		</div>
 
@@ -476,6 +684,7 @@
 						<div class="section-title">
 							<div class="section-dot"></div>
 							<span>기본정보</span>
+							<InfoTooltip placement="bottom-start" text="컨테이너의 신원(어떤 이미지로 언제 만들어졌는지)을 한눈에 보는 영역이에요." />
 						</div>
 						<div class="info-card">
 							<div class="info-grid">
@@ -486,7 +695,7 @@
 								<div class="info-item">
 									<span class="info-label">상태</span>
 									<span class="info-value status" class:running={containerState === 'running'} class:stopped={containerState === 'exited' || containerState === 'dead'} class:paused={containerState === 'paused'}>
-										{containerState}
+										{containerState === 'running' ? '실행 중' : containerState === 'paused' ? '일시정지' : containerState === 'exited' ? '중지' : containerState === 'dead' ? '장애' : containerState === 'restarting' ? '재시작' : containerState || '-'}
 									</span>
 								</div>
 								<div class="info-item full">
@@ -514,15 +723,16 @@
 							<div class="section-title">
 								<div class="section-dot"></div>
 								<span>설정</span>
+								<InfoTooltip placement="bottom-start" text="컨테이너가 시작될 때 사용한 실행 설정이에요. Dockerfile이나 docker-compose.yml에 적힌 값이 그대로 들어와요." />
 							</div>
 							<div class="settings-grid">
 								<div class="info-card compact">
 									<span class="info-label">명령어</span>
-									<span class="info-value">{inspectConfig?.Cmd?.join(' ') || 'N/A'}</span>
+									<span class="info-value">{inspectConfig?.Cmd?.join(' ') || '-'}</span>
 								</div>
 								<div class="info-card compact">
 									<span class="info-label">작업 디렉토리</span>
-									<span class="info-value">{inspectConfig?.WorkingDir || 'N/A'}</span>
+									<span class="info-value">{inspectConfig?.WorkingDir || '-'}</span>
 								</div>
 							</div>
 							<div class="info-card">
@@ -552,6 +762,7 @@
 							<div class="section-title">
 								<div class="section-dot"></div>
 								<span>리소스 사용량</span>
+								<InfoTooltip placement="bottom-start" text="지금 이 순간 컨테이너가 쓰고 있는 자원 한 컷이에요. 시간에 따른 추이는 위 '성능 지표' 탭에서 그래프로 볼 수 있어요." />
 							</div>
 							<div class="resource-grid">
 								<div class="resource-card">
@@ -560,119 +771,307 @@
 								</div>
 								<div class="resource-card">
 									<span class="info-label">메모리 사용량</span>
-									<span class="resource-value">{metricsData?.memory ? formatMemoryMB(metricsData.memory.usage) : (inspectStats?.memory_stats ? formatBytes(inspectStats.memory_stats.usage) : 'N/A')} <small class="resource-unit">{metricsData?.memory ? 'MB' : ''}</small></span>
+									<span class="resource-value">{metricsData?.memory ? formatMemoryMB(metricsData.memory.usage) : (inspectStats?.memory_stats ? formatBytes(inspectStats.memory_stats.usage) : '-')} <small class="resource-unit">{metricsData?.memory ? 'MB' : ''}</small></span>
 								</div>
 								<div class="resource-card">
 									<span class="info-label">네트워크 (RX/TX)</span>
-									<span class="resource-value plain">{metricsData?.network ? formatBytes(metricsData.network.rx) + ' / ' + formatBytes(metricsData.network.tx) : 'N/A'}</span>
+									<span class="resource-value plain">{metricsData?.network ? formatBytes(metricsData.network.rx) + ' / ' + formatBytes(metricsData.network.tx) : '-'}</span>
 								</div>
 							</div>
 						</section>
 					{/if}
+
+					{#if details?.inspect}
+						{@const inspect2 = details.inspect}
+						{@const restartCount2 = inspect2?.RestartCount ?? 0}
+						{@const exitCode2 = inspect2?.State?.ExitCode}
+						{@const pid2 = inspect2?.State?.Pid}
+						{@const startedAt2 = inspect2?.State?.StartedAt}
+						{@const ipAddr2 = (inspect2?.NetworkSettings?.IPAddress as string) || ((Object.values((inspect2?.NetworkSettings?.Networks as any) || {})[0] as any)?.IPAddress) || '-'}
+						{@const ports2 = inspect2?.NetworkSettings?.Ports || {}}
+						{@const portEntries2 = Object.entries(ports2).filter(([, v]) => Array.isArray(v) && (v as any[]).length > 0) as [string, any[]][]}
+						{@const mounts2 = (Array.isArray(inspect2?.Mounts) ? inspect2.Mounts : []) as any[]}
+						{@const networkEntries2 = Object.entries((inspect2?.NetworkSettings?.Networks as any) || {}) as [string, any][]}
+
+						<section class="section">
+							<div class="section-title">
+								<div class="section-dot"></div>
+								<span>운영 현황</span>
+								<InfoTooltip placement="bottom-start" text="컨테이너의 런타임 상태(Docker inspect 정보)예요. 재시작 횟수가 자주 늘면 비정상 종료를 의심해 보세요." />
+							</div>
+							<div class="info-card">
+								<div class="info-grid">
+									<div class="info-item">
+										<span class="info-label">가동 시간</span>
+										<span class="info-value">{formatUptime(startedAt2)}</span>
+									</div>
+									<div class="info-item">
+										<span class="info-label">재시작 횟수</span>
+										<span class="info-value" class:warn-text={restartCount2 > 0}>{restartCount2}</span>
+									</div>
+									<div class="info-item">
+										<span class="info-label">종료 코드</span>
+										<span class="info-value">{exitCode2 === undefined || exitCode2 === null ? '-' : exitCode2}</span>
+									</div>
+									<div class="info-item">
+										<span class="info-label">PID</span>
+										<span class="info-value mono">{pid2 || '-'}</span>
+									</div>
+									<div class="info-item">
+										<span class="info-label">컨테이너 IP</span>
+										<span class="info-value mono">{ipAddr2}</span>
+									</div>
+								</div>
+							</div>
+						</section>
+
+						{#if portEntries2.length > 0 || networkEntries2.length > 0 || mounts2.length > 0}
+							<section class="section">
+								<div class="section-title">
+									<div class="section-dot"></div>
+									<span>네트워크 · 마운트</span>
+									<InfoTooltip placement="bottom-start" text="컨테이너가 노출한 포트, 연결된 Docker 네트워크, 마운트된 볼륨이에요." />
+								</div>
+								<div class="info-card">
+									{#if portEntries2.length > 0}
+										<div class="sub-title">노출 포트</div>
+										<div class="port-chips">
+											{#each portEntries2 as [containerPort, bindings]}
+												{#each (bindings as any[]) as b}
+													<span class="port-chip" title={`컨테이너 ${containerPort} → 호스트 ${b.HostIp || '0.0.0.0'}:${b.HostPort}`}>
+														<b>{b.HostPort}</b>
+														<small>→ {containerPort}</small>
+													</span>
+												{/each}
+											{/each}
+										</div>
+									{/if}
+									{#if networkEntries2.length > 0}
+										<div class="sub-title">Docker 네트워크</div>
+										<div class="info-grid">
+											{#each networkEntries2 as [name, info]}
+												<div class="info-item">
+													<span class="info-label">{name}</span>
+													<span class="info-value mono">{(info as any)?.IPAddress || '-'}</span>
+												</div>
+											{/each}
+										</div>
+									{/if}
+									{#if mounts2.length > 0}
+										<div class="sub-title">마운트</div>
+										<div class="info-grid">
+											{#each mounts2 as m}
+												<div class="info-item">
+													<span class="info-label">{m.Type}</span>
+													<span class="info-value mono" title={m.Source}>{m.Destination}</span>
+												</div>
+											{/each}
+										</div>
+									{/if}
+								</div>
+							</section>
+						{/if}
+					{/if}
 				{/if}
 
 			{:else if activeTab === 'metrics'}
-				<!-- METRICS TAB -->
+				<!-- 성능 지표 TAB -->
+				<div class="metrics-range-row">
+					<span class="metrics-range-label">조회 단위</span>
+					<div class="metrics-range-tabs" role="tablist" aria-label="성능 지표 조회 단위">
+						{#each METRICS_RANGE_OPTIONS as opt (opt.key)}
+							<button
+								type="button"
+								role="tab"
+								aria-selected={metricsRange === opt.key}
+								class="metrics-range-tab"
+								class:active={metricsRange === opt.key}
+								onclick={() => metricsRange = opt.key}
+							>{opt.label}</button>
+						{/each}
+					</div>
+					<InfoTooltip placement="bottom-end" text="아래 그래프 5개 + 우측 피크 값이 모두 이 시간 범위로 갱신돼요. 짧은 단위(1분/10분)는 실시간 추이를, 긴 단위(24시간/7일)는 장기 패턴을 보기 좋아요." />
+				</div>
+
 				{#if containerState !== 'running'}
 					<div class="loading-state">컨테이너가 실행 중이 아닙니다.</div>
 				{:else}
 					{@const cpuPct = Number(metricsData?.cpu?.usage ?? 0)}
 					{@const memPct = Number(metricsData?.memory?.percent ?? 0)}
-					{@const netRxBytes = Number(metricsData?.network?.rx ?? 0)}
-					{@const netTxBytes = Number(metricsData?.network?.tx ?? 0)}
+					{@const lastRow = historyRows.length > 0 ? historyRows[historyRows.length - 1] : null}
+					{@const netRate = Number(metricsData?.network?.rx_rate ?? metricsData?.network?.rx_rate_bps ?? 0)
+						+ Number(metricsData?.network?.tx_rate ?? metricsData?.network?.tx_rate_bps ?? 0)
+						|| (lastRow?.netRate ?? 0)}
+					{@const diskRate = Number(metricsData?.disk?.read_rate ?? metricsData?.disk?.read_rate_bps ?? 0)
+						+ Number(metricsData?.disk?.write_rate ?? metricsData?.disk?.write_rate_bps ?? 0)
+						|| (lastRow?.diskRate ?? 0)}
+					{@const gpuList = Array.isArray(metricsData?.gpu) ? metricsData.gpu : (metricsData?.gpu ? [metricsData.gpu] : [])}
+					{@const gpuPct = gpuList.length > 0 ? Number(gpuList[0]?.usage ?? 0) : 0}
+					{@const hasGpu = gpuList.length > 0}
+					{@const cid = container.shortId ?? container.id.slice(0, 12)}
+					{@const rangeLabel = METRICS_RANGE_OPTIONS.find(o => o.key === metricsRange)?.kor ?? metricsRange}
+					{@const inspect = details?.inspect}
+					{@const restartCount = inspect?.RestartCount ?? 0}
+					{@const exitCode = inspect?.State?.ExitCode}
+					{@const pid = inspect?.State?.Pid}
+					{@const startedAt = inspect?.State?.StartedAt}
+					{@const ipAddr = (inspect?.NetworkSettings?.IPAddress as string) || ((Object.values((inspect?.NetworkSettings?.Networks as any) || {})[0] as any)?.IPAddress) || '-'}
+					{@const networkMax = Math.max(1, ...netRateSeries)}
+					{@const diskMax = Math.max(1, ...diskRateSeries)}
+					{@const radarAxes = [
+						{ label: 'CPU', value: cpuPct, reference: peakHistory.cpu.value },
+						{ label: '메모리', value: memPct, reference: peakHistory.memory.value },
+						{ label: 'GPU', value: gpuPct, reference: peakHistory.gpu.value },
+					]}
+					{@const ports = inspect?.NetworkSettings?.Ports || {}}
+					{@const portEntries = Object.entries(ports).filter(([, v]) => Array.isArray(v) && (v as any[]).length > 0) as [string, any[]][]}
+					{@const mounts = (Array.isArray(inspect?.Mounts) ? inspect.Mounts : []) as any[]}
+					{@const networkEntries = Object.entries((inspect?.NetworkSettings?.Networks as any) || {}) as [string, any][]}
 
-					<div class="metrics-grid-top">
-						<div class="metrics-card">
-							<div class="metrics-card-header">
-								<span class="metrics-card-title">CPU Usage</span>
-								<InfoTooltip
-									placement="bottom-start"
-									text="이 컨테이너가 호스트 CPU를 얼마나 쓰고 있는지예요. 100%면 단일 코어 한 개를 가득 쓰는 중이고, 다중 코어면 100%를 넘을 수도 있어요. 오래 높게 머물면 로직이 과부하라는 신호예요."
-								/>
-								<span class="metrics-current cpu">{cpuPct.toFixed(2)}%</span>
-							</div>
-							<MetricTrendChart
-								{agentId}
-								{accessToken}
-								endpoint="/api/metrics/containers/"
-								extraQuery={`container_id=${container?.shortId ?? (container?.id ?? '').slice(0, 12)}`}
-								metricField="cpu_usage"
-								liveValue={cpuPct}
-								label="컨테이너 CPU 사용률 (%)"
-								color="#30d5c8"
-								unit="percent"
-								defaultRange="10m"
-							/>
-						</div>
-						<div class="metrics-card">
-							<div class="metrics-card-header">
-								<span class="metrics-card-title">Memory Usage</span>
-								<InfoTooltip
-									placement="bottom-start"
-									text="컨테이너에 할당된 메모리 중 실제 사용하는 비율이에요. 100%에 가까우면 OOM (메모리 부족으로 컨테이너가 죽을 위험)이 생길 수 있어요."
-								/>
-								<span class="metrics-current memory">{memPct.toFixed(1)}%</span>
-							</div>
-							<MetricTrendChart
-								{agentId}
-								{accessToken}
-								endpoint="/api/metrics/containers/"
-								extraQuery={`container_id=${container?.shortId ?? (container?.id ?? '').slice(0, 12)}`}
-								metricField="memory_percent"
-								liveValue={memPct}
-								label="컨테이너 메모리 사용률 (%)"
-								color="#8b5cf6"
-								unit="percent"
-								defaultRange="10m"
-							/>
-						</div>
-					</div>
-					<div class="metrics-grid-bottom">
-						<div class="metrics-card">
-							<div class="metrics-card-header">
-								<span class="metrics-card-title muted">Network Traffic</span>
-								<InfoTooltip
-									placement="bottom-start"
-									text="컨테이너가 주고받은 네트워크 총량 (누적). Inbound는 받은 데이터, Outbound는 보낸 데이터예요. 숫자가 꾸준히 커지면 계속 트래픽이 오가는 중이고, 평평하면 통신이 없거나 적은 상태예요."
-								/>
-							</div>
-							<div class="network-stats">
-								<div class="network-col">
-									<span class="network-label">Inbound</span>
-									<div class="network-value-row">
-										<span class="network-big">{formatBytes(netRxBytes)}</span>
+					<div class="metrics-layout">
+						<div class="metrics-charts">
+							{#key `cpu-${metricsRange}`}
+								<div class="metric-stack">
+									<div class="metric-stack-head">
+										<span class="metric-stack-label">CPU 사용률
+											<InfoTooltip placement="top-start" text="이 컨테이너가 호스트 CPU를 얼마나 쓰는지 (%). 100% = 한 코어 가득. 다중 코어면 100%를 넘을 수도 있어요." />
+										</span>
+										<strong class="metric-stack-current cpu">{cpuPct.toFixed(1)}%</strong>
 									</div>
-									<div class="network-bar-track"><div class="network-bar" style="width: {Math.min(netRxBytes / (netRxBytes + netTxBytes + 1) * 100, 100)}%; background: #30d5c8;"></div></div>
+									<MetricTrendChart {agentId} {accessToken} endpoint="/api/metrics/containers/" extraQuery={`container_id=${cid}`} metricField="cpu_usage" liveValue={cpuPct} label="CPU 사용률 (%)" color="#30d5c8" unit="percent" defaultRange={metricsRange} windowRange={RANGE_BUCKET_MAP[metricsRange].window} bucket={RANGE_BUCKET_MAP[metricsRange].bucket} bucketField="cpu_usage_pct_avg" hideRangeTabs compact />
 								</div>
-								<div class="network-divider"></div>
-								<div class="network-col">
-									<span class="network-label">Outbound</span>
-									<div class="network-value-row">
-										<span class="network-big">{formatBytes(netTxBytes)}</span>
+							{/key}
+							{#key `mem-${metricsRange}`}
+								<div class="metric-stack">
+									<div class="metric-stack-head">
+										<span class="metric-stack-label">메모리 사용률
+											<InfoTooltip placement="top-start" text="컨테이너가 점유한 메모리 비율 (%). 한도에 가까워지면 OOM(메모리 부족 종료) 위험이 있어요." />
+										</span>
+										<strong class="metric-stack-current memory">{memPct.toFixed(1)}%</strong>
 									</div>
-									<div class="network-bar-track"><div class="network-bar" style="width: {Math.min(netTxBytes / (netRxBytes + netTxBytes + 1) * 100, 100)}%; background: #bc13fe;"></div></div>
+									<MetricTrendChart {agentId} {accessToken} endpoint="/api/metrics/containers/" extraQuery={`container_id=${cid}`} metricField="memory_percent" liveValue={memPct} label="메모리 사용률 (%)" color="#8b5cf6" unit="percent" defaultRange={metricsRange} windowRange={RANGE_BUCKET_MAP[metricsRange].window} bucket={RANGE_BUCKET_MAP[metricsRange].bucket} bucketField="memory_percent_avg" hideRangeTabs compact />
 								</div>
-							</div>
+							{/key}
+							{#key `net-${metricsRange}`}
+								<div class="metric-stack">
+									<div class="metric-stack-head">
+										<span class="metric-stack-label">네트워크 처리량
+											<InfoTooltip placement="top-start" text="현재 초당 네트워크 처리량(RX+TX, B/s)이에요. Docker는 누적값만 노출하기 때문에 인접 샘플의 변화량으로 환산했어요. 평평 = 트래픽 없음, 솟아오름 = 활발한 통신." />
+										</span>
+										<strong class="metric-stack-current net">{formatRate(netRate)}</strong>
+									</div>
+									<MetricTrendChart {agentId} {accessToken} endpoint="/api/metrics/containers/" extraQuery={`container_id=${cid}`} metricField="" metricExtractor={(row) => Number(row?.network_rx ?? 0) + Number(row?.network_tx ?? 0)} liveValue={netRate} label="네트워크 처리량 (B/s)" color="#fbbf24" unit="rate" defaultRange={metricsRange} hideRangeTabs compact derivative />
+								</div>
+							{/key}
+							{#key `disk-${metricsRange}`}
+								<div class="metric-stack">
+									<div class="metric-stack-head">
+										<span class="metric-stack-label">디스크 처리량
+											<InfoTooltip placement="top-start" text="현재 초당 디스크 I/O 처리량(읽기+쓰기, B/s)이에요. Docker는 누적값만 노출해서 인접 샘플 변화량으로 환산했고, 평평하면 디스크 접근이 거의 없다는 뜻이에요." />
+										</span>
+										<strong class="metric-stack-current disk">{formatRate(diskRate)}</strong>
+									</div>
+									<MetricTrendChart {agentId} {accessToken} endpoint="/api/metrics/containers/" extraQuery={`container_id=${cid}`} metricField="" metricExtractor={(row) => Number(row?.disk_read ?? 0) + Number(row?.disk_write ?? 0)} liveValue={diskRate} label="디스크 처리량 (B/s)" color="#a78bfa" unit="rate" defaultRange={metricsRange} hideRangeTabs compact derivative />
+								</div>
+							{/key}
+							{#if hasGpu}
+								{#key `gpu-${metricsRange}`}
+									<div class="metric-stack">
+										<div class="metric-stack-head">
+											<span class="metric-stack-label">GPU 사용률
+												<InfoTooltip placement="top-start" text="GPU usage (%). nvidia-smi / rocm-smi가 보고하는 사용률이에요. 측정 불가(usage=null)인 GPU는 제외돼요." />
+											</span>
+											<strong class="metric-stack-current gpu">{gpuPct.toFixed(1)}%</strong>
+										</div>
+										<MetricTrendChart {agentId} {accessToken} endpoint="/api/metrics/containers/" extraQuery={`container_id=${cid}`} metricField="gpu_usage" liveValue={gpuPct} label="GPU 사용률 (%)" color="#f472b6" unit="percent" defaultRange={metricsRange} windowRange={RANGE_BUCKET_MAP[metricsRange].window} bucket={RANGE_BUCKET_MAP[metricsRange].bucket} bucketField="gpu_usage_avg" hideRangeTabs compact />
+									</div>
+								{/key}
+							{/if}
 						</div>
-						<div class="metrics-card">
-							<div class="metrics-card-header">
-								<span class="metrics-card-title muted">Disk I/O</span>
-								<InfoTooltip
-									placement="bottom-start"
-									text="컨테이너가 디스크를 읽고 쓴 누적 양. READ는 읽은 데이터, WRITE는 쓴 데이터예요. 숫자가 꾸준히 올라가면 지금 디스크 접근 중이고, 멈춰 있으면 I/O가 없는 상태예요."
-								/>
-							</div>
-							<div class="disk-stats">
-								<div class="disk-row">
-									<span class="disk-label">READ</span>
-									<span class="disk-value">{formatBytes(metricsData?.disk?.read || 0)}</span>
-								</div>
-								<div class="disk-row">
-									<span class="disk-label">WRITE</span>
-									<span class="disk-value">{formatBytes(metricsData?.disk?.write || 0)}</span>
-								</div>
-							</div>
-						</div>
+
+						<aside class="metrics-summary">
+							{#if peakLoading}
+								<section class="summary-section"><div class="summary-loading">불러오는 중...</div></section>
+							{:else if peakHistory.samples === 0}
+								<section class="summary-section"><div class="summary-empty">{rangeLabel} 동안 기록된 데이터가 없어요.</div></section>
+							{:else}
+								{@const memSwing = peakHistory.memory.value - metricsStats.memory.min}
+
+								<section class="summary-section">
+									<div class="summary-section-head">
+										<h4 class="summary-h4">{rangeLabel} 평균값</h4>
+										<InfoTooltip placement="bottom-end" text="선택한 시간 동안 매 샘플의 평균이에요. 일상적인 부하가 어느 정도인지 가늠하는 기준선이 돼요." />
+									</div>
+									<ul class="summary-list">
+										<li><span class="summary-key">CPU</span><span class="summary-val">{metricsStats.cpu.avg.toFixed(2)}%</span><small class="summary-when">현재 {cpuPct.toFixed(1)}%</small></li>
+										<li><span class="summary-key">메모리</span><span class="summary-val">{metricsStats.memory.avg.toFixed(2)}%</span><small class="summary-when">현재 {memPct.toFixed(1)}%</small></li>
+										<li><span class="summary-key">네트워크</span><span class="summary-val">{formatRate(metricsStats.network.avg)}</span><small class="summary-when">현재 {formatRate(netRate)}</small></li>
+										<li><span class="summary-key">디스크</span><span class="summary-val">{formatRate(metricsStats.disk.avg)}</span><small class="summary-when">현재 {formatRate(diskRate)}</small></li>
+										{#if hasGpu}
+											<li><span class="summary-key">GPU</span><span class="summary-val">{metricsStats.gpu.avg.toFixed(2)}%</span><small class="summary-when">현재 {gpuPct.toFixed(1)}%</small></li>
+										{/if}
+									</ul>
+								</section>
+
+								<section class="summary-section">
+									<div class="summary-section-head">
+										<h4 class="summary-h4">{rangeLabel} 최대값</h4>
+										<InfoTooltip placement="bottom-end" text="선택한 시간 동안 가장 높았던 값과 그 시각이에요. NET·DISK는 인접 샘플의 변화량(rate)으로 환산한 최대 처리량입니다." />
+									</div>
+									<ul class="summary-list">
+										<li><span class="summary-key">CPU</span><span class="summary-val">{peakHistory.cpu.value.toFixed(1)}%</span><small class="summary-when">{formatPeakTime(peakHistory.cpu.ts)}</small></li>
+										<li><span class="summary-key">메모리</span><span class="summary-val">{peakHistory.memory.value.toFixed(1)}%</span><small class="summary-when">{formatPeakTime(peakHistory.memory.ts)}</small></li>
+										<li><span class="summary-key">네트워크</span><span class="summary-val">{formatRate(peakHistory.network.value)}</span><small class="summary-when">{formatPeakTime(peakHistory.network.ts)}</small></li>
+										<li><span class="summary-key">디스크</span><span class="summary-val">{formatRate(peakHistory.disk.value)}</span><small class="summary-when">{formatPeakTime(peakHistory.disk.ts)}</small></li>
+										{#if hasGpu}
+											<li><span class="summary-key">GPU</span><span class="summary-val">{peakHistory.gpu.value.toFixed(1)}%</span><small class="summary-when">{formatPeakTime(peakHistory.gpu.ts)}</small></li>
+										{/if}
+									</ul>
+								</section>
+
+								<section class="summary-section">
+									<div class="summary-section-head">
+										<h4 class="summary-h4">{rangeLabel} 최저값</h4>
+										<InfoTooltip placement="bottom-end" text="선택한 시간 동안 가장 한가했던 값이에요. 평소 idle 수준이 어느 정도인지 가늠할 수 있어요." />
+									</div>
+									<ul class="summary-list">
+										<li><span class="summary-key">CPU</span><span class="summary-val">{metricsStats.cpu.min.toFixed(2)}%</span><small class="summary-when">{formatPeakTime(metricsStats.cpuMinTs)}</small></li>
+										<li><span class="summary-key">메모리</span><span class="summary-val">{metricsStats.memory.min.toFixed(2)}%</span><small class="summary-when">{formatPeakTime(metricsStats.memMinTs)}</small></li>
+										<li><span class="summary-key">네트워크</span><span class="summary-val">{formatRate(metricsStats.network.min)}</span><small class="summary-when">{formatPeakTime(metricsStats.netMinTs)}</small></li>
+										<li><span class="summary-key">디스크</span><span class="summary-val">{formatRate(metricsStats.disk.min)}</span><small class="summary-when">{formatPeakTime(metricsStats.diskMinTs)}</small></li>
+										{#if hasGpu}
+											<li><span class="summary-key">GPU</span><span class="summary-val">{metricsStats.gpu.min.toFixed(2)}%</span><small class="summary-when">{formatPeakTime(metricsStats.gpuMinTs)}</small></li>
+										{/if}
+									</ul>
+								</section>
+
+								<section class="summary-section activity">
+									<div class="summary-section-head">
+										<h4 class="summary-h4">{rangeLabel} 활동 패턴</h4>
+										<InfoTooltip placement="bottom-end" text="컨테이너가 시간 동안 얼마나 일했는지 보여줘요.\n\n• 거의 쉬는 중 — CPU를 거의 안 쓰는 한가한 시간\n• 가벼운 작업 — 잠깐씩 작업이 들어오는 보통 시간\n• 활발히 작동 — 처리량이 많은 바쁜 시간\n\n쉬는 시간이 길면 idle, 활발히 작동이 자주 보이면 워크로드가 많이 들어왔다는 뜻이에요." />
+									</div>
+									<div class="dist-bar" aria-hidden="true">
+										<span class="dist-seg dist-idle" style={`flex: ${Math.max(0.001, metricsStats.idleRatio)}`}></span>
+										<span class="dist-seg dist-normal" style={`flex: ${Math.max(0.001, metricsStats.normalRatio)}`}></span>
+										<span class="dist-seg dist-busy" style={`flex: ${Math.max(0.001, metricsStats.busyRatio)}`}></span>
+									</div>
+									<ul class="summary-list dist-list">
+										<li><span class="summary-key dist-key idle">거의 쉬는 중</span><span class="summary-val">{(metricsStats.idleRatio * 100).toFixed(1)}%</span><small class="summary-when">{formatDuration(metricsStats.idleSeconds)}</small></li>
+										<li><span class="summary-key dist-key normal">가벼운 작업</span><span class="summary-val">{(metricsStats.normalRatio * 100).toFixed(1)}%</span><small class="summary-when">{formatDuration(metricsStats.normalSeconds)}</small></li>
+										<li><span class="summary-key dist-key busy">활발히 작동</span><span class="summary-val">{(metricsStats.busyRatio * 100).toFixed(1)}%</span><small class="summary-when">{formatDuration(metricsStats.busySeconds)}</small></li>
+									</ul>
+									{#if memSwing > 5}
+										<div class="summary-tail">
+											<span class="summary-pill warn">메모리 변동 폭 {memSwing.toFixed(1)}% — 누수 의심</span>
+										</div>
+									{:else if memSwing > 0.5}
+										<div class="summary-tail">
+											<span class="summary-pill">메모리 변동 폭 {memSwing.toFixed(1)}%</span>
+										</div>
+									{/if}
+								</section>
+							{/if}
+						</aside>
 					</div>
 				{/if}
 
@@ -683,26 +1082,14 @@
 						<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2">
 							<circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
 						</svg>
-						<input type="text" placeholder="Search logs..." bind:value={logSearchQuery} />
+						<input type="text" placeholder="로그 검색..." bind:value={logSearchQuery} />
 					</div>
 					<div class="logs-controls">
-						<label class="auto-scroll-toggle">
-							<span>Auto-refresh</span>
-							<div class="switch" class:on={autoRefreshLogs} onclick={toggleAutoRefreshLogs}>
-								<div class="switch-thumb"></div>
-							</div>
-						</label>
-						<label class="auto-scroll-toggle">
-							<span>Auto-scroll</span>
-							<div class="switch" class:on={autoScroll} onclick={() => autoScroll = !autoScroll}>
-								<div class="switch-thumb"></div>
-							</div>
-						</label>
-						<button class="download-btn" onclick={downloadLogs}>
+						<button class="download-btn" onclick={downloadLogs} title="현재 표시된 로그를 .txt 파일로 저장합니다.">
 							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 								<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
 							</svg>
-							Download
+							다운로드
 						</button>
 					</div>
 				</div>
@@ -713,7 +1100,7 @@
 							<span class="dot yellow"></span>
 							<span class="dot green"></span>
 						</div>
-						<span class="terminal-title">bash — log-viewer — {filteredLogs.length} lines</span>
+						<span class="terminal-title">bash — 로그 뷰어 — {filteredLogs.length} 줄</span>
 					</div>
 					<div class="terminal-body" bind:this={logContainer}>
 						{#if loadingLogs}
@@ -742,32 +1129,32 @@
 		<!-- Footer -->
 		<div class="modal-footer">
 			{#if containerState === 'running'}
-				<button class="action-btn danger" onclick={() => handleControl('stop')} disabled={!!controlLoading}>
+				<button class="action-btn danger" onclick={() => handleControl('stop')} disabled={!!controlLoading} title="컨테이너 프로세스를 정상 종료(SIGTERM)합니다. 데이터는 유지되고 다시 '시작'으로 켤 수 있어요.">
 					{controlLoading === 'stop' ? '처리 중...' : '중지'}
 				</button>
 				<div class="action-right">
-					<button class="action-btn secondary" onclick={() => handleControl('restart')} disabled={!!controlLoading}>
+					<button class="action-btn secondary" onclick={() => handleControl('restart')} disabled={!!controlLoading} title="중지 후 즉시 다시 시작합니다. 설정 파일을 다시 읽거나 메모리 누수를 초기화할 때 써요.">
 						{controlLoading === 'restart' ? '처리 중...' : '재시작'}
 					</button>
-					<button class="action-btn secondary" onclick={() => handleControl('pause')} disabled={!!controlLoading}>
+					<button class="action-btn secondary" onclick={() => handleControl('pause')} disabled={!!controlLoading} title="컨테이너의 모든 프로세스를 동결(freeze)합니다. CPU 사용은 멈추지만 메모리는 유지돼요. '재개'로 즉시 복귀.">
 						{controlLoading === 'pause' ? '처리 중...' : '일시정지'}
 					</button>
 				</div>
 			{:else if containerState === 'paused'}
-				<button class="action-btn danger" onclick={() => handleControl('stop')} disabled={!!controlLoading}>
+				<button class="action-btn danger" onclick={() => handleControl('stop')} disabled={!!controlLoading} title="일시정지 상태에서 컨테이너를 정상 종료합니다.">
 					{controlLoading === 'stop' ? '처리 중...' : '중지'}
 				</button>
 				<div class="action-right">
-					<button class="action-btn accent" onclick={() => handleControl('unpause')} disabled={!!controlLoading}>
+					<button class="action-btn accent" onclick={() => handleControl('unpause')} disabled={!!controlLoading} title="일시정지 상태에서 프로세스를 다시 깨워 실행 중으로 되돌립니다.">
 						{controlLoading === 'unpause' ? '처리 중...' : '재개'}
 					</button>
 				</div>
 			{:else}
-				<button class="action-btn accent" onclick={() => handleControl('start')} disabled={!!controlLoading}>
+				<button class="action-btn accent" onclick={() => handleControl('start')} disabled={!!controlLoading} title="중지된 컨테이너를 다시 시작합니다. 동일한 설정과 데이터로 부팅돼요.">
 					{controlLoading === 'start' ? '처리 중...' : '시작'}
 				</button>
 				<div class="action-right">
-					<button class="action-btn secondary" onclick={() => handleControl('restart')} disabled={!!controlLoading}>
+					<button class="action-btn secondary" onclick={() => handleControl('restart')} disabled={!!controlLoading} title="현재 상태와 무관하게 컨테이너를 재시작합니다.">
 						{controlLoading === 'restart' ? '처리 중...' : '재시작'}
 					</button>
 				</div>
@@ -790,7 +1177,7 @@
 	}
 
 	.modal {
-		width: min(1100px, 92vw);
+		width: min(820px, 88vw);
 		max-height: 92vh;
 		background: #0d1117;
 		border: 1px solid #30d5c8;
@@ -802,8 +1189,8 @@
 
 	/* Metrics tab gets the full real estate so the two charts side-by-side
 	   still have room for the range tab row + Y-axis labels. */
-	.modal-metrics { width: min(1280px, 95vw); }
-	.modal-logs { width: min(1200px, 94vw); }
+	.modal-metrics { width: min(1040px, 88vw); }
+	.modal-logs { width: min(1100px, 92vw); }
 
 	/* Header */
 	.modal-header {
@@ -825,9 +1212,10 @@
 	}
 
 	.title-text {
-		font-size: 15px;
-		font-weight: 700;
-		color: #d9d9d9;
+		font-size: 18px;
+		font-weight: 800;
+		color: #f1f5f9;
+		letter-spacing: -0.01em;
 	}
 
 	.close-btn {
@@ -850,8 +1238,8 @@
 		padding: 12px 8px;
 		border: none;
 		background: none;
-		font-size: 13px;
-		font-weight: 700;
+		font-size: 15px;
+		font-weight: 800;
 		color: #64748b;
 		cursor: pointer;
 		border-bottom: 2px solid transparent;
@@ -869,10 +1257,10 @@
 		flex: 1;
 		overflow-y: auto;
 		overflow-x: hidden;
-		padding: 24px;
+		padding: 10px 14px 12px;
 		display: flex;
 		flex-direction: column;
-		gap: 32px;
+		gap: 10px;
 	}
 
 	/* Loading */
@@ -886,60 +1274,132 @@
 	.error-text { color: #ef4444; }
 
 	/* Sections */
-	.section { display: flex; flex-direction: column; gap: 16px; }
+	.section { display: flex; flex-direction: column; gap: 6px; }
 
 	.section-title {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		font-size: 13px;
-		font-weight: 700;
-		color: #64748b;
+		font-size: 15px;
+		font-weight: 800;
+		color: #e2e8f0;
+		letter-spacing: -0.01em;
 	}
 
 	.section-dot {
 		width: 4px;
-		height: 12px;
-		background: #0f667b;
+		height: 16px;
+		background: #30d5c8;
 		border-radius: 9999px;
 	}
 
 	/* Info Cards */
 	.info-card {
 		background: #121720;
+		border: 1px solid rgba(100, 116, 139, 0.16);
 		border-radius: 8px;
-		padding: 16px;
+		padding: 4px 6px;
 		display: flex;
 		flex-direction: column;
-		gap: 16px;
+		gap: 0;
 	}
 
-	.info-card.compact { gap: 4px; }
+	.info-card.compact { gap: 0; padding: 4px 6px; }
 
 	.info-grid {
 		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 16px;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0 14px;
 	}
 
-	.info-item { display: flex; flex-direction: column; gap: 4px; }
+	.info-item {
+		display: grid;
+		grid-template-columns: 100px minmax(0, 1fr);
+		align-items: baseline;
+		gap: 12px;
+		padding: 9px 10px;
+		border-radius: 0;
+		background: transparent;
+		border-bottom: 1px solid rgba(100, 116, 139, 0.08);
+	}
+	.info-item:last-child { border-bottom: none; }
 	.info-item.full { grid-column: 1 / -1; }
+	.info-item.full.ports-item {
+		grid-template-columns: 100px minmax(0, 1fr);
+	}
 
-	.info-label { font-size: 13px; color: #64748b; }
+	.sub-title {
+		font-size: 12px;
+		font-weight: 800;
+		color: var(--text-muted);
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		padding: 9px 10px 4px;
+		border-bottom: 1px solid rgba(100, 116, 139, 0.08);
+		margin-bottom: 0;
+	}
+	.sub-title + .info-grid { margin-bottom: 4px; }
+	.sub-title + .port-chips {
+		padding: 6px 10px 9px;
+		border-bottom: 1px solid rgba(100, 116, 139, 0.08);
+		margin-bottom: 0;
+	}
+	.sub-title + .port-chips:last-child { border-bottom: none; }
 
-	.info-value { font-size: 14px; color: #cbd5e1; }
-	.info-value.mono { font-size: 12px; font-family: monospace; word-break: break-all; }
+	.info-label {
+		font-size: 13px;
+		font-weight: 700;
+		color: var(--text-muted);
+		letter-spacing: 0.01em;
+	}
 
-	.info-value.status { font-size: 12px; font-weight: 700; }
-	.info-value.status.running { color: #30d5c8; }
-	.info-value.status.stopped { color: #64748b; }
-	.info-value.status.paused { color: #f59e0b; }
+	.info-value {
+		font-size: 14px;
+		font-weight: 700;
+		color: #e2e8f0;
+		word-break: break-word;
+		line-height: 1.35;
+	}
+	.info-value.mono {
+		font-size: 12px;
+		font-family: 'JetBrains Mono', 'Consolas', monospace;
+		font-weight: 600;
+		word-break: break-all;
+		color: #cbd5e1;
+		line-height: 1.4;
+	}
+
+	.info-value.status {
+		font-size: 12px;
+		font-weight: 800;
+		display: inline-block;
+		padding: 2px 8px;
+		border-radius: 999px;
+		width: fit-content;
+		background: rgba(13, 17, 23, 0.65);
+		border: 1px solid rgba(100, 116, 139, 0.3);
+	}
+	.info-value.status.running {
+		color: #30d5c8;
+		border-color: rgba(48, 213, 200, 0.4);
+		background: rgba(48, 213, 200, 0.1);
+	}
+	.info-value.status.stopped {
+		color: #94a3b8;
+		border-color: rgba(148, 163, 184, 0.35);
+	}
+	.info-value.status.paused {
+		color: #f59e0b;
+		border-color: rgba(245, 158, 11, 0.4);
+		background: rgba(245, 158, 11, 0.08);
+	}
+	.info-value.warn-text { color: #fbbf24; }
 
 	/* Settings */
 	.settings-grid {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
-		gap: 16px;
+		gap: 6px;
 	}
 
 	/* Env vars */
@@ -947,31 +1407,33 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
+		margin-bottom: 4px;
 	}
 
 	.env-toggle {
 		background: none;
 		border: none;
 		color: #30d5c8;
-		font-size: 12px;
+		font-size: 11px;
+		font-weight: 700;
 		cursor: pointer;
 		padding: 0;
 	}
 
 	.env-toggle:hover { text-decoration: underline; }
 
-	.env-list { display: flex; flex-direction: column; gap: 4px; }
+	.env-list { display: flex; flex-direction: column; gap: 3px; padding-top: 4px; }
 
 	.env-item {
 		display: flex;
 		justify-content: space-between;
-		padding: 6px 12px;
+		padding: 5px 10px;
 		background: #151c27;
 		border-radius: 4px;
 	}
 
-	.env-key { font-size: 11px; color: #cbd5e1; }
-	.env-val { font-size: 11px; color: #30d5c8; }
+	.env-key { font-size: 12px; color: #cbd5e1; font-weight: 700; }
+	.env-val { font-size: 12px; color: #30d5c8; font-family: 'JetBrains Mono', monospace; }
 
 	/* Resources */
 	.resource-grid {
@@ -994,7 +1456,393 @@
 	.resource-value.plain { color: #cbd5e1; font-size: 14px; }
 	.resource-unit { font-size: 12px; color: #64748b; font-weight: 400; }
 
-	/* Metrics Tab */
+	/* 성능 지표 Tab — 새 레이아웃 */
+	.metrics-range-row {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin-bottom: 0;
+		padding-bottom: 4px;
+		border-bottom: 1px dashed rgba(100, 116, 139, 0.2);
+	}
+	.metrics-range-label {
+		font-size: 12px;
+		font-weight: 800;
+		color: var(--text-muted);
+		letter-spacing: 0.02em;
+	}
+	.metrics-range-tabs {
+		display: inline-flex;
+		gap: 2px;
+		padding: 2px;
+		border: 1px solid rgba(100, 116, 139, 0.24);
+		border-radius: 999px;
+		background: rgba(15, 23, 42, 0.55);
+	}
+	.metrics-range-tab {
+		border: none;
+		background: transparent;
+		color: var(--text-muted);
+		font-size: 11px;
+		font-weight: 800;
+		padding: 5px 12px;
+		border-radius: 999px;
+		cursor: pointer;
+		letter-spacing: 0.02em;
+	}
+	.metrics-range-tab.active {
+		background: rgba(48, 213, 200, 0.22);
+		color: #30d5c8;
+	}
+
+	.metrics-layout {
+		display: grid;
+		grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+		gap: 14px;
+		min-width: 0;
+		flex: 1 1 auto;
+		align-items: stretch;
+	}
+	.metrics-charts {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		min-width: 0;
+	}
+	.metric-stack {
+		background: #121720;
+		border: 1px solid rgba(100, 116, 139, 0.18);
+		border-radius: 8px;
+		padding: 10px 12px 12px;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		min-width: 0;
+	}
+	.metric-stack-head {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.metric-stack-label {
+		font-size: 12px;
+		font-weight: 800;
+		color: #cbd5e1;
+		letter-spacing: 0.02em;
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+	}
+	.metric-stack-current {
+		margin-left: auto;
+		font-size: 13px;
+		font-weight: 900;
+		font-variant-numeric: tabular-nums;
+	}
+	.metric-stack-current.cpu { color: #30d5c8; }
+	.metric-stack-current.memory { color: #a78bfa; }
+	.metric-stack-current.net { color: #fbbf24; }
+	.metric-stack-current.disk { color: #c4b5fd; }
+	.metric-stack-current.gpu { color: #f472b6; }
+	.metric-stack :global(.trend) { gap: 2px; }
+	.metric-stack :global(.canvas-wrap) { height: 110px; }
+
+	.metrics-summary {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		min-width: 0;
+		min-height: 0;
+	}
+	.metrics-summary > .summary-section {
+		flex: 1 1 0;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+	.metrics-summary > .summary-section.activity {
+		flex: 1 1 0;
+	}
+	.metrics-summary .summary-list {
+		flex: 1 1 auto;
+		display: flex;
+		flex-direction: column;
+		justify-content: space-between;
+		gap: 3px;
+	}
+	.metrics-summary .summary-list li {
+		padding-top: 3px;
+		padding-bottom: 3px;
+	}
+	.summary-section {
+		background: #121720;
+		border: 1px solid rgba(100, 116, 139, 0.18);
+		border-radius: 8px;
+		padding: 8px 10px 10px;
+	}
+	.summary-section-head {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		margin-bottom: 8px;
+	}
+	.summary-h4 {
+		margin: 0;
+		font-size: 12px;
+		font-weight: 800;
+		color: #cbd5e1;
+		letter-spacing: 0.02em;
+	}
+	.summary-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+	}
+	.summary-list li {
+		display: grid;
+		grid-template-columns: 48px minmax(0, 1fr) auto;
+		align-items: baseline;
+		gap: 6px;
+		padding: 3px 8px;
+		border-radius: 5px;
+		background: rgba(13, 17, 23, 0.55);
+		min-width: 0;
+	}
+	.summary-list li .summary-val {
+		text-align: right;
+	}
+	.summary-list li .summary-when {
+		margin-left: 0;
+	}
+	.summary-key {
+		font-size: 10px;
+		font-weight: 800;
+		color: var(--text-muted);
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+	}
+	.summary-val {
+		font-size: 13px;
+		font-weight: 900;
+		color: #e2e8f0;
+		font-variant-numeric: tabular-nums;
+	}
+	.summary-val.warn { color: #fbbf24; }
+	.mono-summary {
+		font-family: 'JetBrains Mono', monospace;
+		font-weight: 700;
+		font-size: 11px;
+		color: #94a3b8;
+	}
+	.summary-when {
+		font-size: 10px;
+		color: #64748b;
+		font-weight: 700;
+		text-align: right;
+		white-space: nowrap;
+		font-variant-numeric: tabular-nums;
+	}
+	.summary-loading,
+	.summary-empty {
+		font-size: 11px;
+		color: var(--text-muted);
+		padding: 8px 4px;
+	}
+	.summary-meta {
+		display: block;
+		margin-top: 8px;
+		font-size: 10px;
+		color: #475569;
+		text-align: right;
+	}
+	.summary-tail {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 5px;
+		margin-top: 8px;
+		flex: 0 0 auto;
+	}
+	.metrics-summary .summary-list.dist-list {
+		flex: 0 0 auto;
+	}
+	.summary-pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 2px 8px;
+		border: 1px solid rgba(100, 116, 139, 0.3);
+		border-radius: 999px;
+		background: rgba(13, 17, 23, 0.6);
+		color: var(--text-muted);
+		font-size: 10px;
+		font-weight: 800;
+	}
+	.summary-pill.warn {
+		border-color: rgba(251, 191, 36, 0.45);
+		background: rgba(251, 191, 36, 0.12);
+		color: #fbbf24;
+	}
+	.dist-bar {
+		display: flex;
+		gap: 2px;
+		height: 12px;
+		border-radius: 999px;
+		overflow: hidden;
+		margin-bottom: 8px;
+	}
+	.dist-seg {
+		display: block;
+		min-width: 2px;
+	}
+	.dist-seg.dist-idle { background: rgba(100, 116, 139, 0.55); }
+	.dist-seg.dist-normal { background: rgba(48, 213, 200, 0.7); }
+	.dist-seg.dist-busy { background: rgba(251, 113, 133, 0.85); }
+	.dist-list li {
+		grid-template-columns: 92px minmax(0, 1fr) auto;
+	}
+	.dist-list .dist-key {
+		text-transform: none;
+		letter-spacing: 0;
+		font-size: 11px;
+	}
+	.dist-key.idle { color: #94a3b8; }
+	.dist-key.normal { color: #30d5c8; }
+	.dist-key.busy { color: #fb7185; }
+	.summary-empty.small { font-size: 10px; padding: 4px 2px; }
+	.summary-row.two {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+		gap: 10px;
+	}
+	.radar-section,
+	.scatter-section {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+	.radar-host,
+	.scatter-host {
+		flex: 1 1 0;
+		min-height: 160px;
+		min-width: 0;
+		position: relative;
+	}
+	.scatter-host canvas {
+		width: 100% !important;
+		height: 100% !important;
+	}
+	.rate-row {
+		display: grid;
+		grid-template-columns: 36px minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 8px;
+		padding: 4px 0;
+	}
+	.rate-row + .rate-row {
+		border-top: 1px dashed rgba(100, 116, 139, 0.18);
+	}
+	.rate-label {
+		font-size: 9px;
+		font-weight: 900;
+		letter-spacing: 0.06em;
+	}
+	.rate-label.net { color: #fbbf24; }
+	.rate-label.disk { color: #a78bfa; }
+	.rate-spark {
+		min-width: 0;
+		height: 24px;
+	}
+	.rate-current {
+		font-size: 11px;
+		font-weight: 800;
+		color: #cbd5e1;
+		font-variant-numeric: tabular-nums;
+		min-width: 64px;
+		text-align: right;
+	}
+	.summary-list.compact li {
+		grid-template-columns: minmax(0, 1fr) auto;
+	}
+	.port-block + .port-block {
+		margin-top: 8px;
+		padding-top: 8px;
+		border-top: 1px dashed rgba(100, 116, 139, 0.18);
+	}
+	.port-block-label {
+		font-size: 10px;
+		font-weight: 800;
+		color: var(--text-muted);
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		margin-bottom: 5px;
+	}
+	.port-chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+	}
+	.port-chip {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 4px;
+		padding: 2px 8px;
+		border: 1px solid rgba(48, 213, 200, 0.4);
+		border-radius: 999px;
+		background: rgba(48, 213, 200, 0.08);
+		font-size: 11px;
+		font-variant-numeric: tabular-nums;
+	}
+	.port-chip b { color: #30d5c8; font-weight: 900; }
+	.port-chip small { color: #64748b; font-size: 9px; }
+	.mount-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+	}
+	.mount-list li {
+		display: grid;
+		grid-template-columns: 64px minmax(0, 1fr);
+		gap: 6px;
+		align-items: baseline;
+		padding: 3px 6px;
+		border-radius: 4px;
+		background: rgba(13, 17, 23, 0.55);
+		font-size: 11px;
+	}
+	.mount-type {
+		font-size: 9px;
+		font-weight: 800;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+	}
+	.mount-path {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: #cbd5e1;
+	}
+	.mount-more {
+		justify-self: center;
+		font-size: 10px;
+		color: var(--text-muted);
+		background: transparent;
+	}
+	@media (max-width: 980px) {
+		.metrics-layout {
+			grid-template-columns: 1fr;
+		}
+	}
+
+	/* Legacy metrics-tab styles (unused after redesign — kept for log/info reuse) */
 	.metrics-grid-top, .metrics-grid-bottom {
 		display: grid;
 		/* minmax(0, 1fr) lets columns actually shrink below intrinsic width —

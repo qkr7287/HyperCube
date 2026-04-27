@@ -56,7 +56,7 @@
 		display: block;
 		width: 100%;
 		max-width: 140px;
-		min-width: 80px;
+		min-width: 0;
 		height: 26px;
 	}
 	line {

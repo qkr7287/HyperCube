@@ -1068,6 +1068,24 @@ function gpuUsage(gpu?: GpuMetric[] | null): number {
 	return gpuSummary(gpu).usage;
 }
 
+// 내장 그래픽(Intel UHD/HD/Iris/Xe, AMD APU Vega Graphics, lspci 코드네임 GT 패턴)은
+// 서버 모니터링 가치가 낮고 (디스플레이 출력 없음, 사용률 항상 0) Intel iGPU 는 nvidia-smi
+// 호환 도구가 없어 usage 가 항상 0 으로 들어옴. dedicated NVIDIA/AMD/Intel Arc 만
+// 집계해야 KPI · 카드 노이즈를 줄일 수 있다.
+function isIntegratedGpu(gpu: GpuMetric): boolean {
+	const vendor = (gpu.vendor ?? '').toUpperCase();
+	const model = (gpu.model ?? '').toUpperCase();
+	if (vendor === 'INTEL' || /\bINTEL\b/.test(model)) {
+		// Intel Arc A/B 시리즈는 dedicated.
+		if (/\bARC\s+[AB]\d/.test(model)) return false;
+		return true;
+	}
+	if (/\b(UHD\s+GRAPHICS|HD\s+GRAPHICS|IRIS|XE\s+GRAPHICS)\b/.test(model)) return true;
+	if (/(COMETLAKE|TIGERLAKE|ROCKETLAKE|ALDERLAKE|RAPTORLAKE|ICELAKE|KABYLAKE|SKYLAKE|HASWELL|BROADWELL).*GT\d/.test(model)) return true;
+	if (/\bRADEON\s+(VEGA\s+\d+\s+)?GRAPHICS\b/.test(model)) return true;
+	return false;
+}
+
 function gpuSummary(gpu?: GpuMetric[] | null): {
 	usage: number;
 	temperature: number | null;
@@ -1075,7 +1093,7 @@ function gpuSummary(gpu?: GpuMetric[] | null): {
 	memoryTotal: number | null;
 	count: number;
 } {
-	const rows = Array.isArray(gpu) ? gpu : [];
+	const rows = (Array.isArray(gpu) ? gpu : []).filter((item) => !isIntegratedGpu(item));
 	const usages = rows.map((item) => num(item.usage)).filter((value) => value > 0);
 	const temps = rows.map((item) => num(item.temperature)).filter((value) => value > 0);
 	// GPU 메모리는 전체 장치 합계로 집계 (사용자는 서버 전체 VRAM 관점으로 보고 싶어함).

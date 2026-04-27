@@ -74,7 +74,9 @@
 	};
 
 	let canvas: HTMLCanvasElement | null = null;
+	let canvasWrap: HTMLDivElement | null = null;
 	let chart: Chart | null = null;
+	let resizeObs: ResizeObserver | null = null;
 
 	function formatRate(value: number): string {
 		if (!Number.isFinite(value) || value <= 0) return '0 B/s';
@@ -196,11 +198,20 @@
 		if (canvas) renderChart();
 	});
 
-	onMount(renderChart);
-	onDestroy(() => chart?.destroy());
+	onMount(() => {
+		renderChart();
+		if (canvasWrap && typeof ResizeObserver !== 'undefined') {
+			resizeObs = new ResizeObserver(() => chart?.resize());
+			resizeObs.observe(canvasWrap);
+		}
+	});
+	onDestroy(() => {
+		resizeObs?.disconnect();
+		chart?.destroy();
+	});
 </script>
 
-<div class="scatter-wrap">
+<div class="scatter-wrap" bind:this={canvasWrap}>
 	<canvas bind:this={canvas}></canvas>
 	{#if soloStack}
 		<div class="solo-tag">솔로: {soloStack}</div>

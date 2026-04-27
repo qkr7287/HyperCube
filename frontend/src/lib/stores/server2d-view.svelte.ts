@@ -1,8 +1,8 @@
 export type Server2dMetric = 'cpu' | 'memory' | 'network';
 export type Server2dStateFilter = 'all' | 'running' | 'paused' | 'problem' | 'stopped';
-export type Server2dSortMode = 'load' | 'name' | 'problem';
+export type Server2dSortMode = 'total' | 'name' | 'problem';
 export type Server2dSortDir = 'desc' | 'asc';
-export type Server2dContainerSort = 'default' | 'gpu' | 'memory' | 'cpu' | 'network';
+export type Server2dContainerSort = 'default' | 'gpu' | 'memory' | 'cpu' | 'network' | 'total';
 
 type Server2dView = {
 	soloStack: string | null;
@@ -18,7 +18,7 @@ type Server2dView = {
 	containersPaused: boolean;
 	stacksPaused: boolean;
 	eventsPaused: boolean;
-	metricAutoPaused: boolean;
+	stackFocusPaused: boolean;
 };
 
 export const view: Server2dView = $state({
@@ -27,15 +27,15 @@ export const view: Server2dView = $state({
 	stateFilter: 'all',
 	expandedStack: null,
 	searchQuery: '',
-	sortMode: 'load',
+	sortMode: 'total',
 	stackSortDir: 'desc',
-	containerSort: 'default',
+	containerSort: 'total',
 	containerSortDir: 'desc',
 	matrixShowAll: false,
 	containersPaused: false,
 	stacksPaused: false,
 	eventsPaused: false,
-	metricAutoPaused: false,
+	stackFocusPaused: true,
 });
 
 export function resetViewForServerChange(): void {
@@ -43,15 +43,15 @@ export function resetViewForServerChange(): void {
 	view.expandedStack = null;
 	view.searchQuery = '';
 	view.stateFilter = 'all';
-	view.sortMode = 'load';
+	view.sortMode = 'total';
 	view.stackSortDir = 'desc';
-	view.containerSort = 'default';
+	view.containerSort = 'total';
 	view.containerSortDir = 'desc';
 	view.matrixShowAll = false;
 	view.containersPaused = false;
 	view.stacksPaused = false;
 	view.eventsPaused = false;
-	view.metricAutoPaused = false;
+	view.stackFocusPaused = true;
 }
 
 export function stateFilterLabel(value: Server2dStateFilter): string {

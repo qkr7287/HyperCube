@@ -30,13 +30,14 @@
 		const sorted = [...entries].sort((a, b) => b.value - a.value);
 		if (soloed) {
 			const active = sorted.find((entry) => entry.label === soloed);
-			return active ? [active] : sorted.slice(0, maxChips);
+			if (active) return [active];
 		}
-		return sorted.slice(0, maxChips);
+		return maxChips > 0 ? sorted.slice(0, maxChips) : [];
 	});
-	const hiddenCount = $derived(
-		Math.max(0, entries.length - topEntries.length - (soloed && entries.find((e) => e.label === soloed) ? 0 : 0)),
+	const showMore = $derived(
+		maxChips > 0 && Math.max(0, entries.length - topEntries.length) > 0,
 	);
+	const hiddenCount = $derived(Math.max(0, entries.length - topEntries.length));
 </script>
 
 <div class="legend">
@@ -54,7 +55,7 @@
 			<small>{format(entry.value)}</small>
 		</button>
 	{/each}
-	{#if hiddenCount > 0}
+	{#if showMore}
 		<span class="more">+{hiddenCount}</span>
 	{/if}
 	{#if soloed}

@@ -30,20 +30,22 @@
 	} = $props();
 
 	let canvas: HTMLCanvasElement | null = null;
+	let canvasWrap: HTMLDivElement | null = null;
 	let chart: Chart | null = null;
+	let resizeObs: ResizeObserver | null = null;
 
 	function buildData(): ChartData<'radar'> {
 		const hasReference = axes.some((a) => typeof a.reference === 'number');
 		const datasets: any[] = [
 			{
 				label: '현재',
-				data: axes.map((a) => Math.max(0, Math.min(100, a.value))),
-				backgroundColor: `${primaryColor}33`,
+				data: axes.map((a) => Math.max(0, a.value)),
+				backgroundColor: `${primaryColor}55`,
 				borderColor: primaryColor,
-				borderWidth: 2,
+				borderWidth: 2.4,
 				pointBackgroundColor: primaryColor,
 				pointBorderColor: 'rgba(15, 23, 42, 0.9)',
-				pointBorderWidth: 1.2,
+				pointBorderWidth: 1.4,
 				pointRadius: 3,
 				pointHoverRadius: 5,
 				fill: true,
@@ -52,7 +54,7 @@
 		if (hasReference) {
 			datasets.push({
 				label: '평균',
-				data: axes.map((a) => Math.max(0, Math.min(100, a.reference ?? 0))),
+				data: axes.map((a) => Math.max(0, a.reference ?? 0)),
 				backgroundColor: `${referenceColor}14`,
 				borderColor: `${referenceColor}88`,
 				borderWidth: 1,
@@ -65,6 +67,21 @@
 			labels: axes.map((a) => a.label),
 			datasets,
 		};
+	}
+
+	function computeMax(): number {
+		let peak = 0;
+		for (const a of axes) {
+			peak = Math.max(peak, a.value || 0, a.reference || 0);
+		}
+		if (peak <= 0) return 1;
+		// peak에 padding을 거의 주지 않음 — 작은 값일수록 화면에 큼직하게
+		// 그려지도록 가장 가까운 다음 stop만 사용
+		const stops = [1, 2, 5, 10, 15, 20, 30, 50, 75, 100];
+		for (const s of stops) {
+			if (peak <= s) return s;
+		}
+		return 100;
 	}
 
 	function render() {
@@ -91,7 +108,7 @@
 				scales: {
 					r: {
 						min: 0,
-						max: 100,
+						max: computeMax(),
 						beginAtZero: true,
 						angleLines: { color: 'rgba(100, 116, 139, 0.25)' },
 						grid: { color: 'rgba(100, 116, 139, 0.18)' },
@@ -100,8 +117,13 @@
 							font: { size: 11, weight: 700 },
 						},
 						ticks: {
-							display: false,
-							stepSize: 25,
+							display: true,
+							color: '#475569',
+							font: { size: 9 },
+							backdropColor: 'transparent',
+							stepSize: undefined,
+							maxTicksLimit: 4,
+							callback: (v) => `${Number(v).toFixed(0)}%`,
 						},
 					},
 				},
@@ -113,6 +135,8 @@
 		if (!canvas) return;
 		if (!chart) return render();
 		chart.data = buildData();
+		const r = chart.options.scales?.r as any;
+		if (r) r.max = computeMax();
 		chart.update('none');
 	}
 
@@ -122,11 +146,20 @@
 		sync();
 	});
 
-	onMount(sync);
-	onDestroy(() => chart?.destroy());
+	onMount(() => {
+		sync();
+		if (canvasWrap && typeof ResizeObserver !== 'undefined') {
+			resizeObs = new ResizeObserver(() => chart?.resize());
+			resizeObs.observe(canvasWrap);
+		}
+	});
+	onDestroy(() => {
+		resizeObs?.disconnect();
+		chart?.destroy();
+	});
 </script>
 
-<div class="radar">
+<div class="radar" bind:this={canvasWrap}>
 	<canvas bind:this={canvas}></canvas>
 </div>
 

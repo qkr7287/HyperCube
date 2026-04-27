@@ -15,7 +15,9 @@
 	} = $props();
 
 	let canvas: HTMLCanvasElement | null = null;
+	let canvasWrap: HTMLDivElement | null = null;
 	let chart: Chart | null = null;
+	let resizeObs: ResizeObserver | null = null;
 
 	const toneColors: Record<'ok' | 'warn' | 'hot' | 'dim', string> = {
 		ok: '#34d399',
@@ -69,12 +71,21 @@
 		sync();
 	});
 
-	onMount(sync);
-	onDestroy(() => chart?.destroy());
+	onMount(() => {
+		sync();
+		if (canvasWrap && typeof ResizeObserver !== 'undefined') {
+			resizeObs = new ResizeObserver(() => chart?.resize());
+			resizeObs.observe(canvasWrap);
+		}
+	});
+	onDestroy(() => {
+		resizeObs?.disconnect();
+		chart?.destroy();
+	});
 </script>
 
 <div class="radial">
-	<div class="chart-wrap">
+	<div class="chart-wrap" bind:this={canvasWrap}>
 		<div class="canvas-square">
 			<canvas bind:this={canvas}></canvas>
 			<div class="center-label">

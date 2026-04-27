@@ -3,6 +3,7 @@
 	import { browser } from '$app/environment';
 	import { base } from '$app/paths';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 	import {
 		fleetAgents,
 		fleetConnected,
@@ -19,6 +20,11 @@
 		type FleetAgentRow,
 		type TimeRange,
 	} from '$lib/stores/fleet-store';
+	import {
+		EACH_STATUS_ORDER,
+		buildSimulatedAgents,
+		isSimulatedAgentId,
+	} from '$lib/utils/fleet-simulate';
 	import { connectGlobal, disconnectGlobal, seedActiveAgents, seedStatusEvents } from '$lib/stores/global-events';
 	import { rangeBucketLabel, rangeLabel } from '$lib/utils/fleet-format';
 	import FleetStatusBar from '$lib/components/fleet/FleetStatusBar.svelte';
@@ -34,6 +40,15 @@
 	let range = $state<TimeRange>('1h');
 	let selectedAgentId = $state<string | null>(null);
 
+	type ViewMode = 'card' | 'list';
+	const VIEW_MODE_KEY = 'hc_fleet_view_mode';
+	let viewMode = $state<ViewMode>('card');
+
+	function setViewMode(next: ViewMode) {
+		viewMode = next;
+		if (browser) localStorage.setItem(VIEW_MODE_KEY, next);
+	}
+
 	// Auth state
 	let ready = $state(false);
 	let isLoggedIn = $state(false);
@@ -45,7 +60,28 @@
 	let loginLoading = $state(false);
 	let redirecting = $state(false);
 
-	let displayedAgents = $derived($fleetAgents);
+	// URL flag 기반 가상 서버 주입 — 카드/테이블에만 머지되고 KPI 바(상단 요약)는
+	// 실제 fleet 만 집계한다.
+	//   ?sim=N        → N대 가상 서버 (1~200)
+	//   ?sim=each     → 상태별 1대씩 (critical / warning / stale / offline / healthy)
+	//   ?only=sim     → 실제 fleet 숨기고 가상만
+	let simMode = $derived($page.url.searchParams.get('sim') ?? '');
+	let onlySim = $derived($page.url.searchParams.get('only') === 'sim');
+	let simCount = $derived.by(() => {
+		if (!simMode || simMode === 'each') return 0;
+		const parsed = parseInt(simMode, 10);
+		if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+		return Math.min(parsed, 200);
+	});
+	let simAgents = $derived.by(() => {
+		if (simMode === 'each') return buildSimulatedAgents(0, 0, EACH_STATUS_ORDER);
+		return simCount > 0 ? buildSimulatedAgents(simCount) : [];
+	});
+	let displayedAgents = $derived.by(() => {
+		if (onlySim) return simAgents;
+		if (simAgents.length === 0) return $fleetAgents;
+		return [...$fleetAgents, ...simAgents];
+	});
 
 	function decodeRole(token: string): string | null {
 		try {
@@ -82,6 +118,7 @@
 
 	function selectAgent(agentId: string) {
 		selectedAgentId = agentId;
+		if (isSimulatedAgentId(agentId)) return;
 		loadSelectedAgent(agentId);
 	}
 
@@ -91,11 +128,13 @@
 	}
 
 	function open3d(agentId: string) {
+		if (isSimulatedAgentId(agentId)) return;
 		if (browser) localStorage.setItem('hc_selected_server', agentId);
 		goto(`${base}/server-3d`);
 	}
 
 	function open2d(agentId: string) {
+		if (isSimulatedAgentId(agentId)) return;
 		if (browser) localStorage.setItem('hc_selected_server', agentId);
 		goto(`${base}/server-2d`);
 	}
@@ -156,11 +195,13 @@
 		if (selectedAgentId && list.some((row: FleetAgentRow) => row.agent.id === selectedAgentId)) return;
 		const firstAgentId = list[0].agent.id;
 		selectedAgentId = firstAgentId;
-		loadSelectedAgent(firstAgentId);
+		if (!isSimulatedAgentId(firstAgentId)) loadSelectedAgent(firstAgentId);
 	});
 
 	onMount(() => {
 		if (!browser) return;
+		const savedView = localStorage.getItem(VIEW_MODE_KEY);
+		if (savedView === 'card' || savedView === 'list') viewMode = savedView;
 		const token = localStorage.getItem('hc_access_token');
 		if (!token) {
 			ready = true;
@@ -302,6 +343,22 @@
 					<div class="error-box">대시보드를 갱신하지 못했습니다. {$fleetError}</div>
 				{/if}
 
+				{#if simAgents.length > 0}
+					<div class="sim-banner">
+						<span>
+							가상 서버 <b>{simAgents.length}</b>대를 시뮬레이션 중입니다.
+							{#if simMode === 'each'}(상태별 1대씩 — critical / warning / stale / offline / healthy){/if}
+							{#if onlySim}
+								실제 fleet 은 숨김 (<code>?only=sim</code>).
+							{:else}
+								실제 서버 <b>{$fleetAgents.length}</b>대와 함께 표시됩니다 (<code>?sim={simMode}</code>).
+							{/if}
+							상단 KPI 요약은 실제 fleet 만 집계합니다.
+						</span>
+						<a href="?" title="시뮬레이션 종료">시뮬레이션 종료</a>
+					</div>
+				{/if}
+
 				<FleetStatusBar
 					summary={$fleetSummary}
 					history={$fleetHistory}
@@ -311,12 +368,52 @@
 					{range}
 				/>
 
-				<div class="rotator-area">
-					<FleetCardRotator agents={displayedAgents} selectedId={selectedAgentId} {range} onSelect={selectAgent} onOpen2d={open2d} onOpen3d={open3d} />
-				</div>
-
-				<div class="table-area">
-					<AgentHealthTable agents={displayedAgents} selectedId={selectedAgentId} onSelect={selectAgent} onOpen2d={open2d} onOpen3d={open3d} />
+				<div class="fleet-view">
+					<div class="fleet-view-tabs" role="tablist" aria-label="서버 보기 방식">
+						<button
+							type="button"
+							role="tab"
+							class="fleet-tab"
+							class:active={viewMode === 'card'}
+							aria-selected={viewMode === 'card'}
+							onclick={() => setViewMode('card')}
+						>
+							<svg class="fleet-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<rect x="3" y="3" width="7" height="7" rx="1.5" />
+								<rect x="14" y="3" width="7" height="7" rx="1.5" />
+								<rect x="3" y="14" width="7" height="7" rx="1.5" />
+								<rect x="14" y="14" width="7" height="7" rx="1.5" />
+							</svg>
+							<span>카드</span>
+							<span class="fleet-tab-count">{displayedAgents.length}</span>
+						</button>
+						<button
+							type="button"
+							role="tab"
+							class="fleet-tab"
+							class:active={viewMode === 'list'}
+							aria-selected={viewMode === 'list'}
+							onclick={() => setViewMode('list')}
+						>
+							<svg class="fleet-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<line x1="8" y1="6" x2="21" y2="6" />
+								<line x1="8" y1="12" x2="21" y2="12" />
+								<line x1="8" y1="18" x2="21" y2="18" />
+								<circle cx="4" cy="6" r="1.2" />
+								<circle cx="4" cy="12" r="1.2" />
+								<circle cx="4" cy="18" r="1.2" />
+							</svg>
+							<span>리스트</span>
+							<span class="fleet-tab-count">{displayedAgents.length}</span>
+						</button>
+					</div>
+					<div class="fleet-view-body">
+						{#if viewMode === 'card'}
+							<FleetCardRotator agents={displayedAgents} selectedId={selectedAgentId} {range} onSelect={selectAgent} onOpen2d={open2d} onOpen3d={open3d} />
+						{:else}
+							<AgentHealthTable agents={displayedAgents} selectedId={selectedAgentId} onSelect={selectAgent} onOpen2d={open2d} onOpen3d={open3d} />
+						{/if}
+					</div>
 				</div>
 			</div>
 		</main>
@@ -607,13 +704,100 @@
 		flex-direction: column;
 		gap: var(--dash-gap);
 	}
-	.rotator-area {
-		flex: 0 0 auto;
-		height: clamp(280px, 48vh, 580px);
+	.fleet-view {
+		--tab-border: rgba(148, 163, 184, 0.22);
+		flex: 1 1 0;
+		display: flex;
+		flex-direction: column;
 		min-height: 0;
+		min-width: 0;
 	}
-	.table-area {
+	.fleet-view-tabs {
+		display: flex;
+		gap: 2px;
+		padding: 0;
+	}
+	.fleet-tab {
+		appearance: none;
+		position: relative;
+		bottom: -1px;
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		border: 1px solid var(--tab-border);
+		border-bottom: 0;
+		background: rgba(13, 17, 23, 0.4);
+		color: var(--text-secondary);
+		font-size: clamp(11px, 0.72vw, 13px);
+		font-weight: 800;
+		letter-spacing: 0.2px;
+		padding: 9px 18px;
+		border-top-left-radius: var(--radius-md);
+		border-top-right-radius: var(--radius-md);
+		cursor: pointer;
+		transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+	}
+	.fleet-tab:hover {
+		color: var(--text-primary);
+		background: rgba(48, 213, 200, 0.06);
+		border-color: rgba(48, 213, 200, 0.3);
+	}
+	.fleet-tab.active {
+		color: var(--accent);
+		background: var(--bg-card);
+		border-color: var(--tab-border);
+		border-bottom-color: var(--bg-card);
+	}
+	.fleet-tab.active::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 10px;
+		right: 10px;
+		height: 2px;
+		background: var(--accent);
+		border-radius: 2px;
+		box-shadow: 0 0 8px rgba(48, 213, 200, 0.5);
+	}
+	.fleet-tab-icon {
+		width: 14px;
+		height: 14px;
 		flex: 0 0 auto;
+		opacity: 0.85;
+	}
+	.fleet-tab.active .fleet-tab-icon {
+		opacity: 1;
+	}
+	.fleet-tab-count {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 22px;
+		height: 18px;
+		padding: 0 6px;
+		border-radius: var(--radius-full);
+		background: rgba(148, 163, 184, 0.15);
+		color: var(--text-secondary);
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0;
+	}
+	.fleet-tab.active .fleet-tab-count {
+		background: rgba(48, 213, 200, 0.15);
+		color: var(--accent);
+	}
+	.fleet-view-body {
+		flex: 1 1 0;
+		min-height: clamp(440px, 60vh, 760px);
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		padding: clamp(12px, 0.9vw, 18px);
+		border: 1px solid rgba(148, 163, 184, 0.32);
+		border-radius: 0 var(--radius-md) var(--radius-md) var(--radius-md);
+		background: var(--bg-card);
+		box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
+		box-sizing: border-box;
 	}
 	.page-head {
 		display: flex;
@@ -710,14 +894,35 @@
 		color: #fecaca;
 		font-size: 12px;
 	}
-	.rotator-area,
-	.table-area {
-		min-height: 0;
-		min-width: 0;
+	.sim-banner {
 		display: flex;
-		flex-direction: column;
+		justify-content: space-between;
+		align-items: center;
+		gap: 12px;
+		padding: 8px 12px;
+		border: 1px solid rgba(167, 139, 250, 0.35);
+		border-radius: var(--radius-md);
+		background: rgba(167, 139, 250, 0.08);
+		color: #ddd6fe;
+		font-size: 12px;
 	}
-	.table-area :global(.table-panel) {
+	.sim-banner code {
+		padding: 1px 5px;
+		background: rgba(0, 0, 0, 0.3);
+		border-radius: 4px;
+		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+		font-size: 11px;
+	}
+	.sim-banner a {
+		color: #c4b5fd;
+		text-decoration: none;
+		font-weight: 700;
+		white-space: nowrap;
+	}
+	.sim-banner a:hover {
+		color: #ffffff;
+	}
+	.fleet-view-body :global(.table-panel) {
 		height: 100%;
 	}
 	@media (max-width: 900px) {

@@ -54,8 +54,8 @@
 		onSelectContainer?: (container: any) => void;
 	} = $props();
 
-	const METRIC_TICK_MS = 80;
-	const ROTATION_CYCLE: Server2dContainerSort[] = ['gpu', 'memory', 'cpu', 'network'];
+	const METRIC_TICK_MS = 50;
+	const ROTATION_CYCLE: Server2dContainerSort[] = ['total', 'cpu', 'memory', 'network', 'gpu'];
 
 	const soloed = $derived(view.soloStack);
 	const search = $derived(view.searchQuery.trim().toLowerCase());
@@ -64,6 +64,7 @@
 	const containerSortDir = $derived(view.containerSortDir);
 	let scrollContainer = $state<HTMLDivElement | null>(null);
 	let metricProgress = $state(0);
+	let metricStartedAt = $state(Date.now());
 	let metricTimer: ReturnType<typeof setInterval> | null = null;
 
 	const metricAutoPaused = $derived(view.containersPaused);
@@ -83,26 +84,28 @@
 	function advanceMetric() {
 		view.containerSort = nextMetric(view.containerSort, hasGpuData);
 		metricProgress = 0;
+		metricStartedAt = Date.now();
 		scrollToTop();
 	}
 
 	function metricTick() {
 		if (!metricRotating) return;
-		const steps = Math.max(1, Math.floor(metricRotateMs / METRIC_TICK_MS));
-		const next = metricProgress + 100 / steps;
-		if (next >= 100) advanceMetric();
-		else metricProgress = next;
+		const elapsed = Date.now() - metricStartedAt;
+		if (elapsed >= metricRotateMs) advanceMetric();
+		else metricProgress = (elapsed / metricRotateMs) * 100;
 	}
 
 	function togglePause() {
 		view.containersPaused = !view.containersPaused;
 		metricProgress = 0;
+		metricStartedAt = Date.now();
 	}
 
 	function setContainerSort(next: Server2dContainerSort) {
-		view.containerSort = view.containerSort === next ? 'default' : next;
+		view.containerSort = view.containerSort === next ? 'total' : next;
 		view.containersPaused = true;
 		metricProgress = 0;
+		metricStartedAt = Date.now();
 		scrollToTop();
 	}
 
@@ -110,6 +113,7 @@
 		view.containerSortDir = next;
 		view.containersPaused = true;
 		metricProgress = 0;
+		metricStartedAt = Date.now();
 		scrollToTop();
 	}
 
@@ -207,6 +211,15 @@
 		}
 		if (containerSort !== 'default') {
 			const sign = containerSortDir === 'asc' ? 1 : -1;
+			const netMax = Math.max(1, ...out.map((c) => c.network));
+			const score = (c: ContainerCard) => {
+				if (containerSort === 'total') {
+					const gpu = typeof c.gpu === 'number' ? c.gpu : 0;
+					const netPct = Math.min(100, (c.network / netMax) * 100);
+					return c.cpu + c.memory + gpu + netPct;
+				}
+				return sortKey(c, containerSort);
+			};
 			out.sort((a, b) => {
 				if (containerSort === 'gpu') {
 					const aNull = isGpuNull(a);
@@ -215,7 +228,7 @@
 					if (!aNull && bNull) return -1;
 					if (aNull && bNull) return 0;
 				}
-				return sign * (sortKey(a, containerSort) - sortKey(b, containerSort));
+				return sign * (score(a) - score(b));
 			});
 		}
 		return out;
@@ -237,7 +250,7 @@
 	<div class="head">
 		<div class="title">
 			<span>전체 컨테이너</span>
-			<InfoTooltip text={`서버의 모든 컨테이너를 한 화면에.\n\n• 세로 스크롤로 전체 탐색\n• GPU/MEM/CPU/NET 정렬 + 오름·내림 토글\n• 카드 왼쪽 컬러 스트립 = 소속 스택\n• 카드 클릭 = 상세 모달`} placement="bottom-end" />
+			<InfoTooltip text={`서버의 모든 컨테이너를 한 화면에.\n\n• 세로 스크롤로 전체 탐색\n• TOTAL/CPU/MEM/NET/GPU 정렬 + 오름·내림 토글\n• 카드 왼쪽 컬러 스트립 = 소속 스택\n• 카드 클릭 = 상세 모달`} placement="bottom-end" />
 		</div>
 		<small>{totalVisible}개 표시</small>
 	</div>
@@ -267,18 +280,10 @@
 			<button
 				type="button"
 				class="sort-chip"
-				class:active={containerSort === 'gpu'}
-				disabled={!hasGpuData}
-				title={hasGpuData ? 'GPU 사용량 우선' : 'GPU 데이터 없음'}
-				onclick={() => setContainerSort('gpu')}
-			>GPU</button>
-			<button
-				type="button"
-				class="sort-chip"
-				class:active={containerSort === 'memory'}
-				title="메모리 사용량 우선"
-				onclick={() => setContainerSort('memory')}
-			>MEM</button>
+				class:active={containerSort === 'total'}
+				title="종합 사용량(CPU+MEM+NET%+GPU) 우선"
+				onclick={() => setContainerSort('total')}
+			>TOTAL</button>
 			<button
 				type="button"
 				class="sort-chip"
@@ -289,10 +294,25 @@
 			<button
 				type="button"
 				class="sort-chip"
+				class:active={containerSort === 'memory'}
+				title="메모리 사용량 우선"
+				onclick={() => setContainerSort('memory')}
+			>MEM</button>
+			<button
+				type="button"
+				class="sort-chip"
 				class:active={containerSort === 'network'}
 				title="네트워크 트래픽 우선"
 				onclick={() => setContainerSort('network')}
 			>NET</button>
+			<button
+				type="button"
+				class="sort-chip"
+				class:active={containerSort === 'gpu'}
+				disabled={!hasGpuData}
+				title={hasGpuData ? 'GPU 사용량 우선' : 'GPU 데이터 없음'}
+				onclick={() => setContainerSort('gpu')}
+			>GPU</button>
 		</div>
 		<SortDirToggle value={containerSortDir} onChange={setContainerSortDir} />
 	</div>
@@ -354,7 +374,7 @@
 				{/if}
 			</button>
 			<div class="scroll-progress" class:idle={!metricRotating} aria-hidden="true">
-				<i style={`width:${metricRotating ? metricProgress.toFixed(1) : metricAutoPaused ? 100 : 0}%`}></i>
+				<i style={`width:${metricRotating ? metricProgress.toFixed(1) : metricAutoPaused ? 0 : 100}%`}></i>
 			</div>
 		</div>
 	{/if}
@@ -728,16 +748,16 @@
 		height: 100%;
 		background: linear-gradient(90deg, #30d5c8, #60a5fa);
 		width: 0%;
-		transition: width 80ms linear;
+		transition: width 100ms linear;
 	}
 
 	.scroll-progress.idle i {
 		background: repeating-linear-gradient(
 			-45deg,
-			rgba(52, 211, 153, 0.4) 0,
-			rgba(52, 211, 153, 0.4) 4px,
-			rgba(52, 211, 153, 0.15) 4px,
-			rgba(52, 211, 153, 0.15) 8px
+			rgba(248, 113, 113, 0.4) 0,
+			rgba(248, 113, 113, 0.4) 4px,
+			rgba(248, 113, 113, 0.15) 4px,
+			rgba(248, 113, 113, 0.15) 8px
 		);
 	}
 </style>
