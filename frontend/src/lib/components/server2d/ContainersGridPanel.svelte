@@ -67,7 +67,8 @@
 	let metricTimer: ReturnType<typeof setInterval> | null = null;
 
 	const metricAutoPaused = $derived(view.containersPaused);
-	const metricRotating = $derived(!metricAutoPaused);
+	const externallyHalted = $derived(Boolean(view.soloStack));
+	const metricRotating = $derived(!metricAutoPaused && !externallyHalted);
 
 	function scrollToTop() {
 		if (scrollContainer) scrollContainer.scrollTop = 0;
