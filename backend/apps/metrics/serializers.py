@@ -110,6 +110,9 @@ class ContainerMetricsHistorySerializer(serializers.ModelSerializer):
             "network_tx",
             "disk_read",
             "disk_write",
+            "gpu_usage",
+            "gpu_memory_used",
+            "gpu_memory_total",
             "recorded_at",
         ]
 

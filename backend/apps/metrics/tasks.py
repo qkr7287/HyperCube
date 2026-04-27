@@ -251,6 +251,21 @@ def _collect_container_metrics(r, agent):
         # IntegrityError가 나므로 raw 값으로 fallback.
         if kwargs.get("cpu_usage") is None and db_col_info.get("cpu_usage", "YES") == "NO":
             kwargs["cpu_usage"] = usage_raw if usage_raw is not None else 0.0
+
+        # Per-container GPU (Agent v3 contract). Skip silently when the
+        # migration that adds gpu_* columns hasn't been applied yet.
+        gpu_block = body.get("gpu") if isinstance(body.get("gpu"), dict) else None
+        if gpu_block:
+            if "gpu_usage" in db_col_info:
+                gpu_usage_raw = gpu_block.get("usage")
+                kwargs["gpu_usage"] = None if gpu_usage_raw is None else _as_float(gpu_usage_raw)
+            if "gpu_memory_used" in db_col_info:
+                gmu = gpu_block.get("memoryUsed", gpu_block.get("memory_used"))
+                kwargs["gpu_memory_used"] = _as_int(gmu) if gmu is not None else None
+            if "gpu_memory_total" in db_col_info:
+                gmt = gpu_block.get("memoryTotal", gpu_block.get("memory_total"))
+                kwargs["gpu_memory_total"] = _as_int(gmt) if gmt is not None else None
+
         records.append(ContainerMetricsHistory(**kwargs))
 
     return records

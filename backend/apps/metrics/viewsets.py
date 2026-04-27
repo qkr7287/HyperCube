@@ -359,6 +359,7 @@ class ContainerMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet
         db_cols = _db_columns(ContainerMetricsHistory._meta.db_table)
         has_raw_cols = {"cpu_usage_raw", "cpu_cores_quota"}.issubset(db_cols)
 
+        has_gpu_cols = "gpu_usage" in db_cols
         annotations = dict(
             # cpu_usage 컬럼은 0-100 정규화 값(usage_pct)을 저장하도록 의미가 정해져 있음.
             # Agent v2: cpu.usage_pct → cpu_usage. 구버전: usage / cores 로 fallback 계산.
@@ -378,6 +379,13 @@ class ContainerMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet
                 cpu_usage_avg=Avg("cpu_usage_raw"),  # raw (코어 합산) 평균
                 cpu_usage_max=Max("cpu_usage_raw"),
                 cpu_cores_quota_avg=Avg("cpu_cores_quota"),
+            )
+        if has_gpu_cols:
+            annotations.update(
+                gpu_usage_avg=Avg("gpu_usage"),
+                gpu_usage_max=Max("gpu_usage"),
+                gpu_memory_used_max=Max("gpu_memory_used"),
+                gpu_memory_total_max=Max("gpu_memory_total"),
             )
 
         rows = (
@@ -412,6 +420,26 @@ class ContainerMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet
                 "network_tx_max": int(r["network_tx_max"] or 0),
                 "disk_read_max": int(r["disk_read_max"] or 0),
                 "disk_write_max": int(r["disk_write_max"] or 0),
+                "gpu_usage_avg": (
+                    round(r["gpu_usage_avg"], 2)
+                    if has_gpu_cols and r.get("gpu_usage_avg") is not None
+                    else None
+                ),
+                "gpu_usage_max": (
+                    round(r["gpu_usage_max"], 2)
+                    if has_gpu_cols and r.get("gpu_usage_max") is not None
+                    else None
+                ),
+                "gpu_memory_used_max": (
+                    int(r["gpu_memory_used_max"])
+                    if has_gpu_cols and r.get("gpu_memory_used_max") is not None
+                    else None
+                ),
+                "gpu_memory_total_max": (
+                    int(r["gpu_memory_total_max"])
+                    if has_gpu_cols and r.get("gpu_memory_total_max") is not None
+                    else None
+                ),
                 "sample_count": int(r["sample_count"] or 0),
             }
             for r in rows

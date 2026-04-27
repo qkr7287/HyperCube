@@ -279,6 +279,18 @@
 		},
 	]);
 
+	let hasGpuHistory = $derived(history.some((row) => typeof row.gpu_usage === 'number'));
+	let gpuDatasets = $derived([
+		{
+			label: 'GPU 사용률',
+			color: '#f472b6',
+			values: history.map((row) => (typeof row.gpu_usage === 'number' ? row.gpu_usage : 0)),
+			fill: true,
+			format: 'percent' as const,
+		},
+	]);
+	let currentGpuUsage = $derived(snapshotGpu(currentMetrics));
+
 	onMount(() => {
 		loadDashboard({ withDetail: true });
 		refreshTimer = setInterval(() => loadDashboard(), 15000);
@@ -400,6 +412,15 @@
 					</div>
 					<UserMetricChart labels={historyLabels} datasets={diskDatasets} yFormat="bytes" />
 				</div>
+				{#if hasGpuHistory || (currentGpuUsage !== null && currentGpuUsage !== undefined)}
+					<div class="chart-card">
+						<div class="chart-head">
+							<h3>GPU 사용률</h3>
+							<span>현재 {currentGpuUsage !== null ? formatPercent(currentGpuUsage, 2) : '-'}</span>
+						</div>
+						<UserMetricChart labels={historyLabels} datasets={gpuDatasets} yFormat="percent" />
+					</div>
+				{/if}
 			</div>
 		</section>
 

@@ -99,6 +99,18 @@ class ContainerMetricsHistory(models.Model):
     network_tx = models.BigIntegerField(help_text="누적 송신 bytes")
     disk_read = models.BigIntegerField(help_text="누적 디스크 read bytes")
     disk_write = models.BigIntegerField(help_text="누적 디스크 write bytes")
+    gpu_usage = models.FloatField(
+        null=True, blank=True,
+        help_text="컨테이너 GPU 사용률 (0~100, %). Agent가 PID 매핑으로 계산. 측정 불가 시 null.",
+    )
+    gpu_memory_used = models.BigIntegerField(
+        null=True, blank=True,
+        help_text="컨테이너 GPU 메모리 사용량 (bytes). 측정 불가 시 null.",
+    )
+    gpu_memory_total = models.BigIntegerField(
+        null=True, blank=True,
+        help_text="컨테이너에 할당된 GPU 메모리 한도 (bytes). 측정 불가 시 null.",
+    )
     raw_data = models.JSONField(help_text="Agent로부터 받은 container_metrics 전체 payload")
     recorded_at = models.DateTimeField(db_index=True, help_text="Agent가 수집한 시각")
 
