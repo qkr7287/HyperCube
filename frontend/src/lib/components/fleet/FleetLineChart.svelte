@@ -42,7 +42,9 @@
 	} = $props();
 
 	let canvas: HTMLCanvasElement | null = null;
+	let canvasWrap: HTMLDivElement | null = null;
 	let chart: Chart | null = null;
+	let resizeObs: ResizeObserver | null = null;
 
 	function formatValue(value: number): string {
 		if (unit === 'percent') return `${value.toFixed(1)}%`;
@@ -222,8 +224,17 @@
 		sync();
 	});
 
-	onMount(sync);
-	onDestroy(() => chart?.destroy());
+	onMount(() => {
+		sync();
+		if (canvasWrap && typeof ResizeObserver !== 'undefined') {
+			resizeObs = new ResizeObserver(() => chart?.resize());
+			resizeObs.observe(canvasWrap);
+		}
+	});
+	onDestroy(() => {
+		resizeObs?.disconnect();
+		chart?.destroy();
+	});
 </script>
 
 <div class="chart">
@@ -231,7 +242,7 @@
 		<span>{title}</span>
 		{#if help}<MetricHelp text={help} placement="bottom-end" />{/if}
 	</div>
-	<div class="canvas-wrap">
+	<div class="canvas-wrap" bind:this={canvasWrap}>
 		<canvas bind:this={canvas}></canvas>
 		{#if loading}
 			<div class="loading-overlay" role="status" aria-live="polite">
@@ -262,7 +273,13 @@
 	.canvas-wrap {
 		position: relative;
 		height: 190px;
+		width: 100%;
 		min-width: 0;
+		overflow: hidden;
+	}
+	.canvas-wrap canvas {
+		max-width: 100% !important;
+		max-height: 100% !important;
 	}
 	.loading-overlay {
 		position: absolute;

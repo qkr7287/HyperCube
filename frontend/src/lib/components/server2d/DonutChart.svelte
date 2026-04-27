@@ -23,7 +23,9 @@
 	} = $props();
 
 	let canvas: HTMLCanvasElement | null = null;
+	let canvasWrap: HTMLDivElement | null = null;
 	let chart: Chart | null = null;
+	let resizeObs: ResizeObserver | null = null;
 
 	function buildData(): ChartData<'doughnut'> {
 		const visible = segments.filter((s) => s.value > 0);
@@ -96,15 +98,24 @@
 		sync();
 	});
 
-	onMount(sync);
-	onDestroy(() => chart?.destroy());
+	onMount(() => {
+		sync();
+		if (canvasWrap && typeof ResizeObserver !== 'undefined') {
+			resizeObs = new ResizeObserver(() => chart?.resize());
+			resizeObs.observe(canvasWrap);
+		}
+	});
+	onDestroy(() => {
+		resizeObs?.disconnect();
+		chart?.destroy();
+	});
 </script>
 
 <div class="donut-card">
 	{#if title}
 		<div class="title">{title}</div>
 	{/if}
-	<div class="chart-wrap">
+	<div class="chart-wrap" bind:this={canvasWrap}>
 		<div class="canvas-square">
 			<canvas bind:this={canvas}></canvas>
 			{#if centerLabel || centerValue}

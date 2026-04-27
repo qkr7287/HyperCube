@@ -30,7 +30,9 @@
 	} = $props();
 
 	let canvas: HTMLCanvasElement | null = null;
+	let canvasWrap: HTMLDivElement | null = null;
 	let chart: Chart | null = null;
+	let resizeObs: ResizeObserver | null = null;
 
 	function buildData(): ChartData<'radar'> {
 		const hasReference = axes.some((a) => typeof a.reference === 'number');
@@ -122,11 +124,20 @@
 		sync();
 	});
 
-	onMount(sync);
-	onDestroy(() => chart?.destroy());
+	onMount(() => {
+		sync();
+		if (canvasWrap && typeof ResizeObserver !== 'undefined') {
+			resizeObs = new ResizeObserver(() => chart?.resize());
+			resizeObs.observe(canvasWrap);
+		}
+	});
+	onDestroy(() => {
+		resizeObs?.disconnect();
+		chart?.destroy();
+	});
 </script>
 
-<div class="radar">
+<div class="radar" bind:this={canvasWrap}>
 	<canvas bind:this={canvas}></canvas>
 </div>
 
