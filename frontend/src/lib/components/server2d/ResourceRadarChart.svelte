@@ -69,6 +69,21 @@
 		};
 	}
 
+	function computeMax(): number {
+		let peak = 0;
+		for (const a of axes) {
+			peak = Math.max(peak, a.value || 0, a.reference || 0);
+		}
+		if (peak <= 0) return 10;
+		// 보기 좋은 ceiling: 5/10/20/30/50/75/100
+		const padded = peak * 1.3;
+		const stops = [5, 10, 20, 30, 50, 75, 100];
+		for (const s of stops) {
+			if (padded <= s) return s;
+		}
+		return 100;
+	}
+
 	function render() {
 		if (!canvas) return;
 		chart = new Chart(canvas, {
@@ -93,7 +108,7 @@
 				scales: {
 					r: {
 						min: 0,
-						max: 100,
+						max: computeMax(),
 						beginAtZero: true,
 						angleLines: { color: 'rgba(100, 116, 139, 0.25)' },
 						grid: { color: 'rgba(100, 116, 139, 0.18)' },
@@ -102,8 +117,13 @@
 							font: { size: 11, weight: 700 },
 						},
 						ticks: {
-							display: false,
-							stepSize: 25,
+							display: true,
+							color: '#475569',
+							font: { size: 9 },
+							backdropColor: 'transparent',
+							stepSize: undefined,
+							maxTicksLimit: 4,
+							callback: (v) => `${Number(v).toFixed(0)}%`,
 						},
 					},
 				},
@@ -115,6 +135,8 @@
 		if (!canvas) return;
 		if (!chart) return render();
 		chart.data = buildData();
+		const r = chart.options.scales?.r as any;
+		if (r) r.max = computeMax();
 		chart.update('none');
 	}
 

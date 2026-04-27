@@ -437,7 +437,11 @@
 			const url = `${base}/api/metrics/containers/?agent=${encodeURIComponent(agentId)}&container_id=${cid}&range=${forRange}&limit=${limit}&ordering=recorded_at`;
 			const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
 			const data = await res.json();
-			const rows: any[] = Array.isArray(data?.results) ? data.results : (Array.isArray(data) ? data : []);
+			const rows: any[] = Array.isArray(data?.data)
+				? data.data
+				: Array.isArray(data?.results)
+					? data.results
+					: Array.isArray(data) ? data : [];
 			const empty = { value: 0, ts: null as string | null };
 			if (rows.length === 0) {
 				peakHistory = { cpu: { ...empty }, memory: { ...empty }, network: { ...empty }, disk: { ...empty }, gpu: { ...empty }, samples: 0 };
@@ -1256,10 +1260,10 @@
 		flex: 1;
 		overflow-y: auto;
 		overflow-x: hidden;
-		padding: 24px;
+		padding: 16px 20px 18px;
 		display: flex;
 		flex-direction: column;
-		gap: 32px;
+		gap: 16px;
 	}
 
 	/* Loading */
@@ -1386,8 +1390,8 @@
 		display: flex;
 		align-items: center;
 		gap: 10px;
-		margin-bottom: 14px;
-		padding-bottom: 10px;
+		margin-bottom: 6px;
+		padding-bottom: 6px;
 		border-bottom: 1px dashed rgba(100, 116, 139, 0.2);
 	}
 	.metrics-range-label {
@@ -1423,8 +1427,10 @@
 	.metrics-layout {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-		gap: 14px;
+		gap: 12px;
 		min-width: 0;
+		flex: 1 1 auto;
+		align-items: stretch;
 	}
 	.metrics-charts {
 		display: flex;
@@ -1473,8 +1479,25 @@
 	.metrics-summary {
 		display: flex;
 		flex-direction: column;
-		gap: 12px;
+		gap: 10px;
 		min-width: 0;
+	}
+	.metrics-summary > .summary-row.two {
+		flex: 1.4 1 0;
+		min-height: 200px;
+	}
+	.metrics-summary > .summary-section {
+		flex: 1 1 0;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+	}
+	.metrics-summary .summary-list {
+		flex: 1 1 auto;
+		justify-content: space-around;
+	}
+	.metrics-summary .rate-row {
+		flex: 1 1 0;
 	}
 	.summary-section {
 		background: #121720;
@@ -1558,15 +1581,16 @@
 		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 		gap: 10px;
 	}
-	.radar-host {
-		height: 180px;
-		min-width: 0;
-	}
+	.radar-section,
 	.scatter-section {
+		display: flex;
+		flex-direction: column;
 		min-width: 0;
 	}
+	.radar-host,
 	.scatter-host {
-		height: 180px;
+		flex: 1 1 0;
+		min-height: 160px;
 		min-width: 0;
 		position: relative;
 	}
