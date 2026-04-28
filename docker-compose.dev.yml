@@ -74,10 +74,7 @@ services:
       DJANGO_ENV: dev
       DJANGO_SETTINGS_MODULE: config.settings.dev
       WATCHFILES_FORCE_POLLING: "true"
-    command: >
-      python -m watchfiles --filter python
-      'python manage.py migrate --noinput'
-      apps
+    command: python scripts/migrate_watcher.py
     networks:
       - hc-network
 
