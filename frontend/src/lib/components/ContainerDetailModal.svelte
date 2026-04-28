@@ -1550,9 +1550,10 @@
 	.metrics-summary {
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
+		gap: 12px;
 		min-width: 0;
 		min-height: 0;
+		height: 100%;
 	}
 	.metrics-summary > .summary-section {
 		flex: 1 1 0;
@@ -1561,31 +1562,34 @@
 		flex-direction: column;
 		overflow: hidden;
 	}
+	/* Activity 박스는 컨텐츠가 dist-bar + 3행 + (선택) tail 로 위쪽 3박스(5행)
+	   보다 작다. flex 1로 두면 박스가 stretch 되면서 박스 안 아래쪽이 빈다.
+	   자기 컨텐츠 만큼만 차지하게 두고 남은 공간을 위 3박스가 흡수하도록. */
 	.metrics-summary > .summary-section.activity {
-		flex: 1 1 0;
+		flex: 0 0 auto;
 	}
 	.metrics-summary .summary-list {
 		flex: 1 1 auto;
 		display: flex;
 		flex-direction: column;
 		justify-content: space-between;
-		gap: 3px;
+		gap: 4px;
 	}
 	.metrics-summary .summary-list li {
-		padding-top: 3px;
-		padding-bottom: 3px;
+		padding-top: 4px;
+		padding-bottom: 4px;
 	}
 	.summary-section {
 		background: #121720;
 		border: 1px solid rgba(100, 116, 139, 0.18);
 		border-radius: 8px;
-		padding: 8px 10px 10px;
+		padding: 10px 11px 11px;
 	}
 	.summary-section-head {
 		display: flex;
 		align-items: center;
 		gap: 4px;
-		margin-bottom: 8px;
+		margin-bottom: 9px;
 	}
 	.summary-h4 {
 		margin: 0;
