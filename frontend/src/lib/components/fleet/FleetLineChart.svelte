@@ -12,6 +12,7 @@
 		type Plugin,
 	} from 'chart.js';
 	import MetricHelp from './MetricHelp.svelte';
+	import { toChartPayload } from '$lib/utils/chart-helpers';
 
 	Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Filler);
 
@@ -129,10 +130,10 @@
 		if (!canvas) return;
 		chart = new Chart(canvas, {
 			type: 'line',
-			data: {
+			data: toChartPayload({
 				labels: [...labels],
 				datasets: buildDatasets(),
-			},
+			}),
 			plugins: extraPlugins,
 			options: {
 				responsive: true,

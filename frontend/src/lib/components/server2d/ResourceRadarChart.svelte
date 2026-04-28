@@ -10,6 +10,7 @@
 		Tooltip,
 		type ChartData,
 	} from 'chart.js';
+	import { toChartPayload } from '$lib/utils/chart-helpers';
 
 	Chart.register(RadarController, PointElement, LineElement, Filler, RadialLinearScale, Tooltip);
 
@@ -88,7 +89,7 @@
 		if (!canvas) return;
 		chart = new Chart(canvas, {
 			type: 'radar',
-			data: buildData(),
+			data: toChartPayload(buildData()),
 			options: {
 				responsive: true,
 				maintainAspectRatio: false,
@@ -134,7 +135,7 @@
 	function sync() {
 		if (!canvas) return;
 		if (!chart) return render();
-		chart.data = buildData();
+		chart.data = toChartPayload(buildData());
 		const r = chart.options.scales?.r as any;
 		if (r) r.max = computeMax();
 		chart.update('none');

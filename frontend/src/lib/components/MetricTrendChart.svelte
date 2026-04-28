@@ -23,6 +23,7 @@
 		Tooltip,
 	} from 'chart.js';
 	import { base } from '$app/paths';
+	import { toChartPayload } from '$lib/utils/chart-helpers';
 
 	Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip);
 
@@ -229,7 +230,7 @@
 		}
 		chart = new Chart(canvasEl, {
 			type: 'line',
-			data: {
+			data: toChartPayload({
 				labels: labelsCopy,
 				datasets: [
 					{
@@ -244,7 +245,7 @@
 						pointHoverRadius: 4,
 					},
 				],
-			},
+			}),
 			options: {
 				responsive: true,
 				maintainAspectRatio: false,

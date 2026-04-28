@@ -10,6 +10,7 @@
 		type Plugin,
 	} from 'chart.js';
 	import { view } from '$lib/stores/server2d-view.svelte';
+	import { toChartPayload } from '$lib/utils/chart-helpers';
 
 	Chart.register(BubbleController, PointElement, LinearScale, Tooltip);
 
@@ -138,7 +139,7 @@
 		if (!canvas) return;
 		chart = new Chart(canvas, {
 			type: 'bubble',
-			data: buildData(),
+			data: toChartPayload(buildData()),
 			plugins: [quadrantPlugin],
 			options: {
 				responsive: true,
@@ -189,7 +190,7 @@
 	function sync() {
 		if (!canvas) return;
 		if (!chart) return render();
-		chart.data = buildData();
+		chart.data = toChartPayload(buildData());
 		const scales = chart.options.scales as any;
 		if (scales?.x) scales.x.max = xMax;
 		if (scales?.y) scales.y.max = yMax;

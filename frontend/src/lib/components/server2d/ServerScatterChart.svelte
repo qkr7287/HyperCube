@@ -10,6 +10,7 @@
 		ScatterController,
 		Tooltip,
 	} from 'chart.js';
+	import { toChartPayload } from '$lib/utils/chart-helpers';
 
 	type ScatterPoint = {
 		x: number;
@@ -126,7 +127,7 @@
 		chart?.destroy();
 		chart = new Chart(canvas, {
 			type: 'scatter',
-			data: buildData(),
+			data: toChartPayload(buildData()),
 			plugins: [quadrantPlugin],
 			options: {
 				responsive: true,

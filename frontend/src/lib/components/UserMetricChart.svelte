@@ -13,6 +13,7 @@
 		type ChartDataset,
 	} from 'chart.js';
 	import { formatBytesValue } from '$lib/utils/container-dashboard';
+	import { toChartPayload } from '$lib/utils/chart-helpers';
 
 	Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend);
 
@@ -91,10 +92,10 @@
 
 		chart = new Chart(context, {
 			type: 'line',
-			data: {
+			data: toChartPayload({
 				labels: [...labels],
 				datasets: buildDatasets(),
-			},
+			}),
 			plugins: datasets.length > 1
 				? [
 						{

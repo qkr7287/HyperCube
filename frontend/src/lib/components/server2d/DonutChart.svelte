@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { ArcElement, Chart, DoughnutController, Tooltip, type ChartData } from 'chart.js';
+	import { toChartPayload } from '$lib/utils/chart-helpers';
 
 	Chart.register(ArcElement, DoughnutController, Tooltip);
 
@@ -60,7 +61,7 @@
 		if (!canvas) return;
 		chart = new Chart(canvas, {
 			type: 'doughnut',
-			data: buildData(),
+			data: toChartPayload(buildData()),
 			options: {
 				responsive: true,
 				maintainAspectRatio: false,
@@ -92,7 +93,7 @@
 			render();
 			return;
 		}
-		chart.data = buildData();
+		chart.data = toChartPayload(buildData());
 		chart.update('none');
 	}
 

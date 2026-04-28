@@ -6,6 +6,7 @@
 	import { Chart, LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend } from 'chart.js';
 	import MetricTrendChart from './MetricTrendChart.svelte';
 	import InfoTooltip from './InfoTooltip.svelte';
+	import { toChartPayload } from '$lib/utils/chart-helpers';
 
 	Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend);
 
@@ -174,7 +175,7 @@
 
 		return new Chart(ctx, {
 			type: 'line',
-			data: {
+			data: toChartPayload({
 				labels: [],
 				datasets: [{
 					data: [],
@@ -190,7 +191,7 @@
 					pointHoverBorderWidth: 2,
 					clip: false as any,
 				}]
-			},
+			}),
 			options: {
 				responsive: true,
 				maintainAspectRatio: false,

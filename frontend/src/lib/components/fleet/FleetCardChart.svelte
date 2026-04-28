@@ -11,6 +11,7 @@
 		PointElement,
 		Tooltip,
 	} from 'chart.js';
+	import { toChartPayload } from '$lib/utils/chart-helpers';
 
 	Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Filler, Legend);
 
@@ -132,10 +133,10 @@
 		const suggestedMax = unit === 'percent' ? 100 : Math.max(peakValue(list) * 1.15, 1024);
 		chart = new Chart(canvas, {
 			type: 'line',
-			data: {
+			data: toChartPayload({
 				labels: buildTimeLabels(n),
 				datasets: buildDatasets(list),
-			},
+			}),
 			options: {
 				responsive: true,
 				maintainAspectRatio: false,
