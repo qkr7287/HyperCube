@@ -111,6 +111,17 @@ class ContainerMetricsHistory(models.Model):
         null=True, blank=True,
         help_text="컨테이너에 할당된 GPU 메모리 한도 (bytes). 측정 불가 시 null.",
     )
+    # Denormalized stack bucket. Resolved at write time from container labels
+    # so historical analytics stay accurate even when labels later change.
+    # Resolution mirrors `frontend/src/lib/utils/container-grouping.ts`.
+    stack = models.CharField(
+        max_length=128,
+        default="Unmanaged",
+        help_text=(
+            "라벨에서 추출한 스택 이름. 우선순위: hypercube.stack → "
+            "com.docker.compose.project → working_dir → 'Unmanaged'."
+        ),
+    )
     raw_data = models.JSONField(help_text="Agent로부터 받은 container_metrics 전체 payload")
     recorded_at = models.DateTimeField(db_index=True, help_text="Agent가 수집한 시각")
 
@@ -120,6 +131,7 @@ class ContainerMetricsHistory(models.Model):
         indexes = [
             models.Index(fields=["agent", "container_id", "-recorded_at"]),
             models.Index(fields=["container_id", "-recorded_at"]),
+            models.Index(fields=["agent", "stack", "-recorded_at"], name="cmhist_agent_stack_ts_idx"),
         ]
 
     def __str__(self):

@@ -227,13 +227,13 @@
 		[...rows].sort((a, b) => hotScore(b) - hotScore(a)).slice(0, 8),
 	);
 	let historyAnchorMs = $derived(historyPolledAt?.getTime() ?? Date.now());
-	let historyModel = $derived(buildHistoryModel(containerHistoryRows, rows, selectedRange, historyAnchorMs));
+	let historyModel = $derived(buildHistoryModel(containerHistoryRows, stackHistoryRows, rows, selectedRange, historyAnchorMs));
 	let trendLabels = $derived(historyModel.buckets.map((bucket) => formatRangeTick(bucket, selectedRange)));
 	let systemTrend = $derived(buildSystemTrend(systemHistoryRows, selectedRange, historyAnchorMs));
 
 	let stackCpuSeries = $derived(
 		(stacks as any[]).map((stack: any) => {
-			const trend = historyModel.stackMap.get(stack.name);
+			const trend = historyModel.stackMap.get(stackKey(stack.name));
 			return {
 				label: stack.name,
 				values: trend?.cpu ?? Array.from({ length: historyModel.buckets.length }, () => 0),
@@ -243,7 +243,7 @@
 	);
 	let stackMemorySeries = $derived(
 		(stacks as any[]).map((stack: any) => {
-			const trend = historyModel.stackMap.get(stack.name);
+			const trend = historyModel.stackMap.get(stackKey(stack.name));
 			return {
 				label: stack.name,
 				values: trend?.memory ?? Array.from({ length: historyModel.buckets.length }, () => 0),
@@ -253,7 +253,7 @@
 	);
 	let stackNetworkSeries = $derived(
 		(stacks as any[]).map((stack: any) => {
-			const trend = historyModel.stackMap.get(stack.name);
+			const trend = historyModel.stackMap.get(stackKey(stack.name));
 			return {
 				label: stack.name,
 				values: trend?.network ?? Array.from({ length: historyModel.buckets.length }, () => 0),
@@ -263,7 +263,7 @@
 	);
 	let stackDiskSeries = $derived(
 		(stacks as any[]).map((stack: any) => {
-			const trend = historyModel.stackMap.get(stack.name);
+			const trend = historyModel.stackMap.get(stackKey(stack.name));
 			return {
 				label: stack.name,
 				values: trend?.disk ?? Array.from({ length: historyModel.buckets.length }, () => 0),
@@ -273,7 +273,7 @@
 	);
 	let stackGpuSeries = $derived(
 		(stacks as any[]).map((stack: any) => {
-			const trend = historyModel.stackMap.get(stack.name);
+			const trend = historyModel.stackMap.get(stackKey(stack.name));
 			return {
 				label: stack.name,
 				values: trend?.gpu ?? Array.from({ length: historyModel.buckets.length }, () => 0),
@@ -296,7 +296,7 @@
 
 	let sidebarStacks = $derived(
 		(stacks as any[]).map((stack: any) => {
-			const trend = historyModel.stackMap.get(stack.name);
+			const trend = historyModel.stackMap.get(stackKey(stack.name));
 			const stackRows = rows.filter((row) => row.stack === stack.name);
 			const cpuAvg = trend
 				? latestNonZero(trend.cpu, avg(stackRows.map((row) => row.cpu)))
@@ -745,6 +745,36 @@
 		disk_write_max: number;
 		sample_count: number;
 	};
+	type StackBucket = {
+		agent: string;
+		stack: string;
+		bucket_start: string;
+		bucket_epoch: number;
+		cpu_avg: number;
+		cpu_max: number;
+		memory_percent_avg: number;
+		memory_percent_max: number;
+		memory_bytes_avg: number;
+		network_rx_max: number;
+		network_tx_max: number;
+		disk_read_max: number;
+		disk_write_max: number;
+		gpu_usage_avg?: number | null;
+		gpu_usage_max?: number | null;
+		gpu_memory_used_max?: number | null;
+		gpu_memory_total_max?: number | null;
+		container_count: number;
+		sample_count: number;
+	};
+
+	// Stack 키는 case-insensitive 비교로 통일. backend 가 normalize 한 결과와
+	// frontend resolveGroup 결과의 case 가 어긋나는 케이스가 있어서 (예: 한쪽만
+	// lowercase 라벨) 양쪽 모두 lowercase 로 비교해 매칭 누락을 막는다.
+	function stackKey(name: string | null | undefined): string {
+		return (name ?? 'Unmanaged').toLowerCase();
+	}
+
+	let stackHistoryRows = $state<StackBucket[]>([]);
 
 	async function fetchBuckets<T>(endpoint: string, params: URLSearchParams): Promise<T[]> {
 		const response = await fetch(`${base}${endpoint}?${params.toString()}`, {
@@ -839,14 +869,23 @@
 				bucket: String(rangeConfig.bucketSeconds),
 			});
 
-			const [systemBuckets, containerBuckets] = await Promise.all([
+			const stackParams = new URLSearchParams({
+				agent: selectedServerId,
+				from_time: fromTime,
+				to_time: toTime,
+				bucket: String(rangeConfig.bucketSeconds),
+			});
+
+			const [systemBuckets, containerBuckets, stackBuckets] = await Promise.all([
 				fetchBuckets<SystemBucket>('/api/metrics/system/buckets/', systemParams),
 				fetchBuckets<ContainerBucket>('/api/metrics/containers/buckets/', containerParams),
+				fetchBuckets<StackBucket>('/api/metrics/stacks/buckets/', stackParams),
 			]);
 
 			if (currentSeq !== historyLoadSeq) return;
 			systemHistoryRows = bucketsToSystemRows(systemBuckets);
 			containerHistoryRows = bucketsToContainerRows(containerBuckets);
+			stackHistoryRows = stackBuckets;
 			historyPolledAt = new Date(anchor);
 		} catch (error) {
 			if (currentSeq !== historyLoadSeq) return;
@@ -1014,7 +1053,7 @@
 		return `${next.toFixed(next >= 10 || index === 0 ? 0 : 1)}${units[index]}`;
 	}
 
-	function buildHistoryModel(historyRows: ContainerHistoryRow[], currentRows: Row[], range: MonitoringRange, anchorMs: number): HistoryModel {
+	function buildHistoryModel(historyRows: ContainerHistoryRow[], stackBuckets: StackBucket[], currentRows: Row[], range: MonitoringRange, anchorMs: number): HistoryModel {
 		const config = MONITORING_RANGE_CONFIG[range];
 		const buckets = buildRangeBuckets(range, anchorMs);
 		const bucketIndex = new Map(buckets.map((bucket, index) => [bucket, index]));
@@ -1078,14 +1117,12 @@
 		}
 
 		const containerMap = new Map<string, ContainerTrend>();
-		const stackTemp = new Map<string, { cpu: number[][]; memory: number[][]; network: number[][]; disk: number[][]; gpu: number[][]; gpuMeasured: boolean; count: number; running: number }>();
 
 		for (const row of currentRows) {
 			const entry = perContainer.get(row.id);
 			const cpuSeries = fillBuckets(entry?.cpuBuckets ?? [], row.cpu);
 			const memorySeries = fillBuckets(entry?.memoryBuckets ?? [], row.memory);
 			const networkSeries = fillBuckets(entry?.networkBuckets ?? [], row.network);
-			const diskSeries = fillBuckets(entry?.diskBuckets ?? [], 0);
 			const liveGpu = typeof row.gpu === 'number' ? row.gpu : 0;
 			const hasLiveGpu = typeof row.gpu === 'number';
 			const gpuMeasured = (entry?.gpuMeasured ?? false) || hasLiveGpu;
@@ -1106,45 +1143,115 @@
 				gpuAvg,
 				samples: entry?.samples ?? 0,
 			});
-
-			const stackEntry = stackTemp.get(row.stack) ?? {
-				cpu: Array.from({ length: buckets.length }, () => []),
-				memory: Array.from({ length: buckets.length }, () => []),
-				network: Array.from({ length: buckets.length }, () => []),
-				disk: Array.from({ length: buckets.length }, () => []),
-				gpu: Array.from({ length: buckets.length }, () => []),
-				gpuMeasured: false,
-				count: 0,
-				running: 0,
-			};
-			for (let index = 0; index < buckets.length; index += 1) {
-				stackEntry.cpu[index].push(cpuSeries[index] || 0);
-				stackEntry.memory[index].push(memorySeries[index] || 0);
-				stackEntry.network[index].push(networkSeries[index] || 0);
-				stackEntry.disk[index].push(diskSeries[index] || 0);
-				if (gpuMeasured) stackEntry.gpu[index].push(gpuSeries[index] || 0);
-			}
-			if (gpuMeasured) stackEntry.gpuMeasured = true;
-			stackEntry.count += 1;
-			if (row.state === 'running') stackEntry.running += 1;
-			stackTemp.set(row.stack, stackEntry);
 		}
 
-		const stackMap = new Map<string, StackTrend>();
-		for (const [name, entry] of stackTemp) {
-			stackMap.set(name, {
-				cpu: entry.cpu.map((values) => avg(values)),
-				memory: entry.memory.map((values) => avg(values)),
-				network: entry.network.map((values) => avg(values)),
-				disk: entry.disk.map((values) => avg(values)),
-				gpu: entry.gpuMeasured ? entry.gpu.map((values) => avg(values)) : Array.from({ length: buckets.length }, () => 0),
-				gpuMeasured: entry.gpuMeasured,
-				count: entry.count,
-				running: entry.running,
-			});
-		}
+		// Stack 시계열은 backend `/api/metrics/stacks/buckets/` 응답을 그대로 사용.
+		// 기존엔 frontend 가 컨테이너 단위 응답을 매번 reduce 했는데, 멀티서버 +
+		// 컨테이너 수 폭증 시 비싸진다 (네트워크 + CPU 둘 다). backend SQL 한 번으로
+		// 끝내고 frontend 는 bucket index 정렬만 한다.
+		const stackMap = buildStackTrendMap(stackBuckets, buckets, config.bucketSeconds, currentRows);
 
 		return { containerMap, stackMap, buckets };
+	}
+
+	function buildStackTrendMap(
+		stackBuckets: StackBucket[],
+		buckets: number[],
+		bucketSeconds: number,
+		currentRows: Row[],
+	): Map<string, StackTrend> {
+		const bucketIndex = new Map(buckets.map((bucket, index) => [bucket, index]));
+
+		// 스택별 시계열 누적 슬롯. lowercase 키로 통일해서 currentRows 의 stack
+		// 케이스와 backend 의 stack 케이스가 어긋나도 매칭되도록 한다.
+		type StackAccumulator = {
+			cpu: number[];
+			memory: number[];
+			network: (number | null)[];
+			disk: (number | null)[];
+			gpu: number[];
+			gpuMeasured: boolean;
+			netCum: (number | null)[];
+			diskCum: (number | null)[];
+		};
+		const empty = (): StackAccumulator => ({
+			cpu: Array.from({ length: buckets.length }, () => 0),
+			memory: Array.from({ length: buckets.length }, () => 0),
+			network: Array.from({ length: buckets.length }, () => null),
+			disk: Array.from({ length: buckets.length }, () => null),
+			gpu: Array.from({ length: buckets.length }, () => 0),
+			gpuMeasured: false,
+			netCum: Array.from({ length: buckets.length }, () => null),
+			diskCum: Array.from({ length: buckets.length }, () => null),
+		});
+		const acc = new Map<string, StackAccumulator>();
+
+		for (const b of stackBuckets) {
+			const ts = new Date(b.bucket_start).getTime();
+			const bucket = bucketEpoch(ts, bucketSeconds);
+			const index = bucketIndex.get(bucket);
+			if (index === undefined) continue;
+			const key = stackKey(b.stack);
+			let entry = acc.get(key);
+			if (!entry) {
+				entry = empty();
+				acc.set(key, entry);
+			}
+			entry.cpu[index] = clampPercent(b.cpu_avg ?? 0);
+			entry.memory[index] = clampPercent(b.memory_percent_avg ?? 0);
+			entry.netCum[index] = (b.network_rx_max ?? 0) + (b.network_tx_max ?? 0);
+			entry.diskCum[index] = (b.disk_read_max ?? 0) + (b.disk_write_max ?? 0);
+			if (b.gpu_usage_avg !== null && b.gpu_usage_avg !== undefined) {
+				entry.gpu[index] = clampPercent(Number(b.gpu_usage_avg));
+				entry.gpuMeasured = true;
+			}
+		}
+
+		// 누적 byte 시계열 → bucket 간 차분 ÷ bucket 길이로 rate(B/s) 환산.
+		// 첫 bucket 은 직전 값이 없어 0 으로 남기고, prev 가 null 이면 그 다음 bucket 도 0.
+		for (const entry of acc.values()) {
+			for (let i = 0; i < buckets.length; i += 1) {
+				const cur = entry.netCum[i];
+				const prev = i > 0 ? entry.netCum[i - 1] : null;
+				entry.network[i] = cur !== null && prev !== null
+					? Math.max(0, (cur - prev) / bucketSeconds)
+					: 0;
+				const dCur = entry.diskCum[i];
+				const dPrev = i > 0 ? entry.diskCum[i - 1] : null;
+				entry.disk[i] = dCur !== null && dPrev !== null
+					? Math.max(0, (dCur - dPrev) / bucketSeconds)
+					: 0;
+			}
+		}
+
+		// stackMap 구성. count/running 은 시계열에 들어있지 않아 currentRows 에서
+		// 직접 카운트 (가벼운 O(N) 한 번).
+		const stackMap = new Map<string, StackTrend>();
+		const countByKey = new Map<string, { count: number; running: number }>();
+		for (const row of currentRows) {
+			const key = stackKey(row.stack);
+			const c = countByKey.get(key) ?? { count: 0, running: 0 };
+			c.count += 1;
+			if (row.state === 'running') c.running += 1;
+			countByKey.set(key, c);
+		}
+		// stackMap 키 집합 = backend 응답 + currentRows 합집합.
+		const keys = new Set<string>([...acc.keys(), ...countByKey.keys()]);
+		for (const key of keys) {
+			const entry = acc.get(key);
+			const counts = countByKey.get(key) ?? { count: 0, running: 0 };
+			stackMap.set(key, {
+				cpu: entry?.cpu ?? Array.from({ length: buckets.length }, () => 0),
+				memory: entry?.memory ?? Array.from({ length: buckets.length }, () => 0),
+				network: (entry?.network ?? Array.from({ length: buckets.length }, () => 0)) as number[],
+				disk: (entry?.disk ?? Array.from({ length: buckets.length }, () => 0)) as number[],
+				gpu: entry?.gpu ?? Array.from({ length: buckets.length }, () => 0),
+				gpuMeasured: entry?.gpuMeasured ?? false,
+				count: counts.count,
+				running: counts.running,
+			});
+		}
+		return stackMap;
 	}
 
 	function fillBuckets(buckets: number[][], fallback: number): number[] {

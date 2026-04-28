@@ -168,12 +168,45 @@ def _system_db_columns() -> set[str]:
     return cols
 
 
+def _load_stack_lookup(r, agent_id):
+    """Build {container_id_or_short: stack} map from the cached containers list.
+
+    Avoids per-row Redis lookups (one fetch per flush vs N) and keeps stack
+    resolution co-located with the `resolveGroup` chain used by the frontend.
+    Returns empty dict if cache is missing/expired — callers fall back to
+    'Unmanaged' which matches frontend behaviour for unlabelled containers.
+    """
+    from apps.metrics.utils import resolve_stack
+
+    raw = r.get(f"server:{agent_id}:containers")
+    if not raw:
+        return {}
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+
+    out: dict[str, str] = {}
+    containers = (payload.get("data") or {}).get("containers") or []
+    for c in containers:
+        cid = c.get("id") or ""
+        if not cid:
+            continue
+        labels = c.get("labels") or {}
+        stack = resolve_stack(labels)
+        out[cid] = stack
+        # Also key by 12-char short form because metrics payloads commonly use it.
+        out[cid[:12]] = stack
+    return out
+
+
 def _collect_container_metrics(r, agent):
     """server:{id}:container:*:metrics 패턴의 모든 키를 스캔해서 인스턴스 생성."""
     from apps.metrics.models import ContainerMetricsHistory
 
     records = []
     pattern = f"server:{agent.id}:container:*:metrics"
+    stack_by_cid = _load_stack_lookup(r, agent.id)
 
     for key in r.scan_iter(match=pattern, count=100):
         raw = r.get(key)
@@ -265,6 +298,15 @@ def _collect_container_metrics(r, agent):
             if "gpu_memory_total" in db_col_info:
                 gmt = gpu_block.get("memoryTotal", gpu_block.get("memory_total"))
                 kwargs["gpu_memory_total"] = _as_int(gmt) if gmt is not None else None
+
+        # Denormalized stack — only set when the column exists (0007 applied).
+        if "stack" in db_col_info:
+            cid = kwargs["container_id"] or ""
+            kwargs["stack"] = (
+                stack_by_cid.get(cid)
+                or stack_by_cid.get(cid[:12])
+                or "Unmanaged"
+            )
 
         records.append(ContainerMetricsHistory(**kwargs))
 
