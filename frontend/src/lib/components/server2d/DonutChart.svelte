@@ -66,7 +66,10 @@
 				maintainAspectRatio: false,
 				cutout: '66%',
 				animation: { duration: 260 },
-				layout: { padding: 6 },
+				// hoverOffset(6) + borderWidth(2) 가 canvas 가장자리를 넘어서 위/좌우가
+				// 잘리던 문제 — Chart.js layout 안에서 도넛 외곽이 충분히 안쪽으로
+				// 들어오도록 padding 을 hoverOffset + borderWidth + 여유(2) 합으로.
+				layout: { padding: 10 },
 				plugins: {
 					legend: { display: false },
 					tooltip: {
