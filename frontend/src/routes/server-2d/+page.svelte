@@ -170,6 +170,7 @@
 	let historyError = $state('');
 	let systemHistoryRows = $state<SystemHistoryRow[]>([]);
 	let containerHistoryRows = $state<ContainerHistoryRow[]>([]);
+	let stackHistoryRows = $state<StackBucket[]>([]);
 	let demoState = $state<DemoState>(buildDemoState(Date.now()));
 	let demoTimer: ReturnType<typeof setInterval> | null = null;
 	let historyTimer: ReturnType<typeof setInterval> | null = null;
@@ -773,8 +774,6 @@
 	function stackKey(name: string | null | undefined): string {
 		return (name ?? 'Unmanaged').toLowerCase();
 	}
-
-	let stackHistoryRows = $state<StackBucket[]>([]);
 
 	async function fetchBuckets<T>(endpoint: string, params: URLSearchParams): Promise<T[]> {
 		const response = await fetch(`${base}${endpoint}?${params.toString()}`, {
