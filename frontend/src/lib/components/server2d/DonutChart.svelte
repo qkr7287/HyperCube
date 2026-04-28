@@ -164,8 +164,13 @@
 
 	.canvas-square {
 		position: relative;
-		height: 100%;
-		width: auto;
+		/* aspect-ratio 1/1 + height:100% + max-width:100% 의 Chrome 동작에서
+		   height 가 우선 결정되며 max-width 가 무시되어 canvas 가 부모 가로를
+		   초과(우측이 잘림)하던 문제. 카드가 가로 < 세로 인 경우(현재 217×243)
+		   가로 기반으로 정사각형을 결정하면 부모 가로 안에 안전하게 fit. 세로가
+		   짧은 카드에서도 max-height 100% 가 cap 으로 동작. */
+		width: 100%;
+		height: auto;
 		aspect-ratio: 1 / 1;
 		max-width: 100%;
 		max-height: 100%;
