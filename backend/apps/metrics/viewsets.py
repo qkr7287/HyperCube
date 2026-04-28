@@ -447,18 +447,33 @@ class ContainerMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet
         ).values_list("container_id", flat=True)
         return qs.filter(container_id__in=owned_container_ids)
 
+    # Cross-server 호출 시 row 수가 [agents × containers × bucket-window] 로 폭발하므로,
+    # raw row list 는 단일 컨테이너 또는 단일 agent 범위 안에서만 허용. 그 외는
+    # /api/metrics/containers/buckets/ 또는 /api/metrics/stacks/buckets/ 사용 권장.
+    LIST_MAX_LIMIT = 500
+    LIST_DEFAULT_LIMIT = 240
+
     def list(self, request, *args, **kwargs):
-        limit = request.query_params.get("limit")
-        if limit:
-            try:
-                n = max(1, min(int(limit), 2000))
-                qs = self.filter_queryset(self.get_queryset()).order_by("-recorded_at")[:n]
-                rows = list(qs)[::-1]
-                from rest_framework.response import Response
-                return Response(self.get_serializer(rows, many=True).data)
-            except (TypeError, ValueError):
-                pass
-        return super().list(request, *args, **kwargs)
+        from rest_framework.exceptions import ValidationError
+
+        if not request.query_params.get("agent") and not request.query_params.get("container_id"):
+            raise ValidationError({
+                "detail": (
+                    "agent 또는 container_id 필터가 필요합니다. cross-server 집계는 "
+                    "/api/metrics/containers/buckets/ 또는 /api/metrics/stacks/buckets/ 를 사용하세요."
+                ),
+            })
+
+        raw_limit = request.query_params.get("limit")
+        try:
+            n = int(raw_limit) if raw_limit is not None else self.LIST_DEFAULT_LIMIT
+        except (TypeError, ValueError):
+            n = self.LIST_DEFAULT_LIMIT
+        n = max(1, min(n, self.LIST_MAX_LIMIT))
+
+        qs = self.filter_queryset(self.get_queryset()).order_by("-recorded_at")[:n]
+        rows = list(qs)[::-1]
+        return Response(self.get_serializer(rows, many=True).data)
 
     def get_serializer_class(self):
         if self.action == "retrieve":
