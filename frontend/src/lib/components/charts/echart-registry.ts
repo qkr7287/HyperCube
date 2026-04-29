@@ -21,6 +21,8 @@ import {
 	GraphicComponent,
 	RadarComponent,
 	TitleComponent,
+	MarkLineComponent,
+	MarkAreaComponent,
 } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 
@@ -35,6 +37,8 @@ echarts.use([
 	GraphicComponent,
 	RadarComponent,
 	TitleComponent,
+	MarkLineComponent,
+	MarkAreaComponent,
 	CanvasRenderer,
 ]);
 

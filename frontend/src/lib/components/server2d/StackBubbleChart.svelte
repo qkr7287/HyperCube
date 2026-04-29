@@ -1,18 +1,13 @@
+<!--
+  StackBubbleChart — 스택별 CPU x 메모리 부하 분포 + 컨테이너 수(반지름).
+  ECharts scatter wrapper. quadrantPlugin (chart.js inline 35 LOC) 은
+  ECharts graphic[] (rect + line + text) 로 대체. midX/midY 는 axis convertToPixel
+  로 axis 변경 시 자동 재계산.
+-->
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
-	import {
-		BubbleController,
-		Chart,
-		LinearScale,
-		PointElement,
-		Tooltip,
-		type ChartData,
-		type Plugin,
-	} from 'chart.js';
+	import EChartBase from '$lib/components/charts/EChartBase.svelte';
+	import type { EChartsOption } from '$lib/components/charts/echart-registry';
 	import { view } from '$lib/stores/server2d-view.svelte';
-	import { toChartPayload } from '$lib/utils/chart-helpers';
-
-	Chart.register(BubbleController, PointElement, LinearScale, Tooltip);
 
 	type StackBubble = {
 		name: string;
@@ -30,11 +25,6 @@
 		stacks?: StackBubble[];
 	} = $props();
 
-	let canvas: HTMLCanvasElement | null = null;
-	let canvasWrap: HTMLDivElement | null = null;
-	let chart: Chart | null = null;
-	let resizeObs: ResizeObserver | null = null;
-
 	const soloed = $derived(view.soloStack);
 
 	function computeAxisMax(values: number[]): number {
@@ -48,79 +38,12 @@
 	const xMax = $derived(computeAxisMax(stacks.map((s) => s.cpu)));
 	const yMax = $derived(computeAxisMax(stacks.map((s) => s.memory)));
 
-	const quadrantPlugin: Plugin = {
-		id: 'bubbleQuadrants',
-		beforeDraw(chart) {
-			const { ctx, chartArea, scales } = chart;
-			if (!chartArea || !scales.x || !scales.y) return;
-			const xHalf = (scales.x.max ?? 100) / 2;
-			const yHalf = (scales.y.max ?? 100) / 2;
-			const midX = scales.x.getPixelForValue(xHalf);
-			const midY = scales.y.getPixelForValue(yHalf);
-			ctx.save();
-			ctx.fillStyle = 'rgba(248, 113, 113, 0.06)';
-			ctx.fillRect(midX, chartArea.top, chartArea.right - midX, midY - chartArea.top);
-			ctx.fillStyle = 'rgba(96, 165, 250, 0.04)';
-			ctx.fillRect(chartArea.left, midY, midX - chartArea.left, chartArea.bottom - midY);
-
-			ctx.strokeStyle = 'rgba(148, 163, 184, 0.22)';
-			ctx.setLineDash([4, 4]);
-			ctx.lineWidth = 1;
-			ctx.beginPath();
-			ctx.moveTo(midX, chartArea.top);
-			ctx.lineTo(midX, chartArea.bottom);
-			ctx.moveTo(chartArea.left, midY);
-			ctx.lineTo(chartArea.right, midY);
-			ctx.stroke();
-			ctx.setLineDash([]);
-
-			ctx.fillStyle = 'rgba(248, 113, 113, 0.75)';
-			ctx.font = '700 10px system-ui';
-			ctx.textAlign = 'right';
-			ctx.fillText('고부하', chartArea.right - 6, chartArea.top + 13);
-			ctx.textAlign = 'left';
-			ctx.fillStyle = 'rgba(148, 163, 184, 0.55)';
-			ctx.fillText('여유', chartArea.left + 6, chartArea.bottom - 6);
-			ctx.restore();
-		},
-	};
-
 	function bubbleRadius(count: number, maxCount: number): number {
 		if (count <= 0) return 3;
 		const min = 4;
 		const max = 12;
 		const ratio = Math.sqrt(count / Math.max(1, maxCount));
 		return Math.max(min, Math.min(max, min + (max - min) * ratio));
-	}
-
-	function buildData(): ChartData<'bubble'> {
-		const maxCount = Math.max(1, ...stacks.map((s) => s.containers));
-		const points = stacks.map((s) => {
-			const isDim = soloed && soloed !== s.name;
-			const color = s.color;
-			const fill = isDim ? `${color}18` : `${color}cc`;
-			const stroke = isDim ? `${color}55` : color;
-			return {
-				data: [
-					{
-						x: Math.max(0, Math.min(100, s.cpu)),
-						y: Math.max(0, Math.min(100, s.memory)),
-						r: bubbleRadius(s.containers, maxCount),
-						label: s.name,
-						containers: s.containers,
-						problem: s.problem,
-						network: s.network,
-					},
-				],
-				backgroundColor: fill,
-				borderColor: stroke,
-				borderWidth: isDim ? 1 : 1.8,
-				hoverBorderWidth: 3,
-			};
-		});
-		return {
-			datasets: points as any,
-		};
 	}
 
 	function formatRate(value: number): string {
@@ -135,137 +58,178 @@
 		return `${next.toFixed(next >= 10 || idx === 0 ? 0 : 1)} ${units[idx]}`;
 	}
 
-	function render() {
-		if (!canvas) return;
-		chart = new Chart(canvas, {
-			type: 'bubble',
-			data: toChartPayload(buildData()),
-			plugins: [quadrantPlugin],
-			options: {
-				responsive: true,
-				maintainAspectRatio: false,
-				animation: { duration: 260 },
-				plugins: {
-					legend: { display: false },
-					tooltip: {
-						backgroundColor: 'rgba(13, 17, 23, 0.96)',
-						borderColor: 'rgba(148, 163, 184, 0.22)',
-						borderWidth: 1,
-						displayColors: false,
-						callbacks: {
-							title: (items) => (items[0]?.raw as any)?.label ?? '스택',
-							label: (ctx) => {
-								const raw = ctx.raw as any;
-								return [
-									`CPU 평균: ${Number(raw.x ?? 0).toFixed(1)}%`,
-									`메모리 평균: ${Number(raw.y ?? 0).toFixed(1)}%`,
-									`컨테이너: ${raw.containers}개${raw.problem ? ` (문제 ${raw.problem})` : ''}`,
-									`트래픽 평균: ${formatRate(raw.network ?? 0)}`,
-								];
-							},
-						},
-					},
+	let option = $derived<EChartsOption>(buildOption(stacks, xMax, yMax, soloed));
+
+	function buildOption(
+		stackList: StackBubble[],
+		xMaxVal: number,
+		yMaxVal: number,
+		soloName: string | null,
+	): EChartsOption {
+		const maxCount = Math.max(1, ...stackList.map((s) => s.containers));
+		// 6자 hex (#rrggbb) → rgba(r,g,b,a). ECharts 는 8자 hex (#rrggbbaa) 의
+		// 일부 케이스에서 색을 인식하지 못하고 점을 안 그리는 케이스가 있어
+		// rgba() 표기로 변환.
+		function withAlpha(hex: string, alpha: number): string {
+			const m = /^#?([0-9a-fA-F]{6})$/.exec(hex.startsWith('#') ? hex.slice(1) : hex);
+			if (!m) return hex;
+			const r = parseInt(m[1].slice(0, 2), 16);
+			const g = parseInt(m[1].slice(2, 4), 16);
+			const b = parseInt(m[1].slice(4, 6), 16);
+			return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+		}
+		// 모든 stack 을 단일 series 의 data points 로. 26 series 보다 가볍고
+		// ECharts 정공법. 각 point 의 itemStyle 로 색상/dim 개별 지정.
+		const points = stackList.map((s) => {
+			const isDim = !!soloName && soloName !== s.name;
+			const fill = isDim ? withAlpha(s.color, 0.09) : withAlpha(s.color, 0.8);
+			const stroke = isDim ? withAlpha(s.color, 0.33) : s.color;
+			const r = bubbleRadius(s.containers, maxCount);
+			return {
+				value: [
+					Math.max(0, Math.min(100, s.cpu)),
+					Math.max(0, Math.min(100, s.memory)),
+				],
+				symbolSize: r * 2,
+				itemStyle: {
+					color: fill,
+					borderColor: stroke,
+					borderWidth: isDim ? 1 : 1.8,
 				},
-				layout: { padding: { top: 4, right: 8, bottom: 2, left: 2 } },
-				scales: {
-					x: {
-						min: 0,
-						max: xMax,
-						title: { display: false },
-						grid: { color: 'rgba(100, 116, 139, 0.08)' },
-						ticks: { color: '#64748b', maxTicksLimit: 5, font: { size: 9 }, padding: 1 },
-					},
-					y: {
-						min: 0,
-						max: yMax,
-						title: { display: false },
-						grid: { color: 'rgba(100, 116, 139, 0.12)' },
-						ticks: { color: '#64748b', maxTicksLimit: 5, font: { size: 9 }, padding: 1 },
-					},
+				stackName: s.name,
+				containers: s.containers,
+				problem: s.problem,
+				network: s.network,
+			} as any;
+		});
+		const series: any[] = [
+			{
+				type: 'scatter',
+				name: 'stacks',
+				data: points,
+				emphasis: { itemStyle: { borderWidth: 3 } },
+			},
+		];
+
+		// quadrantPlugin → 별도 guide series 로 분리. 각 stack series 에 markArea
+		// 를 박으면 첫 series 만 가이드 그리고, 그게 다른 series scatter point 의
+		// 렌더링과 z-index 충돌 일으킬 수 있어 dedicated guide series 추가.
+		const guideSeries: any = {
+			type: 'scatter',
+			name: '__guide',
+			data: [],
+			silent: true,
+			tooltip: { show: false },
+			animation: false,
+			markArea: {
+				silent: true,
+				itemStyle: { color: 'transparent' },
+				z: -10,
+				data: [
+					[
+						// 우상단: 고부하 (빨강) — y 축 위쪽 = yMax/2 ~ yMax
+						{ coord: [xMaxVal / 2, yMaxVal / 2], itemStyle: { color: 'rgba(248, 113, 113, 0.06)' } },
+						{ coord: [xMaxVal, yMaxVal] },
+					],
+					[
+						// 좌하단: 여유 (파랑)
+						{ coord: [0, 0], itemStyle: { color: 'rgba(96, 165, 250, 0.04)' } },
+						{ coord: [xMaxVal / 2, yMaxVal / 2] },
+					],
+				],
+			},
+			markLine: {
+				silent: true,
+				symbol: 'none',
+				lineStyle: { color: 'rgba(148, 163, 184, 0.22)', type: 'dashed', width: 1 },
+				label: { show: false },
+				animation: false,
+				data: [
+					{ xAxis: xMaxVal / 2 },
+					{ yAxis: yMaxVal / 2 },
+				],
+			},
+		};
+
+		return {
+			animationDuration: 260,
+			animationDurationUpdate: 480,
+			animationEasingUpdate: 'cubicInOut',
+			grid: { top: 4, right: 8, bottom: 18, left: 2, containLabel: true },
+			tooltip: {
+				trigger: 'item',
+				backgroundColor: 'rgba(13, 17, 23, 0.96)',
+				borderColor: 'rgba(148, 163, 184, 0.22)',
+				borderWidth: 1,
+				textStyle: { color: '#e2e8f0', fontSize: 11 },
+				formatter: (p: any) => {
+					const raw: any = p.data ?? {};
+					const lines = [
+						`<strong>${raw.stackName ?? p.seriesName}</strong>`,
+						`CPU 평균: ${Number(raw.value?.[0] ?? 0).toFixed(1)}%`,
+						`메모리 평균: ${Number(raw.value?.[1] ?? 0).toFixed(1)}%`,
+						`컨테이너: ${raw.containers ?? 0}개${raw.problem ? ` (문제 ${raw.problem})` : ''}`,
+						`트래픽 평균: ${formatRate(raw.network ?? 0)}`,
+					];
+					return lines.join('<br/>');
 				},
 			},
-		});
+			legend: { show: false },
+			xAxis: {
+				type: 'value',
+				min: 0,
+				max: xMaxVal,
+				axisTick: { show: false },
+				axisLine: { show: false },
+				axisLabel: { color: '#64748b', fontSize: 9 },
+				splitLine: { lineStyle: { color: 'rgba(100, 116, 139, 0.08)' } },
+				splitNumber: 4,
+			},
+			yAxis: {
+				type: 'value',
+				min: 0,
+				max: yMaxVal,
+				axisTick: { show: false },
+				axisLine: { show: false },
+				axisLabel: { color: '#64748b', fontSize: 9 },
+				splitLine: { lineStyle: { color: 'rgba(100, 116, 139, 0.12)' } },
+				splitNumber: 4,
+			},
+			// 코너 라벨 (고부하 / 여유) 은 graphic 으로 — chart 가 그려진 후
+			// chart container 의 padding 안에서 절대 위치.
+			graphic: [
+				{
+					type: 'text',
+					right: 8,
+					top: 6,
+					silent: true,
+					style: {
+						text: '고부하',
+						fill: 'rgba(248, 113, 113, 0.75)',
+						font: '700 10px system-ui',
+						textAlign: 'right',
+					},
+				},
+				{
+					type: 'text',
+					left: 8,
+					bottom: 22,
+					silent: true,
+					style: {
+						text: '여유',
+						fill: 'rgba(148, 163, 184, 0.55)',
+						font: '700 10px system-ui',
+						textAlign: 'left',
+					},
+				},
+			],
+			series: [guideSeries, ...series],
+		};
 	}
-
-	// Streaming update: dataset 과 dataset.data array reference 를 보존하면서
-	// point 의 x/y/r 등 element 만 in-place 갱신. chart.js v4 가 reference
-	// 변경 없다고 인식해 transition 이 0부터 다시 그려지지 않는다.
-	function syncDatasets() {
-		if (!chart) return;
-		const incoming = buildData().datasets as any[];
-		const cur = chart.data.datasets as any[];
-		// stack 개수가 바뀌면 dataset 통째 교체. 평소엔 fixed.
-		if (cur.length !== incoming.length) {
-			chart.data.datasets = incoming;
-			return;
-		}
-		for (let i = 0; i < incoming.length; i += 1) {
-			const c = cur[i];
-			const n = incoming[i];
-			// data 배열 in-place patch (single point bubble: 길이 1)
-			const cd = c.data as any[];
-			const nd = n.data as any[];
-			if (cd.length > nd.length) cd.length = nd.length;
-			for (let j = 0; j < nd.length; j += 1) {
-				if (typeof cd[j] === 'object' && cd[j] !== null && typeof nd[j] === 'object') {
-					Object.assign(cd[j], nd[j]); // {x,y,r,...} 의 키 in-place
-				} else {
-					cd[j] = nd[j];
-				}
-			}
-			c.backgroundColor = n.backgroundColor;
-			c.borderColor = n.borderColor;
-			c.borderWidth = n.borderWidth;
-			c.hoverBorderWidth = n.hoverBorderWidth;
-		}
-	}
-
-	// Track last applied axis max so we only recreate chart when scale really
-	// needs to grow/shrink — not on every polling tick.
-	let lastXMax = 0;
-	let lastYMax = 0;
-
-	function sync() {
-		if (!canvas) return;
-		if (!chart) return render();
-		// chart.js v4 의 in-place set (chart.options.scales.x.max = N) 은 두 proxy
-		// 의 set trap 이 mutual reference 로 RangeError 를 일으킨다. axis range 가
-		// 실제로 의미 있게 변경된 경우에만 destroy+recreate, 그 외엔 데이터만
-		// streaming. polling 마다 axis 가 안 바뀌니 평소엔 깜빡임 없음.
-		if (Math.abs(xMax - lastXMax) > 0.5 || Math.abs(yMax - lastYMax) > 0.5) {
-			lastXMax = xMax;
-			lastYMax = yMax;
-			chart.destroy();
-			chart = null;
-			return render();
-		}
-		syncDatasets();
-		chart.update('none');
-	}
-
-	$effect(() => {
-		stacks;
-		soloed;
-		xMax;
-		yMax;
-		sync();
-	});
-
-	onMount(() => {
-		sync();
-		if (canvasWrap && typeof ResizeObserver !== 'undefined') {
-			resizeObs = new ResizeObserver(() => chart?.resize());
-			resizeObs.observe(canvasWrap);
-		}
-	});
-	onDestroy(() => {
-		resizeObs?.disconnect();
-		chart?.destroy();
-	});
 </script>
 
-<div class="bubble" bind:this={canvasWrap}>
-	<canvas bind:this={canvas}></canvas>
+<div class="bubble">
+	<EChartBase {option} ariaLabel="스택 부하 (CPU x 메모리) 버블 차트" />
 </div>
 
 <style>
@@ -275,9 +239,5 @@
 		height: 100%;
 		min-width: 0;
 		min-height: 0;
-	}
-
-	.bubble canvas {
-		display: block;
 	}
 </style>

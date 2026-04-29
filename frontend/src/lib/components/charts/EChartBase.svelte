@@ -39,7 +39,10 @@
 
 	function applyOption(o: EChartsOption) {
 		if (!inst || inst.isDisposed()) return;
-		inst.setOption(o, { notMerge, lazyUpdate, replaceMerge });
+		// notMerge:true 로 항상 통째 교체. ECharts 의 alpha-merge 가 이전 option
+		// 의 axis/series 를 누적 보관해 axis index 가 꼬이는 케이스가 있어
+		// (xAxis "0" not found 류) 매번 fresh option 으로 안전.
+		inst.setOption(o, { notMerge: true, lazyUpdate, replaceMerge });
 	}
 
 	onMount(() => {
