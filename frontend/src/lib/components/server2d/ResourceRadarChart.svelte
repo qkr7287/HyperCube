@@ -153,12 +153,20 @@
 		}
 	}
 
+	let lastMax = 0;
 	function sync() {
 		if (!canvas) return;
 		if (!chart) return render();
+		// in-place scales.r.max set 은 chart.js v4 proxy set trap cycle 을 일으킨다.
+		// max 가 의미 있게 변할 때만 destroy+recreate, 그 외엔 data 만 streaming.
+		const m = computeMax();
+		if (Math.abs(m - lastMax) > 0.5) {
+			lastMax = m;
+			chart.destroy();
+			chart = null;
+			return render();
+		}
 		syncDatasets();
-		const r = chart.options.scales?.r as any;
-		if (r) r.max = computeMax();
 		chart.update('none');
 	}
 

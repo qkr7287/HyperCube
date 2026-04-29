@@ -255,12 +255,14 @@
 		ds.labels = [...labels];
 		ds.datasets[0].data = [...data];
 
-		// Dynamic Y range. in-place mutation 유지 — modal 은 사용자가 닫고 열 때마다
-		// chart 가 새로 만들어지므로 (initCharts) cache 누적 risk 가 적음.
-		const { min, max } = calcYRange(data, unit);
-		const yScale = chart.options.scales!.y!;
-		(yScale as any).min = min;
-		(yScale as any).max = max;
+		// chart.js v4 의 in-place yScale.min/max set 은 proxy set trap cycle 의
+		// 가장 흔한 trigger. modal 안 chart 도 같은 위험. 일단 이 mutation 을
+		// 비활성하고 axis range 는 chart 생성 시 결정된 값 그대로 둔다.
+		// (모달은 close/open 마다 새로 생성되므로 stale 정도가 크지 않음.)
+		// const { min, max } = calcYRange(data, unit);
+		// const yScale = chart.options.scales!.y!;
+		// (yScale as any).min = min;
+		// (yScale as any).max = max;
 
 		// Last point dot
 		ds.datasets[0].pointRadius = data.map((_, i) => i === data.length - 1 ? 4 : 0) as any;

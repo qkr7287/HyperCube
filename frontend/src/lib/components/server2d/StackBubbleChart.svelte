@@ -220,13 +220,26 @@
 		}
 	}
 
+	// Track last applied axis max so we only recreate chart when scale really
+	// needs to grow/shrink — not on every polling tick.
+	let lastXMax = 0;
+	let lastYMax = 0;
+
 	function sync() {
 		if (!canvas) return;
 		if (!chart) return render();
+		// chart.js v4 의 in-place set (chart.options.scales.x.max = N) 은 두 proxy
+		// 의 set trap 이 mutual reference 로 RangeError 를 일으킨다. axis range 가
+		// 실제로 의미 있게 변경된 경우에만 destroy+recreate, 그 외엔 데이터만
+		// streaming. polling 마다 axis 가 안 바뀌니 평소엔 깜빡임 없음.
+		if (Math.abs(xMax - lastXMax) > 0.5 || Math.abs(yMax - lastYMax) > 0.5) {
+			lastXMax = xMax;
+			lastYMax = yMax;
+			chart.destroy();
+			chart = null;
+			return render();
+		}
 		syncDatasets();
-		const scales = chart.options.scales as any;
-		if (scales?.x) scales.x.max = xMax;
-		if (scales?.y) scales.y.max = yMax;
 		chart.update('none');
 	}
 

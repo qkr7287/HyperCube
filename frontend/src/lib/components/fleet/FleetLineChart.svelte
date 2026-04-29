@@ -222,39 +222,38 @@
 		}
 	}
 
+	let lastYMax = 0;
+	let lastTopKey = '';
+	let lastSoloKey = '';
+	let lastRightPadding = -1;
 	function sync() {
 		if (!canvas) return;
 		if (!chart) {
 			render();
 			return;
 		}
-		// labels 도 동일 array reference 유지하며 stream patch
+		// chart.js v4 의 in-place set (scales.y.max / plugins.* 등) 은 proxy set
+		// trap mutual reference 로 RangeError 를 일으킨다. options 가 의미 있게
+		// 바뀌었을 때만 destroy+recreate, 평소엔 data 만 streaming.
+		const yMax = unit === 'percent' ? percentAxisMax() : rateAxisMax();
+		const topKey = topNames.join('|');
+		const soloKey = soloLabel ?? '';
+		const optionsChanged = Math.abs(yMax - lastYMax) > 0.5
+			|| topKey !== lastTopKey
+			|| soloKey !== lastSoloKey
+			|| rightPadding !== lastRightPadding;
+		if (optionsChanged) {
+			lastYMax = yMax;
+			lastTopKey = topKey;
+			lastSoloKey = soloKey;
+			lastRightPadding = rightPadding;
+			chart.destroy();
+			chart = null;
+			return render();
+		}
+		// data 만 streaming
 		streamPatchArray(chart.data.labels as any[], [...labels]);
 		syncDatasets();
-		// plugins / scales 는 in-place mutation (chart.js internal proxy chain
-		// 을 끊지 않도록 새 객체 교체 금지). 옵션 변경 빈도가 낮아 cycle 누적
-		// 위험은 streaming 만으로도 충분히 완화된다.
-		if (chart.options.plugins) {
-			(chart.options.plugins as any).rightEdgeLabels = {
-				enabled: topNames.length > 0,
-				topNames: new Set(topNames),
-				format: formatValue,
-			};
-			const tip = (chart.options.plugins as any).tooltip ?? {};
-			tip.filter = (item: any) => {
-				const label = item.dataset.label ?? '';
-				if (soloLabel) return label === soloLabel;
-				if (topNames.length === 0) return true;
-				return topNames.includes(label);
-			};
-			(chart.options.plugins as any).tooltip = tip;
-		}
-		if (chart.options.layout) {
-			(chart.options.layout as any).padding = rightPadding > 0 ? { right: rightPadding } : undefined;
-		}
-		if (chart.options.scales?.y) {
-			(chart.options.scales.y as any).max = unit === 'percent' ? percentAxisMax() : rateAxisMax();
-		}
 		chart.update('none');
 	}
 
