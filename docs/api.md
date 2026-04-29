@@ -1,110 +1,208 @@
-# API Overview
+---
+last-synced-commit: 7f82ff8
+source-of-truth: backend/config/urls.py + backend/apps/*/urls.py + backend/apps/*/viewsets.py
+verify: cd backend && python -c "from config.urls import urlpatterns; print('\n'.join(str(p.pattern) for p in urlpatterns))"
+---
 
-This document is a high-level guide to the backend API shape that exists in the current Django stack.
-For exact request and response details, the generated schema and serializers are the source of truth.
+# REST API
+
+전체 REST 엔드포인트 카탈로그. Swagger UI는 `/api/docs/`, OpenAPI schema는 `/api/schema/`.
 
 ## Entry Points
 
-Core paths defined in [backend/config/urls.py](/C:/Users/agics/Desktop/workspace/01.%20git/HyperCube/backend/config/urls.py:1):
+`backend/config/urls.py`:
 
-- `/api/health/`
-- `/api/schema/`
-- `/api/docs/`
-- `/api/auth/token/`
-- `/api/auth/token/refresh/`
-- `/api/auth/logout/`
+| Path | Method | Auth | Notes |
+|------|--------|------|-------|
+| `/api/health/` | GET | AllowAny | health check (`{"status": "ok"}`) |
+| `/api/schema/` | GET | AllowAny | OpenAPI 3.0 schema (drf-spectacular) |
+| `/api/docs/` | GET | AllowAny | Swagger UI |
+| `/api/auth/token/` | POST | AllowAny | JWT 발급 (`CustomTokenObtainPairView`) |
+| `/api/auth/token/refresh/` | POST | AllowAny | JWT refresh (`TokenRefreshView`) |
+| `/api/auth/logout/` | POST | Authenticated | refresh token 블랙리스트 (`LogoutView`) |
+| `/django-admin/` | — | — | Django admin (frontend `/admin` 과 분리) |
+| `/__debug__/` | — | DEBUG only | django-debug-toolbar |
 
-App routes are mounted under `/api/` from:
-
-- `apps.agents.urls`
-- `apps.containers.urls`
-- `apps.users.urls`
-- `apps.metrics.urls`
+App APIs는 `/api/` 아래에 mount: `apps.agents.urls`, `apps.containers.urls`, `apps.users.urls`, `apps.metrics.urls`.
 
 ## Authentication
 
-The current backend uses JWT authentication through SimpleJWT.
+JWT (SimpleJWT). `CustomTokenObtainPairView` (`apps.users.token_views`) 사용.
 
-Typical flow:
+```http
+POST /api/auth/token/
+{
+  "username": "admin",
+  "password": "..."
+}
 
-1. `POST /api/auth/token/`
-2. receive access and refresh tokens
-3. send `Authorization: Bearer <access-token>`
-4. refresh through `/api/auth/token/refresh/` when needed
+→ { "access": "<token>", "refresh": "<token>" }
+```
 
-## Agents
+이후 `Authorization: Bearer <access>` 헤더로 요청. 만료 시 `/api/auth/token/refresh/`로 갱신.
 
-Primary responsibilities:
+## Agents — `/api/agents/`
 
-- register and identify agents
-- list active or historical agents
-- expose current status
-- expose latest cached metrics
+`apps.agents.viewsets.AgentViewSet` (ModelViewSet).
 
-Representative endpoints:
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/api/agents/` | GET | Authenticated | 목록. `?active=true`로 5분 이내 활성만, `?status=`, `?search=hostname` |
+| `/api/agents/` | POST | **AllowAny** | Agent 자가 등록 + 자동 승인 (idempotent: hostname 중복이면 기존 토큰 반환) |
+| `/api/agents/{id}/` | GET | Authenticated | 상세 |
+| `/api/agents/{id}/` | PATCH/PUT | ServerAdmin+ | 수정 |
+| `/api/agents/{id}/` | DELETE | SuperAdmin | 삭제 (연결 컨테이너도 cascade) |
+| `/api/agents/{id}/status/` | GET | **AllowAny** | 상태 + token 조회 (Agent 부팅 시 사용) |
+| `/api/agents/{id}/latest-metrics/` | GET | Authenticated | Redis에서 system_metrics 최신값 (`server:{id}:system`) |
 
-- `GET /api/agents/`
-- `POST /api/agents/`
-- `GET /api/agents/{id}/status/`
-- `GET /api/agents/{id}/latest-metrics/`
+**자동 승인 동작 주의**: `POST /api/agents/`는 hostname 중복 시 기존 Agent의 token을 그대로 반환. 새 Agent면 즉시 `status=approved`, `approved_at=now`, token 발급. IP는 백엔드가 관측한 nginx peer (X-Real-IP > REMOTE_ADDR > X-Forwarded-For)로 강제.
 
-Implementation reference:
+## Containers — admin 전용
 
-- [backend/apps/agents/viewsets.py](/C:/Users/agics/Desktop/workspace/01.%20git/HyperCube/backend/apps/agents/viewsets.py:1)
+`apps.containers.viewsets.ContainerViewSet` (ModelViewSet, IsAdmin).
 
-## Containers
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/containers/` | GET / POST | 전체 컨테이너 CRUD (admin) |
+| `/api/containers/{id}/` | GET / PATCH / DELETE | |
 
-Primary responsibilities:
+**필터**: `?agent=<uuid>`, `?status=`, `?requester=<uuid>`, `?search=name|image`.
 
-- inspect containers recorded by the backend
-- manage templates
-- submit create/delete requests
-- approve or reject requests as admin
+## MyContainers — 사용자별 컨테이너
 
-Representative endpoint groups:
+`apps.containers.viewsets.MyContainerViewSet` (ReadOnlyModelViewSet, IsAuthenticated). 자기가 직접 요청해 생성된 컨테이너만 조회.
 
-- `/api/containers/`
-- `/api/templates/`
-- `/api/requests/`
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/my-containers/` | GET | 자기 컨테이너 목록 |
+| `/api/my-containers/{id}/` | GET | 상세 |
+| `/api/my-containers/{id}/current-metrics/` | GET | Redis 캐시에서 실시간 cpu/memory/network/disk |
+| `/api/my-containers/{id}/metrics-history/?range=1h&limit=240` | GET | DB에서 시계열 (range: `1m/5m/1h/6h/24h/7d`, limit max 500) |
 
-Implementation reference:
+`current-metrics` 응답:
+```json
+{
+  "timestamp": "2026-04-29T14:00:00Z",
+  "containerId": "abc123def456",
+  "cpu": { "usage": 605.2, "cores_quota": 8, "usage_pct": 75.65 },
+  "memory": { "usage": 1073741824, "limit": 4294967296, "percent": 25.0 },
+  "network": { "rx": 12345, "tx": 6789 },
+  "disk": { "read": 12698, "write": 4194304 }
+}
+```
+캐시 미스 시 모든 값 null.
 
-- [backend/apps/containers/viewsets.py](/C:/Users/agics/Desktop/workspace/01.%20git/HyperCube/backend/apps/containers/viewsets.py:1)
+## Templates — `/api/templates/`
 
-## Users
+`apps.containers.viewsets.ContainerTemplateViewSet`. 컨테이너 생성 시 사용할 사전 정의 템플릿.
 
-The backend uses a custom user model and role-based permission checks.
+| Method | Auth | Description |
+|--------|------|-------------|
+| GET (list/retrieve) | Authenticated | 모든 사용자 조회 |
+| POST/PATCH/DELETE | IsAdmin | 작성/수정/삭제 |
 
-Implementation reference:
+**Filter**: `?kind=` (`compose` | `image`), `?search=name|description`.
 
-- [backend/apps/users/models.py](/C:/Users/agics/Desktop/workspace/01.%20git/HyperCube/backend/apps/users/models.py:1)
-- [backend/apps/common/permissions.py](/C:/Users/agics/Desktop/workspace/01.%20git/HyperCube/backend/apps/common/permissions.py:1)
+## Requests — `/api/requests/`
 
-## Metrics
+컨테이너 생성/삭제 요청. `apps.containers.viewsets.ContainerRequestViewSet`.
 
-Metrics data is split between:
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/api/requests/` | GET | Authenticated | admin은 전체, user는 자기 것만 |
+| `/api/requests/` | POST | Authenticated | `action=create` 또는 `action=delete`로 새 요청. 상태=pending |
+| `/api/requests/{id}/` | GET | Authenticated | 상세 |
+| `/api/requests/{id}/` | DELETE | Authenticated | pending/rejected/failed 상태만 삭제 가능 |
+| `/api/requests/{id}/approve/` | POST | **IsAdmin** | 승인 + Agent에 명령 발송 (compose_up / create_container / delete_container) |
+| `/api/requests/{id}/reject/` | POST | **IsAdmin** | 반려 |
 
-- live state and cache paths
-- persisted history tables
-- periodic Celery maintenance and cleanup
+approve 시 dispatch 흐름은 `agent-protocol.md` 참조. requestId = ContainerRequest.id로 사용되며, Agent의 `command_response`/`command_progress`가 같은 requestId로 라우팅된다.
 
-Implementation reference:
+## Users — `/api/users/`
 
-- [backend/apps/metrics/viewsets.py](/C:/Users/agics/Desktop/workspace/01.%20git/HyperCube/backend/apps/metrics/viewsets.py:1)
-- [backend/apps/metrics/tasks.py](/C:/Users/agics/Desktop/workspace/01.%20git/HyperCube/backend/apps/metrics/tasks.py:1)
+`apps.users.viewsets.UserViewSet` (ModelViewSet).
 
-## WebSocket Layer
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/api/users/` | GET / POST / PATCH / DELETE | **SuperAdmin** | CRUD |
+| `/api/users/me/` | GET | Authenticated | 내 정보 (모든 viewer 이상) |
 
-The monitoring path is not REST-only.
-Live updates depend on Django Channels and the frontend WebSocket store.
+**Roles**: `super_admin` (전체) / `server_admin` (할당 서버 관리) / `viewer` (읽기 전용).
 
-Relevant references:
+## Metrics — 시계열 / 집계
 
-- [backend/config/routing.py](/C:/Users/agics/Desktop/workspace/01.%20git/HyperCube/backend/config/routing.py:1)
-- [backend/apps/common/consumers.py](/C:/Users/agics/Desktop/workspace/01.%20git/HyperCube/backend/apps/common/consumers.py:1)
-- [frontend/src/lib/stores/ws-store.ts](/C:/Users/agics/Desktop/workspace/01.%20git/HyperCube/frontend/src/lib/stores/ws-store.ts:1)
+`apps.metrics.viewsets.{System,Container,Stack}MetricsViewSet`. 모두 IsViewer (admin은 전체, viewer는 본인 소유 데이터만).
 
-## Recommendation
+### System metrics
 
-For day-to-day backend work, use the generated schema UI at `/api/docs/` as the quickest inspection surface.
-This file is meant to explain the API shape, not duplicate every serializer field manually.
+`SystemMetricsHistory` 시계열.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/metrics/system/` | GET | 시계열 raw rows. `?agent=<uuid>`, `?range=1h`, `?limit=N` (max 2000), `?from_time=`, `?to_time=` |
+| `/api/metrics/system/{id}/` | GET | 단일 row + raw_data JSONB |
+| `/api/metrics/system/buckets/?range=7d&bucket=1d` | GET | bucket 집계 (60s 캐시). bucket: `30s/1m/5m/...1w` 또는 초 단위 정수 |
+
+집계 응답:
+```json
+{
+  "bucket_seconds": 86400,
+  "results": [
+    {
+      "agent": "...",
+      "bucket_epoch": 1714521600,
+      "bucket_start": "2026-04-30T00:00:00+09:00",
+      "cpu_avg": 45.2, "cpu_max": 99.1,
+      "memory_avg": 46.6, "memory_max": 50.1,
+      "memory_used_avg": 19419971584,
+      "memory_total_avg": 41691742208,
+      "memory_available_avg": 22271770624,
+      "disk_avg": 81.8, "disk_max": 81.9,
+      "network_rx_max": 535472170965, "network_tx_max": 123826608774,
+      "gpu_avg": 12.3, "gpu_max": 80.4,
+      "gpu_memory_used_avg": 2147483648, "gpu_memory_total_avg": 8589934592,
+      "gpu_temperature_max": 72.0,
+      "sample_count": 8640
+    }
+  ]
+}
+```
+GPU / memory_available 필드는 migration 0005 적용된 환경에서만 채워짐. 미적용 시 omitted.
+
+### Container metrics
+
+`ContainerMetricsHistory` 시계열.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/metrics/containers/` | GET | `?agent=` 또는 `?container_id=` 필수 (cross-server 폭발 방지) |
+| `/api/metrics/containers/{id}/` | GET | 단일 row |
+| `/api/metrics/containers/buckets/` | GET | bucket 집계 |
+
+bucket 응답에 cpu가 3가지 형태: `cpu_usage_pct_avg/max` (0-100 정규화), `cpu_usage_avg/max` (raw 코어 합산), `cpu_avg/max` (호환용 = pct 와 동일). `cpu_cores_quota_avg`도 포함.
+
+### Stack metrics
+
+`docker compose project` 또는 `hypercube.stack` 라벨 단위 집계.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/metrics/stacks/buckets/?stack=<name>&range=1h&bucket=1m` | GET | 스택별 bucket 집계 (list/retrieve 미노출) |
+
+## WebSocket
+
+REST가 아니라 별도 channels routing (`backend/config/routing.py`):
+
+| Path | Consumer | 용도 |
+|------|----------|------|
+| `/ws/server/{server_id}/` | `MonitoringConsumer` | Agent 송신 + Browser 수신 + browser → agent command |
+| `/ws/global/` | `GlobalEventsConsumer` | global 이벤트 (agent_status_change 등) browser broadcast |
+
+상세는 `agent-payload-contract.md` (메시지 schema) 와 `agent-protocol.md` (command 4종 + 컨테이너 배포 3종).
+
+## 변경 시 절차
+
+1. `backend/apps/{containers,agents,metrics,users}/{urls,viewsets,serializers}.py` 수정
+2. 이 파일 (`docs/api.md`) 동기화
+3. frontmatter `last-synced-commit`을 `git rev-parse --short HEAD`로 갱신
+4. `python manage.py spectacular --file schema.yaml` 로 OpenAPI 검증

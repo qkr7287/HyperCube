@@ -1,7 +1,12 @@
+---
+last-synced-commit: 7f82ff8
+source-of-truth: backend/apps/common/consumers.py + backend/apps/metrics/payload_map.py
+verify: grep -nE "msg_type ==|\"type\":" backend/apps/common/consumers.py
+---
+
 # Agent Payload Contract
 
-HyperCube Agent → Backend WebSocket payload 스펙. Agent / Backend / Frontend
-세 layer 가 같은 metric 을 다르게 해석하지 않도록 한 곳에서 정의한다.
+HyperCube WebSocket payload 스펙. Agent / Backend / Frontend 세 layer 가 같은 metric 을 다르게 해석하지 않도록 한 곳에서 정의한다.
 
 ## 원칙
 
@@ -20,15 +25,33 @@ HyperCube Agent → Backend WebSocket payload 스펙. Agent / Backend / Frontend
 
 ```jsonc
 {
-  "type": "system_metrics" | "container_metrics" | "command_response" | ...,
-  "timestamp": "2026-04-27T00:07:23.614Z",   // ISO8601 UTC
+  "type": "<msg_type>",
+  "timestamp": "2026-04-27T00:07:23.614Z",   // ISO8601 UTC (data 메시지만)
   "data": { ... }                              // type 별 payload
 }
 ```
 
-## type: system_metrics
+## 메시지 카탈로그 (현재 구현)
 
-서버 호스트 단위 메트릭. Agent 가 5~15 초마다 push.
+| `type` | 방향 | 빈도 | 용도 | Backend 처리 |
+|--------|------|------|------|--------------|
+| `system_metrics` | Agent → Backend | 5~15s | 호스트 메트릭 (Delta Sync) | Redis 캐시 merge + Browser broadcast + Celery → PG |
+| `container_metrics` | Agent → Backend | stats stream | 컨테이너 메트릭 | 동일 (per-container 캐시) |
+| `containers` | Agent → Backend | 60s snapshot | 컨테이너 목록 sync | Redis (10분 TTL) + Container 모델 update_or_create |
+| `command` | Browser → Backend → Agent | on-demand | 명령 발행 | requestId pending map 등록 후 Agent 채널로 forward |
+| `command_response` | Agent → Backend → Browser | command 완료 시 | 최종 결과 | pending map pop + Browser 라우팅 + ContainerRequest DB 갱신 |
+| `command_progress` | Agent → Backend → Browser | command 진행 중 | 진행률 (0-100) | Browser 라우팅 + ContainerRequest.progress_message/percent 갱신 + global broadcast |
+| `heartbeat` | Backend → Agent | 15s | 좀비 세션 감지 | Agent가 수신 침묵 시 재접속 |
+| `connection` | Backend → Agent/Browser | connect 직후 | 접속 확인 | client side 만 |
+| `agent_status_change` | Backend → Browser (global) | online↔offline 전환 | global event broadcast | `GlobalEventsConsumer` group_send |
+
+WS path:
+- `/ws/server/{server_id}/` → `MonitoringConsumer` (Agent + 그 서버 보는 Browser)
+- `/ws/global/` → `GlobalEventsConsumer` (모든 인증 Browser, global 이벤트만)
+
+## type: `system_metrics`
+
+서버 호스트 단위. Agent 가 5~15 초마다 push (Delta Sync — 변경된 필드만).
 
 ```jsonc
 {
@@ -126,7 +149,7 @@ Linux 에서 reclaimable buffer/cache 를 used 로 카운트하면 90%+ 로 항�
 
 Windows / macOS 는 `available` 의미가 다르지만 OS 가 정확한 값 제공 → 그대로 사용.
 
-## type: container_metrics
+## type: `container_metrics`
 
 Docker container 단위. Agent 가 stats stream 으로 모음.
 
@@ -185,6 +208,104 @@ Docker stats `CPUPerc` 는 코어 합산이라 4-core 컨테이너가 100% 면 4
 `cores_quota` 결정 실패 시 (예: cgroupv1 read 권한 없음) **null 로 보낸다**. 0 이나
 host_cores fallback 금지 — 0 이면 분모 폭발, fallback 이면 잘못된 값 저장.
 
+## type: `containers` (snapshot)
+
+Agent가 60초마다 자기가 본 모든 컨테이너 목록을 push. Backend는 Container 모델을
+update_or_create 하고, 보고에서 빠진 컨테이너는 `exited`로 마킹.
+
+```jsonc
+{
+  "type": "containers",
+  "timestamp": "2026-04-27T00:07:23.614Z",
+  "data": {
+    "containers": [
+      {
+        "id": "abc123def456",        // 12자 short ID 또는 full
+        "name": "myapp-web-1",
+        "image": "myapp:latest",
+        "state": "running"           // running | stopped | paused | exited | created | restarting | dead
+      }
+    ]
+  }
+}
+```
+
+state 값이 위 7개 외면 `created`로 정규화 (`_normalize_status`).
+
+## type: `command_response` (Agent → Browser)
+
+명령 처리 최종 결과. requestId로 라우팅.
+
+```jsonc
+{
+  "type": "command_response",
+  "requestId": "<uuid>",
+  "success": true,                  // false 면 data 생략, error 필드 사용
+  "data": { ... },                  // command 별 schema (agent-protocol.md 참조)
+  "error": "<msg>"                  // success=false 일 때만
+}
+```
+
+Backend `MonitoringConsumer._update_request_from_response`가 ContainerRequest DB 갱신:
+- `success=true` + `action=create` → Container row create/update + status=`deployed` + percent=100
+- `success=true` + `action=delete` → Container row delete
+- `success=false` → status=`failed` + progress_message=`error`
+
+## type: `command_progress` (배포 진행률)
+
+장기 명령(compose_up, create_container 등) 중간 진행률. Agent가 여러 번 push.
+
+```jsonc
+{
+  "type": "command_progress",
+  "requestId": "<uuid>",
+  "message": "이미지 pull 중... (3/5)",
+  "percent": 60                     // 0-100, optional
+}
+```
+
+Backend 처리:
+1. 같은 requestId로 매칭되는 Browser 채널에 그대로 forward
+2. `ContainerRequest.progress_message` / `progress_percent` DB 갱신
+3. 첫 progress 수신 시 status `approved` → `deploying` 전환
+4. global 채널로도 broadcast (사용자 페이지가 자기 요청 progress 받음)
+
+## type: `heartbeat` (좀비 세션 감지)
+
+Backend → Agent, 15초 간격. payload: `{"type": "heartbeat"}` (다른 필드 없음).
+
+Agent가 일정 시간 heartbeat 수신 안 되면 WS 끊고 재접속. `MonitoringConsumer._send_heartbeat_loop`.
+
+## type: `connection` (접속 확인)
+
+Backend가 connect 직후 1회 송신.
+
+```jsonc
+{
+  "type": "connection",
+  "message": "Connected to server <id>",
+  "server_id": "<id>",
+  "client_type": "agent" | "browser"
+}
+```
+
+`/ws/global/`은 `{ "type": "connection", "channel": "global", "message": "Connected to global events channel." }`.
+
+## type: `agent_status_change` (global)
+
+Agent online ↔ offline 전환 시 `GlobalEventsConsumer` group으로 broadcast.
+
+```jsonc
+{
+  "type": "agent_status_change",
+  "status": "online",                // 또는 "offline"
+  "server_id": "<uuid>",
+  "hostname": "server_16",
+  "last_seen_at": "2026-04-29T14:00:00Z",
+  "previous_offline_seconds": 320    // null 가능 (최초 접속 시)
+}
+```
+
 ## Backend 저장 정책
 
 - 모든 raw 필드 → `system_metrics_history.raw_data` JSONB 에 그대로.
@@ -192,7 +313,7 @@ host_cores fallback 금지 — 0 이면 분모 폭발, fallback 이면 잘못된
 - Migration 적용 안 된 필드 → `_db_columns()` 체크해서 raw_data 만 저장 (fallback).
 
 새 필드 추가 절차:
-1. 이 문서 schema 갱신
+1. 이 문서 schema 갱신 + frontmatter `last-synced-commit` 갱신
 2. `apps/metrics/payload_map.py` 매핑 추가
 3. `python manage.py makemigrations metrics` (column 추가 자동 생성)
 4. `tasks.py` 의 `_collect_*_metrics` 가 map 따라 자동 extract — 코드 변경 최소화
@@ -201,4 +322,6 @@ host_cores fallback 금지 — 0 이면 분모 폭발, fallback 이면 잘못된
 
 ## 변경 이력
 
-- 2026-04-27 초안. memory.available + gpu 배열 표준화 명시.
+- 2026-04-29 (`7f82ff8`): `containers` / `command_progress` / `heartbeat` / `connection` /
+  `agent_status_change` 메시지 카탈로그에 추가. 기존 system/container metrics 변경 없음.
+- 2026-04-27: 초안. memory.available + gpu 배열 표준화 명시.
