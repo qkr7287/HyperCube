@@ -187,23 +187,43 @@
 		});
 	}
 
-	// in-place mutation 유지하면서 N polling 마다 한 번씩 destroy + recreate.
-	// chart.options 통째 교체는 chart.js internal proxy chain 을 끊어 차트가
-	// 비어버리고, 매번 destroy 는 axis 가 깜빡인다. 절충안.
-	let syncCount = 0;
-	const RECYCLE_EVERY = 30;
+	// Streaming update: dataset 과 dataset.data array reference 를 보존하면서
+	// point 의 x/y/r 등 element 만 in-place 갱신. chart.js v4 가 reference
+	// 변경 없다고 인식해 transition 이 0부터 다시 그려지지 않는다.
+	function syncDatasets() {
+		if (!chart) return;
+		const incoming = buildData().datasets as any[];
+		const cur = chart.data.datasets as any[];
+		// stack 개수가 바뀌면 dataset 통째 교체. 평소엔 fixed.
+		if (cur.length !== incoming.length) {
+			chart.data.datasets = incoming;
+			return;
+		}
+		for (let i = 0; i < incoming.length; i += 1) {
+			const c = cur[i];
+			const n = incoming[i];
+			// data 배열 in-place patch (single point bubble: 길이 1)
+			const cd = c.data as any[];
+			const nd = n.data as any[];
+			if (cd.length > nd.length) cd.length = nd.length;
+			for (let j = 0; j < nd.length; j += 1) {
+				if (typeof cd[j] === 'object' && cd[j] !== null && typeof nd[j] === 'object') {
+					Object.assign(cd[j], nd[j]); // {x,y,r,...} 의 키 in-place
+				} else {
+					cd[j] = nd[j];
+				}
+			}
+			c.backgroundColor = n.backgroundColor;
+			c.borderColor = n.borderColor;
+			c.borderWidth = n.borderWidth;
+			c.hoverBorderWidth = n.hoverBorderWidth;
+		}
+	}
 
 	function sync() {
 		if (!canvas) return;
 		if (!chart) return render();
-		syncCount += 1;
-		if (syncCount >= RECYCLE_EVERY) {
-			syncCount = 0;
-			chart.destroy();
-			chart = null;
-			return render();
-		}
-		chart.data = toChartPayload(buildData());
+		syncDatasets();
 		const scales = chart.options.scales as any;
 		if (scales?.x) scales.x.max = xMax;
 		if (scales?.y) scales.y.max = yMax;

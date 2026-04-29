@@ -184,14 +184,43 @@
 		});
 	}
 
-	// chart.js v4 의 in-place options mutation 이 internal resolver scope cache 를
-	// 누적 dirty 시켜 장시간 polling 시 _resolveWithContext 무한 재귀를 일으킨다.
-	// 그러나 chart.options 통째 교체는 chart.js internal proxy chain 을 끊어
-	// 차트가 비게 만들고, 매번 destroy+recreate 은 axis 가 깜빡인다.
-	// 절충: in-place mutation 유지하되 N 번 polling 마다 한 번씩만 chart 를 destroy
-	// 해서 cache 누적을 차단. 평소엔 in-place 로 빠르게, 가끔만 fresh resolver.
-	let syncCount = 0;
-	const RECYCLE_EVERY = 30; // 5분 polling × 30 = 약 2.5시간마다 한 번 fresh
+	// Streaming update: 기존 dataset.data 배열의 reference 를 보존하고 element
+	// 만 in-place 로 갱신. chart.js v4 가 array reference 변경 없다고 인식해
+	// transition animation 이 0 부터 다시 그려지지 않고 부드럽게 흐른다.
+	// length 가 줄거나 늘면 splice 로 in-place 조정 — 새 array 만들지 않음.
+	function streamPatchArray<T>(target: T[], incoming: T[]): void {
+		// 길이 줄이기
+		if (target.length > incoming.length) target.length = incoming.length;
+		// 값 갱신 + 길이 늘리기
+		for (let i = 0; i < incoming.length; i += 1) target[i] = incoming[i];
+	}
+
+	// dataset 자체는 stack 추가/제거 시에만 통째 교체. 평소엔 동일 dataset 의
+	// data 배열만 stream patch — chart 가 destroy 안 돼서 깜빡이지 않는다.
+	function syncDatasets() {
+		if (!chart) return;
+		const incoming = buildDatasets();
+		const cur = chart.data.datasets;
+		const structureChanged = cur.length !== incoming.length
+			|| cur.some((d, i) => (d as any).label !== incoming[i].label);
+		if (structureChanged) {
+			chart.data.datasets = incoming;
+			return;
+		}
+		for (let i = 0; i < incoming.length; i += 1) {
+			const c = cur[i] as any;
+			const n = incoming[i] as any;
+			streamPatchArray(c.data as any[], n.data as any[]);
+			// 색/두께/하이라이트 등 시각 속성은 in-place 갱신
+			c.borderColor = n.borderColor;
+			c.backgroundColor = n.backgroundColor;
+			c.borderWidth = n.borderWidth;
+			c.pointRadius = n.pointRadius;
+			c.pointHoverRadius = n.pointHoverRadius;
+			c.hidden = n.hidden;
+			c.order = n.order;
+		}
+	}
 
 	function sync() {
 		if (!canvas) return;
@@ -199,31 +228,26 @@
 			render();
 			return;
 		}
-		syncCount += 1;
-		if (syncCount >= RECYCLE_EVERY) {
-			syncCount = 0;
-			chart.destroy();
-			chart = null;
-			render();
-			return;
-		}
-		chart.data.labels = [...labels];
-		chart.data.datasets = buildDatasets();
+		// labels 도 동일 array reference 유지하며 stream patch
+		streamPatchArray(chart.data.labels as any[], [...labels]);
+		syncDatasets();
+		// plugins / scales 는 in-place mutation (chart.js internal proxy chain
+		// 을 끊지 않도록 새 객체 교체 금지). 옵션 변경 빈도가 낮아 cycle 누적
+		// 위험은 streaming 만으로도 충분히 완화된다.
 		if (chart.options.plugins) {
 			(chart.options.plugins as any).rightEdgeLabels = {
 				enabled: topNames.length > 0,
 				topNames: new Set(topNames),
 				format: formatValue,
 			};
-			(chart.options.plugins as any).tooltip = {
-				...((chart.options.plugins as any).tooltip ?? {}),
-				filter: (item: any) => {
-					const label = item.dataset.label ?? '';
-					if (soloLabel) return label === soloLabel;
-					if (topNames.length === 0) return true;
-					return topNames.includes(label);
-				},
+			const tip = (chart.options.plugins as any).tooltip ?? {};
+			tip.filter = (item: any) => {
+				const label = item.dataset.label ?? '';
+				if (soloLabel) return label === soloLabel;
+				if (topNames.length === 0) return true;
+				return topNames.includes(label);
 			};
+			(chart.options.plugins as any).tooltip = tip;
 		}
 		if (chart.options.layout) {
 			(chart.options.layout as any).padding = rightPadding > 0 ? { right: rightPadding } : undefined;

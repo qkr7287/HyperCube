@@ -132,21 +132,31 @@
 		});
 	}
 
-	// in-place mutation 유지하면서 N polling 마다 한 번씩 destroy + recreate.
-	let syncCount = 0;
-	const RECYCLE_EVERY = 30;
+	// Streaming update: data 배열 reference 보존하며 element 만 in-place 갱신.
+	function syncDatasets() {
+		if (!chart) return;
+		const incoming = buildData().datasets as any[];
+		const cur = chart.data.datasets as any[];
+		if (cur.length !== incoming.length) {
+			chart.data.datasets = incoming;
+			return;
+		}
+		for (let i = 0; i < incoming.length; i += 1) {
+			const c = cur[i];
+			const n = incoming[i];
+			const cd = c.data as any[];
+			const nd = n.data as any[];
+			if (cd.length > nd.length) cd.length = nd.length;
+			for (let j = 0; j < nd.length; j += 1) cd[j] = nd[j];
+			c.backgroundColor = n.backgroundColor;
+			c.borderColor = n.borderColor;
+		}
+	}
 
 	function sync() {
 		if (!canvas) return;
 		if (!chart) return render();
-		syncCount += 1;
-		if (syncCount >= RECYCLE_EVERY) {
-			syncCount = 0;
-			chart.destroy();
-			chart = null;
-			return render();
-		}
-		chart.data = toChartPayload(buildData());
+		syncDatasets();
 		const r = chart.options.scales?.r as any;
 		if (r) r.max = computeMax();
 		chart.update('none');
