@@ -1,22 +1,25 @@
+<!--
+  FleetLineChart — 스택별 평균 추이 비교용 multi-series 시계열.
+  ECharts line wrapper. 기존 chart.js 의 다음 우회 코드 모두 폐기:
+   - rightEdgeLabelsPlugin (107 LOC) → series.endLabel + labelLayout 충돌 회피
+   - streamPatchArray (array reference 보존) → ECharts 자체 alpha-merge
+   - lastYMax 추적 + 조건부 destroy+recreate → setOption 으로 안전
+   - toChartPayload deep clone → ECharts 가 plain object 만 사용
+
+  Props 인터페이스 그대로 유지 (호출처 server-2d/+page.svelte 변경 0건).
+  단 extraPlugins 는 ECharts 에선 의미 없음 — 무시.
+-->
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
-	import {
-		CategoryScale,
-		Chart,
-		LineController,
-		LineElement,
-		LinearScale,
-		PointElement,
-		Tooltip,
-		Filler,
-		type Plugin,
-	} from 'chart.js';
+	import EChartBase from '$lib/components/charts/EChartBase.svelte';
+	import type { EChartsOption } from '$lib/components/charts/echart-registry';
 	import MetricHelp from './MetricHelp.svelte';
-	import { toChartPayload } from '$lib/utils/chart-helpers';
 
-	Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Filler);
-
-	type Series = { label: string; values: number[]; color: string; hidden?: boolean };
+	type Series = {
+		label: string;
+		color: string;
+		values: number[];
+		hidden?: boolean;
+	};
 
 	let {
 		title,
@@ -26,7 +29,6 @@
 		help = '',
 		topNames = [],
 		soloLabel = null,
-		extraPlugins = [],
 		rightPadding = 0,
 		loading = false,
 	}: {
@@ -37,18 +39,17 @@
 		help?: string;
 		topNames?: string[];
 		soloLabel?: string | null;
-		extraPlugins?: Plugin[];
+		extraPlugins?: any[];
 		rightPadding?: number;
 		loading?: boolean;
 	} = $props();
 
-	let canvas: HTMLCanvasElement | null = null;
-	let canvasWrap: HTMLDivElement | null = null;
-	let chart: Chart | null = null;
-	let resizeObs: ResizeObserver | null = null;
+	let option = $derived<EChartsOption>(
+		buildOption(labels, series, unit, topNames, soloLabel, rightPadding),
+	);
 
-	function formatValue(value: number): string {
-		if (unit === 'percent') return `${value.toFixed(1)}%`;
+	function formatValue(value: number, u: 'percent' | 'rate'): string {
+		if (u === 'percent') return `${value.toFixed(1)}%`;
 		if (value < 1) return '0 B/s';
 		const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
 		let next = value;
@@ -61,11 +62,11 @@
 		return `${next.toFixed(digits)} ${units[idx]}`;
 	}
 
-	function peakValue(): number {
+	function peakValue(list: Series[], soloName: string | null): number {
 		let peak = 0;
-		for (const item of series) {
+		for (const item of list) {
 			if (item.hidden) continue;
-			if (soloLabel && item.label !== soloLabel) continue;
+			if (soloName && item.label !== soloName) continue;
 			for (const value of item.values) {
 				if (value > peak) peak = value;
 			}
@@ -73,8 +74,8 @@
 		return peak;
 	}
 
-	function percentAxisMax(): number {
-		const peak = peakValue();
+	function percentAxisMax(list: Series[], soloName: string | null): number {
+		const peak = peakValue(list, soloName);
 		if (peak <= 0) return 5;
 		const padded = peak * 1.2;
 		const stops = [2, 5, 10, 15, 20, 30, 40, 50, 60, 80, 100];
@@ -84,274 +85,180 @@
 		return 100;
 	}
 
-	function rateAxisMax(): number {
-		const peak = peakValue();
+	function rateAxisMax(list: Series[], soloName: string | null): number {
+		const peak = peakValue(list, soloName);
 		if (peak <= 0) return 1024;
 		const padded = peak * 1.2;
 		const magnitude = Math.pow(10, Math.floor(Math.log10(padded)));
 		return Math.ceil(padded / magnitude) * magnitude;
 	}
 
-	function isHighlighted(label: string): boolean {
-		if (soloLabel) return label === soloLabel;
-		if (topNames.length === 0) return true;
-		return topNames.includes(label);
+	function dimColor(color: string, opacity = 0.48): string {
+		// 6자 hex → rgba (ECharts 가 8자 hex 일부 케이스 인식 실패)
+		const m = /^#?([0-9a-fA-F]{6})$/.exec(color.startsWith('#') ? color.slice(1) : color);
+		if (!m) return color;
+		const r = parseInt(m[1].slice(0, 2), 16);
+		const g = parseInt(m[1].slice(2, 4), 16);
+		const b = parseInt(m[1].slice(4, 6), 16);
+		return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 	}
 
-	function dimColor(color: string): string {
-		if (color.startsWith('#') && color.length === 7) {
-			return color + '7a';
-		}
-		return color;
-	}
+	function buildOption(
+		lbls: string[],
+		seriesList: Series[],
+		u: 'percent' | 'rate',
+		tops: string[],
+		soloName: string | null,
+		padRight: number,
+	): EChartsOption {
+		const yMax = u === 'percent' ? percentAxisMax(seriesList, soloName) : rateAxisMax(seriesList, soloName);
 
-	function buildDatasets() {
-		return series.map((item) => {
+		const isHighlighted = (label: string): boolean => {
+			if (soloName) return label === soloName;
+			if (tops.length === 0) return true;
+			return tops.includes(label);
+		};
+		const topSet = new Set(tops);
+
+		const echSeries = seriesList.map((item) => {
 			const highlighted = isHighlighted(item.label);
-			const forceHidden = Boolean(soloLabel) && item.label !== soloLabel;
+			const forceHidden = !!soloName && item.label !== soloName;
 			const color = highlighted ? item.color : dimColor(item.color);
+			const showEndLabel = topSet.has(item.label) && !forceHidden;
 			return {
-				label: item.label,
-				data: [...item.values],
-				borderColor: color,
-				backgroundColor: `${color}18`,
-				borderWidth: highlighted ? 2.4 : 1.4,
-				pointRadius: 0,
-				pointHoverRadius: highlighted ? 3 : 0,
-				tension: 0.32,
-				fill: false,
-				hidden: (item.hidden ?? false) || forceHidden,
-				order: highlighted ? 0 : 1,
+				type: 'line' as const,
+				name: item.label,
+				data: forceHidden || item.hidden ? [] : item.values,
+				smooth: 0.32,
+				symbol: 'none',
+				lineStyle: { color, width: highlighted ? 2.4 : 1.4 },
+				itemStyle: { color },
+				z: highlighted ? 10 : 1,
+				emphasis: { focus: 'series', lineStyle: { width: highlighted ? 3 : 2 } },
+				endLabel: showEndLabel
+					? {
+							show: true,
+							formatter: (p: any) => {
+								const v = Array.isArray(p.value) ? p.value[1] : p.value;
+								return `${item.label} ${formatValue(Number(v ?? 0), u)}`;
+							},
+							color,
+							backgroundColor: 'rgba(13, 17, 23, 0.78)',
+							borderColor: color,
+							borderWidth: 1,
+							borderRadius: 4,
+							padding: [3, 6],
+							fontSize: 10,
+							fontWeight: 700,
+							distance: 6,
+						}
+					: { show: false },
 			};
 		});
-	}
 
-	function render() {
-		if (!canvas) return;
-		chart = new Chart(canvas, {
-			type: 'line',
-			data: toChartPayload({
-				labels: [...labels],
-				datasets: buildDatasets(),
-			}),
-			plugins: extraPlugins,
-			options: {
-				responsive: true,
-				maintainAspectRatio: false,
-				animation: { duration: 200 },
-				interaction: { mode: 'index', intersect: false },
-				layout: rightPadding > 0 ? { padding: { right: rightPadding } } : undefined,
-				plugins: {
-					legend: { display: false },
-					tooltip: {
-						backgroundColor: 'rgba(13,17,23,0.96)',
-						borderColor: 'rgba(48,213,200,0.35)',
-						borderWidth: 1,
-						filter: (item: any) => {
-							const label = item.dataset.label ?? '';
-							if (soloLabel) return label === soloLabel;
-							if (topNames.length === 0) return true;
-							return topNames.includes(label);
-						},
-						callbacks: {
-							label: (ctx: any) => `${ctx.dataset.label}: ${formatValue(Number(ctx.parsed.y ?? 0))}`,
-						},
-					},
-					rightEdgeLabels: {
-						enabled: topNames.length > 0,
-						topNames: new Set(topNames),
-						format: formatValue,
-					},
-				} as any,
-				scales: {
-					x: {
-						grid: { color: 'rgba(100,116,139,0.08)' },
-						ticks: { color: '#64748b', maxRotation: 0, autoSkipPadding: 18, font: { size: 10 } },
-					},
-					y: {
-						beginAtZero: true,
-						max: unit === 'percent' ? percentAxisMax() : rateAxisMax(),
-						grid: { color: 'rgba(100,116,139,0.12)' },
-						ticks: {
-							color: '#64748b',
-							font: { size: 10 },
-							maxTicksLimit: 6,
-							callback: (v) => formatValue(Number(v)),
-						},
-					},
+		return {
+			animationDuration: 200,
+			animationDurationUpdate: 600,
+			animationEasingUpdate: 'cubicInOut',
+			grid: {
+				top: 8,
+				left: 8,
+				right: padRight > 0 ? padRight : 90, // endLabel 공간
+				bottom: 22,
+				containLabel: true,
+			},
+			tooltip: {
+				trigger: 'axis',
+				backgroundColor: 'rgba(13, 17, 23, 0.96)',
+				borderColor: 'rgba(48, 213, 200, 0.35)',
+				borderWidth: 1,
+				textStyle: { color: '#cbd5e1', fontSize: 11 },
+				axisPointer: { type: 'line', lineStyle: { color: 'rgba(148, 163, 184, 0.3)' } },
+				formatter: (params: any) => {
+					const arr = Array.isArray(params) ? params : [params];
+					if (arr.length === 0) return '';
+					// soloLabel / topNames 필터 동등 — chart.js tooltip.filter
+					const filtered = arr.filter((p: any) => {
+						const name = p.seriesName ?? '';
+						if (soloName) return name === soloName;
+						if (tops.length === 0) return true;
+						return tops.includes(name);
+					});
+					if (filtered.length === 0) return '';
+					const title = filtered[0].axisValueLabel ?? '';
+					const lines = filtered.map((p: any) => {
+						const val = formatValue(Number(p.value ?? 0), u);
+						return `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color};margin-right:6px"></span>${p.seriesName}: <strong>${val}</strong>`;
+					});
+					return `<div style="color:#e2e8f0;font-weight:700;margin-bottom:4px">${title}</div>${lines.join('<br/>')}`;
 				},
 			},
-		});
+			legend: { show: false },
+			xAxis: {
+				type: 'category',
+				data: lbls,
+				boundaryGap: false,
+				axisTick: { show: false },
+				axisLine: { show: false },
+				axisLabel: {
+					color: '#64748b',
+					hideOverlap: true,
+					fontSize: 10,
+				},
+				splitLine: { lineStyle: { color: 'rgba(100, 116, 139, 0.08)' } },
+			},
+			yAxis: {
+				type: 'value',
+				min: 0,
+				max: yMax,
+				axisTick: { show: false },
+				axisLine: { show: false },
+				axisLabel: {
+					color: '#64748b',
+					fontSize: 10,
+					formatter: (v: number) => formatValue(v, u),
+				},
+				splitLine: { lineStyle: { color: 'rgba(100, 116, 139, 0.12)' } },
+			},
+			series: echSeries,
+		};
 	}
-
-	// Streaming update: 기존 dataset.data 배열의 reference 를 보존하고 element
-	// 만 in-place 로 갱신. chart.js v4 가 array reference 변경 없다고 인식해
-	// transition animation 이 0 부터 다시 그려지지 않고 부드럽게 흐른다.
-	// length 가 줄거나 늘면 splice 로 in-place 조정 — 새 array 만들지 않음.
-	function streamPatchArray<T>(target: T[], incoming: T[]): void {
-		// 길이 줄이기
-		if (target.length > incoming.length) target.length = incoming.length;
-		// 값 갱신 + 길이 늘리기
-		for (let i = 0; i < incoming.length; i += 1) target[i] = incoming[i];
-	}
-
-	// dataset 자체는 stack 추가/제거 시에만 통째 교체. 평소엔 동일 dataset 의
-	// data 배열만 stream patch — chart 가 destroy 안 돼서 깜빡이지 않는다.
-	function syncDatasets() {
-		if (!chart) return;
-		const incoming = buildDatasets();
-		const cur = chart.data.datasets;
-		const structureChanged = cur.length !== incoming.length
-			|| cur.some((d, i) => (d as any).label !== incoming[i].label);
-		if (structureChanged) {
-			chart.data.datasets = incoming;
-			return;
-		}
-		for (let i = 0; i < incoming.length; i += 1) {
-			const c = cur[i] as any;
-			const n = incoming[i] as any;
-			streamPatchArray(c.data as any[], n.data as any[]);
-			// 색/두께/하이라이트 등 시각 속성은 in-place 갱신
-			c.borderColor = n.borderColor;
-			c.backgroundColor = n.backgroundColor;
-			c.borderWidth = n.borderWidth;
-			c.pointRadius = n.pointRadius;
-			c.pointHoverRadius = n.pointHoverRadius;
-			c.hidden = n.hidden;
-			c.order = n.order;
-		}
-	}
-
-	let lastYMax = 0;
-	let lastTopKey = '';
-	let lastSoloKey = '';
-	let lastRightPadding = -1;
-	function sync() {
-		if (!canvas) return;
-		if (!chart) {
-			render();
-			return;
-		}
-		// chart.js v4 의 in-place set (scales.y.max / plugins.* 등) 은 proxy set
-		// trap mutual reference 로 RangeError 를 일으킨다. options 가 의미 있게
-		// 바뀌었을 때만 destroy+recreate, 평소엔 data 만 streaming.
-		const yMax = unit === 'percent' ? percentAxisMax() : rateAxisMax();
-		const topKey = topNames.join('|');
-		const soloKey = soloLabel ?? '';
-		const optionsChanged = Math.abs(yMax - lastYMax) > 0.5
-			|| topKey !== lastTopKey
-			|| soloKey !== lastSoloKey
-			|| rightPadding !== lastRightPadding;
-		if (optionsChanged) {
-			lastYMax = yMax;
-			lastTopKey = topKey;
-			lastSoloKey = soloKey;
-			lastRightPadding = rightPadding;
-			chart.destroy();
-			chart = null;
-			return render();
-		}
-		// data 만 streaming
-		streamPatchArray(chart.data.labels as any[], [...labels]);
-		syncDatasets();
-		chart.update('none');
-	}
-
-	$effect(() => {
-		labels;
-		series;
-		topNames;
-		soloLabel;
-		sync();
-	});
-
-	onMount(() => {
-		sync();
-		if (canvasWrap && typeof ResizeObserver !== 'undefined') {
-			resizeObs = new ResizeObserver(() => chart?.resize());
-			resizeObs.observe(canvasWrap);
-		}
-	});
-	onDestroy(() => {
-		resizeObs?.disconnect();
-		chart?.destroy();
-	});
 </script>
 
-<div class="chart">
-	<div class="chart-title">
-		<span>{title}</span>
-		{#if help}<MetricHelp text={help} placement="bottom-end" />{/if}
-	</div>
-	<div class="canvas-wrap" bind:this={canvasWrap}>
-		<canvas bind:this={canvas}></canvas>
-		{#if loading}
-			<div class="loading-overlay" role="status" aria-live="polite">
-				<span class="spinner"></span>
-				<span class="loading-label">갱신 중...</span>
-			</div>
+<div class="card">
+	<div class="head">
+		<strong>{title}</strong>
+		{#if help}
+			<MetricHelp text={help} />
 		{/if}
+	</div>
+	<div class="body" class:loading>
+		<EChartBase {option} ariaLabel={title} />
 	</div>
 </div>
 
 <style>
-	.chart {
-		min-width: 0;
-		padding: 10px;
-		background: var(--bg-card);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-	}
-	.chart-title {
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		margin-bottom: 6px;
-		color: var(--text-primary);
-		font-size: 13px;
-		font-weight: 800;
-	}
-	.canvas-wrap {
-		position: relative;
-		height: 190px;
-		width: 100%;
-		min-width: 0;
-		overflow: hidden;
-	}
-	.canvas-wrap canvas {
-		max-width: 100% !important;
-		max-height: 100% !important;
-	}
-	.loading-overlay {
-		position: absolute;
-		inset: 0;
+	.card {
 		display: flex;
 		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 6px;
-		background: rgba(13, 17, 23, 0.55);
-		backdrop-filter: blur(1px);
-		color: var(--text-primary);
-		font-size: 11px;
-		font-weight: 600;
-		border-radius: 4px;
-		pointer-events: none;
-		z-index: 2;
+		min-width: 0;
+		min-height: 0;
+		height: 100%;
+		gap: 4px;
 	}
-	.spinner {
-		width: 22px;
-		height: 22px;
-		border: 2px solid rgba(48, 213, 200, 0.2);
-		border-top-color: var(--accent);
-		border-radius: 50%;
-		animation: spin 0.85s linear infinite;
+
+	.head {
+		display: none; /* 부모 layout 의 chart-head 가 별도 */
 	}
-	.loading-label {
-		color: var(--text-secondary);
-		letter-spacing: 0.4px;
+
+	.body {
+		position: relative;
+		flex: 1 1 auto;
+		min-width: 0;
+		min-height: 0;
 	}
-	@keyframes spin {
-		to { transform: rotate(360deg); }
+
+	.body.loading {
+		opacity: 0.5;
 	}
 </style>

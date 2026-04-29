@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import type { Plugin } from 'chart.js';
 	import { browser } from '$app/environment';
 	import { base } from '$app/paths';
 	import { goto } from '$app/navigation';
@@ -30,7 +29,6 @@
 	import ResourceRadarChart from '$lib/components/server2d/ResourceRadarChart.svelte';
 	import StackBubbleChart from '$lib/components/server2d/StackBubbleChart.svelte';
 	import EventLogStrip from '$lib/components/server2d/EventLogStrip.svelte';
-	import { rightEdgeLabelsPlugin } from '$lib/charts/rightEdgeLabelsPlugin';
 	import { view, resetViewForServerChange } from '$lib/stores/server2d-view.svelte';
 	import { resolveGroup, groupContainersByStack } from '$lib/utils/container-grouping';
 	import {
@@ -507,8 +505,6 @@
 			})
 			.slice(0, 50);
 	});
-
-	const trendPlugins: Plugin[] = [rightEdgeLabelsPlugin];
 
 	function topNamesBySeries(series: { label: string; values: number[] }[]): string[] {
 		return [...series]
@@ -1665,7 +1661,6 @@
 								series={stackCpuSeries}
 								topNames={cpuTopNames}
 								soloLabel={view.soloStack}
-								extraPlugins={[]}
 								rightPadding={0}
 								loading={historyLoading}
 							/>
@@ -1683,7 +1678,6 @@
 								series={stackMemorySeries}
 								topNames={memoryTopNames}
 								soloLabel={view.soloStack}
-								extraPlugins={[]}
 								rightPadding={0}
 								loading={historyLoading}
 							/>
@@ -1701,7 +1695,6 @@
 								series={stackNetworkSeries}
 								topNames={networkTopNames}
 								soloLabel={view.soloStack}
-								extraPlugins={[]}
 								rightPadding={0}
 								loading={historyLoading}
 							/>
@@ -1724,7 +1717,6 @@
 									series={stackGpuSeries}
 									topNames={gpuTopNames}
 									soloLabel={view.soloStack}
-									extraPlugins={[]}
 									rightPadding={0}
 									loading={historyLoading}
 								/>
