@@ -184,18 +184,54 @@
 		});
 	}
 
+	// chart.js v4 의 in-place options mutation 이 internal resolver scope cache 를
+	// 누적 dirty 시켜 장시간 polling 시 _resolveWithContext 무한 재귀를 일으킨다.
+	// 그러나 chart.options 통째 교체는 chart.js internal proxy chain 을 끊어
+	// 차트가 비게 만들고, 매번 destroy+recreate 은 axis 가 깜빡인다.
+	// 절충: in-place mutation 유지하되 N 번 polling 마다 한 번씩만 chart 를 destroy
+	// 해서 cache 누적을 차단. 평소엔 in-place 로 빠르게, 가끔만 fresh resolver.
+	let syncCount = 0;
+	const RECYCLE_EVERY = 30; // 5분 polling × 30 = 약 2.5시간마다 한 번 fresh
+
 	function sync() {
 		if (!canvas) return;
-		// chart.js v4 의 in-place options mutation (plugins / layout / scales 직접
-		// 변경) 은 internal options resolver scope cache 를 dirty 하게 만들어
-		// 장시간 사용 시 _resolveWithContext 무한 재귀 (RangeError) 가 발생할 수
-		// 있다. polling 마다 데이터/플러그인/스케일을 모두 in-place 로 갈아치우는
-		// 본 컴포넌트가 가장 mutation 빈도가 높아 destroy + recreate 으로 통일.
-		if (chart) {
+		if (!chart) {
+			render();
+			return;
+		}
+		syncCount += 1;
+		if (syncCount >= RECYCLE_EVERY) {
+			syncCount = 0;
 			chart.destroy();
 			chart = null;
+			render();
+			return;
 		}
-		render();
+		chart.data.labels = [...labels];
+		chart.data.datasets = buildDatasets();
+		if (chart.options.plugins) {
+			(chart.options.plugins as any).rightEdgeLabels = {
+				enabled: topNames.length > 0,
+				topNames: new Set(topNames),
+				format: formatValue,
+			};
+			(chart.options.plugins as any).tooltip = {
+				...((chart.options.plugins as any).tooltip ?? {}),
+				filter: (item: any) => {
+					const label = item.dataset.label ?? '';
+					if (soloLabel) return label === soloLabel;
+					if (topNames.length === 0) return true;
+					return topNames.includes(label);
+				},
+			};
+		}
+		if (chart.options.layout) {
+			(chart.options.layout as any).padding = rightPadding > 0 ? { right: rightPadding } : undefined;
+		}
+		if (chart.options.scales?.y) {
+			(chart.options.scales.y as any).max = unit === 'percent' ? percentAxisMax() : rateAxisMax();
+		}
+		chart.update('none');
 	}
 
 	$effect(() => {

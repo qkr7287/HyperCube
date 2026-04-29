@@ -132,16 +132,24 @@
 		});
 	}
 
+	// in-place mutation 유지하면서 N polling 마다 한 번씩 destroy + recreate.
+	let syncCount = 0;
+	const RECYCLE_EVERY = 30;
+
 	function sync() {
 		if (!canvas) return;
-		// chart.js v4 의 in-place options mutation 은 장시간 사용 시 internal
-		// resolver scope cache 가 dirty 되어 _resolveWithContext 무한 재귀로
-		// RangeError 가 발생할 수 있다. destroy + recreate 으로 매번 fresh.
-		if (chart) {
+		if (!chart) return render();
+		syncCount += 1;
+		if (syncCount >= RECYCLE_EVERY) {
+			syncCount = 0;
 			chart.destroy();
 			chart = null;
+			return render();
 		}
-		render();
+		chart.data = toChartPayload(buildData());
+		const r = chart.options.scales?.r as any;
+		if (r) r.max = computeMax();
+		chart.update('none');
 	}
 
 	$effect(() => {

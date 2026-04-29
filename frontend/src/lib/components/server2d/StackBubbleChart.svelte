@@ -187,17 +187,27 @@
 		});
 	}
 
+	// in-place mutation 유지하면서 N polling 마다 한 번씩 destroy + recreate.
+	// chart.options 통째 교체는 chart.js internal proxy chain 을 끊어 차트가
+	// 비어버리고, 매번 destroy 는 axis 가 깜빡인다. 절충안.
+	let syncCount = 0;
+	const RECYCLE_EVERY = 30;
+
 	function sync() {
 		if (!canvas) return;
-		// chart.js v4 의 in-place options mutation (scales.x.max = N) 은 internal
-		// resolver scope cache 를 dirty 시켜 장시간 사용 시 _resolveWithContext
-		// 무한 재귀로 RangeError 가 발생하는 케이스가 있다. destroy + recreate
-		// 으로 매번 fresh resolver 를 셋업해 그 누적을 차단.
-		if (chart) {
+		if (!chart) return render();
+		syncCount += 1;
+		if (syncCount >= RECYCLE_EVERY) {
+			syncCount = 0;
 			chart.destroy();
 			chart = null;
+			return render();
 		}
-		render();
+		chart.data = toChartPayload(buildData());
+		const scales = chart.options.scales as any;
+		if (scales?.x) scales.x.max = xMax;
+		if (scales?.y) scales.y.max = yMax;
+		chart.update('none');
 	}
 
 	$effect(() => {
