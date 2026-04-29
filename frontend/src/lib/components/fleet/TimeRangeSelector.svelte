@@ -10,6 +10,9 @@
 	} = $props();
 
 	const options: { value: TimeRange; label: string }[] = [
+		// 10s: 테스트/디버깅용 단축. 평소엔 거의 안 누르지만 chart 누적 동작이나
+		// 짧은 troubleshooting 시 유용해 1m 옆에 노출.
+		{ value: '10s', label: '10s' },
 		{ value: '1m', label: '1m' },
 		{ value: '5m', label: '5m' },
 		{ value: '1h', label: '1h' },

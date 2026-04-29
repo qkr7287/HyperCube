@@ -1,4 +1,4 @@
-export type MonitoringRange = '1m' | '5m' | '1h' | '24h' | '7d';
+export type MonitoringRange = '10s' | '1m' | '5m' | '1h' | '24h' | '7d';
 
 export type MonitoringRangeConfig = {
 	label: string;
@@ -15,6 +15,21 @@ export type MonitoringRangeConfig = {
 // Bucket size = range 라벨 그 자체. 1m = 1분 단위, 7d = 1주일 단위.
 // 각 range의 표시 점 개수만 살짝씩 다르게 (10~14점).
 export const MONITORING_RANGE_CONFIG: Record<MonitoringRange, MonitoringRangeConfig> = {
+	'10s': {
+		// 테스트/디버그용 단축 range. 10초 단위 bucket + 10초 polling 으로 chart
+		// 누적 동작(메모리 leak / RangeError 등)을 빠르게 재현 검증한다. 일반
+		// 사용자가 평소 쓸 단위는 아니지만, 운영 환경에서도 짧은 troubleshooting
+		// 시 유용해 1m 보다 앞에 노출.
+		label: '10초',
+		pollMs: 10_000,
+		pollLabel: '10초마다 갱신',
+		bucketSeconds: 10,
+		bucketLabel: '10초',
+		points: 10,
+		windowMs: 10 * 10 * 1000,
+		windowLabel: '100초',
+		maxRawRows: 600,
+	},
 	'1m': {
 		label: '1분',
 		pollMs: 60_000,
@@ -91,10 +106,14 @@ export function formatRangeTick(epochSeconds: number, range: MonitoringRange): s
 	if (Number.isNaN(date.getTime())) return '';
 	const pad = (value: number) => value.toString().padStart(2, '0');
 
+	// 10s     → HH:MM:SS (초 단위까지)
 	// 1m / 5m / 1h → HH:MM
 	// 24h / 7d → MM/DD
 	if (range === '24h' || range === '7d') {
 		return `${pad(date.getMonth() + 1)}/${pad(date.getDate())}`;
+	}
+	if (range === '10s') {
+		return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 	}
 	return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
