@@ -189,13 +189,15 @@
 
 	function sync() {
 		if (!canvas) return;
-		if (!chart) return render();
-		chart.data = toChartPayload(buildData());
-		const scales = chart.options.scales as any;
-		if (scales?.x) scales.x.max = xMax;
-		if (scales?.y) scales.y.max = yMax;
-		chart.resize();
-		chart.update('none');
+		// chart.js v4 의 in-place options mutation (scales.x.max = N) 은 internal
+		// resolver scope cache 를 dirty 시켜 장시간 사용 시 _resolveWithContext
+		// 무한 재귀로 RangeError 가 발생하는 케이스가 있다. destroy + recreate
+		// 으로 매번 fresh resolver 를 셋업해 그 누적을 차단.
+		if (chart) {
+			chart.destroy();
+			chart = null;
+		}
+		render();
 	}
 
 	$effect(() => {

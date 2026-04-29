@@ -134,11 +134,14 @@
 
 	function sync() {
 		if (!canvas) return;
-		if (!chart) return render();
-		chart.data = toChartPayload(buildData());
-		const r = chart.options.scales?.r as any;
-		if (r) r.max = computeMax();
-		chart.update('none');
+		// chart.js v4 의 in-place options mutation 은 장시간 사용 시 internal
+		// resolver scope cache 가 dirty 되어 _resolveWithContext 무한 재귀로
+		// RangeError 가 발생할 수 있다. destroy + recreate 으로 매번 fresh.
+		if (chart) {
+			chart.destroy();
+			chart = null;
+		}
+		render();
 	}
 
 	$effect(() => {
