@@ -255,11 +255,15 @@
 		ds.labels = [...labels];
 		ds.datasets[0].data = [...data];
 
-		// Dynamic Y range
+		// Dynamic Y range. chart.js v4 의 in-place mutation (yScale.min = N) 은
+		// 장시간 사용 시 internal options resolver cache 가 dirty 되어 cycle.
+		// scales.y 를 새 객체로 통째 교체해 chart.js 가 resolver 를 다시 셋업하게.
 		const { min, max } = calcYRange(data, unit);
-		const yScale = chart.options.scales!.y!;
-		(yScale as any).min = min;
-		(yScale as any).max = max;
+		const prevScales = (chart.options.scales || {}) as any;
+		chart.options.scales = {
+			...prevScales,
+			y: { ...(prevScales.y || {}), min, max },
+		} as any;
 
 		// Last point dot
 		ds.datasets[0].pointRadius = data.map((_, i) => i === data.length - 1 ? 4 : 0) as any;

@@ -186,35 +186,16 @@
 
 	function sync() {
 		if (!canvas) return;
-		if (!chart) {
-			render();
-			return;
+		// chart.js v4 의 in-place options mutation (plugins / layout / scales 직접
+		// 변경) 은 internal options resolver scope cache 를 dirty 하게 만들어
+		// 장시간 사용 시 _resolveWithContext 무한 재귀 (RangeError) 가 발생할 수
+		// 있다. polling 마다 데이터/플러그인/스케일을 모두 in-place 로 갈아치우는
+		// 본 컴포넌트가 가장 mutation 빈도가 높아 destroy + recreate 으로 통일.
+		if (chart) {
+			chart.destroy();
+			chart = null;
 		}
-		chart.data.labels = [...labels];
-		chart.data.datasets = buildDatasets();
-		if (chart.options.plugins) {
-			(chart.options.plugins as any).rightEdgeLabels = {
-				enabled: topNames.length > 0,
-				topNames: new Set(topNames),
-				format: formatValue,
-			};
-			(chart.options.plugins as any).tooltip = {
-				...((chart.options.plugins as any).tooltip ?? {}),
-				filter: (item: any) => {
-					const label = item.dataset.label ?? '';
-					if (soloLabel) return label === soloLabel;
-					if (topNames.length === 0) return true;
-					return topNames.includes(label);
-				},
-			};
-		}
-		if (chart.options.layout) {
-			(chart.options.layout as any).padding = rightPadding > 0 ? { right: rightPadding } : undefined;
-		}
-		if (chart.options.scales?.y) {
-			(chart.options.scales.y as any).max = unit === 'percent' ? percentAxisMax() : rateAxisMax();
-		}
-		chart.update('none');
+		render();
 	}
 
 	$effect(() => {
