@@ -79,6 +79,16 @@
 	let wsDataReceived = false;
 	let viewMode = 'group';
 	let selectedContainer: Container | null = null;
+	let leftCollapsed = false;
+	let rightCollapsed = false;
+	function toggleLeftSidebar() {
+		leftCollapsed = !leftCollapsed;
+		if (browser) localStorage.setItem('hc_3d_left_collapsed', leftCollapsed ? '1' : '0');
+	}
+	function toggleRightSidebar() {
+		rightCollapsed = !rightCollapsed;
+		if (browser) localStorage.setItem('hc_3d_right_collapsed', rightCollapsed ? '1' : '0');
+	}
 	let cpuModalOpen = false;
 	let memoryModalOpen = false;
 	let diskModalOpen = false;
@@ -437,6 +447,8 @@
 
 	onMount(async () => {
 		if (browser) {
+			leftCollapsed = localStorage.getItem('hc_3d_left_collapsed') === '1';
+			rightCollapsed = localStorage.getItem('hc_3d_right_collapsed') === '1';
 			const savedToken = localStorage.getItem('hc_access_token');
 			if (savedToken) {
 				if (decodeRole(savedToken) === 'user') {
@@ -531,21 +543,23 @@
 <AdminHeader totalAgents={agents.length} username={currentUsername} onLogout={doLogout} />
 <div class="layout">
 	<!-- Left Sidebar: Server Info -->
-	<LeftSidebar
-		{systemInfo}
-		totalContainers={containers.length}
-		{agents}
-		{selectedServerId}
-		{accessToken}
-		onSwitchServer={selectServer}
-		onOpenCpu={() => { cpuModalOpen = true; }}
-		onOpenMemory={() => { memoryModalOpen = true; }}
-		onOpenDisk={() => { diskModalOpen = true; }}
-		onOpenNetwork={() => { networkModalOpen = true; }}
-		onOpenLogin={() => { loginModalOpen = true; }}
-		onOpenProcess={() => { processModalOpen = true; }}
-		onOpenGpu={() => { gpuModalOpen = true; }}
-	/>
+	<div class="sidebar-slot sidebar-slot-left" class:is-collapsed={leftCollapsed} aria-hidden={leftCollapsed}>
+		<LeftSidebar
+			{systemInfo}
+			totalContainers={containers.length}
+			{agents}
+			{selectedServerId}
+			{accessToken}
+			onSwitchServer={selectServer}
+			onOpenCpu={() => { cpuModalOpen = true; }}
+			onOpenMemory={() => { memoryModalOpen = true; }}
+			onOpenDisk={() => { diskModalOpen = true; }}
+			onOpenNetwork={() => { networkModalOpen = true; }}
+			onOpenLogin={() => { loginModalOpen = true; }}
+			onOpenProcess={() => { processModalOpen = true; }}
+			onOpenGpu={() => { gpuModalOpen = true; }}
+		/>
+	</div>
 
 	<!-- Center: 3D Topology (새 OOP topology layer, Phase 1) -->
 	<main class="topology-area">
@@ -607,22 +621,46 @@
 				onClose={clearHudSelection}
 				onOpenDetail={openContainerDetail}
 			/>
+			<button
+				class="sidebar-toggle sidebar-toggle-left"
+				class:is-collapsed={leftCollapsed}
+				onclick={toggleLeftSidebar}
+				title={leftCollapsed ? '서버 정보 사이드바 펴기' : '서버 정보 사이드바 접기'}
+				aria-label={leftCollapsed ? '서버 정보 사이드바 펴기' : '서버 정보 사이드바 접기'}
+			>
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+					<polyline points="15 18 9 12 15 6"></polyline>
+				</svg>
+			</button>
+			<button
+				class="sidebar-toggle sidebar-toggle-right"
+				class:is-collapsed={rightCollapsed}
+				onclick={toggleRightSidebar}
+				title={rightCollapsed ? '컨테이너 사이드바 펴기' : '컨테이너 사이드바 접기'}
+				aria-label={rightCollapsed ? '컨테이너 사이드바 펴기' : '컨테이너 사이드바 접기'}
+			>
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+					<polyline points="9 18 15 12 9 6"></polyline>
+				</svg>
+			</button>
 		</div>
 	</main>
 
 	<!-- Right Sidebar: Container Info -->
-	<RightSidebar
-		{projects}
-		{containers}
-		{selectedProject}
-		onSelectProject={onProjectSelect}
-		onSelectContainer={openContainerDetail}
-		{viewMode}
-		onViewModeChange={(mode) => { viewMode = mode; listHighlightIds = null; }}
-		highlightedContainerIds={listHighlightIds}
-		{selectedContainerId}
-		onClearFilters={resetAllSelection}
-	/>
+	<div class="sidebar-slot sidebar-slot-right" class:is-collapsed={rightCollapsed} aria-hidden={rightCollapsed}>
+		<RightSidebar
+			{projects}
+			{containers}
+			{selectedProject}
+			onSelectProject={onProjectSelect}
+			onSelectContainer={openContainerDetail}
+			{viewMode}
+			onViewModeChange={(mode) => { viewMode = mode; listHighlightIds = null; }}
+			highlightedContainerIds={listHighlightIds}
+			{selectedContainerId}
+			onClearFilters={resetAllSelection}
+		/>
+	</div>
 </div>
 
 <ContainerDetailModal
@@ -714,6 +752,62 @@
 		flex-direction: column;
 		overflow: hidden;
 		background: var(--bg-base);
+	}
+
+	.sidebar-slot {
+		display: flex;
+		flex-shrink: 0;
+		overflow: hidden;
+		transition: width 260ms cubic-bezier(0.4, 0, 0.2, 1), opacity 200ms ease;
+		will-change: width;
+	}
+	.sidebar-slot-left { width: 288px; }
+	.sidebar-slot-right { width: 678px; }
+	.sidebar-slot.is-collapsed {
+		width: 0;
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	.sidebar-toggle {
+		position: absolute;
+		top: 50%;
+		transform: translateY(-50%);
+		width: 22px;
+		height: 56px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0;
+		border: 1px solid var(--border);
+		background: rgba(13, 17, 23, 0.7);
+		color: var(--text-secondary);
+		cursor: pointer;
+		z-index: 6;
+		backdrop-filter: blur(6px);
+		transition: background 0.15s ease, color 0.15s ease;
+	}
+	.sidebar-toggle svg {
+		transition: transform 260ms cubic-bezier(0.4, 0, 0.2, 1);
+	}
+	.sidebar-toggle.is-collapsed svg {
+		transform: rotate(180deg);
+	}
+	.sidebar-toggle:hover {
+		background: rgba(13, 17, 23, 0.95);
+		color: var(--text-primary);
+	}
+	.sidebar-toggle-left {
+		left: 0;
+		border-left: none;
+		border-top-right-radius: var(--radius-md);
+		border-bottom-right-radius: var(--radius-md);
+	}
+	.sidebar-toggle-right {
+		right: 0;
+		border-right: none;
+		border-top-left-radius: var(--radius-md);
+		border-bottom-left-radius: var(--radius-md);
 	}
 
 	.topology-overlay {
