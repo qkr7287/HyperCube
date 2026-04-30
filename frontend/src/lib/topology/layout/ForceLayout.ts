@@ -31,30 +31,30 @@ interface InternalLink {
 	target: InternalNode;
 }
 
-export type LayoutMode = 'force' | 'ring' | 'bubble';
+const LINK_DISTANCE = 55;
+const LINK_MIN_DISTANCE = 38;
+const LINK_MAX_DISTANCE = 110;
 
-const LINK_DISTANCE = 60;
-const LINK_MIN_DISTANCE = 40;
-const LINK_MAX_DISTANCE = 148;
+// Charge: stack hubs repel each other strongly so stack territories
+// drift apart naturally. Containers / network / volume hubs use a softer
+// charge so they don't fly out of their own group.
+const STACK_HUB_CHARGE = -220;
+const NODE_CHARGE = -55;
 
-const STACK_HUB_CHARGE = -120;
-const NODE_CHARGE = -40;
-
-const STRENGTH_STACK_AFFINITY = 0.08;
+// Per-link strength. Stack→container is stiff (containers stay tight to
+// their stack). Network / volume → container is loose (those hubs are
+// supplementary information, they shouldn't dominate the layout).
+// Stack-stack affinity is set to 0 so co-shared-network stacks don't get
+// dragged toward each other; the linkBoundsForce also skips stack-stack
+// pairs so they can be far apart without being clamped to maxDistance.
 const STRENGTH_STACK_TO_CONTAINER = 0.95;
-const STRENGTH_HUB_TO_CONTAINER = 0.25;
+const STRENGTH_HUB_TO_CONTAINER = 0.22;
 const STRENGTH_DEFAULT_LINK = 0.5;
 
-const COLLIDE_RADIUS = 20;
-
-const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+const COLLIDE_RADIUS = 24;
+const SEED_SPREAD = 160;
 
 function isStackId(id: string): boolean { return id.startsWith('stack:'); }
-function isNetworkId(id: string): boolean { return id.startsWith('network:'); }
-function isVolumeId(id: string): boolean { return id.startsWith('volume:'); }
-function isContainerId(id: string): boolean {
-	return !isStackId(id) && !isNetworkId(id) && !isVolumeId(id);
-}
 
 function chargeStrength(node: SimulationNode): number {
 	return isStackId((node as InternalNode).id) ? STACK_HUB_CHARGE : NODE_CHARGE;
@@ -67,31 +67,10 @@ function linkStrengthByKind(link: { source: unknown; target: unknown }): number 
 	const tgt = typeof link.target === 'string'
 		? link.target
 		: ((link.target as { id?: string } | null)?.id ?? '');
-	if (isStackId(src) && isStackId(tgt)) return STRENGTH_STACK_AFFINITY;
+	if (isStackId(src) && isStackId(tgt)) return 0;
 	if (isStackId(src)) return STRENGTH_STACK_TO_CONTAINER;
-	if (isNetworkId(src) || isVolumeId(src)) return STRENGTH_HUB_TO_CONTAINER;
+	if (src.startsWith('network:') || src.startsWith('volume:')) return STRENGTH_HUB_TO_CONTAINER;
 	return STRENGTH_DEFAULT_LINK;
-}
-
-function ringPosition(i: number, total: number, radius: number): [number, number, number] {
-	const angle = (i / Math.max(1, total)) * 2 * Math.PI;
-	return [Math.cos(angle) * radius, 0, Math.sin(angle) * radius];
-}
-
-function sunflower2D(i: number, total: number, scale: number): [number, number, number] {
-	const angle = i * GOLDEN_ANGLE;
-	const r = scale * Math.sqrt((i + 0.5) / Math.max(1, total));
-	return [Math.cos(angle) * r, 0, Math.sin(angle) * r];
-}
-
-function fibonacciSphere(i: number, total: number, radius: number): [number, number, number] {
-	const phi = Math.acos(1 - (2 * (i + 0.5)) / Math.max(1, total));
-	const theta = GOLDEN_ANGLE * i;
-	return [
-		radius * Math.cos(theta) * Math.sin(phi),
-		radius * Math.sin(theta) * Math.sin(phi),
-		radius * Math.cos(phi),
-	];
 }
 
 function computeTopologySignature(entities: readonly LayoutEntityRef[], links: readonly LayoutLink[]): string {
@@ -156,31 +135,21 @@ function createLinkBoundsForce(minDistance: number, maxDistance: number): Force<
  * matched to rendered entities, so adding / removing entities across
  * delta syncs never restarts layout from scratch unless needed.
  *
- * Three modes are exposed:
- *   - 'force'  (default) Per-link strength tuning. Stack hubs get a strong
- *              charge; stack→container links are stiff; network/volume
- *              links and stack-stack affinity are loose. Lets the cluster
- *              breathe organically while keeping stack territories tight.
- *   - 'ring'   Stack hubs pinned on a circle in the XZ plane. Containers
- *              are still force-driven and orbit their stack. Network /
- *              volume hubs float between related stacks. Predictable.
- *   - 'bubble' Fully deterministic. Stack hubs spread on a sunflower;
- *              members placed on a fibonacci-sphere around their hub;
- *              network / volume hubs sit at the centroid of the stacks
- *              they connect. No force motion — just static packing.
+ * Stack hubs get a much stronger repulsive charge than other nodes so
+ * stack "territories" drift apart on their own; per-link strength keeps
+ * each stack's containers tight while network / volume hubs sit loosely
+ * between related stacks. Result: clusters look organically spread, no
+ * deterministic anchors needed.
  */
 export class ForceLayout {
 	private readonly sim: Simulation;
 	private readonly nodes: Map<string, InternalNode> = new Map();
 	private readonly linkBoundsForce = createLinkBoundsForce(LINK_MIN_DISTANCE, LINK_MAX_DISTANCE);
 	private lastSignature = '';
-	private mode: LayoutMode = 'force';
-	private lastEntities: readonly LayoutEntityRef[] = [];
-	private lastLinks: readonly LayoutLink[] = [];
 
 	constructor() {
 		this.sim = forceSimulation([], 3)
-			.force('charge', forceManyBody().strength(chargeStrength).distanceMax(400))
+			.force('charge', forceManyBody().strength(chargeStrength).distanceMax(600))
 			.force(
 				'link',
 				forceLink([])
@@ -209,16 +178,13 @@ export class ForceLayout {
 			next.set(e.id, {
 				id: e.id,
 				entity: e,
-				x: seeded ? e.position.x : (Math.random() - 0.5) * 80,
-				y: seeded ? e.position.y : (Math.random() - 0.5) * 80,
-				z: seeded ? e.position.z : (Math.random() - 0.5) * 80,
+				x: seeded ? e.position.x : (Math.random() - 0.5) * SEED_SPREAD,
+				y: seeded ? e.position.y : (Math.random() - 0.5) * SEED_SPREAD,
+				z: seeded ? e.position.z : (Math.random() - 0.5) * SEED_SPREAD,
 			});
 		}
 		this.nodes.clear();
 		for (const [k, v] of next) this.nodes.set(k, v);
-
-		this.lastEntities = entities;
-		this.lastLinks = links;
 
 		const signature = computeTopologySignature(entities, links);
 		const isFirstData = this.lastSignature === '';
@@ -237,149 +203,21 @@ export class ForceLayout {
 			linkForce.links(links.map((l) => ({ source: l.source, target: l.target })));
 		}
 		for (const link of links) {
+			// Stack-stack affinity links exist for the link force (where they
+			// sit at strength 0) but must NOT be clamped by linkBoundsForce
+			// — clamping would force stack hubs within maxDistance of each
+			// other and undo all the charge-driven spread.
+			if (isStackId(link.source) && isStackId(link.target)) continue;
 			const source = this.nodes.get(link.source);
 			const target = this.nodes.get(link.target);
 			if (source && target) resolvedLinks.push({ source, target });
 		}
 		this.linkBoundsForce.setLinks(resolvedLinks);
 
-		this.applyModeAnchors();
-
 		// First mount needs a strong kick to spread the initial random seed;
 		// subsequent structural deltas only need a gentle nudge so existing
 		// neighbours don't get ejected.
 		this.sim.alpha(isFirstData ? 0.9 : 0.3).restart();
-	}
-
-	setMode(mode: LayoutMode): void {
-		if (this.mode === mode) return;
-		this.mode = mode;
-		this.applyModeAnchors();
-		this.sim.alpha(0.4).restart();
-	}
-
-	getMode(): LayoutMode {
-		return this.mode;
-	}
-
-	private applyModeAnchors(): void {
-		// Reset every pin first so a previous mode's anchors don't leak
-		// into the new mode (e.g. switching ring → force should free hubs).
-		for (const n of this.nodes.values()) {
-			n.fx = null;
-			n.fy = null;
-			n.fz = null;
-		}
-		if (this.mode === 'force') return;
-
-		const stackIds: string[] = [];
-		const stackMembers = new Map<string, string[]>();
-		for (const e of this.lastEntities) {
-			if (isStackId(e.id)) {
-				stackIds.push(e.id);
-				stackMembers.set(e.id, []);
-			}
-		}
-		stackIds.sort();
-		for (const l of this.lastLinks) {
-			if (isStackId(l.source) && isContainerId(l.target)) {
-				stackMembers.get(l.source)?.push(l.target);
-			}
-		}
-		for (const arr of stackMembers.values()) arr.sort();
-
-		const N = stackIds.length;
-
-		if (this.mode === 'ring') {
-			// Stack hubs pinned on a ring; containers free.
-			const ringR = Math.max(140, N * 16);
-			stackIds.forEach((sid, i) => {
-				const node = this.nodes.get(sid);
-				if (!node) return;
-				const [x, y, z] = ringPosition(i, N, ringR);
-				node.fx = x;
-				node.fy = y;
-				node.fz = z;
-				// Snap initial position too so containers see a meaningful target.
-				node.x = x;
-				node.y = y;
-				node.z = z;
-			});
-			return;
-		}
-
-		if (this.mode === 'bubble') {
-			// Sunflower in XZ plane for stack hubs (visually balanced spread).
-			const planeScale = Math.max(140, N * 22);
-			const stackPos = new Map<string, { x: number; y: number; z: number }>();
-			stackIds.forEach((sid, i) => {
-				const stackNode = this.nodes.get(sid);
-				if (!stackNode) return;
-				const [sx, sy, sz] = sunflower2D(i, N, planeScale);
-				stackNode.fx = sx;
-				stackNode.fy = sy;
-				stackNode.fz = sz;
-				stackNode.x = sx;
-				stackNode.y = sy;
-				stackNode.z = sz;
-				stackPos.set(sid, { x: sx, y: sy, z: sz });
-
-				// Members on fibonacci sphere around the hub. Bubble radius
-				// grows slowly with member count (cube-root) so a 20-container
-				// stack isn't 5× the size of a 5-container stack.
-				const memberIds = stackMembers.get(sid) ?? [];
-				const sphereR = Math.max(22, 12 + Math.cbrt(memberIds.length) * 9);
-				memberIds.forEach((mid, mi) => {
-					const node = this.nodes.get(mid);
-					if (!node) return;
-					const [dx, dy, dz] = fibonacciSphere(mi, memberIds.length, sphereR);
-					node.fx = sx + dx;
-					node.fy = sy + dy;
-					node.fz = sz + dz;
-					node.x = node.fx;
-					node.y = node.fy;
-					node.z = node.fz;
-				});
-			});
-
-			// Network / volume hubs at centroid of related stacks. We need to
-			// know which stacks each hub touches: walk hub→container links and
-			// look up each container's stack via the inverted member map.
-			const containerToStack = new Map<string, string>();
-			for (const [sid, members] of stackMembers) {
-				for (const mid of members) containerToStack.set(mid, sid);
-			}
-			const hubRelStacks = new Map<string, Set<string>>();
-			for (const l of this.lastLinks) {
-				if ((isNetworkId(l.source) || isVolumeId(l.source)) && isContainerId(l.target)) {
-					const sid = containerToStack.get(l.target);
-					if (!sid) continue;
-					if (!hubRelStacks.has(l.source)) hubRelStacks.set(l.source, new Set());
-					hubRelStacks.get(l.source)!.add(sid);
-				}
-			}
-			for (const [hubId, relStacks] of hubRelStacks) {
-				const node = this.nodes.get(hubId);
-				if (!node) continue;
-				let cx = 0, cy = 0, cz = 0;
-				let n = 0;
-				for (const sid of relStacks) {
-					const p = stackPos.get(sid);
-					if (!p) continue;
-					cx += p.x; cy += p.y; cz += p.z;
-					n += 1;
-				}
-				if (n === 0) continue;
-				node.fx = cx / n;
-				// Lift hubs above the stack plane so they don't sit on top
-				// of containers — gives a clear "extra layer" feel.
-				node.fy = cy / n + (isNetworkId(hubId) ? 60 : -60);
-				node.fz = cz / n;
-				node.x = node.fx;
-				node.y = node.fy;
-				node.z = node.fz;
-			}
-		}
 	}
 
 	/** Advance the simulation one step and project positions onto entities. */
@@ -411,14 +249,11 @@ export class ForceLayout {
 	}
 
 	unpinAll(): void {
-		// In ring / bubble modes the user may legitimately reset focus, but
-		// the mode anchors are *not* user pins — they must be re-applied.
 		for (const n of this.nodes.values()) {
 			n.fx = null;
 			n.fy = null;
 			n.fz = null;
 		}
-		this.applyModeAnchors();
 	}
 
 	hasNode(id: string): boolean {
