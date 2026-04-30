@@ -36,7 +36,7 @@
 	let focusOwnedSolo = $state(false);
 	let focusTimer: ReturnType<typeof setInterval> | null = null;
 	let listEl: HTMLDivElement | null = null;
-	let itemEls: (HTMLButtonElement | null)[] = [];
+	let itemEls: (HTMLButtonElement | null)[] = $state([]);
 
 	const focusRunning = $derived(!focusPaused && stacks.length > 1);
 

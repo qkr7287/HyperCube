@@ -235,7 +235,9 @@
 		seriesColor: string,
 	): EChartsOption {
 		const bounds = computeYBounds(vals, u);
-		// percent 의 stepSize 계산: chart.js 시절 로직과 동등
+		// percent 모드 stepSize: 항상 5~7 ticks 가 되도록 max 별로 조정.
+		// ECharts 5.5 는 11 ticks (max=100, step=10) 같은 dense layout 을 modal
+		// 처럼 짧은 chart 에서 가독성 부족이라 판단해 alignTicks 경고를 띄움.
 		const percentStep =
 			u === 'percent'
 				? bounds.max <= 2
@@ -243,10 +245,12 @@
 					: bounds.max <= 5
 						? 1
 						: bounds.max <= 15
-							? 2
+							? 3
 							: bounds.max <= 30
 								? 5
-								: 10
+								: bounds.max <= 50
+									? 10
+									: 20
 				: undefined;
 		return {
 			animationDuration: 250,

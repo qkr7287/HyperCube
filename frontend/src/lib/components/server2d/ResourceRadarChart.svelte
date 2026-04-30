@@ -99,7 +99,10 @@
 				center: ['50%', '50%'],
 				radius: '70%',
 				shape: 'polygon',
-				splitNumber: 4,
+				// splitNumber=4 (max=100 → step=25) 일 때 ECharts alignScaleTicks
+				// 가 align 후 interval precision 이 어긋나 readable 경고 발생.
+				// splitNumber=5 (step=20, nice number) 로 두면 검사 통과.
+				splitNumber: 5,
 				axisName: {
 					color: '#cbd5e1',
 					fontSize: 11,
