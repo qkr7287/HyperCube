@@ -36,6 +36,12 @@ const LINK_DISTANCE = 60;
 const LINK_MIN_DISTANCE = 40;
 const LINK_MAX_DISTANCE = 148;
 
+function computeTopologySignature(entities: readonly LayoutEntityRef[], links: readonly LayoutLink[]): string {
+	const ids = entities.map((e) => e.id).sort().join(',');
+	const ls = links.map((l) => `${l.source}->${l.target}`).sort().join(',');
+	return `${ids}|${ls}`;
+}
+
 function createLinkBoundsForce(minDistance: number, maxDistance: number): Force<InternalNode, undefined> {
 	let links: InternalLink[] = [];
 
@@ -96,6 +102,11 @@ export class ForceLayout {
 	private readonly sim: Simulation;
 	private readonly nodes: Map<string, InternalNode> = new Map();
 	private readonly linkBoundsForce = createLinkBoundsForce(LINK_MIN_DISTANCE, LINK_MAX_DISTANCE);
+	// Topology signature (sorted ids + sorted links). Empty string until the
+	// first setData. We only re-feed sim and reheat when this changes — otherwise
+	// every WS metric tick was kicking alpha to 0.9 and pushing nodes outward
+	// for ~3s before they re-clustered (visible periodic "breathing").
+	private lastSignature = '';
 
 	constructor() {
 		this.sim = forceSimulation([], 3)
@@ -130,6 +141,15 @@ export class ForceLayout {
 		this.nodes.clear();
 		for (const [k, v] of next) this.nodes.set(k, v);
 
+		const signature = computeTopologySignature(entities, links);
+		const isFirstData = this.lastSignature === '';
+		const structureChanged = signature !== this.lastSignature;
+		this.lastSignature = signature;
+
+		// No structural change → entity references stay current (loop above)
+		// but the sim is left alone so it can finish decaying and rest.
+		if (!structureChanged) return;
+
 		this.sim.nodes(Array.from(this.nodes.values()));
 
 		const linkForce = this.sim.force('link') as LinkForce | null;
@@ -143,7 +163,10 @@ export class ForceLayout {
 			if (source && target) resolvedLinks.push({ source, target });
 		}
 		this.linkBoundsForce.setLinks(resolvedLinks);
-		this.sim.alpha(0.9).restart();
+		// First mount needs a strong kick to spread the initial random seed;
+		// subsequent structural deltas only need a gentle nudge so existing
+		// neighbours don't get ejected.
+		this.sim.alpha(isFirstData ? 0.9 : 0.3).restart();
 	}
 
 	/** Advance the simulation one step and project positions onto entities. */
