@@ -4,7 +4,7 @@
 
 ## 핵심 룰 (반복 실수 방지)
 
-- **로컬에서 dev server 띄우지 말 것** (`npm run dev` 금지). dev는 63번 서버에서 돌아가고, 로컬 폴더가 63번에 sync → Docker bind-mount → 자동 hot-reload. 테스트 URL은 항상 `http://192.168.0.63:3334` (frontend) / `:8000` (backend).
+- **로컬에서 dev server 띄우지 말 것** (`npm run dev` 금지). dev는 63번 서버에서 돌아가고, 로컬 폴더가 63번에 sync → Docker bind-mount → 자동 hot-reload. 테스트 URL은 항상 `http://192.168.0.63:3000` (frontend) / `:8000` (backend). 컨테이너는 `hc-frontend-dev` / `hc-backend`.
 - `+page.svelte`는 NON-runes 모드 → `let` 사용 (`$state()` 금지, 빈 화면 발생)
 - 컴포넌트(.svelte)는 runes mode → `$props()`, `$state()` OK
 - Windows 환경 → Edit 매칭 실패 시 `Write`로 전체 재작성 (`\r\n` 줄바꿈 이슈)
@@ -53,7 +53,7 @@
 - 개발 superuser: `admin / agics12!@`
 - **dev 서버**: 192.168.0.63 (63번). 로컬 폴더 → 63번 sync → Docker bind-mount → hot-reload. SSH alias `hc-dev-63`, 소스 위치 `/home/agics/ts/HyperCube`
 - 16번 SSH: `ssh -i ~/.ssh/dcmtool_sync -p 2022 root@192.168.0.16`
-- 메인 대시보드 (dev): `http://192.168.0.63:3334`
+- 메인 대시보드 (dev): `http://192.168.0.63:3000`
 - Admin (dev): `http://192.168.0.63:8000/admin`
 - prod URL: `http://192.168.0.16:3334/hypercube`
 
