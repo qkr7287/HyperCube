@@ -157,6 +157,7 @@
 			animationEasingUpdate: 'cubicInOut',
 			grid: { top: 4, right: 8, bottom: 18, left: 2, containLabel: true },
 			tooltip: {
+				appendToBody: true,
 				trigger: 'item',
 				backgroundColor: 'rgba(13, 17, 23, 0.96)',
 				borderColor: 'rgba(148, 163, 184, 0.22)',

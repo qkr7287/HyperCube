@@ -168,6 +168,7 @@
 				containLabel: true,
 			},
 			tooltip: {
+				appendToBody: true,
 				trigger: 'axis',
 				backgroundColor: 'rgba(13, 17, 23, 0.96)',
 				borderColor: 'rgba(48, 213, 200, 0.35)',

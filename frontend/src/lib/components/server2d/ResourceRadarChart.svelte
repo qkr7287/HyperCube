@@ -81,6 +81,7 @@
 			animationDurationUpdate: 480,
 			animationEasingUpdate: 'cubicInOut',
 			tooltip: {
+				appendToBody: true,
 				trigger: 'item',
 				backgroundColor: 'rgba(13, 17, 23, 0.96)',
 				borderColor: 'rgba(148, 163, 184, 0.22)',

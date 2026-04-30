@@ -76,6 +76,7 @@
 				containLabel: true,
 			},
 			tooltip: {
+				appendToBody: true,
 				trigger: 'axis',
 				backgroundColor: '#121720',
 				borderColor: '#1f2937',
