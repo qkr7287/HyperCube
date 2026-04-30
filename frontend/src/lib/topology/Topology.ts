@@ -80,7 +80,6 @@ function healthColorForStack(
 // Delay before newly-scattered unrelated nodes get pinned in place.
 // The layout needs a moment to actually push them outward before we
 // freeze their position (req #10).
-const SCATTER_PIN_DELAY_MS = 1500;
 
 // Minimum members for a network / volume hub to be drawn.
 // Network keeps the "shared resource" rule (≥2 members); volume is
@@ -176,7 +175,6 @@ export class Topology {
 	private pointerDownX = 0;
 	private pointerDownY = 0;
 	private pointerMoved = false;
-	private scatterPinTimer: ReturnType<typeof setTimeout> | null = null;
 	// --- Loading overlay state ---
 	private loadingStage: LoadingStage = 'models';
 	private stableFrameCount = 0;
@@ -613,13 +611,16 @@ export class Topology {
 			else this.pinner.unpin(id);
 		}
 
-		// Codex P1: if the focused entity was pruned by this update, the
-		// old focus forces would still point at a ghost. Clear focus so
-		// the scene can re-cluster instead of scattering around nothing.
+		// If the focused entity was pruned, clear selection state so the
+		// group-mesh highlight and HUD don't reference a ghost. Camera is
+		// not reset because the user wasn't the one to leave focus.
 		if (this.activeFocusId) {
 			const stillExists =
 				this.containers.has(this.activeFocusId) || this.hubs.has(this.activeFocusId);
-			if (!stillExists) this.resetFocus();
+			if (!stillExists) {
+				this.activeFocusId = null;
+				this.selectionTarget = null;
+			}
 		}
 	}
 
@@ -890,8 +891,12 @@ export class Topology {
 	focusHub(id: string, _type: HubType): void {
 		const hub = this.hubs.get(id);
 		if (!hub) return;
+		// Match focusContainer: selection + camera dolly only. We used to
+		// pin members and scatter unrelated nodes via a forceRadial kick,
+		// but the resulting "spread → re-cluster" was visually noisy and
+		// not what the click was conveying. Layout keeps running untouched.
 		this.selectionTarget = hub;
-		const related = new Set<string>([hub.id, ...hub.memberIds]);
+		this.activeFocusId = id;
 		const center = hub.position.clone();
 		let maxDist = 0;
 		for (const mid of hub.memberIds) {
@@ -900,59 +905,18 @@ export class Topology {
 			const d = n.position.distanceTo(center);
 			if (d > maxDist) maxDist = d;
 		}
-		this.applyFocus(id, related, center);
 		this.animator?.fitSphere(center, maxDist + 25);
 	}
 
 	resetFocus(): void {
-		if (!this.layout) return;
-		if (this.scatterPinTimer) {
-			clearTimeout(this.scatterPinTimer);
-			this.scatterPinTimer = null;
-		}
+		// Selection + camera only — no layout reheat / unpin since focusHub
+		// no longer scatters nodes. Pinner is cleared as a safety net for
+		// any historical pins (e.g. a future right-click pin feature).
 		this.activeFocusId = null;
-		this.pinner.clear();
-		this.layout.unpinAll();
-		this.layout.clearFocus();
-		this.layout.reheat(1.0);
-		this.animator?.resetCamera();
 		this.selectionTarget = null;
-	}
-
-	private applyFocus(focusId: string, related: ReadonlySet<string>, center: THREE.Vector3): void {
-		if (!this.layout) return;
-		this.activeFocusId = focusId;
-
-		for (const id of this.pinner.snapshot()) {
-			if (related.has(id)) {
-				this.pinner.unpin(id);
-				this.layout.unpin(id);
-			}
-		}
-
-		for (const id of related) {
-			if (this.layout.hasNode(id)) {
-				this.layout.pin(id);
-				this.pinner.pin(id);
-			}
-		}
-
-		this.layout.setFocus(related, { x: center.x, y: center.y, z: center.z });
-
-		if (this.scatterPinTimer) clearTimeout(this.scatterPinTimer);
-		const capturedFocusId = focusId;
-
-		this.scatterPinTimer = setTimeout(() => {
-			this.scatterPinTimer = null;
-			if (this.activeFocusId !== capturedFocusId) return;
-			if (!this.layout) return;
-			for (const id of this.containers.keys()) {
-				if (related.has(id)) continue;
-				if (this.pinner.isPinned(id)) continue;
-				this.pinner.pin(id);
-				this.layout.pin(id);
-			}
-		}, SCATTER_PIN_DELAY_MS);
+		this.pinner.clear();
+		this.layout?.unpinAll();
+		this.animator?.resetCamera();
 	}
 
 	// ---- Auto-rotate (Phase 5) ----
@@ -1060,7 +1024,10 @@ export class Topology {
 		if (this.hubVisibility[type] === visible) return;
 		this.hubVisibility[type] = visible;
 		if (!visible && this.activeFocusId?.startsWith(`${type}:`)) {
-			this.resetFocus();
+			// Hub the user was focused on just got hidden — drop selection
+			// state but keep the camera where it is (no resetCamera call).
+			this.activeFocusId = null;
+			this.selectionTarget = null;
 		}
 		this.applyVisibility();
 		// Lines / hubs just turned visible need their links reflected
@@ -1095,10 +1062,6 @@ export class Topology {
 	}
 
 	dispose(): void {
-		if (this.scatterPinTimer) {
-			clearTimeout(this.scatterPinTimer);
-			this.scatterPinTimer = null;
-		}
 		if (this.loadingWatchdog) {
 			clearTimeout(this.loadingWatchdog);
 			this.loadingWatchdog = null;

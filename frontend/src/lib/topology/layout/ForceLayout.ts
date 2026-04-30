@@ -3,7 +3,6 @@ import {
 	forceCollide,
 	forceLink,
 	forceManyBody,
-	forceRadial,
 	forceSimulation,
 	type Force,
 	type LinkForce,
@@ -177,10 +176,6 @@ export class ForceLayout {
 		}
 	}
 
-	reheat(alpha: number = 0.6): void {
-		this.sim.alpha(alpha).restart();
-	}
-
 	stop(): void {
 		this.sim.stop();
 	}
@@ -219,25 +214,4 @@ export class ForceLayout {
 		return { x: n.x ?? 0, y: n.y ?? 0, z: n.z ?? 0 };
 	}
 
-	/**
-	 * Install focus forces. Only unrelated, unpinned ids are pushed
-	 * outward — related nodes are expected to be pinned at their
-	 * click-time position by the caller, so a gather radial would
-	 * be a no-op and just adds load. Alpha kick is small so the rest
-	 * of the cluster doesn't reshuffle.
-	 */
-	setFocus(related: ReadonlySet<string>, center: { x: number; y: number; z: number }): void {
-		const scatter = forceRadial(450, center.x, center.y, center.z).strength((n: SimulationNode) =>
-			related.has(n.id) ? 0 : 0.09
-		);
-		this.sim.force('focusGather', null);
-		this.sim.force('focusScatter', scatter);
-		this.sim.alpha(0.3).restart();
-	}
-
-	clearFocus(): void {
-		this.sim.force('focusGather', null);
-		this.sim.force('focusScatter', null);
-		this.sim.alpha(0.3).restart();
-	}
 }
