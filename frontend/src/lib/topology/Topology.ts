@@ -94,6 +94,22 @@ const MIN_VOLUME_HUB_MEMBERS = 1;
 // even when MIN_VOLUME_HUB_MEMBERS is 1.
 const ANONYMOUS_VOLUME_RE = /^[0-9a-f]{64}$/;
 
+/**
+ * Line ids encode their endpoints as `${sourceId}->${targetId}`. A
+ * line is treated as related to a click only when BOTH endpoints are
+ * in the related set, so the dimming visually matches what the user
+ * has selected (e.g. clicking a container highlights stack-internal
+ * links to that stack's hub but not stack-internal links between
+ * two unrelated stacks).
+ */
+function isLineRelated(lineId: string, related: ReadonlySet<string>): boolean {
+	const idx = lineId.indexOf('->');
+	if (idx < 0) return false;
+	const src = lineId.slice(0, idx);
+	const tgt = lineId.slice(idx + 2);
+	return related.has(src) && related.has(tgt);
+}
+
 function isMeaningfulVolumeName(name: string): boolean {
 	if (!name) return false;
 	if (ANONYMOUS_VOLUME_RE.test(name)) return false;
@@ -598,6 +614,7 @@ export class Topology {
 
 		// --- feed layout ---
 		const { entities, links } = this.buildLayoutGraph();
+		this.layout.setStackBubbleRadii(this.computeStackBubbleRadii());
 		this.layout.setData(entities, links);
 		if (!this.hasComputedInitialHome && !this.activeFocusId) {
 			this.layout.tick();
@@ -612,14 +629,16 @@ export class Topology {
 		}
 
 		// If the focused entity was pruned, clear selection state so the
-		// group-mesh highlight and HUD don't reference a ghost. Camera is
-		// not reset because the user wasn't the one to leave focus.
+		// group-mesh highlight, HUD and click-focus dim don't reference
+		// a ghost. Camera is not reset because the user wasn't the one
+		// to leave focus.
 		if (this.activeFocusId) {
 			const stillExists =
 				this.containers.has(this.activeFocusId) || this.hubs.has(this.activeFocusId);
 			if (!stillExists) {
 				this.activeFocusId = null;
 				this.selectionTarget = null;
+				this.resetClickFocus();
 			}
 		}
 	}
@@ -644,9 +663,10 @@ export class Topology {
 		const links: LayoutLink[] = [];
 		const affinityPairs = new Set<string>();
 		for (const hub of this.hubs.values()) {
+			const kind: LayoutLink['kind'] = hub.hubType === 'stack' ? 'stack-member' : 'hub-member';
 			for (const memberId of hub.memberIds) {
 				if (this.containers.has(memberId)) {
-					links.push({ source: hub.id, target: memberId });
+					links.push({ source: hub.id, target: memberId, kind });
 				}
 			}
 			if (hub.hubType === 'network' || hub.hubType === 'volume') {
@@ -664,11 +684,55 @@ export class Topology {
 						const key = `${stackA}|${stackB}`;
 						if (affinityPairs.has(key)) continue;
 						affinityPairs.add(key);
-						links.push({ source: stackA, target: stackB });
+						links.push({ source: stackA, target: stackB, kind: 'stack-affinity' });
 					}
 				}
 			}
 		}
+
+		// Same-stack container ↔ container affinity edges scored by
+		// shared networks / volumes. Tightly-related siblings sit
+		// closer inside their stack's bubble; cross-stack pairs are
+		// intentionally NOT linked so charge can keep stacks apart.
+		const raw = this.lastData?.containers ?? [];
+		const byStack = new Map<string, typeof raw>();
+		for (const c of raw) {
+			const stack = c.stack || 'Unmanaged';
+			let arr = byStack.get(stack);
+			if (!arr) {
+				arr = [];
+				byStack.set(stack, arr);
+			}
+			arr.push(c);
+		}
+		for (const group of byStack.values()) {
+			if (group.length < 2) continue;
+			for (let i = 0; i < group.length; i += 1) {
+				const a = group[i];
+				const aNets = new Set(a.networks ?? []);
+				const aVols = new Set(
+					(a.mounts ?? []).filter((m) => m && m.type === 'volume').map((m) => m.name)
+				);
+				for (let j = i + 1; j < group.length; j += 1) {
+					const b = group[j];
+					if (!this.containers.has(a.id) || !this.containers.has(b.id)) continue;
+					let sharedNets = 0;
+					for (const n of b.networks ?? []) if (aNets.has(n)) sharedNets += 1;
+					let sharedVols = 0;
+					for (const m of b.mounts ?? []) {
+						if (m && m.type === 'volume' && aVols.has(m.name)) sharedVols += 1;
+					}
+					const score = 1 + sharedNets * 1.0 + sharedVols * 0.5;
+					links.push({
+						source: a.id,
+						target: b.id,
+						kind: 'container-affinity',
+						score,
+					});
+				}
+			}
+		}
+
 		return { entities, links };
 	}
 
@@ -726,14 +790,9 @@ export class Topology {
 	}
 
 	private updateNetworkTrafficVisuals(dt: number): void {
-		for (const hub of this.hubs.values()) {
-			if (hub instanceof NetworkHub) {
-				hub.tick(dt);
-			}
-		}
-		for (const line of this.lines.values()) {
-			line.tick(dt);
-		}
+		for (const c of this.containers.values()) c.tick(dt);
+		for (const hub of this.hubs.values()) hub.tick(dt);
+		for (const line of this.lines.values()) line.tick(dt);
 	}
 
 	setNetworkTraffic(networkTraffic?: TopologyNetworkTrafficIndex): void {
@@ -825,11 +884,13 @@ export class Topology {
 		if (!this.scene || !this.raycaster || !this.host) return;
 		const hit = this.raycaster.pickAt(event, this.host, this.scene.camera, this.scene.scene);
 		if (!hit) {
-			// Empty-space click → drop tooltip immediately and let the page
-			// clear HUD / sidebar highlight. We don't call resetFocus()
-			// here because the camera reset is disruptive; only selection
-			// state is dropped.
+			// Empty-space click → drop tooltip + click-focus dim immediately
+			// and let the page clear HUD / sidebar highlight. We don't
+			// call resetFocus() here because the camera reset is
+			// disruptive; only selection + dim state is dropped.
 			this.selectionTarget = null;
+			this.activeFocusId = null;
+			this.resetClickFocus();
 			this.callbacks.onEmptyClick?.();
 			return;
 		}
@@ -878,23 +939,16 @@ export class Topology {
 	focusContainer(id: string): void {
 		const node = this.containers.get(id);
 		if (!node) return;
-		// Container click no longer detaches the clicked node from its group.
-		// The previous `applyFocus` pinned the node and scattered everything
-		// else, which pulled one crate out of the convex hull — visually
-		// confusing and not what the click was conveying. We keep the
-		// camera dolly + selection (HUD + tooltip) but let the physics
-		// layout keep running untouched.
+		// Click stays a non-spatial event — layout keeps running. Visual
+		// focus is handled via dim/glow on the entities (applyClickFocus).
 		this.selectionTarget = node;
+		this.applyClickFocus(id);
 		this.animator?.fitSphere(node.position, 18);
 	}
 
 	focusHub(id: string, _type: HubType): void {
 		const hub = this.hubs.get(id);
 		if (!hub) return;
-		// Match focusContainer: selection + camera dolly only. We used to
-		// pin members and scatter unrelated nodes via a forceRadial kick,
-		// but the resulting "spread → re-cluster" was visually noisy and
-		// not what the click was conveying. Layout keeps running untouched.
 		this.selectionTarget = hub;
 		this.activeFocusId = id;
 		const center = hub.position.clone();
@@ -905,7 +959,63 @@ export class Topology {
 			const d = n.position.distanceTo(center);
 			if (d > maxDist) maxDist = d;
 		}
+		this.applyClickFocus(id);
 		this.animator?.fitSphere(center, maxDist + 25);
+	}
+
+	/**
+	 * Drive the dim / focus visual state for a click. The clicked entity
+	 * gets emissive boost + scale-up; its 1-hop neighbours stay at full
+	 * opacity; everyone else fades to the dimmed baseline. Lines fade if
+	 * either endpoint is outside the related set. The actual animation
+	 * is per-frame lerp inside each entity's tick().
+	 */
+	private applyClickFocus(focusedId: string): void {
+		const related = this.computeRelatedSet(focusedId);
+		for (const c of this.containers.values()) {
+			c.setDimmed(!related.has(c.id));
+			c.setFocused(c.id === focusedId);
+		}
+		for (const h of this.hubs.values()) {
+			h.setDimmed(!related.has(h.id));
+			h.setFocused(h.id === focusedId);
+		}
+		for (const [lineId, line] of this.lines) {
+			line.setDimmed(!isLineRelated(lineId, related));
+		}
+	}
+
+	private computeRelatedSet(id: string): Set<string> {
+		const related = new Set<string>([id]);
+		const container = this.containers.get(id);
+		if (container) {
+			for (const sib of this.containers.values()) {
+				if (sib.stack === container.stack) related.add(sib.id);
+			}
+			for (const hub of this.hubs.values()) {
+				if (hub.memberIds.has(id)) related.add(hub.id);
+			}
+			return related;
+		}
+		const hub = this.hubs.get(id);
+		if (hub) {
+			for (const mid of hub.memberIds) related.add(mid);
+		}
+		return related;
+	}
+
+	private resetClickFocus(): void {
+		for (const c of this.containers.values()) {
+			c.setDimmed(false);
+			c.setFocused(false);
+		}
+		for (const h of this.hubs.values()) {
+			h.setDimmed(false);
+			h.setFocused(false);
+		}
+		for (const line of this.lines.values()) {
+			line.setDimmed(false);
+		}
 	}
 
 	resetFocus(): void {
@@ -916,6 +1026,7 @@ export class Topology {
 		this.selectionTarget = null;
 		this.pinner.clear();
 		this.layout?.unpinAll();
+		this.resetClickFocus();
 		this.animator?.resetCamera();
 	}
 
@@ -1025,9 +1136,10 @@ export class Topology {
 		this.hubVisibility[type] = visible;
 		if (!visible && this.activeFocusId?.startsWith(`${type}:`)) {
 			// Hub the user was focused on just got hidden — drop selection
-			// state but keep the camera where it is (no resetCamera call).
+			// + click-focus state but keep the camera where it is.
 			this.activeFocusId = null;
 			this.selectionTarget = null;
+			this.resetClickFocus();
 		}
 		this.applyVisibility();
 		// Lines / hubs just turned visible need their links reflected
@@ -1055,10 +1167,32 @@ export class Topology {
 	private rebuildLayoutLinks(): void {
 		if (!this.layout) return;
 		const { entities, links } = this.buildLayoutGraph();
+		this.layout.setStackBubbleRadii(this.computeStackBubbleRadii());
 		this.layout.setData(entities, links);
 		for (const id of this.pinner.snapshot()) {
 			if (this.layout.hasNode(id)) this.layout.pin(id);
 		}
+	}
+
+	/**
+	 * Compute the per-stack collide radius used by ForceLayout. Each
+	 * stack's bubble grows with cube-root of member count so a 20-member
+	 * stack isn't 5× the size of a 5-member stack but still readably
+	 * larger.
+	 */
+	private computeStackBubbleRadii(): Map<string, number> {
+		const STACK_BASE_RADIUS = 36;
+		const STACK_BUBBLE_FACTOR = 18;
+		const radii = new Map<string, number>();
+		const counts = new Map<string, number>();
+		for (const node of this.containers.values()) {
+			const stack = node.stack || 'Unmanaged';
+			counts.set(stack, (counts.get(stack) ?? 0) + 1);
+		}
+		for (const [stack, n] of counts) {
+			radii.set(`stack:${stack}`, STACK_BASE_RADIUS + Math.cbrt(n) * STACK_BUBBLE_FACTOR);
+		}
+		return radii;
 	}
 
 	dispose(): void {

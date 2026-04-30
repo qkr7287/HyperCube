@@ -16,9 +16,18 @@ export interface LayoutEntityRef {
 	readonly position: THREE.Vector3;
 }
 
+export type LayoutLinkKind =
+	| 'stack-member'        // stack hub → container
+	| 'hub-member'          // network/volume hub → container
+	| 'stack-affinity'      // stack hub ↔ stack hub (kept for layout history; strength 0)
+	| 'container-affinity'; // container ↔ container, score-driven (same stack only)
+
 export interface LayoutLink {
 	readonly source: string;
 	readonly target: string;
+	readonly kind?: LayoutLinkKind;
+	/** Used by container-affinity links to scale strength + distance. */
+	readonly score?: number;
 }
 
 interface InternalNode extends SimulationNode {
@@ -31,51 +40,81 @@ interface InternalLink {
 	target: InternalNode;
 }
 
-const LINK_DISTANCE = 55;
+const LINK_DISTANCE_DEFAULT = 55;
+const LINK_DISTANCE_STACK_MEMBER = 38; // tighter so containers cluster inside their stack bubble
+const LINK_DISTANCE_HUB_MEMBER = 70;   // network/volume hubs sit a little farther out
 const LINK_MIN_DISTANCE = 38;
 const LINK_MAX_DISTANCE = 110;
 
-// Charge: stack hubs repel each other strongly so stack territories
-// drift apart naturally. Containers / network / volume hubs use a softer
-// charge so they don't fly out of their own group.
-const STACK_HUB_CHARGE = -220;
-const NODE_CHARGE = -55;
+// Charge: stack hubs repel hard so stack territories drift apart.
+// Containers / network / volume hubs use a softer charge so they don't
+// fly out of their own group.
+const STACK_HUB_CHARGE = -260;
+const NODE_CHARGE = -45;
 
-// Per-link strength. Stack→container is stiff (containers stay tight to
-// their stack). Network / volume → container is loose (those hubs are
-// supplementary information, they shouldn't dominate the layout).
-// Stack-stack affinity is set to 0 so co-shared-network stacks don't get
-// dragged toward each other; the linkBoundsForce also skips stack-stack
-// pairs so they can be far apart without being clamped to maxDistance.
 const STRENGTH_STACK_TO_CONTAINER = 0.95;
 const STRENGTH_HUB_TO_CONTAINER = 0.22;
 const STRENGTH_DEFAULT_LINK = 0.5;
+const STRENGTH_AFFINITY_PER_SCORE = 0.06;
+const STRENGTH_AFFINITY_MIN = 0.06;
+const STRENGTH_AFFINITY_MAX = 0.35;
 
-const COLLIDE_RADIUS = 24;
-const SEED_SPREAD = 160;
+const COLLIDE_RADIUS_DEFAULT = 24;
+const COLLIDE_STRENGTH = 0.9;
+const STACK_BUBBLE_FALLBACK = 36;
+const SEED_SPREAD = 220;
 
 function isStackId(id: string): boolean { return id.startsWith('stack:'); }
+function isNetworkId(id: string): boolean { return id.startsWith('network:'); }
+function isVolumeId(id: string): boolean { return id.startsWith('volume:'); }
+
+function readId(node: unknown): string {
+	if (typeof node === 'string') return node;
+	const v = node as { id?: string } | null;
+	return v?.id ?? '';
+}
 
 function chargeStrength(node: SimulationNode): number {
 	return isStackId((node as InternalNode).id) ? STACK_HUB_CHARGE : NODE_CHARGE;
 }
 
-function linkStrengthByKind(link: { source: unknown; target: unknown }): number {
-	const src = typeof link.source === 'string'
-		? link.source
-		: ((link.source as { id?: string } | null)?.id ?? '');
-	const tgt = typeof link.target === 'string'
-		? link.target
-		: ((link.target as { id?: string } | null)?.id ?? '');
-	if (isStackId(src) && isStackId(tgt)) return 0;
+interface RawLink {
+	source: unknown;
+	target: unknown;
+	kind?: LayoutLinkKind;
+	score?: number;
+}
+
+function linkStrengthByKind(link: RawLink): number {
+	const kind = link.kind;
+	if (kind === 'stack-affinity') return 0;
+	if (kind === 'container-affinity') {
+		const score = link.score ?? 1;
+		return Math.min(STRENGTH_AFFINITY_MAX, Math.max(STRENGTH_AFFINITY_MIN, score * STRENGTH_AFFINITY_PER_SCORE));
+	}
+	if (kind === 'stack-member') return STRENGTH_STACK_TO_CONTAINER;
+	if (kind === 'hub-member') return STRENGTH_HUB_TO_CONTAINER;
+	const src = readId(link.source);
 	if (isStackId(src)) return STRENGTH_STACK_TO_CONTAINER;
-	if (src.startsWith('network:') || src.startsWith('volume:')) return STRENGTH_HUB_TO_CONTAINER;
+	if (isNetworkId(src) || isVolumeId(src)) return STRENGTH_HUB_TO_CONTAINER;
 	return STRENGTH_DEFAULT_LINK;
+}
+
+function linkDistanceByKind(link: RawLink): number {
+	const kind = link.kind;
+	if (kind === 'container-affinity') {
+		const s = Math.min(link.score ?? 1, 4);
+		return 50 - s * 5; // 30 ~ 45
+	}
+	if (kind === 'stack-member') return LINK_DISTANCE_STACK_MEMBER;
+	if (kind === 'hub-member') return LINK_DISTANCE_HUB_MEMBER;
+	if (kind === 'stack-affinity') return 200; // long, but strength 0 so it doesn't pull
+	return LINK_DISTANCE_DEFAULT;
 }
 
 function computeTopologySignature(entities: readonly LayoutEntityRef[], links: readonly LayoutLink[]): string {
 	const ids = entities.map((e) => e.id).sort().join(',');
-	const ls = links.map((l) => `${l.source}->${l.target}`).sort().join(',');
+	const ls = links.map((l) => `${l.source}->${l.target}|${l.kind ?? ''}|${l.score ?? ''}`).sort().join(',');
 	return `${ids}|${ls}`;
 }
 
@@ -135,34 +174,60 @@ function createLinkBoundsForce(minDistance: number, maxDistance: number): Force<
  * matched to rendered entities, so adding / removing entities across
  * delta syncs never restarts layout from scratch unless needed.
  *
- * Stack hubs get a much stronger repulsive charge than other nodes so
- * stack "territories" drift apart on their own; per-link strength keeps
- * each stack's containers tight while network / volume hubs sit loosely
- * between related stacks. Result: clusters look organically spread, no
- * deterministic anchors needed.
+ * Spread strategy:
+ *   - Stack hubs get a strong repulsive charge AND a per-stack collide
+ *     radius (computed from member count) so stack bubbles physically
+ *     can't overlap.
+ *   - Per-link kind: stack→container is stiff & short (containers stay
+ *     inside their stack bubble); network/volume→container is loose;
+ *     stack-stack affinity has strength 0 + is dropped from
+ *     linkBoundsForce so co-shared-network stacks aren't clamped.
+ *   - Container-container affinity edges (same stack only) score
+ *     shared networks/volumes so tightly-related siblings sub-cluster
+ *     inside their bubble.
  */
 export class ForceLayout {
 	private readonly sim: Simulation;
 	private readonly nodes: Map<string, InternalNode> = new Map();
 	private readonly linkBoundsForce = createLinkBoundsForce(LINK_MIN_DISTANCE, LINK_MAX_DISTANCE);
 	private lastSignature = '';
+	private stackBubbleRadii: Map<string, number> = new Map();
 
 	constructor() {
 		this.sim = forceSimulation([], 3)
-			.force('charge', forceManyBody().strength(chargeStrength).distanceMax(600))
+			.force('charge', forceManyBody().strength(chargeStrength).distanceMax(700))
 			.force(
 				'link',
 				forceLink([])
 					.id((n: SimulationNode) => n.id)
-					.distance(LINK_DISTANCE)
+					.distance(linkDistanceByKind as unknown as number)
 					.strength(linkStrengthByKind as unknown as number),
 			)
 			.force('center', forceCenter(0, 0, 0))
-			.force('collide', forceCollide(COLLIDE_RADIUS))
+			.force(
+				'collide',
+				forceCollide((node: SimulationNode) => {
+					const id = (node as InternalNode).id;
+					if (isStackId(id)) {
+						return this.stackBubbleRadii.get(id) ?? STACK_BUBBLE_FALLBACK;
+					}
+					return COLLIDE_RADIUS_DEFAULT;
+				}).strength(COLLIDE_STRENGTH),
+			)
 			.force('linkBounds', this.linkBoundsForce as unknown as Force<SimulationNode, undefined>)
 			.alphaDecay(0.035)
 			.velocityDecay(0.45);
 		this.sim.stop();
+	}
+
+	/**
+	 * Replace the per-stack bubble-radius table. Call BEFORE setData so
+	 * the next layout pass sees the right radii. The collide force
+	 * accessor reads this map per-tick so subsequent calls just
+	 * re-tune live.
+	 */
+	setStackBubbleRadii(radii: Map<string, number>): void {
+		this.stackBubbleRadii = radii;
 	}
 
 	setData(entities: readonly LayoutEntityRef[], links: readonly LayoutLink[]): void {
@@ -200,13 +265,20 @@ export class ForceLayout {
 		const linkForce = this.sim.force('link') as LinkForce | null;
 		const resolvedLinks: InternalLink[] = [];
 		if (linkForce) {
-			linkForce.links(links.map((l) => ({ source: l.source, target: l.target })));
+			linkForce.links(
+				links.map((l) => ({
+					source: l.source,
+					target: l.target,
+					kind: l.kind,
+					score: l.score,
+				})),
+			);
 		}
 		for (const link of links) {
-			// Stack-stack affinity links exist for the link force (where they
-			// sit at strength 0) but must NOT be clamped by linkBoundsForce
-			// — clamping would force stack hubs within maxDistance of each
-			// other and undo all the charge-driven spread.
+			// Stack-stack affinity is just a soft bookkeeping link with
+			// strength 0; clamping via linkBoundsForce would force the
+			// hubs back together and undo the charge-driven spread.
+			if (link.kind === 'stack-affinity') continue;
 			if (isStackId(link.source) && isStackId(link.target)) continue;
 			const source = this.nodes.get(link.source);
 			const target = this.nodes.get(link.target);

@@ -331,6 +331,11 @@ export abstract class Connection {
 	private curved = false;
 	private targetTrafficLevel = 0;
 	private visibleTrafficLevel = 0;
+	// Click-focus dim. 1.0 = at-rest opacity, 0 < x < 1 = faded for
+	// not-related-to-focus. Lerped per-frame in tick() and folded into
+	// every opacity write at the end so traffic FX still works under it.
+	private targetDim = 1;
+	private currentDim = 1;
 	private pulseTime = 0;
 	private pulseMode: LinePulseMode = 'tunnel';
 	private tunnelStyle: TunnelStyle = 'subsea';
@@ -580,9 +585,18 @@ export abstract class Connection {
 		this.curved = enabled;
 	}
 
+	setDimmed(dimmed: boolean): void {
+		this.targetDim = dimmed ? 0.16 : 1;
+	}
+
 	tick(dt: number): void {
 		const frameDt = Connection.sanitizeDt(dt);
 		this.pulseTime += frameDt;
+		// Lerp the dim factor per frame so click-focus dim/undim glides
+		// instead of snapping. At rest (currentDim ≈ targetDim ≈ 1) the
+		// final multiplication below is a no-op.
+		const dimSmoothing = 1 - Math.exp(-frameDt * 8);
+		this.currentDim += (this.targetDim - this.currentDim) * dimSmoothing;
 		const smoothing = 1 - Math.exp(-frameDt * (this.targetTrafficLevel > this.visibleTrafficLevel ? 6 : 1.75));
 		this.visibleTrafficLevel = THREE.MathUtils.lerp(
 			this.visibleTrafficLevel,
@@ -683,6 +697,23 @@ export abstract class Connection {
 			}
 		}
 		this.onTick(displayLevel, pulse, frameDt);
+		this.applyDimToAllMaterials();
+	}
+
+	/**
+	 * Multiply every line / packet / tunnel material opacity by the
+	 * lerped dim factor. Called at the end of tick() so the per-mode
+	 * opacity calculations above are still authoritative; dim is just
+	 * a final attenuation. At rest (dim ≈ 1) this is essentially free.
+	 */
+	private applyDimToAllMaterials(): void {
+		const dim = this.currentDim;
+		if (Math.abs(dim - 1) < 0.001) return;
+		this.material.opacity *= dim;
+		for (const mat of this.packetMats) mat.opacity *= dim;
+		for (const mat of this.packetGlowMats) mat.opacity *= dim;
+		if (this.tunnelMat) this.tunnelMat.opacity *= dim;
+		if (this.stripeMat) this.stripeMat.opacity *= dim;
 	}
 
 	private static sanitizeDt(dt: number): number {

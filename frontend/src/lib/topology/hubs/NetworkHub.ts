@@ -273,7 +273,18 @@ export class NetworkHub extends Hub {
 		}
 	}
 
+	// Network hubs already mutate opacity / emissive / scale per-frame
+	// for the traffic FX. Disable the base Entity.applyVisualState()
+	// (which would fight us) and weave the dim / focus factors directly
+	// into our own math below.
+	protected override applyVisualState(): void {}
+
 	tick(dt: number): void {
+		// Run base lerp first so currentOpacity / currentEmissiveBoost /
+		// currentScale reflect this frame; applyVisualState above is a
+		// no-op so it doesn't touch our materials.
+		super.tick(dt);
+
 		this.pulseTime += dt;
 		const smoothing = 1 - Math.exp(-dt * 5.5);
 		this.visibleTrafficLevel = THREE.MathUtils.lerp(
@@ -287,21 +298,35 @@ export class NetworkHub extends Hub {
 
 		const pulse = (Math.sin(this.pulseTime * 5.4) + 1) * 0.5;
 		const scaleBoost = displayLevel * (0.04 + pulse * 0.045);
-		this.group.scale.setScalar(1 + scaleBoost);
+		this.group.scale.setScalar((1 + scaleBoost) * this.currentScale);
 
+		const dim = this.currentOpacity;
+		const boost = this.currentEmissiveBoost;
 		for (const mat of this.materials) {
 			mat.transparent = true;
 			mat.needsUpdate = true;
-			mat.opacity = THREE.MathUtils.clamp(this.baseOpacity + displayLevel * 0.06, 0.25, 1);
+			mat.opacity =
+				THREE.MathUtils.clamp(this.baseOpacity + displayLevel * 0.06, 0.25, 1) * dim;
 			if (!this.usesTemplate) {
 				mat.emissiveIntensity =
-					this.baseEmissiveIntensity + displayLevel * 0.62 + pulse * displayLevel * 0.28;
+					(this.baseEmissiveIntensity + displayLevel * 0.62 + pulse * displayLevel * 0.28) *
+					boost;
 			}
 		}
 
 		this.tickCrown(displayLevel, pulse, dt);
 		this.tickRipple(displayLevel, pulse, dt);
 		this.tickLattice(displayLevel, pulse, dt);
+
+		// Apply dim factor to the FX layer materials too (they were just
+		// written by tickCrown/Ripple/Lattice). At full opacity (dim=1)
+		// this is a no-op multiplication.
+		if (Math.abs(dim - 1) > 0.001) {
+			for (const mat of this.crownMats) mat.opacity *= dim;
+			for (const mat of this.rippleMats) mat.opacity *= dim;
+			this.latticeFrameMat.opacity *= dim;
+			for (const mat of this.latticeNodeMats) mat.opacity *= dim;
+		}
 	}
 
 	update(data: NetworkHubData): void {

@@ -207,6 +207,10 @@ export class ContainerNode extends Entity {
 		}
 		this.overlayMaterial.color.setHex(tint.color);
 		this.overlayMaterial.opacity = this.state === 'running' ? 0.16 : 0.22;
+		// State change rewrites authored opacity / emissive — drop the
+		// cached baselines so dim/focus animations re-capture the new
+		// authored values on the next tick.
+		this.resetMaterialBaselines();
 	}
 
 	override getTooltipAnchor(out: THREE.Vector3): THREE.Vector3 {
