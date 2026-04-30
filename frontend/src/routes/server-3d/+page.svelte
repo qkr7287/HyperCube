@@ -81,6 +81,11 @@
 	let selectedContainer: Container | null = null;
 	let leftCollapsed = false;
 	let rightCollapsed = false;
+	let layoutMode: 'force' | 'ring' | 'bubble' = 'force';
+	function setLayoutMode(mode: 'force' | 'ring' | 'bubble') {
+		layoutMode = mode;
+		if (browser) localStorage.setItem('hc_3d_layout_mode', mode);
+	}
 	function toggleLeftSidebar() {
 		leftCollapsed = !leftCollapsed;
 		if (browser) localStorage.setItem('hc_3d_left_collapsed', leftCollapsed ? '1' : '0');
@@ -449,6 +454,10 @@
 		if (browser) {
 			leftCollapsed = localStorage.getItem('hc_3d_left_collapsed') === '1';
 			rightCollapsed = localStorage.getItem('hc_3d_right_collapsed') === '1';
+			const savedMode = localStorage.getItem('hc_3d_layout_mode');
+			if (savedMode === 'force' || savedMode === 'ring' || savedMode === 'bubble') {
+				layoutMode = savedMode;
+			}
 			const savedToken = localStorage.getItem('hc_access_token');
 			if (savedToken) {
 				if (decodeRole(savedToken) === 'user') {
@@ -577,6 +586,7 @@
 					{networkTunnelThickness}
 					{trafficFxStyle}
 					{volumeEnergyStyle}
+					{layoutMode}
 					onContainerClick={handle3dContainerClick}
 					onHubClick={handle3dHubClick}
 					onEmptyClick={dismissHudSelection}
@@ -603,6 +613,30 @@
 					<span class="dot"></span>
 					<span class="label">Volume</span>
 				</label>
+				<div class="layout-mode-divider"></div>
+				<div class="layout-mode-group" role="radiogroup" aria-label="배치 모드">
+					<button
+						type="button"
+						class="layout-mode-btn"
+						class:is-active={layoutMode === 'force'}
+						onclick={() => setLayoutMode('force')}
+						title="Force: 자연스러운 force-directed 배치 (기본). 스택끼리 자동으로 떨어지고 네트워크/볼륨 허브가 그 사이를 떠다닙니다."
+					>Force</button>
+					<button
+						type="button"
+						class="layout-mode-btn"
+						class:is-active={layoutMode === 'ring'}
+						onclick={() => setLayoutMode('ring')}
+						title="Ring: 스택 허브를 원형으로 균등 배치, 컨테이너는 자기 스택 주변을 자유롭게."
+					>Ring</button>
+					<button
+						type="button"
+						class="layout-mode-btn"
+						class:is-active={layoutMode === 'bubble'}
+						onclick={() => setLayoutMode('bubble')}
+						title="Bubble: 각 스택을 비누방울처럼 패킹 (deterministic). 컨테이너가 스택 허브 주변 sphere 위에 정렬."
+					>Bubble</button>
+				</div>
 			</div>
 			<div class="topology-overlay topology-overlay-live">
 				<span class="live-dot"></span>
@@ -808,6 +842,39 @@
 		border-right: none;
 		border-top-left-radius: var(--radius-md);
 		border-bottom-left-radius: var(--radius-md);
+	}
+
+	.layout-mode-divider {
+		width: 100%;
+		height: 1px;
+		margin: 4px 0 2px 0;
+		background: rgba(148, 163, 184, 0.18);
+	}
+	.layout-mode-group {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 4px;
+		width: 100%;
+	}
+	.layout-mode-btn {
+		font-size: 11px;
+		font-weight: 600;
+		padding: 4px 6px;
+		border-radius: var(--radius-sm, 4px);
+		border: 1px solid var(--border);
+		background: transparent;
+		color: var(--text-secondary);
+		cursor: pointer;
+		transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+	}
+	.layout-mode-btn:hover {
+		background: rgba(48, 213, 200, 0.08);
+		color: var(--text-primary);
+	}
+	.layout-mode-btn.is-active {
+		background: rgba(48, 213, 200, 0.18);
+		border-color: rgba(48, 213, 200, 0.6);
+		color: #30d5c8;
 	}
 
 	.topology-overlay {

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { base } from '$app/paths';
-	import { Topology, type TopologyCallbacks, type TopologyContainerData, type LoadingStage } from '$lib/topology/Topology';
+	import { Topology, type TopologyCallbacks, type TopologyContainerData, type LoadingStage, type LayoutMode } from '$lib/topology/Topology';
 	import type { GroupVisualMode } from '$lib/topology/hubs/GroupMesh';
 	import type { TrafficFxStyle, TunnelStyle, VolumeEnergyStyle } from '$lib/topology/lines/Connection';
 	import type { TopologyNetworkTrafficIndex } from '$lib/topology/traffic-adapter';
@@ -33,6 +33,7 @@
 		volumeEnergyStyle?: VolumeEnergyStyle;
 		networkPaletteMode?: NetworkPaletteMode;
 		networkTraffic?: TopologyNetworkTrafficIndex;
+		layoutMode?: LayoutMode;
 	}
 
 	let {
@@ -52,6 +53,7 @@
 		volumeEnergyStyle = 'tendril',
 		networkPaletteMode = 'cyan',
 		networkTraffic = new Map(),
+		layoutMode = 'force',
 	}: Props = $props();
 
 	let host: HTMLDivElement | undefined = $state();
@@ -127,6 +129,7 @@
 		topology.setTrafficFxStyle(trafficFxStyle);
 		topology.setVolumeEnergyStyle(volumeEnergyStyle);
 		topology.setNetworkPaletteMode(networkPaletteMode);
+		topology.setLayoutMode(layoutMode);
 		topology.mount(host, { containers, stackHealth, networkTraffic }, buildCallbacks());
 		mounted = true;
 		startTooltipLoop();
@@ -173,6 +176,11 @@
 		topology.setTrafficFxStyle(trafficFxStyle);
 		topology.setVolumeEnergyStyle(volumeEnergyStyle);
 		topology.setNetworkPaletteMode(networkPaletteMode);
+	});
+
+	$effect(() => {
+		if (!mounted || !topology) return;
+		topology.setLayoutMode(layoutMode);
 	});
 
 	// External API — let the page (or future TopologyToolbar) trigger

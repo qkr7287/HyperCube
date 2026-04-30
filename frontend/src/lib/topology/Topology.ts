@@ -14,7 +14,8 @@ import { VolumeHub, volumeColorFor } from './hubs/VolumeHub';
 import { CameraAnimator } from './interaction/CameraAnimator';
 import { Raycaster } from './interaction/Raycaster';
 import type { Entity } from './entities/Entity';
-import { ForceLayout, type LayoutEntityRef, type LayoutLink } from './layout/ForceLayout';
+import { ForceLayout, type LayoutEntityRef, type LayoutLink, type LayoutMode } from './layout/ForceLayout';
+export type { LayoutMode } from './layout/ForceLayout';
 import { NodePinner } from './layout/NodePinner';
 import type { Connection } from './lines/Connection';
 import type { LinePulseMode, TrafficFxStyle, TunnelStyle, VolumeEnergyStyle } from './lines/Connection';
@@ -142,6 +143,7 @@ export class Topology {
 	private scene: SceneManager | null = null;
 	private loop: RenderLoop | null = null;
 	private layout: ForceLayout | null = null;
+	private layoutMode: LayoutMode = 'force';
 	private animator: CameraAnimator | null = null;
 	private raycaster: Raycaster | null = null;
 	private starfield: Starfield | null = null;
@@ -240,6 +242,7 @@ export class Topology {
 		this.scene = scene;
 		scene.setBloomStrength(this.bloomStrength);
 		this.layout = new ForceLayout();
+		this.layout.setMode(this.layoutMode);
 		this.loop = new RenderLoop();
 		this.animator = new CameraAnimator(scene.camera, scene.controls);
 		this.raycaster = new Raycaster();
@@ -927,6 +930,16 @@ export class Topology {
 		// and ensure damping continues to drive the camera each tick.
 		this.scene.controls.autoRotate = enabled;
 		this.scene.controls.autoRotateSpeed = speed;
+	}
+
+	setLayoutMode(mode: LayoutMode): void {
+		if (this.layoutMode === mode) return;
+		this.layoutMode = mode;
+		this.layout?.setMode(mode);
+	}
+
+	getLayoutMode(): LayoutMode {
+		return this.layoutMode;
 	}
 
 	setCurvedLines(enabled: boolean): void {
