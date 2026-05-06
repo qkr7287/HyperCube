@@ -336,6 +336,10 @@ export abstract class Connection {
 	// every opacity write at the end so traffic FX still works under it.
 	private targetDim = 1;
 	private currentDim = 1;
+	// True when the dim fade-out hid this line; un-dim re-shows only
+	// when this is set so the hub-type visibility toggle stays in
+	// charge for lines hidden externally.
+	private dimHidden = false;
 	private pulseTime = 0;
 	private pulseMode: LinePulseMode = 'tunnel';
 	private tunnelStyle: TunnelStyle = 'subsea';
@@ -586,7 +590,15 @@ export abstract class Connection {
 	}
 
 	setDimmed(dimmed: boolean): void {
-		this.targetDim = dimmed ? 0.16 : 1;
+		// Fade fully out (0) on dim so unrelated lines stop visually
+		// crossing through the focused subset. Re-show only when we own
+		// the hidden state (dimHidden) so external visibility toggles
+		// remain authoritative.
+		this.targetDim = dimmed ? 0 : 1;
+		if (!dimmed && this.dimHidden) {
+			this.object.visible = true;
+			this.dimHidden = false;
+		}
 	}
 
 	tick(dt: number): void {
@@ -597,6 +609,14 @@ export abstract class Connection {
 		// final multiplication below is a no-op.
 		const dimSmoothing = 1 - Math.exp(-frameDt * 8);
 		this.currentDim += (this.targetDim - this.currentDim) * dimSmoothing;
+		// Hide once faded out so the line stops contributing to bloom and
+		// can't be raycast through the focused subset.
+		if (this.targetDim <= 0 && this.currentDim < 0.01) {
+			if (this.object.visible) {
+				this.object.visible = false;
+				this.dimHidden = true;
+			}
+		}
 		const smoothing = 1 - Math.exp(-frameDt * (this.targetTrafficLevel > this.visibleTrafficLevel ? 6 : 1.75));
 		this.visibleTrafficLevel = THREE.MathUtils.lerp(
 			this.visibleTrafficLevel,

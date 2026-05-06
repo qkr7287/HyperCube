@@ -41,6 +41,19 @@ export class GroupMesh {
 	private currentWireGeometry: THREE.BufferGeometry | null = null;
 	private mode: GroupVisualMode = 'soft';
 	private highlighted = false;
+	// click-focus fade: target=0 hides, target=1 shows, lerped per-tick
+	// into every membrane material's authored opacity so the bubble
+	// fades in/out smoothly instead of popping.
+	private targetDimFactor = 1;
+	private currentDimFactor = 1;
+	// True only when our own fade-out hid the group; the un-dim path
+	// uses this so the stack-type checkbox stays in charge of bubbles
+	// the user explicitly turned off.
+	private dimHidden = false;
+	private baseSurfaceOpacity = 0;
+	private baseWireOpacity = 0;
+	private baseContourOpacities: number[] = [];
+	private baseAuraOpacity = 0;
 	private readonly contourGeometries: THREE.BufferGeometry[] = [];
 	private currentCenter = new THREE.Vector3();
 	private currentRadius = 0;
@@ -120,6 +133,11 @@ export class GroupMesh {
 		this.object.add(this.contourGroup);
 		this.object.add(this.aura);
 		this.object.visible = false;
+
+		this.baseSurfaceOpacity = this.surfaceMat.opacity;
+		this.baseWireOpacity = this.wireMat.opacity;
+		this.baseContourOpacities = this.contourMats.map((m) => m.opacity);
+		this.baseAuraOpacity = this.auraMat.opacity;
 	}
 
 	setMembers(members: readonly GroupMember[]): void {
@@ -144,6 +162,49 @@ export class GroupMesh {
 	setHighlighted(enabled: boolean): void {
 		this.highlighted = enabled;
 		this.applyModeVisibility();
+	}
+
+	/**
+	 * Toggle the membrane on click-focus dim. When the stack this mesh
+	 * wraps is unrelated to the focused entity we fade the whole group
+	 * out — otherwise the empty bubble would float around invisible
+	 * containers and create visual clutter. The fade itself runs in
+	 * tick(); this just flips the lerp target and re-shows the object
+	 * when un-dimming so the fade-in actually renders.
+	 */
+	setDimmed(dimmed: boolean): void {
+		this.targetDimFactor = dimmed ? 0 : 1;
+		if (!dimmed && this.dimHidden) {
+			this.object.visible = true;
+			this.dimHidden = false;
+			this.applyModeVisibility();
+		}
+	}
+
+	/**
+	 * Per-frame fade-in/out for the click-focus dim. Called from
+	 * Topology's render loop. Multiplies a 0–1 factor into every
+	 * membrane material's authored opacity, then drops object.visible
+	 * once fully faded so the bubble stops contributing to bloom.
+	 */
+	tick(dt: number): void {
+		const safeDt = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.1) : 0;
+		const k = 1 - Math.exp(-safeDt * 8);
+		this.currentDimFactor += (this.targetDimFactor - this.currentDimFactor) * k;
+		const f = this.currentDimFactor;
+		this.surfaceMat.opacity = this.baseSurfaceOpacity * f;
+		this.wireMat.opacity = this.baseWireOpacity * f;
+		for (let i = 0; i < this.contourMats.length; i += 1) {
+			this.contourMats[i].opacity = this.baseContourOpacities[i] * f;
+		}
+		this.auraMat.opacity = this.baseAuraOpacity * f;
+		if (this.targetDimFactor <= 0 && this.currentDimFactor < 0.01) {
+			if (this.object.visible) {
+				this.object.visible = false;
+				this.dimHidden = true;
+				this.applyModeVisibility();
+			}
+		}
 	}
 
 	update(): void {

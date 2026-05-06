@@ -287,7 +287,7 @@ export class Topology {
 			this.starfield?.tick(dt);
 			this.syncEntityPositions();
 			this.syncLinePositions();
-			this.updateGroupMeshes();
+			this.updateGroupMeshes(dt);
 			this.updateNetworkTrafficVisuals(dt);
 			this.animator?.tick();
 			this.fxTweenGroup.update();
@@ -785,13 +785,18 @@ export class Topology {
 		this.hasComputedInitialHome = true;
 	}
 
-	private updateGroupMeshes(): void {
+	private updateGroupMeshes(dt: number): void {
 		const stackVisible = this.hubVisibility.stack;
 		for (const [stack, gm] of this.groupMeshes) {
-			gm.object.visible = stackVisible;
 			gm.setMode(this.groupVisualMode);
 			gm.setHighlighted(this.activeFocusId === `stack:${stack}`);
-			if (stackVisible) gm.update();
+			// gm.tick drives the click-focus fade and toggles visible=false
+			// at the bottom of the fade. applyVisibility owns the
+			// stack-type on/off toggle separately, so we only block the
+			// per-frame geometry rebuild + animation when stacks are off.
+			if (!stackVisible) continue;
+			gm.tick(dt);
+			gm.update();
 		}
 	}
 
@@ -1010,6 +1015,18 @@ export class Topology {
 	 */
 	private applyClickFocus(focusedId: string): void {
 		const related = this.computeRelatedSet(focusedId);
+		// Stacks are "related" if their hub is in `related` or any of
+		// their member containers is. Drives GroupMesh dim so unrelated
+		// stack bubbles don't linger as empty outlines around the now-
+		// hidden containers.
+		const relatedStacks = new Set<string>();
+		for (const id of related) {
+			if (id.startsWith('stack:')) relatedStacks.add(id.slice('stack:'.length));
+			else {
+				const c = this.containers.get(id);
+				if (c) relatedStacks.add(c.stack || 'Unmanaged');
+			}
+		}
 		for (const c of this.containers.values()) {
 			c.setDimmed(!related.has(c.id));
 			c.setFocused(c.id === focusedId);
@@ -1020,6 +1037,9 @@ export class Topology {
 		}
 		for (const [lineId, line] of this.lines) {
 			line.setDimmed(!isLineRelated(lineId, related));
+		}
+		for (const [stack, gm] of this.groupMeshes) {
+			gm.setDimmed(!relatedStacks.has(stack));
 		}
 	}
 
@@ -1053,6 +1073,9 @@ export class Topology {
 		}
 		for (const line of this.lines.values()) {
 			line.setDimmed(false);
+		}
+		for (const gm of this.groupMeshes.values()) {
+			gm.setDimmed(false);
 		}
 	}
 

@@ -8,7 +8,15 @@ export type EntityKind = 'container' | 'hub';
 const STATE_LERP_K = 8;
 
 const FOCUSED_OPACITY = 1;
-const DIMMED_OPACITY = 0.18;
+// Click-focus now fully fades out unrelated entities and toggles
+// object.visible=false once they reach this threshold, so a dense
+// stack-bubble doesn't visually cover the focused subset.
+const DIMMED_OPACITY = 0;
+// Below this opacity the entity is hidden (visible=false) so it stops
+// occluding raycasts and bloom. Picked just above 0 so the last frame
+// of the fade-out has already rendered fully transparent; flipping
+// off here is invisible to the user.
+const HIDE_OPACITY_THRESHOLD = 0.01;
 const FOCUSED_SCALE = 1.18;
 const FOCUSED_EMISSIVE_BOOST = 6;
 
@@ -51,6 +59,11 @@ export abstract class Entity {
 	protected currentEmissiveBoost = 1;
 	private targetScale = 1;
 	protected currentScale = 1;
+	// True when *we* turned object.visible off via the dim fade-out, so
+	// the un-dim path knows it owns re-showing this entity. External
+	// hub-type visibility (Topology.applyVisibility) is tracked
+	// separately and stays authoritative when dim is inactive.
+	private dimHidden = false;
 
 	protected constructor(object: THREE.Object3D) {
 		this.object = object;
@@ -68,6 +81,13 @@ export abstract class Entity {
 
 	setDimmed(dimmed: boolean): void {
 		this.targetOpacity = dimmed ? DIMMED_OPACITY : FOCUSED_OPACITY;
+		// Only re-show on un-dim if we're the one that hid it. Avoids
+		// reviving entities the user explicitly turned off via the
+		// System Topology checkboxes.
+		if (!dimmed && this.dimHidden) {
+			this.object.visible = true;
+			this.dimHidden = false;
+		}
 	}
 
 	setFocused(focused: boolean): void {
@@ -83,6 +103,14 @@ export abstract class Entity {
 		this.currentEmissiveBoost += (this.targetEmissiveBoost - this.currentEmissiveBoost) * k;
 		this.currentScale += (this.targetScale - this.currentScale) * k;
 		this.applyVisualState();
+		// Once fully faded out, drop out of rendering / raycasts entirely.
+		// dimHidden is what the un-dim path checks before re-showing.
+		if (this.targetOpacity <= 0 && this.currentOpacity < HIDE_OPACITY_THRESHOLD) {
+			if (this.object.visible) {
+				this.object.visible = false;
+				this.dimHidden = true;
+			}
+		}
 	}
 
 	/**
