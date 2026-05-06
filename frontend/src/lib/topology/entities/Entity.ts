@@ -3,9 +3,12 @@ import * as THREE from 'three';
 export type EntityKind = 'container' | 'hub';
 
 // Per-frame lerp speed for dim / focus / scale animations. exp(-dt*k)
-// gives ~95% completion in (3/k) seconds → with k=8 that's ~370ms which
-// reads as a smooth fade rather than an instant snap.
-const STATE_LERP_K = 8;
+// gives ~95% completion in (3/k) seconds → with k=6 that's ~500ms.
+// Slower than the snappier k=8 we started with — the exp decay is
+// front-loaded (most movement in the first 100ms) so a faster k makes
+// the fade feel more like an instant cut. k=6 leaves more time at the
+// tail of the curve where the eye is sensitive to motion.
+const STATE_LERP_K = 6;
 
 const FOCUSED_OPACITY = 1;
 // Click-focus now fully fades out unrelated entities and toggles
@@ -13,10 +16,11 @@ const FOCUSED_OPACITY = 1;
 // stack-bubble doesn't visually cover the focused subset.
 const DIMMED_OPACITY = 0;
 // Below this opacity the entity is hidden (visible=false) so it stops
-// occluding raycasts and bloom. Picked just above 0 so the last frame
-// of the fade-out has already rendered fully transparent; flipping
-// off here is invisible to the user.
-const HIDE_OPACITY_THRESHOLD = 0.01;
+// occluding raycasts and bloom. Lowered from 0.01 so the last 1% of
+// the fade still renders — additive-blended materials and bloom can
+// still register a slight presence at 0.01, which read as a snap when
+// visible=false flipped a frame later.
+const HIDE_OPACITY_THRESHOLD = 0.001;
 const FOCUSED_SCALE = 1.18;
 const FOCUSED_EMISSIVE_BOOST = 6;
 

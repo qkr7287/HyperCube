@@ -189,7 +189,9 @@ export class GroupMesh {
 	 */
 	tick(dt: number): void {
 		const safeDt = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.1) : 0;
-		const k = 1 - Math.exp(-safeDt * 8);
+		// Matches Entity / Connection lerp rate so the bubble fades in
+		// step with its members instead of getting ahead or lagging.
+		const k = 1 - Math.exp(-safeDt * 6);
 		this.currentDimFactor += (this.targetDimFactor - this.currentDimFactor) * k;
 		const f = this.currentDimFactor;
 		this.surfaceMat.opacity = this.baseSurfaceOpacity * f;
@@ -198,7 +200,7 @@ export class GroupMesh {
 			this.contourMats[i].opacity = this.baseContourOpacities[i] * f;
 		}
 		this.auraMat.opacity = this.baseAuraOpacity * f;
-		if (this.targetDimFactor <= 0 && this.currentDimFactor < 0.01) {
+		if (this.targetDimFactor <= 0 && this.currentDimFactor < 0.001) {
 			if (this.object.visible) {
 				this.object.visible = false;
 				this.dimHidden = true;

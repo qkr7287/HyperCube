@@ -609,12 +609,15 @@ export abstract class Connection {
 		this.pulseTime += frameDt;
 		// Lerp the dim factor per frame so click-focus dim/undim glides
 		// instead of snapping. At rest (currentDim ≈ targetDim ≈ 1) the
-		// final multiplication below is a no-op.
-		const dimSmoothing = 1 - Math.exp(-frameDt * 8);
+		// final multiplication below is a no-op. Matches Entity's
+		// STATE_LERP_K so the line and its endpoints stay in sync.
+		const dimSmoothing = 1 - Math.exp(-frameDt * 6);
 		this.currentDim += (this.targetDim - this.currentDim) * dimSmoothing;
 		// Hide once faded out so the line stops contributing to bloom and
-		// can't be raycast through the focused subset.
-		if (this.targetDim <= 0 && this.currentDim < 0.01) {
+		// can't be raycast through the focused subset. Threshold matches
+		// Entity.HIDE_OPACITY_THRESHOLD so additive packets / strands
+		// don't pop off while still slightly visible.
+		if (this.targetDim <= 0 && this.currentDim < 0.001) {
 			if (this.object.visible) {
 				this.object.visible = false;
 				this.dimHidden = true;
