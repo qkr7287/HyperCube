@@ -335,7 +335,10 @@ export abstract class Connection {
 	// not-related-to-focus. Lerped per-frame in tick() and folded into
 	// every opacity write at the end so traffic FX still works under it.
 	private targetDim = 1;
-	private currentDim = 1;
+	// Protected so subclasses (e.g. VolumeLine) can multiply this into
+	// their own additional material opacities — applyDimToAllMaterials
+	// only knows about the base set declared on Connection.
+	protected currentDim = 1;
 	// True when the dim fade-out hid this line; un-dim re-shows only
 	// when this is set so the hub-type visibility toggle stays in
 	// charge for lines hidden externally.
