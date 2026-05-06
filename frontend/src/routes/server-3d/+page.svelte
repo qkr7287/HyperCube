@@ -414,6 +414,13 @@
 		networkModalOpen = false;
 		loginModalOpen = false;
 		processModalOpen = false;
+		// Toolbar state belongs to the previous server's view; the new
+		// canvas mounts fresh (no rotation, no focus) so the button must
+		// match. Without this the Rotate pill stays "active" while the
+		// new scene is actually idle.
+		autoRotating = false;
+		topologyCanvas?.setAutoRotate?.(false);
+		clearHudSelection();
 		connect(selectedServerId, accessToken);
 	}
 
