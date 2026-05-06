@@ -1,12 +1,12 @@
 # Ubuntu 24.04 LTS + systemd container for air-gap install rehearsal.
-# Build context = repo root, so the bundled .run is copied straight from dist/.
+# Build context = repo root, so the bundled .sh is copied straight from dist/.
 #
 # Usage:
-#   ./packaging/build.sh                                   # produce dist/*.run
+#   ./packaging/build.sh                                   # produce dist/*.sh
 #   docker compose -f packaging/test-airgap/docker-compose.yml up -d --build
 #   docker exec -it hc-airgap-test bash
 #   # inside the container:
-#   sudo /root/hypercube-1.0-ubuntu2404.run
+#   sudo /root/hypercube-1.0-ubuntu2404.sh
 
 FROM ubuntu:24.04
 
@@ -36,9 +36,9 @@ RUN mkdir -p /etc/docker && \
     printf '{\n  "storage-driver": "vfs",\n  "iptables": false,\n  "ip6tables": false\n}\n' \
         > /etc/docker/daemon.json
 
-# Drop the .run installer at /root so the operator can run it after exec.
-COPY dist/hypercube-1.0-ubuntu2404.run /root/hypercube-1.0-ubuntu2404.run
-RUN chmod +x /root/hypercube-1.0-ubuntu2404.run
+# Drop the .sh installer at /root so the operator can run it after exec.
+COPY dist/hypercube-1.0-ubuntu2404.sh /root/hypercube-1.0-ubuntu2404.sh
+RUN chmod +x /root/hypercube-1.0-ubuntu2404.sh
 
 VOLUME ["/sys/fs/cgroup", "/run", "/run/lock", "/tmp"]
 

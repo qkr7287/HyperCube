@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # End-to-end install rehearsal inside the air-gap container.
-# Pre-seeds /opt/hypercube/.env (skip interactive prompt) and runs the .run.
+# Pre-seeds /opt/hypercube/.env (skip interactive prompt) and runs the .sh.
 #
 # Usage (from a shell that can reach the docker socket — PowerShell or WSL):
 #   bash packaging/test-airgap/run-validation.sh
@@ -40,7 +40,7 @@ chmod 600 /opt/hypercube/.env
 
 echo "==> Running installer (logs -> /tmp/airgap-install.log inside container)"
 docker exec "${CONTAINER}" bash -c '
-/root/hypercube-1.0-ubuntu2404.run 2>&1 | tee /tmp/airgap-install.log
+/root/hypercube-1.0-ubuntu2404.sh 2>&1 | tee /tmp/airgap-install.log
 '
 INSTALL_EXIT=$?
 

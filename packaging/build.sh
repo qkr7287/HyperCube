@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Build the air-gapped installer (.run) for Ubuntu 24.04 LTS.
-# Output: dist/hypercube-<VERSION>-ubuntu2404.run
+# Build the air-gapped installer (.sh) for Ubuntu 24.04 LTS.
+# Output: dist/hypercube-<VERSION>-ubuntu2404.sh
 #
 # Requires on the build host:
 #   - docker (any version)
@@ -27,7 +27,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PKG_DIR="${REPO_ROOT}/packaging"
 WORK_DIR="${REPO_ROOT}/build/installer-${VERSION}-${TARGET}"
 DIST_DIR="${REPO_ROOT}/dist"
-RUN_FILE="${DIST_DIR}/hypercube-${VERSION}-${TARGET}.run"
+RUN_FILE="${DIST_DIR}/hypercube-${VERSION}-${TARGET}.sh"
 
 IMAGES=(
     "ghcr.io/qkr7287/hypercube-backend:${IMAGE_TAG}"
