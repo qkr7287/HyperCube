@@ -2,6 +2,14 @@ import * as THREE from 'three';
 // @ts-ignore ??three.js addon typings are resolved at runtime
 import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
 
+// Cubic.InOut for the click-focus fade tween. Mirrored locally rather
+// than pulled in from another module to keep this file self-contained.
+function cubicInOutEaseGM(t: number): number {
+	if (t < 0.5) return 4 * t * t * t;
+	const f = 2 * t - 2;
+	return 0.5 * f * f * f + 1;
+}
+
 /**
  * Convex hull membrane wrapping the members of a stack group.
  *
@@ -41,11 +49,15 @@ export class GroupMesh {
 	private currentWireGeometry: THREE.BufferGeometry | null = null;
 	private mode: GroupVisualMode = 'soft';
 	private highlighted = false;
-	// click-focus fade: target=0 hides, target=1 shows, lerped per-tick
-	// into every membrane material's authored opacity so the bubble
-	// fades in/out smoothly instead of popping.
+	// click-focus fade: target=0 hides, target=1 shows, time-based
+	// Cubic.InOut into every membrane material's authored opacity so
+	// the bubble glides in/out symmetrically instead of front-loading
+	// the change like the previous exp decay did.
 	private targetDimFactor = 1;
 	private currentDimFactor = 1;
+	private fadeStartFactor = 1;
+	private fadeStartTime = 0;
+	private static readonly FADE_DURATION_MS = 600;
 	// True only when our own fade-out hid the group; the un-dim path
 	// uses this so the stack-type checkbox stays in charge of bubbles
 	// the user explicitly turned off.
@@ -173,6 +185,11 @@ export class GroupMesh {
 	 * when un-dimming so the fade-in actually renders.
 	 */
 	setDimmed(dimmed: boolean): void {
+		// Snapshot current as the start of a fresh tween segment so a
+		// re-click mid-fade eases from the current factor instead of
+		// jumping back to full / zero.
+		this.fadeStartFactor = this.currentDimFactor;
+		this.fadeStartTime = performance.now();
 		this.targetDimFactor = dimmed ? 0 : 1;
 		if (!dimmed && this.dimHidden) {
 			this.object.visible = true;
@@ -182,17 +199,16 @@ export class GroupMesh {
 	}
 
 	/**
-	 * Per-frame fade-in/out for the click-focus dim. Called from
-	 * Topology's render loop. Multiplies a 0–1 factor into every
-	 * membrane material's authored opacity, then drops object.visible
-	 * once fully faded so the bubble stops contributing to bloom.
+	 * Per-frame fade-in/out for the click-focus dim. Time-based
+	 * Cubic.InOut so the bubble glides symmetrically — the exp decay
+	 * we used before front-loaded the change which read fine for
+	 * appearance but made disappearance feel like an instant cut.
 	 */
-	tick(dt: number): void {
-		const safeDt = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.1) : 0;
-		// Matches Entity / Connection lerp rate so the bubble fades in
-		// step with its members instead of getting ahead or lagging.
-		const k = 1 - Math.exp(-safeDt * 6);
-		this.currentDimFactor += (this.targetDimFactor - this.currentDimFactor) * k;
+	tick(_dt: number): void {
+		const elapsed = performance.now() - this.fadeStartTime;
+		const t = Math.min(1, Math.max(0, elapsed / GroupMesh.FADE_DURATION_MS));
+		const eased = cubicInOutEaseGM(t);
+		this.currentDimFactor = this.fadeStartFactor + (this.targetDimFactor - this.fadeStartFactor) * eased;
 		const f = this.currentDimFactor;
 		this.surfaceMat.opacity = this.baseSurfaceOpacity * f;
 		this.wireMat.opacity = this.baseWireOpacity * f;

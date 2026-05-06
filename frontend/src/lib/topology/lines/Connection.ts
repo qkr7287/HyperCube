@@ -1,5 +1,14 @@
 import * as THREE from 'three';
 
+// Cubic.InOut easing for the click-focus dim tween. Local copy because
+// importing from entities/Entity.ts would create a circular module
+// dependency (Entity is the base class for endpoints these lines link).
+function cubicInOutEase(t: number): number {
+	if (t < 0.5) return 4 * t * t * t;
+	const f = 2 * t - 2;
+	return 0.5 * f * f * f + 1;
+}
+
 export type LinePulseMode = 'glow' | 'flow' | 'stream' | 'tunnel';
 export type TunnelStyle = 'mist' | 'ribs' | 'subsea' | 'core';
 export type TrafficFxStyle = 'soft' | 'comet' | 'relay' | 'surge';
@@ -339,6 +348,11 @@ export abstract class Connection {
 	// their own additional material opacities — applyDimToAllMaterials
 	// only knows about the base set declared on Connection.
 	protected currentDim = 1;
+	// Snapshot of currentDim at the moment setDimmed last flipped, so
+	// the time-based ease always starts from "wherever we are now".
+	private fadeStartDim = 1;
+	private fadeStartTime = 0;
+	private static readonly FADE_DURATION_MS = 600;
 	// True when the dim fade-out hid this line; un-dim re-shows only
 	// when this is set so the hub-type visibility toggle stays in
 	// charge for lines hidden externally.
@@ -596,7 +610,11 @@ export abstract class Connection {
 		// Fade fully out (0) on dim so unrelated lines stop visually
 		// crossing through the focused subset. Re-show only when we own
 		// the hidden state (dimHidden) so external visibility toggles
-		// remain authoritative.
+		// remain authoritative. Snapshot current as the start of a fresh
+		// tween segment so mid-fade re-clicks ease from "wherever we are
+		// now" instead of jumping back to full / zero.
+		this.fadeStartDim = this.currentDim;
+		this.fadeStartTime = performance.now();
 		this.targetDim = dimmed ? 0 : 1;
 		if (!dimmed && this.dimHidden) {
 			this.object.visible = true;
@@ -607,12 +625,15 @@ export abstract class Connection {
 	tick(dt: number): void {
 		const frameDt = Connection.sanitizeDt(dt);
 		this.pulseTime += frameDt;
-		// Lerp the dim factor per frame so click-focus dim/undim glides
-		// instead of snapping. At rest (currentDim ≈ targetDim ≈ 1) the
-		// final multiplication below is a no-op. Matches Entity's
-		// STATE_LERP_K so the line and its endpoints stay in sync.
-		const dimSmoothing = 1 - Math.exp(-frameDt * 6);
-		this.currentDim += (this.targetDim - this.currentDim) * dimSmoothing;
+		// Time-based Cubic.InOut ease for the dim factor. The previous
+		// exp-decay was front-loaded which made fade-out feel like an
+		// instant cut once peripheral vision caught the fast initial
+		// drop in brightness. The InOut curve is symmetric — slow at
+		// start AND end — so the line's disappearance reads as a glide.
+		const fadeElapsed = performance.now() - this.fadeStartTime;
+		const fadeT = Math.min(1, Math.max(0, fadeElapsed / Connection.FADE_DURATION_MS));
+		const fadeEased = cubicInOutEase(fadeT);
+		this.currentDim = this.fadeStartDim + (this.targetDim - this.fadeStartDim) * fadeEased;
 		// Hide once faded out so the line stops contributing to bloom and
 		// can't be raycast through the focused subset. Threshold matches
 		// Entity.HIDE_OPACITY_THRESHOLD so additive packets / strands

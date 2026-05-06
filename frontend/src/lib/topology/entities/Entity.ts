@@ -2,13 +2,22 @@ import * as THREE from 'three';
 
 export type EntityKind = 'container' | 'hub';
 
-// Per-frame lerp speed for dim / focus / scale animations. exp(-dt*k)
-// gives ~95% completion in (3/k) seconds → with k=6 that's ~500ms.
-// Slower than the snappier k=8 we started with — the exp decay is
-// front-loaded (most movement in the first 100ms) so a faster k makes
-// the fade feel more like an instant cut. k=6 leaves more time at the
-// tail of the curve where the eye is sensitive to motion.
-const STATE_LERP_K = 6;
+// Click-focus fade duration (ms). Time-based with Cubic.InOut easing
+// so the curve is symmetric — slow at the start AND end, fastest at
+// the middle. The previous exp-decay lerp was front-loaded which read
+// fine for the appearance (eye attention follows the rising shape)
+// but felt like an instant cut on disappearance (50% brightness loss
+// in the first 100ms reads as motion in peripheral vision). Cubic.InOut
+// removes that asymmetry.
+const FADE_DURATION_MS = 600;
+
+// Cubic.InOut easing — slow at both ends, fast in the middle. Matches
+// CameraAnimator's tween polish and reads as a natural deceleration.
+function cubicInOut(t: number): number {
+	if (t < 0.5) return 4 * t * t * t;
+	const f = 2 * t - 2;
+	return 0.5 * f * f * f + 1;
+}
 
 const FOCUSED_OPACITY = 1;
 // Click-focus now fully fades out unrelated entities and toggles
@@ -55,14 +64,20 @@ export abstract class Entity {
 	private readonly tooltipTmpBox = new THREE.Box3();
 	private readonly anchorCenter = new THREE.Vector3();
 
-	// Animated visual state. target is what we're lerping toward;
-	// current is where we are right now (driven by tick(dt)).
+	// Animated visual state. target is what we're tweening toward,
+	// current is where we are right now (driven by tick), fadeStart is
+	// the snapshot taken when target last changed so the easing always
+	// runs from "wherever we are now" rather than restarting from full.
 	private targetOpacity = FOCUSED_OPACITY;
 	protected currentOpacity = FOCUSED_OPACITY;
+	private fadeStartOpacity = FOCUSED_OPACITY;
 	private targetEmissiveBoost = 1;
 	protected currentEmissiveBoost = 1;
+	private fadeStartBoost = 1;
 	private targetScale = 1;
 	protected currentScale = 1;
+	private fadeStartScale = 1;
+	private fadeStartTime = 0;
 	// True when *we* turned object.visible off via the dim fade-out, so
 	// the un-dim path knows it owns re-showing this entity. External
 	// hub-type visibility (Topology.applyVisibility) is tracked
@@ -84,6 +99,7 @@ export abstract class Entity {
 	}
 
 	setDimmed(dimmed: boolean): void {
+		this.snapshotFadeStart();
 		this.targetOpacity = dimmed ? DIMMED_OPACITY : FOCUSED_OPACITY;
 		// Only re-show on un-dim if we're the one that hid it. Avoids
 		// reviving entities the user explicitly turned off via the
@@ -95,17 +111,31 @@ export abstract class Entity {
 	}
 
 	setFocused(focused: boolean): void {
+		this.snapshotFadeStart();
 		this.targetEmissiveBoost = focused ? FOCUSED_EMISSIVE_BOOST : 1;
 		this.targetScale = focused ? FOCUSED_SCALE : 1;
 	}
 
+	// Capture the current animated values as the start of a fresh tween
+	// segment. Without this, mid-fade target changes would "jump" because
+	// the easing curve always interpolates from start to target across
+	// FADE_DURATION_MS — we want each new target to ease from "now".
+	private snapshotFadeStart(): void {
+		this.fadeStartOpacity = this.currentOpacity;
+		this.fadeStartBoost = this.currentEmissiveBoost;
+		this.fadeStartScale = this.currentScale;
+		this.fadeStartTime = performance.now();
+	}
+
 	/** Per-frame visual state animation. */
-	tick(dt: number): void {
-		const safeDt = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.1) : 0;
-		const k = 1 - Math.exp(-safeDt * STATE_LERP_K);
-		this.currentOpacity += (this.targetOpacity - this.currentOpacity) * k;
-		this.currentEmissiveBoost += (this.targetEmissiveBoost - this.currentEmissiveBoost) * k;
-		this.currentScale += (this.targetScale - this.currentScale) * k;
+	tick(_dt: number): void {
+		const elapsed = performance.now() - this.fadeStartTime;
+		const t = Math.min(1, Math.max(0, elapsed / FADE_DURATION_MS));
+		const eased = cubicInOut(t);
+		this.currentOpacity = this.fadeStartOpacity + (this.targetOpacity - this.fadeStartOpacity) * eased;
+		this.currentEmissiveBoost =
+			this.fadeStartBoost + (this.targetEmissiveBoost - this.fadeStartBoost) * eased;
+		this.currentScale = this.fadeStartScale + (this.targetScale - this.fadeStartScale) * eased;
 		this.applyVisualState();
 		// Once fully faded out, drop out of rendering / raycasts entirely.
 		// dimHidden is what the un-dim path checks before re-showing.
