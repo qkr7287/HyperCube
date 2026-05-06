@@ -98,6 +98,32 @@ function volumeColorFor(_name: string, _sortedNames: readonly string[]): number 
 	return VOLUME_COLOR;
 }
 
+function isTintableMaterial(mat: THREE.Material): mat is THREE.MeshStandardMaterial {
+	return 'emissive' in mat && 'emissiveIntensity' in mat;
+}
+
+// Volume hubs share one GLB template, but the click-focus dim writes
+// m.opacity per-instance every frame. Without per-instance material
+// clones every VolumeHub points at the same material and the dimmed
+// siblings' opacity write clobbers the focused hub's — same shared-
+// material trap that StackHub had. Clone every mesh.material here so
+// each hub's dim/focus state stays isolated.
+function cloneMaterialSet(
+	src: THREE.Material | THREE.Material[],
+	into: THREE.MeshStandardMaterial[]
+): THREE.Material | THREE.Material[] {
+	if (Array.isArray(src)) {
+		return src.map((mat) => {
+			const cloned = mat.clone();
+			if (isTintableMaterial(cloned)) into.push(cloned);
+			return cloned;
+		});
+	}
+	const cloned = src.clone();
+	if (isTintableMaterial(cloned)) into.push(cloned);
+	return cloned;
+}
+
 export interface VolumeHubData {
 	name: string;
 	color: number;
@@ -132,7 +158,12 @@ export class VolumeHub extends Hub {
 			patchTemplateOnce(template);
 			const built = buildFromTemplate(template);
 			object = built.object;
-			materials = built.materials;
+			materials = [];
+			object.traverse((child) => {
+				const mesh = child as THREE.Mesh;
+				if (!mesh.isMesh) return;
+				mesh.material = cloneMaterialSet(mesh.material, materials);
+			});
 		} else {
 			const mat = new THREE.MeshStandardMaterial(params);
 			object = new THREE.Mesh(FALLBACK_GEOMETRY, mat);

@@ -47,6 +47,37 @@ services:
     networks:
       - hc-network
 
+  # Auto-applies new migrations when `apps/**/migrations/*.py` change on disk.
+  # Closes the dev-only gap where `uvicorn --reload` picks up code instantly
+  # but compose `command` only runs `migrate` at container boot, leaving the
+  # DB schema behind freshly-pulled code (see hc-redis 500 incident).
+  migrate-watcher:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: hc-migrate-watcher
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    environment:
+      DB_NAME: ${DB_NAME:-hypercube}
+      DB_USER: ${DB_USER:-hypercube}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      REDIS_URL: redis://redis:6379/0
+      REDIS_CACHE_URL: redis://redis:6379/1
+      DJANGO_ENV: dev
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      WATCHFILES_FORCE_POLLING: "true"
+    command: python scripts/migrate_watcher.py
+    networks:
+      - hc-network
+
   celery-worker:
     build:
       context: ./backend

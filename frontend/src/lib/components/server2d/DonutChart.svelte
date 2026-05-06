@@ -1,14 +1,16 @@
+<!--
+  DonutChart — 컨테이너 상태 등의 segment 비율을 도넛 형태로 표시.
+  ECharts pie chart wrapper. inner radius 66% 로 chart.js doughnut cutout 동등.
+  중앙 텍스트(centerLabel/centerValue) 는 svelte 측 absolute div 로 유지 —
+  reactivity 가 즉시 반영되고 ECharts graphic 보다 가볍다.
+
+  Props 인터페이스는 chart.js 시절 그대로 유지 (호출처 server-2d 변경 없음).
+-->
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
-	import { ArcElement, Chart, DoughnutController, Tooltip, type ChartData } from 'chart.js';
+	import EChartBase from '$lib/components/charts/EChartBase.svelte';
+	import type { EChartsOption } from '$lib/components/charts/echart-registry';
 
-	Chart.register(ArcElement, DoughnutController, Tooltip);
-
-	type Segment = {
-		label: string;
-		value: number;
-		color: string;
-	};
+	type Segment = { label: string; value: number; color: string };
 
 	let {
 		title = '',
@@ -22,102 +24,62 @@
 		centerValue?: string;
 	} = $props();
 
-	let canvas: HTMLCanvasElement | null = null;
-	let canvasWrap: HTMLDivElement | null = null;
-	let chart: Chart | null = null;
-	let resizeObs: ResizeObserver | null = null;
+	let option = $derived<EChartsOption>(buildOption(segments));
 
-	function buildData(): ChartData<'doughnut'> {
-		const visible = segments.filter((s) => s.value > 0);
-		if (visible.length === 0) {
-			return {
-				labels: ['데이터 없음'],
-				datasets: [
-					{
-						data: [1],
-						backgroundColor: ['rgba(100, 116, 139, 0.25)'],
-						borderColor: ['rgba(15, 23, 42, 0.9)'],
-						borderWidth: 2,
-					},
-				],
-			};
-		}
+	function buildOption(seg: Segment[]): EChartsOption {
+		const visible = seg.filter((s) => s.value > 0);
+		const data =
+			visible.length === 0
+				? [
+						{
+							name: '데이터 없음',
+							value: 1,
+							itemStyle: { color: 'rgba(100, 116, 139, 0.25)', borderColor: 'rgba(15, 23, 42, 0.9)', borderWidth: 2 },
+						},
+					]
+				: visible.map((s) => ({
+						name: s.label,
+						value: s.value,
+						itemStyle: { color: s.color, borderColor: 'rgba(15, 23, 42, 0.95)', borderWidth: 2 },
+					}));
+
 		return {
-			labels: visible.map((s) => s.label),
-			datasets: [
+			animationDuration: 260,
+			animationDurationUpdate: 400,
+			animationEasingUpdate: 'cubicInOut',
+			tooltip: {
+				appendToBody: true,
+				trigger: 'item',
+				backgroundColor: 'rgba(13, 17, 23, 0.96)',
+				borderColor: 'rgba(148, 163, 184, 0.22)',
+				borderWidth: 1,
+				textStyle: { color: '#e2e8f0', fontSize: 11 },
+				formatter: (params: any) => `${params.name}: ${params.value} 개`,
+			},
+			legend: { show: false },
+			series: [
 				{
-					data: visible.map((s) => s.value),
-					backgroundColor: visible.map((s) => s.color),
-					borderColor: visible.map(() => 'rgba(15, 23, 42, 0.95)'),
-					borderWidth: 2,
-					hoverOffset: 6,
+					type: 'pie',
+					radius: ['66%', '92%'],
+					center: ['50%', '50%'],
+					avoidLabelOverlap: false,
+					label: { show: false },
+					labelLine: { show: false },
+					data,
+					emphasis: { scaleSize: 6 },
 				},
 			],
 		};
 	}
-
-	function render() {
-		if (!canvas) return;
-		chart = new Chart(canvas, {
-			type: 'doughnut',
-			data: buildData(),
-			options: {
-				responsive: true,
-				maintainAspectRatio: false,
-				cutout: '66%',
-				animation: { duration: 260 },
-				layout: { padding: 6 },
-				plugins: {
-					legend: { display: false },
-					tooltip: {
-						backgroundColor: 'rgba(13, 17, 23, 0.96)',
-						borderColor: 'rgba(148, 163, 184, 0.22)',
-						borderWidth: 1,
-						displayColors: true,
-						callbacks: {
-							label: (ctx) => `${ctx.label}: ${ctx.parsed} 개`,
-						},
-					},
-				},
-			},
-		});
-	}
-
-	function sync() {
-		if (!canvas) return;
-		if (!chart) {
-			render();
-			return;
-		}
-		chart.data = buildData();
-		chart.update('none');
-	}
-
-	$effect(() => {
-		segments;
-		sync();
-	});
-
-	onMount(() => {
-		sync();
-		if (canvasWrap && typeof ResizeObserver !== 'undefined') {
-			resizeObs = new ResizeObserver(() => chart?.resize());
-			resizeObs.observe(canvasWrap);
-		}
-	});
-	onDestroy(() => {
-		resizeObs?.disconnect();
-		chart?.destroy();
-	});
 </script>
 
 <div class="donut-card">
 	{#if title}
 		<div class="title">{title}</div>
 	{/if}
-	<div class="chart-wrap" bind:this={canvasWrap}>
+	<div class="chart-wrap">
 		<div class="canvas-square">
-			<canvas bind:this={canvas}></canvas>
+			<EChartBase {option} ariaLabel={title || '도넛 차트'} />
 			{#if centerLabel || centerValue}
 				<div class="center-label" aria-hidden="true">
 					<strong>{centerValue}</strong>
@@ -160,17 +122,12 @@
 
 	.canvas-square {
 		position: relative;
-		height: 100%;
-		width: auto;
+		width: 100%;
+		height: auto;
 		aspect-ratio: 1 / 1;
 		max-width: 100%;
 		max-height: 100%;
 		margin: 0 auto;
-	}
-
-	canvas {
-		width: 100% !important;
-		height: 100% !important;
 	}
 
 	.center-label {
@@ -195,36 +152,5 @@
 		color: var(--text-muted);
 		font-size: 10px;
 		font-weight: 700;
-	}
-
-	.legend {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 3px 8px;
-		font-size: 9px;
-	}
-
-	.row {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		color: var(--text-secondary);
-	}
-
-	.row i {
-		width: 7px;
-		height: 7px;
-		border-radius: 2px;
-	}
-
-	.row span {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.row b {
-		color: var(--text-primary);
-		font-weight: 800;
 	}
 </style>

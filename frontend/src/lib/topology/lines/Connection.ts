@@ -1,5 +1,14 @@
 import * as THREE from 'three';
 
+// Cubic.InOut easing for the click-focus dim tween. Local copy because
+// importing from entities/Entity.ts would create a circular module
+// dependency (Entity is the base class for endpoints these lines link).
+function cubicInOutEase(t: number): number {
+	if (t < 0.5) return 4 * t * t * t;
+	const f = 2 * t - 2;
+	return 0.5 * f * f * f + 1;
+}
+
 export type LinePulseMode = 'glow' | 'flow' | 'stream' | 'tunnel';
 export type TunnelStyle = 'mist' | 'ribs' | 'subsea' | 'core';
 export type TrafficFxStyle = 'soft' | 'comet' | 'relay' | 'surge';
@@ -331,6 +340,23 @@ export abstract class Connection {
 	private curved = false;
 	private targetTrafficLevel = 0;
 	private visibleTrafficLevel = 0;
+	// Click-focus dim. 1.0 = at-rest opacity, 0 < x < 1 = faded for
+	// not-related-to-focus. Lerped per-frame in tick() and folded into
+	// every opacity write at the end so traffic FX still works under it.
+	private targetDim = 1;
+	// Protected so subclasses (e.g. VolumeLine) can multiply this into
+	// their own additional material opacities — applyDimToAllMaterials
+	// only knows about the base set declared on Connection.
+	protected currentDim = 1;
+	// Snapshot of currentDim at the moment setDimmed last flipped, so
+	// the time-based ease always starts from "wherever we are now".
+	private fadeStartDim = 1;
+	private fadeStartTime = 0;
+	private static readonly FADE_DURATION_MS = 600;
+	// True when the dim fade-out hid this line; un-dim re-shows only
+	// when this is set so the hub-type visibility toggle stays in
+	// charge for lines hidden externally.
+	private dimHidden = false;
 	private pulseTime = 0;
 	private pulseMode: LinePulseMode = 'tunnel';
 	private tunnelStyle: TunnelStyle = 'subsea';
@@ -580,9 +606,44 @@ export abstract class Connection {
 		this.curved = enabled;
 	}
 
+	setDimmed(dimmed: boolean): void {
+		// Fade fully out (0) on dim so unrelated lines stop visually
+		// crossing through the focused subset. Re-show only when we own
+		// the hidden state (dimHidden) so external visibility toggles
+		// remain authoritative. Snapshot current as the start of a fresh
+		// tween segment so mid-fade re-clicks ease from "wherever we are
+		// now" instead of jumping back to full / zero.
+		this.fadeStartDim = this.currentDim;
+		this.fadeStartTime = performance.now();
+		this.targetDim = dimmed ? 0 : 1;
+		if (!dimmed && this.dimHidden) {
+			this.object.visible = true;
+			this.dimHidden = false;
+		}
+	}
+
 	tick(dt: number): void {
 		const frameDt = Connection.sanitizeDt(dt);
 		this.pulseTime += frameDt;
+		// Time-based Cubic.InOut ease for the dim factor. The previous
+		// exp-decay was front-loaded which made fade-out feel like an
+		// instant cut once peripheral vision caught the fast initial
+		// drop in brightness. The InOut curve is symmetric — slow at
+		// start AND end — so the line's disappearance reads as a glide.
+		const fadeElapsed = performance.now() - this.fadeStartTime;
+		const fadeT = Math.min(1, Math.max(0, fadeElapsed / Connection.FADE_DURATION_MS));
+		const fadeEased = cubicInOutEase(fadeT);
+		this.currentDim = this.fadeStartDim + (this.targetDim - this.fadeStartDim) * fadeEased;
+		// Hide once faded out so the line stops contributing to bloom and
+		// can't be raycast through the focused subset. Threshold matches
+		// Entity.HIDE_OPACITY_THRESHOLD so additive packets / strands
+		// don't pop off while still slightly visible.
+		if (this.targetDim <= 0 && this.currentDim < 0.001) {
+			if (this.object.visible) {
+				this.object.visible = false;
+				this.dimHidden = true;
+			}
+		}
 		const smoothing = 1 - Math.exp(-frameDt * (this.targetTrafficLevel > this.visibleTrafficLevel ? 6 : 1.75));
 		this.visibleTrafficLevel = THREE.MathUtils.lerp(
 			this.visibleTrafficLevel,
@@ -683,6 +744,23 @@ export abstract class Connection {
 			}
 		}
 		this.onTick(displayLevel, pulse, frameDt);
+		this.applyDimToAllMaterials();
+	}
+
+	/**
+	 * Multiply every line / packet / tunnel material opacity by the
+	 * lerped dim factor. Called at the end of tick() so the per-mode
+	 * opacity calculations above are still authoritative; dim is just
+	 * a final attenuation. At rest (dim ≈ 1) this is essentially free.
+	 */
+	private applyDimToAllMaterials(): void {
+		const dim = this.currentDim;
+		if (Math.abs(dim - 1) < 0.001) return;
+		this.material.opacity *= dim;
+		for (const mat of this.packetMats) mat.opacity *= dim;
+		for (const mat of this.packetGlowMats) mat.opacity *= dim;
+		if (this.tunnelMat) this.tunnelMat.opacity *= dim;
+		if (this.stripeMat) this.stripeMat.opacity *= dim;
 	}
 
 	private static sanitizeDt(dt: number): number {

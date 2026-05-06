@@ -2,6 +2,14 @@ import * as THREE from 'three';
 // @ts-ignore ??three.js addon typings are resolved at runtime
 import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
 
+// Cubic.InOut for the click-focus fade tween. Mirrored locally rather
+// than pulled in from another module to keep this file self-contained.
+function cubicInOutEaseGM(t: number): number {
+	if (t < 0.5) return 4 * t * t * t;
+	const f = 2 * t - 2;
+	return 0.5 * f * f * f + 1;
+}
+
 /**
  * Convex hull membrane wrapping the members of a stack group.
  *
@@ -41,6 +49,23 @@ export class GroupMesh {
 	private currentWireGeometry: THREE.BufferGeometry | null = null;
 	private mode: GroupVisualMode = 'soft';
 	private highlighted = false;
+	// click-focus fade: target=0 hides, target=1 shows, time-based
+	// Cubic.InOut into every membrane material's authored opacity so
+	// the bubble glides in/out symmetrically instead of front-loading
+	// the change like the previous exp decay did.
+	private targetDimFactor = 1;
+	private currentDimFactor = 1;
+	private fadeStartFactor = 1;
+	private fadeStartTime = 0;
+	private static readonly FADE_DURATION_MS = 600;
+	// True only when our own fade-out hid the group; the un-dim path
+	// uses this so the stack-type checkbox stays in charge of bubbles
+	// the user explicitly turned off.
+	private dimHidden = false;
+	private baseSurfaceOpacity = 0;
+	private baseWireOpacity = 0;
+	private baseContourOpacities: number[] = [];
+	private baseAuraOpacity = 0;
 	private readonly contourGeometries: THREE.BufferGeometry[] = [];
 	private currentCenter = new THREE.Vector3();
 	private currentRadius = 0;
@@ -120,6 +145,11 @@ export class GroupMesh {
 		this.object.add(this.contourGroup);
 		this.object.add(this.aura);
 		this.object.visible = false;
+
+		this.baseSurfaceOpacity = this.surfaceMat.opacity;
+		this.baseWireOpacity = this.wireMat.opacity;
+		this.baseContourOpacities = this.contourMats.map((m) => m.opacity);
+		this.baseAuraOpacity = this.auraMat.opacity;
 	}
 
 	setMembers(members: readonly GroupMember[]): void {
@@ -144,6 +174,55 @@ export class GroupMesh {
 	setHighlighted(enabled: boolean): void {
 		this.highlighted = enabled;
 		this.applyModeVisibility();
+	}
+
+	/**
+	 * Toggle the membrane on click-focus dim. When the stack this mesh
+	 * wraps is unrelated to the focused entity we fade the whole group
+	 * out — otherwise the empty bubble would float around invisible
+	 * containers and create visual clutter. The fade itself runs in
+	 * tick(); this just flips the lerp target and re-shows the object
+	 * when un-dimming so the fade-in actually renders.
+	 */
+	setDimmed(dimmed: boolean): void {
+		// Snapshot current as the start of a fresh tween segment so a
+		// re-click mid-fade eases from the current factor instead of
+		// jumping back to full / zero.
+		this.fadeStartFactor = this.currentDimFactor;
+		this.fadeStartTime = performance.now();
+		this.targetDimFactor = dimmed ? 0 : 1;
+		if (!dimmed && this.dimHidden) {
+			this.object.visible = true;
+			this.dimHidden = false;
+			this.applyModeVisibility();
+		}
+	}
+
+	/**
+	 * Per-frame fade-in/out for the click-focus dim. Time-based
+	 * Cubic.InOut so the bubble glides symmetrically — the exp decay
+	 * we used before front-loaded the change which read fine for
+	 * appearance but made disappearance feel like an instant cut.
+	 */
+	tick(_dt: number): void {
+		const elapsed = performance.now() - this.fadeStartTime;
+		const t = Math.min(1, Math.max(0, elapsed / GroupMesh.FADE_DURATION_MS));
+		const eased = cubicInOutEaseGM(t);
+		this.currentDimFactor = this.fadeStartFactor + (this.targetDimFactor - this.fadeStartFactor) * eased;
+		const f = this.currentDimFactor;
+		this.surfaceMat.opacity = this.baseSurfaceOpacity * f;
+		this.wireMat.opacity = this.baseWireOpacity * f;
+		for (let i = 0; i < this.contourMats.length; i += 1) {
+			this.contourMats[i].opacity = this.baseContourOpacities[i] * f;
+		}
+		this.auraMat.opacity = this.baseAuraOpacity * f;
+		if (this.targetDimFactor <= 0 && this.currentDimFactor < 0.001) {
+			if (this.object.visible) {
+				this.object.visible = false;
+				this.dimHidden = true;
+				this.applyModeVisibility();
+			}
+		}
 	}
 
 	update(): void {

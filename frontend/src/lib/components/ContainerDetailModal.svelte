@@ -3,11 +3,8 @@
 	import { base } from '$app/paths';
 	import { sendCommand, containerMetricsStore } from '$lib/stores/ws-store';
 	import { adaptContainerInspect } from '$lib/utils/data-adapter';
-	import { Chart, LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend } from 'chart.js';
 	import MetricTrendChart from './MetricTrendChart.svelte';
 	import InfoTooltip from './InfoTooltip.svelte';
-
-	Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend);
 
 	interface Container {
 		id: string;
@@ -18,8 +15,6 @@
 		status: string;
 		labels: any;
 	}
-
-	const MAX_HISTORY = 30;
 
 	let {
 		container = null,
@@ -48,8 +43,6 @@
 
 	// Metrics data
 	let metricsData: any = $state(null);
-	let cpuHistory: number[] = $state([]);
-	let memoryHistory: number[] = $state([]);
 
 	// 성능 지표 탭 — 모달 전체 조회 단위
 	type MetricsRange = '1m' | '5m' | '1h' | '24h' | '7d';
@@ -140,150 +133,6 @@
 
 	let memLimitMB = $derived((metricsData?.memory?.limit || 1) / 1048576);
 
-	// Chart.js
-	let cpuCanvas: HTMLCanvasElement | undefined = $state(undefined);
-	let memCanvas: HTMLCanvasElement | undefined = $state(undefined);
-	let cpuChart: Chart | null = null;
-	let memChart: Chart | null = null;
-	let timeLabels: string[] = $state([]);
-
-	function formatTime(date: Date): string {
-		return date.toTimeString().slice(0, 8); // HH:MM:SS
-	}
-
-	function calcYRange(data: number[], unit: string): { min: number; max: number } {
-		if (data.length === 0) return unit === '%' ? { min: 0, max: 10 } : { min: 0, max: 100 };
-		const min = Math.min(...data);
-		const max = Math.max(...data);
-		const range = max - min || 1;
-		const padBottom = range * 0.15;
-		const padTop = range * 0.3; // extra top padding so dot is never clipped
-		const yMin = Math.max(0, Math.floor((min - padBottom) * 10) / 10);
-		let yMax = Math.ceil((max + padTop) * 10) / 10;
-		if (unit === '%') yMax = Math.min(yMax, 100);
-		if (yMin === yMax) return { min: yMin, max: yMax + 1 };
-		return { min: yMin, max: yMax };
-	}
-
-	function createChart(canvas: HTMLCanvasElement, color: string, unit: string): Chart {
-		const ctx = canvas.getContext('2d')!;
-		const gradient = ctx.createLinearGradient(0, 0, 0, canvas.clientHeight);
-		gradient.addColorStop(0, color.replace(')', ', 0.4)').replace('rgb', 'rgba'));
-		gradient.addColorStop(0.6, color.replace(')', ', 0.08)').replace('rgb', 'rgba'));
-		gradient.addColorStop(1, color.replace(')', ', 0)').replace('rgb', 'rgba'));
-
-		return new Chart(ctx, {
-			type: 'line',
-			data: {
-				labels: [],
-				datasets: [{
-					data: [],
-					borderColor: color,
-					backgroundColor: gradient,
-					borderWidth: 2,
-					fill: true,
-					tension: 0.35,
-					pointRadius: 0,
-					pointHoverRadius: 5,
-					pointHoverBackgroundColor: color,
-					pointHoverBorderColor: '#0d1117',
-					pointHoverBorderWidth: 2,
-					clip: false as any,
-				}]
-			},
-			options: {
-				responsive: true,
-				maintainAspectRatio: false,
-				animation: { duration: 400, easing: 'easeOutQuart' },
-				interaction: { intersect: false, mode: 'index' },
-				plugins: {
-					legend: { display: false },
-					tooltip: {
-						backgroundColor: '#1e293b',
-						titleColor: '#94a3b8',
-						bodyColor: '#e2e8f0',
-						borderColor: '#334155',
-						borderWidth: 1,
-						padding: 10,
-						titleFont: { size: 11 },
-						bodyFont: { size: 13, weight: 'bold' as const },
-						displayColors: false,
-						callbacks: {
-							label: (item) => {
-								const val = item.parsed.y;
-								return unit === '%' ? `${val.toFixed(2)}%` : `${val.toFixed(1)} MB`;
-							}
-						}
-					}
-				},
-				scales: {
-					x: {
-						grid: { color: 'rgba(255,255,255,0.04)', drawTicks: false },
-						ticks: {
-							color: '#64748b',
-							font: { size: 10, family: "'JetBrains Mono', monospace" },
-							maxRotation: 0,
-							padding: 6,
-							autoSkip: true,
-							maxTicksLimit: 8,
-						},
-						border: { display: false }
-					},
-					y: {
-						grid: { color: 'rgba(255,255,255,0.05)', drawTicks: false },
-						ticks: {
-							color: '#64748b',
-							font: { size: 10, family: "'JetBrains Mono', monospace" },
-							padding: 8,
-							maxTicksLimit: 5,
-							callback: (value) => unit === '%'
-								? `${Number(value).toFixed(1)}%`
-								: (Number(value) >= 1024 ? `${(Number(value) / 1024).toFixed(1)}G` : `${Math.round(Number(value))}M`)
-						},
-						border: { display: false }
-					}
-				}
-			}
-		});
-	}
-
-	function pushChartData(chart: Chart | null, data: number[], labels: string[], unit: string) {
-		if (!chart) return;
-		const ds = chart.data;
-		// Spread to plain arrays - Svelte 5 $state proxies break Chart.js property descriptors
-		ds.labels = [...labels];
-		ds.datasets[0].data = [...data];
-
-		// Dynamic Y range
-		const { min, max } = calcYRange(data, unit);
-		const yScale = chart.options.scales!.y!;
-		(yScale as any).min = min;
-		(yScale as any).max = max;
-
-		// Last point dot
-		ds.datasets[0].pointRadius = data.map((_, i) => i === data.length - 1 ? 4 : 0) as any;
-		ds.datasets[0].pointBackgroundColor = ds.datasets[0].borderColor as string;
-
-		chart.update('none');
-	}
-
-	function initCharts() {
-		destroyCharts();
-		if (cpuCanvas) {
-			cpuChart = createChart(cpuCanvas, 'rgb(48, 213, 200)', '%');
-			if (cpuHistory.length > 0) pushChartData(cpuChart, cpuHistory, timeLabels, '%');
-		}
-		if (memCanvas) {
-			memChart = createChart(memCanvas, 'rgb(188, 19, 254)', 'MB');
-			if (memoryHistory.length > 0) pushChartData(memChart, memoryHistory, timeLabels, 'MB');
-		}
-	}
-
-	function destroyCharts() {
-		if (cpuChart) { cpuChart.destroy(); cpuChart = null; }
-		if (memChart) { memChart.destroy(); memChart = null; }
-	}
-
 	// Safe accessors for details
 	let inspectConfig = $derived(details?.inspect?.Config);
 	let inspectStats = $derived(details?.stats);
@@ -303,18 +152,11 @@
 	}
 
 	// container_metrics 스트리밍 구독: Agent가 주기적으로 보내는 메트릭을 그대로 사용.
-	// 별도 REST 폴링 불필요.
+	// MetricTrendChart 가 history fetch + WS append 모두 자체 처리하므로 여기서는
+	// metricsData state 만 갱신. (전 세대 chart.js 로컬 그래프는 dead code 였음 → 폐기)
 	function consumeMetrics(m: any) {
 		if (!m) return;
 		metricsData = m;
-		const cpuVal = m.cpu?.usage || 0;
-		const memVal = (m.memory?.usage || 0) / 1048576;
-		const now = formatTime(new Date());
-		cpuHistory = [...cpuHistory.slice(-(MAX_HISTORY - 1)), cpuVal];
-		memoryHistory = [...memoryHistory.slice(-(MAX_HISTORY - 1)), memVal];
-		timeLabels = [...timeLabels.slice(-(MAX_HISTORY - 1)), now];
-		pushChartData(cpuChart, cpuHistory, timeLabels, '%');
-		pushChartData(memChart, memoryHistory, timeLabels, 'MB');
 	}
 
 	async function fetchLogs() {
@@ -588,9 +430,6 @@
 				activeTab = 'info';
 				details = null;
 				metricsData = null;
-				cpuHistory = [];
-				memoryHistory = [];
-				timeLabels = [];
 				logs = [];
 				errorMsg = '';
 				envExpanded = false;
@@ -598,22 +437,6 @@
 				containerStatus = current.status;
 
 				loadData();
-			}
-		});
-	});
-
-	// Initialize charts when metrics tab is active and canvases are ready
-	$effect(() => {
-		const tab = activeTab;
-		const cpu = cpuCanvas;
-		const mem = memCanvas;
-
-		untrack(() => {
-			if (tab === 'metrics' && cpu && mem) {
-				// Wait for canvas to be rendered in DOM
-				setTimeout(() => initCharts(), 0);
-			} else {
-				destroyCharts();
 			}
 		});
 	});
@@ -641,7 +464,6 @@
 
 	onDestroy(() => {
 		if (unsubMetrics) { unsubMetrics(); unsubMetrics = null; }
-		destroyCharts();
 		document.removeEventListener('keydown', handleKeydown);
 	});
 </script>
@@ -1550,9 +1372,10 @@
 	.metrics-summary {
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
+		gap: 12px;
 		min-width: 0;
 		min-height: 0;
+		height: 100%;
 	}
 	.metrics-summary > .summary-section {
 		flex: 1 1 0;
@@ -1561,31 +1384,34 @@
 		flex-direction: column;
 		overflow: hidden;
 	}
+	/* Activity 박스는 컨텐츠가 dist-bar + 3행 + (선택) tail 로 위쪽 3박스(5행)
+	   보다 작다. flex 1로 두면 박스가 stretch 되면서 박스 안 아래쪽이 빈다.
+	   자기 컨텐츠 만큼만 차지하게 두고 남은 공간을 위 3박스가 흡수하도록. */
 	.metrics-summary > .summary-section.activity {
-		flex: 1 1 0;
+		flex: 0 0 auto;
 	}
 	.metrics-summary .summary-list {
 		flex: 1 1 auto;
 		display: flex;
 		flex-direction: column;
 		justify-content: space-between;
-		gap: 3px;
+		gap: 4px;
 	}
 	.metrics-summary .summary-list li {
-		padding-top: 3px;
-		padding-bottom: 3px;
+		padding-top: 4px;
+		padding-bottom: 4px;
 	}
 	.summary-section {
 		background: #121720;
 		border: 1px solid rgba(100, 116, 139, 0.18);
 		border-radius: 8px;
-		padding: 8px 10px 10px;
+		padding: 10px 11px 11px;
 	}
 	.summary-section-head {
 		display: flex;
 		align-items: center;
 		gap: 4px;
-		margin-bottom: 8px;
+		margin-bottom: 9px;
 	}
 	.summary-h4 {
 		margin: 0;

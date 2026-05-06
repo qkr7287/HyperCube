@@ -281,6 +281,139 @@ class SystemMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet):
         return Response(payload)
 
 
+class StackMetricsFilter(filters.FilterSet):
+    agent = filters.UUIDFilter(field_name="agent_id")
+    stack = filters.CharFilter(field_name="stack")
+    from_time = filters.IsoDateTimeFilter(field_name="recorded_at", lookup_expr="gte")
+    to_time = filters.IsoDateTimeFilter(field_name="recorded_at", lookup_expr="lte")
+
+    class Meta:
+        model = ContainerMetricsHistory
+        fields = ["agent", "stack", "from_time", "to_time"]
+
+
+@extend_schema_view(
+    list=extend_schema(
+        summary="스택 메트릭 bucket 집계",
+        description=(
+            "라벨로 묶인 스택(hypercube.stack / docker compose project) 단위로 "
+            "메트릭을 시계열 bucket 집계해 반환합니다. ContainerMetricsHistory.stack "
+            "컬럼을 직접 GROUP BY 하므로 멀티서버 환경에서도 단일 SQL 한 번으로 끝납니다. "
+            "stack 컬럼은 metrics 적재 시점에 라벨 기준으로 미리 결정돼 저장됩니다."
+        ),
+    ),
+)
+class StackMetricsViewSet(GenericViewSet):
+    """`/api/metrics/stacks/buckets/` 만 노출. list/retrieve 미구현 (의미 없음)."""
+
+    queryset = ContainerMetricsHistory.objects.all()
+    filterset_class = StackMetricsFilter
+    permission_classes = [IsViewer]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+
+        range_key = self.request.query_params.get("range")
+        if range_key and range_key in RANGE_SHORTHAND:
+            qs = qs.filter(recorded_at__gte=timezone.now() - RANGE_SHORTHAND[range_key])
+
+        user = self.request.user
+        if getattr(user, "role", None) == "admin":
+            return qs
+
+        # Non-admin: limit to stacks containing at least one of the user's containers.
+        owned_container_ids = Container.objects.filter(
+            requester=user
+        ).values_list("container_id", flat=True)
+        return qs.filter(container_id__in=owned_container_ids)
+
+    @action(detail=False, methods=["get"], url_path="buckets")
+    def buckets(self, request):
+        bucket_sec = _parse_bucket_seconds(request.query_params.get("bucket"), default=60)
+        cache_key = _make_cache_key("stacks", request, bucket_sec)
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response(cached)
+
+        qs = self.filter_queryset(self.get_queryset())
+        bucket_expr = RawSQL(
+            "(floor(extract(epoch from recorded_at) / %s) * %s)::bigint",
+            (bucket_sec, bucket_sec),
+            output_field=IntegerField(),
+        )
+
+        db_cols = _db_columns(ContainerMetricsHistory._meta.db_table)
+        has_gpu_cols = "gpu_usage" in db_cols
+
+        annotations = dict(
+            cpu_avg=Avg("cpu_usage"),
+            cpu_max=Max("cpu_usage"),
+            memory_percent_avg=Avg("memory_percent"),
+            memory_percent_max=Max("memory_percent"),
+            memory_bytes_avg=Avg("memory_usage"),
+            network_rx_max=Max("network_rx"),
+            network_tx_max=Max("network_tx"),
+            disk_read_max=Max("disk_read"),
+            disk_write_max=Max("disk_write"),
+            container_count=Count("container_id", distinct=True),
+            sample_count=Count("id"),
+        )
+        if has_gpu_cols:
+            annotations.update(
+                gpu_usage_avg=Avg("gpu_usage"),
+                gpu_usage_max=Max("gpu_usage"),
+                gpu_memory_used_max=Max("gpu_memory_used"),
+                gpu_memory_total_max=Max("gpu_memory_total"),
+            )
+
+        rows = (
+            qs.annotate(bucket_epoch=bucket_expr)
+            .values("agent_id", "stack", "bucket_epoch")
+            .annotate(**annotations)
+            .order_by("agent_id", "stack", "bucket_epoch")
+        )
+
+        results = []
+        for r in rows:
+            row = {
+                "agent": str(r["agent_id"]),
+                "stack": r["stack"],
+                "bucket_epoch": int(r["bucket_epoch"]),
+                "bucket_start": timezone.datetime.fromtimestamp(
+                    int(r["bucket_epoch"]), tz=timezone.get_current_timezone()
+                ).isoformat(),
+                "cpu_avg": round(r["cpu_avg"] or 0, 2),
+                "cpu_max": round(r["cpu_max"] or 0, 2),
+                "memory_percent_avg": round(r["memory_percent_avg"] or 0, 2),
+                "memory_percent_max": round(r["memory_percent_max"] or 0, 2),
+                "memory_bytes_avg": int(r["memory_bytes_avg"] or 0),
+                "network_rx_max": int(r["network_rx_max"] or 0),
+                "network_tx_max": int(r["network_tx_max"] or 0),
+                "disk_read_max": int(r["disk_read_max"] or 0),
+                "disk_write_max": int(r["disk_write_max"] or 0),
+                "container_count": int(r["container_count"] or 0),
+                "sample_count": int(r["sample_count"] or 0),
+            }
+            if has_gpu_cols:
+                row["gpu_usage_avg"] = (
+                    round(r["gpu_usage_avg"], 2) if r.get("gpu_usage_avg") is not None else None
+                )
+                row["gpu_usage_max"] = (
+                    round(r["gpu_usage_max"], 2) if r.get("gpu_usage_max") is not None else None
+                )
+                row["gpu_memory_used_max"] = (
+                    int(r["gpu_memory_used_max"]) if r.get("gpu_memory_used_max") is not None else None
+                )
+                row["gpu_memory_total_max"] = (
+                    int(r["gpu_memory_total_max"]) if r.get("gpu_memory_total_max") is not None else None
+                )
+            results.append(row)
+
+        payload = {"bucket_seconds": bucket_sec, "results": results}
+        cache.set(cache_key, payload, _BUCKET_CACHE_TTL)
+        return Response(payload)
+
+
 @extend_schema_view(
     list=extend_schema(
         summary="컨테이너 메트릭 이력 조회",
@@ -314,18 +447,33 @@ class ContainerMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet
         ).values_list("container_id", flat=True)
         return qs.filter(container_id__in=owned_container_ids)
 
+    # Cross-server 호출 시 row 수가 [agents × containers × bucket-window] 로 폭발하므로,
+    # raw row list 는 단일 컨테이너 또는 단일 agent 범위 안에서만 허용. 그 외는
+    # /api/metrics/containers/buckets/ 또는 /api/metrics/stacks/buckets/ 사용 권장.
+    LIST_MAX_LIMIT = 500
+    LIST_DEFAULT_LIMIT = 240
+
     def list(self, request, *args, **kwargs):
-        limit = request.query_params.get("limit")
-        if limit:
-            try:
-                n = max(1, min(int(limit), 2000))
-                qs = self.filter_queryset(self.get_queryset()).order_by("-recorded_at")[:n]
-                rows = list(qs)[::-1]
-                from rest_framework.response import Response
-                return Response(self.get_serializer(rows, many=True).data)
-            except (TypeError, ValueError):
-                pass
-        return super().list(request, *args, **kwargs)
+        from rest_framework.exceptions import ValidationError
+
+        if not request.query_params.get("agent") and not request.query_params.get("container_id"):
+            raise ValidationError({
+                "detail": (
+                    "agent 또는 container_id 필터가 필요합니다. cross-server 집계는 "
+                    "/api/metrics/containers/buckets/ 또는 /api/metrics/stacks/buckets/ 를 사용하세요."
+                ),
+            })
+
+        raw_limit = request.query_params.get("limit")
+        try:
+            n = int(raw_limit) if raw_limit is not None else self.LIST_DEFAULT_LIMIT
+        except (TypeError, ValueError):
+            n = self.LIST_DEFAULT_LIMIT
+        n = max(1, min(n, self.LIST_MAX_LIMIT))
+
+        qs = self.filter_queryset(self.get_queryset()).order_by("-recorded_at")[:n]
+        rows = list(qs)[::-1]
+        return Response(self.get_serializer(rows, many=True).data)
 
     def get_serializer_class(self):
         if self.action == "retrieve":

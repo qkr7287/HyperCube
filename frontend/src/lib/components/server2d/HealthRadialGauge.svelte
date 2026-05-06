@@ -1,8 +1,11 @@
+<!--
+  HealthRadialGauge — 종합 건강 점수 270° gauge.
+  ECharts pie chart 의 startAngle:225 / endAngle:-45 로 chart.js 의
+  rotation:225 / circumference:270 동등 재현.
+-->
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
-	import { ArcElement, Chart, DoughnutController, type ChartData } from 'chart.js';
-
-	Chart.register(ArcElement, DoughnutController);
+	import EChartBase from '$lib/components/charts/EChartBase.svelte';
+	import type { EChartsOption } from '$lib/components/charts/echart-registry';
 
 	let {
 		score = 0,
@@ -14,11 +17,6 @@
 		tone?: 'ok' | 'warn' | 'hot' | 'dim';
 	} = $props();
 
-	let canvas: HTMLCanvasElement | null = null;
-	let canvasWrap: HTMLDivElement | null = null;
-	let chart: Chart | null = null;
-	let resizeObs: ResizeObserver | null = null;
-
 	const toneColors: Record<'ok' | 'warn' | 'hot' | 'dim', string> = {
 		ok: '#34d399',
 		warn: '#fbbf24',
@@ -26,68 +24,53 @@
 		dim: '#64748b',
 	};
 
-	function buildData(): ChartData<'doughnut'> {
-		const value = Math.max(0, Math.min(100, Math.round(score)));
+	let option = $derived<EChartsOption>(buildOption(score, tone));
+
+	function buildOption(scoreVal: number, toneVal: typeof tone): EChartsOption {
+		const value = Math.max(0, Math.min(100, Math.round(scoreVal)));
+		const fillColor = toneColors[toneVal];
 		return {
-			labels: ['점수', '여유'],
-			datasets: [
+			animationDuration: 280,
+			animationDurationUpdate: 480,
+			animationEasingUpdate: 'cubicOut',
+			tooltip: { show: false },
+			legend: { show: false },
+			series: [
 				{
-					data: [value, 100 - value],
-					backgroundColor: [toneColors[tone], 'rgba(51, 65, 85, 0.5)'],
-					borderColor: ['rgba(15, 23, 42, 0.95)', 'rgba(15, 23, 42, 0.95)'],
-					borderWidth: 1,
-					circumference: 270,
-					rotation: 225,
+					type: 'pie',
+					radius: ['74%', '100%'],
+					center: ['50%', '50%'],
+					// chart.js circumference:270 + rotation:225 와 동등.
+					// ECharts 의 각도 체계: 0°=오른쪽, 시계 반대 방향 증가.
+					// chart.js rotation:225 = 시작 각도가 -135° = ECharts startAngle 225.
+					startAngle: 225,
+					endAngle: -45,
+					avoidLabelOverlap: false,
+					label: { show: false },
+					labelLine: { show: false },
+					silent: true,
+					data: [
+						{
+							name: '점수',
+							value,
+							itemStyle: { color: fillColor, borderColor: 'rgba(15, 23, 42, 0.95)', borderWidth: 1 },
+						},
+						{
+							name: '여유',
+							value: 100 - value,
+							itemStyle: { color: 'rgba(51, 65, 85, 0.5)', borderColor: 'rgba(15, 23, 42, 0.95)', borderWidth: 1 },
+						},
+					],
 				},
 			],
 		};
 	}
-
-	function render() {
-		if (!canvas) return;
-		chart = new Chart(canvas, {
-			type: 'doughnut',
-			data: buildData(),
-			options: {
-				responsive: true,
-				maintainAspectRatio: false,
-				cutout: '74%',
-				animation: { duration: 280 },
-				plugins: { legend: { display: false }, tooltip: { enabled: false } },
-			},
-		});
-	}
-
-	function sync() {
-		if (!canvas) return;
-		if (!chart) return render();
-		chart.data = buildData();
-		chart.update('none');
-	}
-
-	$effect(() => {
-		score;
-		tone;
-		sync();
-	});
-
-	onMount(() => {
-		sync();
-		if (canvasWrap && typeof ResizeObserver !== 'undefined') {
-			resizeObs = new ResizeObserver(() => chart?.resize());
-			resizeObs.observe(canvasWrap);
-		}
-	});
-	onDestroy(() => {
-		resizeObs?.disconnect();
-		chart?.destroy();
-	});
 </script>
 
 <div class="radial">
-	<div class="chart-wrap" bind:this={canvasWrap}>
+	<div class="chart-wrap">
 		<div class="canvas-square">
-			<canvas bind:this={canvas}></canvas>
+			<EChartBase {option} ariaLabel="{label} {Math.round(score)}점" />
 			<div class="center-label">
 				<strong style={`color:${toneColors[tone]}`}>{Math.round(score)}</strong>
 				<small>{label}</small>
@@ -121,11 +104,6 @@
 		max-width: 100%;
 		max-height: 100%;
 		margin: 0 auto;
-	}
-
-	canvas {
-		width: 100% !important;
-		height: 100% !important;
 	}
 
 	.center-label {

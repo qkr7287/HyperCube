@@ -173,14 +173,18 @@ export class VolumeLine extends Connection {
 		// strand counts <= 5).
 		if (this.hasEndpoints) this.refreshStrands();
 
-		// Fade strands with traffic so idle lines stay quiet.
+		// Fade strands with traffic so idle lines stay quiet, then
+		// multiply in the click-focus dim so the strands fade out with
+		// the rest of the line instead of popping off when visible=false
+		// flips at the bottom of the base lerp.
 		const preset = VOLUME_ENERGY_PRESETS[this.style];
 		const alpha = THREE.MathUtils.clamp(
 			preset.strandOpacity * (0.55 + displayLevel * 0.5),
 			0.1,
 			1
 		);
-		for (const mat of this.strandMats) mat.opacity = alpha;
+		const dim = this.currentDim;
+		for (const mat of this.strandMats) mat.opacity = alpha * dim;
 	}
 
 	private refreshStrands(): void {

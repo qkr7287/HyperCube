@@ -2,7 +2,7 @@ import { browser } from '$app/environment';
 import { base } from '$app/paths';
 import { writable, get } from 'svelte/store';
 
-export type TimeRange = '1m' | '5m' | '1h' | '24h' | '7d';
+export type TimeRange = '10s' | '1m' | '5m' | '1h' | '24h' | '7d';
 export type FleetHealth = 'healthy' | 'warning' | 'critical' | 'offline' | 'stale';
 
 type AgentApiRow = {

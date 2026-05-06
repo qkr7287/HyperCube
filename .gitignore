@@ -2,6 +2,7 @@ node_modules
 
 # Build output
 build/
+dist/
 .svelte-kit/
 
 # Frontend output
@@ -45,7 +46,12 @@ vite.config.ts.timestamp-*
 docs/plans/
 
 # MCP / dev tooling local state
-.claude/
+# .claude/ 의 settings.json / hooks / skills 는 팀 공유, 나머지는 로컬 전용
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
+!.claude/skills/
+.claude/settings.local.json
 .serena/
 .code-review-graph/
 .playwright-mcp/
