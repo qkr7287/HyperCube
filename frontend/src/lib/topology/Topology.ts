@@ -1,3 +1,4 @@
+import { Easing, Group as TweenGroup, Tween } from '@tweenjs/tween.js';
 import * as THREE from 'three';
 import { Disposer } from './core/Disposer';
 import { loadAllTemplates, type TemplateBundle } from './core/MeshFactory';
@@ -167,6 +168,10 @@ export class Topology {
 	private selectionTarget: Entity | null = null;
 	private readonly pinner = new NodePinner();
 	private readonly disposer = new Disposer();
+	// Click FX (bloom pulse) tween group. CameraAnimator owns its own
+	// fov-punch group; bloom lives here because the strength baseline
+	// is project-state, not camera-state.
+	private readonly fxTweenGroup = new TweenGroup();
 
 	private readonly containers: Map<string, ContainerNode> = new Map();
 	private readonly hubs: Map<string, Hub> = new Map();
@@ -285,6 +290,7 @@ export class Topology {
 			this.updateGroupMeshes();
 			this.updateNetworkTrafficVisuals(dt);
 			this.animator?.tick();
+			this.fxTweenGroup.update();
 			this.scene?.render();
 
 			if (this.loadingStage !== 'ready') {
@@ -944,6 +950,7 @@ export class Topology {
 		this.selectionTarget = node;
 		this.applyClickFocus(id);
 		this.animator?.fitSphere(node.position, 18);
+		this.triggerClickFx();
 	}
 
 	focusHub(id: string, _type: HubType): void {
@@ -961,6 +968,37 @@ export class Topology {
 		}
 		this.applyClickFocus(id);
 		this.animator?.fitSphere(center, maxDist + 25);
+		this.triggerClickFx();
+	}
+
+	/**
+	 * Cinematic click moment — narrow FOV briefly + bloom pulse, on top
+	 * of the position tween. Kept in one place so container/hub focus
+	 * paths stay symmetric.
+	 */
+	private triggerClickFx(): void {
+		this.animator?.punchFov(2.5, 220, 700);
+		this.pulseBloom(0.35, 230, 800);
+	}
+
+	private pulseBloom(delta: number, upMs: number, downMs: number): void {
+		if (!this.scene) return;
+		this.fxTweenGroup.removeAll();
+		const baseline = this.bloomStrength;
+		const peak = baseline + Math.abs(delta);
+		const scene = this.scene;
+		const state = { v: baseline };
+		const apply = (v: number) => scene.setBloomStrength(v);
+		const release = new Tween(state, this.fxTweenGroup)
+			.to({ v: baseline }, downMs)
+			.easing(Easing.Quadratic.Out)
+			.onUpdate(({ v }) => apply(v));
+		new Tween(state, this.fxTweenGroup)
+			.to({ v: peak }, upMs)
+			.easing(Easing.Cubic.Out)
+			.onUpdate(({ v }) => apply(v))
+			.chain(release)
+			.start();
 	}
 
 	/**
@@ -1114,6 +1152,9 @@ export class Topology {
 
 	setBloomStrength(strength: number): void {
 		this.bloomStrength = strength;
+		// Cancel any running pulse — otherwise the chained release tween
+		// would lerp back to the old baseline and undo the user's change.
+		this.fxTweenGroup.removeAll();
 		this.scene?.setBloomStrength(strength);
 	}
 
@@ -1213,6 +1254,8 @@ export class Topology {
 			this.detachTick = null;
 		}
 		this.animator?.cancel();
+		this.fxTweenGroup.removeAll();
+		this.scene?.setBloomStrength(this.bloomStrength);
 		this.loop?.stop();
 		this.layout?.stop();
 

@@ -14,8 +14,13 @@ export class CameraAnimator {
 	private readonly camera: THREE.PerspectiveCamera;
 	private readonly controls: { target: THREE.Vector3 };
 	private readonly group = new Group();
+	// Separate group for non-position FX (FOV punch) so a follow-up
+	// position tween calling group.removeAll() can't kill the punch
+	// mid-flight.
+	private readonly fxGroup = new Group();
 	private readonly initialPosition: THREE.Vector3;
 	private readonly initialTarget: THREE.Vector3;
+	private readonly fovBaseline: number;
 	private active = false;
 
 	constructor(camera: THREE.PerspectiveCamera, controls: { target: THREE.Vector3 }) {
@@ -23,6 +28,7 @@ export class CameraAnimator {
 		this.controls = controls;
 		this.initialPosition = camera.position.clone();
 		this.initialTarget = controls.target.clone();
+		this.fovBaseline = camera.fov;
 	}
 
 	setHome(position: THREE.Vector3, target: THREE.Vector3, snap = false): void {
@@ -54,20 +60,21 @@ export class CameraAnimator {
 
 	tick(): void {
 		this.group.update();
+		this.fxGroup.update();
 	}
 
 	isActive(): boolean {
 		return this.active;
 	}
 
-	tweenTo(targetPos: THREE.Vector3, lookAt: THREE.Vector3, duration = 900): void {
+	tweenTo(targetPos: THREE.Vector3, lookAt: THREE.Vector3, duration = 1100): void {
 		this.group.removeAll();
 		this.active = true;
 		const startPos = this.camera.position.clone();
 		const startTarget = this.controls.target.clone();
 		new Tween({ t: 0 }, this.group)
 			.to({ t: 1 }, duration)
-			.easing(Easing.Cubic.InOut)
+			.easing(Easing.Quintic.InOut)
 			.onUpdate(({ t }) => {
 				this.camera.position.lerpVectors(startPos, targetPos, t);
 				this.controls.target.lerpVectors(startTarget, lookAt, t);
@@ -82,7 +89,7 @@ export class CameraAnimator {
 	 * Tween so the given sphere (center + radius) fills a comfortable
 	 * share of the viewport.
 	 */
-	fitSphere(center: THREE.Vector3, radius: number, duration = 900): void {
+	fitSphere(center: THREE.Vector3, radius: number, duration = 1100): void {
 		const safeRadius = Math.max(radius, 25);
 		const fovRad = (this.camera.fov * Math.PI) / 180;
 		const dist = (safeRadius * 1.6) / Math.tan(fovRad / 2);
@@ -92,12 +99,45 @@ export class CameraAnimator {
 		this.tweenTo(targetPos, center, duration);
 	}
 
-	resetCamera(duration = 900): void {
+	/**
+	 * Cinematic "zoom impact" on click — narrow FOV briefly, then
+	 * relax back. Runs in parallel with the position tween via fxGroup.
+	 * Baseline is the constructor-time fov so repeated punches never
+	 * drift the resting fov.
+	 */
+	punchFov(deltaDeg = 2.5, downMs = 220, upMs = 700): void {
+		this.fxGroup.removeAll();
+		const baseline = this.fovBaseline;
+		const target = baseline - Math.abs(deltaDeg);
+		const camera = this.camera;
+		const state = { fov: camera.fov };
+		const apply = (v: number) => {
+			camera.fov = v;
+			camera.updateProjectionMatrix();
+		};
+		const release = new Tween(state, this.fxGroup)
+			.to({ fov: baseline }, upMs)
+			.easing(Easing.Quadratic.Out)
+			.onUpdate(({ fov }) => apply(fov));
+		new Tween(state, this.fxGroup)
+			.to({ fov: target }, downMs)
+			.easing(Easing.Cubic.Out)
+			.onUpdate(({ fov }) => apply(fov))
+			.chain(release)
+			.start();
+	}
+
+	resetCamera(duration = 1100): void {
 		this.tweenTo(this.initialPosition.clone(), this.initialTarget.clone(), duration);
 	}
 
 	cancel(): void {
 		this.group.removeAll();
+		this.fxGroup.removeAll();
+		// Snap fov back to baseline so a cancel mid-punch doesn't leave
+		// the camera locked in a narrowed view.
+		this.camera.fov = this.fovBaseline;
+		this.camera.updateProjectionMatrix();
 		this.active = false;
 	}
 }
