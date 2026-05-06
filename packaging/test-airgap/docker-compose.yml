@@ -1,0 +1,52 @@
+# Air-gapped install rehearsal in a single Docker container.
+#
+# The container runs systemd (PID 1) on Ubuntu 24.04 and is attached to an
+# internal-only network — the equivalent of a freshly installed server with
+# its WAN cable unplugged. The .run installer is dropped at /root/.
+#
+# Workflow:
+#   docker compose -f packaging/test-airgap/docker-compose.yml up -d --build
+#   docker exec -it hc-airgap-test bash
+#   # inside:
+#   sudo /root/hypercube-1.0-ubuntu2404.run
+#   # afterwards (from any shell):
+#   docker exec hc-airgap-test curl -fsS http://127.0.0.1:7003/api/health/
+#
+# To tear down:
+#   docker compose -f packaging/test-airgap/docker-compose.yml down -v
+
+name: hc-airgap-test
+
+services:
+  hc-airgap:
+    build:
+      context: ../..
+      dockerfile: packaging/test-airgap/Dockerfile
+    image: hc-airgap-test:latest
+    container_name: hc-airgap-test
+    hostname: hc-airgap
+
+    # systemd + nested docker need full kernel access.
+    privileged: true
+    cgroup: host
+
+    tmpfs:
+      - /run
+      - /run/lock
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+
+    # NOTE: no `ports:` mapping — `internal: true` would block it anyway.
+    # Verify from inside the container after install:
+    #   docker exec hc-airgap-test curl -fsS http://127.0.0.1:7003/api/health/
+
+    networks:
+      - hc-airgap-net
+
+    stop_signal: SIGRTMIN+3
+    stop_grace_period: 10s
+
+networks:
+  hc-airgap-net:
+    driver: bridge
+    internal: true   # blocks outbound — true air-gap simulation
