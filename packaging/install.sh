@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# Air-gapped HyperCube installer for Ubuntu 22.04 LTS (jammy) and 24.04 LTS (noble).
-# The .sh self-extractor unpacks here and auto-detects the host codename.
+# HyperCube air-gapped installer.
+#
+# Docker is a PRE-REQUISITE — the operator (or infra team) installs it via
+# whatever channel suits their distro (apt/dnf/etc). This script is OS-
+# agnostic and only handles HyperCube itself: image load, /opt/hypercube
+# layout, .env, compose up, systemd registration.
 
 set -euo pipefail
 
@@ -16,39 +20,37 @@ err()  { printf "${RED}[x]${NC} %s\n" "$*" >&2; exit 1; }
 INSTALL_DIR="/opt/hypercube"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Codenames whose docker-debs/<codename>/ folder is bundled.
-SUPPORTED_CODENAMES="jammy noble"
-
 # ---------------------------------------------------------------- preflight
 [[ $EUID -eq 0 ]] || err "Run with sudo or as root."
-
-if ! command -v lsb_release >/dev/null 2>&1; then
-    apt-get update -qq && apt-get install -y -qq lsb-release
-fi
-
-codename="$(lsb_release -cs)"
-if ! echo " ${SUPPORTED_CODENAMES} " | grep -q " ${codename} "; then
-    err "Unsupported Ubuntu codename: ${codename} (supported: ${SUPPORTED_CODENAMES})"
-fi
-log "Detected Ubuntu codename: ${codename}"
 
 [[ -f "${SCRIPT_DIR}/images/hypercube-images.tar" ]] \
     || err "Image tarball missing — installer is corrupted."
 
-DEBS_DIR="${SCRIPT_DIR}/docker-debs/${codename}"
+# ---------------------------------------------------------------- docker check
+if ! command -v docker >/dev/null 2>&1; then
+    err "Docker is not installed. Please install Docker first.
 
-# ---------------------------------------------------------------- docker
-if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-    log "Docker already installed: $(docker --version) — skipping bundled .debs"
-else
-    [[ -d "${DEBS_DIR}" ]] && [[ -n "$(ls "${DEBS_DIR}"/*.deb 2>/dev/null)" ]] \
-        || err "Bundled .debs missing for ${codename} (${DEBS_DIR})"
-    log "Installing Docker from bundled .debs (${codename})..."
-    dpkg -i "${DEBS_DIR}"/*.deb \
-        || err "Docker install failed. Check 'dpkg -i' output above."
-    systemctl enable --now docker
-    log "Docker installed: $(docker --version)"
+  Ubuntu/Debian:  sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  RHEL/Rocky:     sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  After install:  sudo systemctl enable --now docker"
 fi
+
+if ! docker info >/dev/null 2>&1; then
+    err "Docker is installed but daemon is not running.
+
+  Start it with:  sudo systemctl start docker
+  Enable on boot: sudo systemctl enable docker"
+fi
+
+if ! docker compose version >/dev/null 2>&1; then
+    err "docker compose plugin missing.
+
+  Ubuntu/Debian:  sudo apt-get install -y docker-compose-plugin
+  RHEL/Rocky:     sudo dnf install -y docker-compose-plugin"
+fi
+
+log "Docker detected: $(docker --version)"
+log "Compose detected: $(docker compose version --short 2>/dev/null || docker compose version)"
 
 # ---------------------------------------------------------------- images
 log "Loading HyperCube images (this can take a minute)..."

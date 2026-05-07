@@ -1,36 +1,27 @@
 #!/usr/bin/env bash
-# Build the air-gapped installer (.sh) bundling Docker engine for both
-# Ubuntu 22.04 LTS (jammy) and 24.04 LTS (noble) so a single .sh can be
-# carried into either type of host.
+# Build the air-gapped HyperCube installer (.sh).
 #
-# Output: dist/hypercube-<VERSION>-ubuntu.sh
+# Output: dist/hypercube-<VERSION>.sh
 #
-# Requires on the build host:
-#   - docker (any version)
-#   - makeself (apt-get install makeself)
+# Docker engine is NOT bundled — the target host must have docker + compose
+# plugin installed first (apt/dnf/whatever the distro provides). This makes
+# the installer fully OS-agnostic: works on Ubuntu, RHEL, Rocky, AlmaLinux,
+# Debian, SUSE, etc., as long as docker is present.
 #
-# Build runs ubuntu:22.04 and ubuntu:24.04 containers in turn to fetch the
-# correct .debs for each codename. The build host's own distro/version
-# does not matter — only docker + makeself do.
+# Build host requires:
+#   - docker (to pull/save HyperCube images)
+#   - makeself (to build the self-extractor)
 
 set -euo pipefail
 
 VERSION="${VERSION:-1.0}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 
-TARGET="ubuntu"
-
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PKG_DIR="${REPO_ROOT}/packaging"
-WORK_DIR="${REPO_ROOT}/build/installer-${VERSION}-${TARGET}"
+WORK_DIR="${REPO_ROOT}/build/installer-${VERSION}"
 DIST_DIR="${REPO_ROOT}/dist"
-RUN_FILE="${DIST_DIR}/hypercube-${VERSION}-${TARGET}.sh"
-
-# (codename, ubuntu image tag) pairs to bundle.
-declare -a CODENAME_PAIRS=(
-    "jammy:22.04"
-    "noble:24.04"
-)
+RUN_FILE="${DIST_DIR}/hypercube-${VERSION}.sh"
 
 IMAGES=(
     "ghcr.io/qkr7287/hypercube-backend:${IMAGE_TAG}"
@@ -50,21 +41,7 @@ require makeself
 
 log "cleaning ${WORK_DIR}"
 rm -rf "${WORK_DIR}"
-mkdir -p "${WORK_DIR}/docker-debs" "${WORK_DIR}/images" "${WORK_DIR}/app"
-
-for pair in "${CODENAME_PAIRS[@]}"; do
-    codename="${pair%%:*}"
-    ubuntu_ver="${pair##*:}"
-    out_dir="${WORK_DIR}/docker-debs/${codename}"
-    mkdir -p "${out_dir}"
-
-    log "downloading Docker .debs for ${codename} inside ubuntu:${ubuntu_ver} container"
-    docker run --rm \
-        -v "${out_dir}:/out" \
-        -v "${PKG_DIR}/download-docker-debs.sh:/download.sh:ro" \
-        -e "UBUNTU_CODENAME=${codename}" \
-        "ubuntu:${ubuntu_ver}" bash /download.sh
-done
+mkdir -p "${WORK_DIR}/images" "${WORK_DIR}/app"
 
 log "ensuring HyperCube images are present (pull only if missing)"
 for img in "${IMAGES[@]}"; do
@@ -94,8 +71,7 @@ log "writing version manifest"
 cat > "${WORK_DIR}/VERSION" <<EOF
 hypercube_version=${VERSION}
 image_tag=${IMAGE_TAG}
-target=${TARGET}
-supported_codenames=jammy noble
+docker_engine=external (operator-installed)
 built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 built_from=$(git -C "${REPO_ROOT}" rev-parse --short HEAD 2>/dev/null || echo unknown)
 EOF
@@ -105,7 +81,7 @@ mkdir -p "${DIST_DIR}"
 makeself --gzip --notemp \
     "${WORK_DIR}" \
     "${RUN_FILE}" \
-    "HyperCube ${VERSION} (Ubuntu 22.04 / 24.04)" \
+    "HyperCube ${VERSION}" \
     ./install.sh
 
 size=$(du -h "${RUN_FILE}" | cut -f1)

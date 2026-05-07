@@ -1,12 +1,14 @@
-# Ubuntu 24.04 LTS + systemd container for air-gap install rehearsal.
-# Build context = repo root, so the bundled .sh is copied straight from dist/.
+# Ubuntu 24.04 LTS + systemd + pre-installed Docker.
+# Used to rehearse the HyperCube installer end-to-end (now that Docker
+# itself is the operator's responsibility, the simulator pre-installs
+# Docker the same way an operator would on a real target host).
 #
 # Usage:
-#   ./packaging/build.sh                                   # produce dist/*.sh
+#   ./packaging/build.sh                              # produce dist/hypercube-X.Y.sh
 #   docker compose -f packaging/test-airgap/docker-compose.yml up -d --build
 #   docker exec -it hc-airgap-test bash
-#   # inside the container:
-#   sudo /root/hypercube-1.0-ubuntu.sh
+#   # inside:
+#   sudo /root/hypercube-1.0.sh
 
 FROM ubuntu:24.04
 
@@ -16,7 +18,16 @@ ENV container=docker
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         systemd systemd-sysv dbus \
-        sudo lsb-release ca-certificates curl iproute2 \
+        sudo lsb-release ca-certificates curl iproute2 gnupg \
+    && install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+        | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
+    && chmod a+r /etc/apt/keyrings/docker.gpg \
+    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu noble stable" \
+        > /etc/apt/sources.list.d/docker.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        docker-ce docker-ce-cli containerd.io docker-compose-plugin \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && rm -f /lib/systemd/system/multi-user.target.wants/* \
@@ -27,20 +38,17 @@ RUN apt-get update && \
              /lib/systemd/system/basic.target.wants/* \
              /lib/systemd/system/anaconda.target.wants/*
 
-# NESTED-CONTAINER WORKAROUND ONLY:
-# Real bare-metal Ubuntu uses overlay2 + native iptables. Inside Docker
-# Desktop's WSL backend, nested overlay/iptables collide with the host's,
-# so we force vfs (slower but works) and skip iptables setup. install.sh
-# itself is unchanged — this only affects the simulator.
+# NESTED-CONTAINER WORKAROUND ONLY (simulator-side, real bare metal uses overlay2):
 RUN mkdir -p /etc/docker && \
     printf '{\n  "storage-driver": "vfs",\n  "iptables": false,\n  "ip6tables": false\n}\n' \
         > /etc/docker/daemon.json
 
-# Drop the .sh installer at /root so the operator can run it after exec.
-COPY dist/hypercube-1.0-ubuntu.sh /root/hypercube-1.0-ubuntu.sh
-RUN chmod +x /root/hypercube-1.0-ubuntu.sh
+# Make sure docker.service is enabled so systemd starts it on container boot.
+RUN systemctl enable docker.service
+
+COPY dist/hypercube-1.0.sh /root/hypercube-1.0.sh
+RUN chmod +x /root/hypercube-1.0.sh
 
 VOLUME ["/sys/fs/cgroup", "/run", "/run/lock", "/tmp"]
 
-# systemd as PID 1
 CMD ["/lib/systemd/systemd"]

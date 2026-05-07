@@ -22,30 +22,58 @@ HyperCube는 **서버를 모니터링하는 도구**입니다. 두 가지 부품
 
 ## 1. 설치 전 — 폐쇄망 서버에 무엇이 있어야 하나요?
 
-**필요한 것 — Ubuntu 22.04 LTS 또는 24.04 LTS.**
-
-인스톨러는 두 OS 모두 지원하고, 호스트 OS를 자동 감지해서 맞는 Docker를 깔아줍니다.
+**필요한 것 — `Docker`가 미리 깔려있어야 합니다.** OS 종류는 거의 무관합니다 (Ubuntu / RHEL / Rocky / AlmaLinux / Debian / SUSE 등 systemd + Docker 지원하는 Linux면 OK).
 
 폐쇄망 서버에 다음이 깔려있을 필요가 **전혀 없습니다**:
-- ❌ Docker (인스톨러가 같이 깔아줍니다)
 - ❌ PostgreSQL (자동)
 - ❌ Redis (자동)
 - ❌ Python / Node.js (자동)
 - ❌ Nginx (자동)
 - ❌ 인터넷 연결 (필요 없습니다)
 
-**확인 명령** (폐쇄망 서버에서):
+**미리 필요한 것**:
+- ✅ **Docker 24.0+ 와 docker compose plugin** (인프라팀 / 운영팀이 사전 설치)
+- ✅ **systemd** (대부분 OS 기본)
+
+### 확인 명령
+
 ```bash
-lsb_release -a
+docker --version
+docker compose version
 ```
 
-다음 둘 중 하나가 나와야 합니다:
+다음과 같이 둘 다 응답이 나와야 합니다:
 ```
-Codename: jammy    ← Ubuntu 22.04 LTS
-Codename: noble    ← Ubuntu 24.04 LTS
+Docker version 28.0.2, build ...
+Docker Compose version v2.x.x
 ```
 
-`focal`(20.04)이나 그 외가 나오면 별도 빌드가 필요하니 개발팀에 문의하세요.
+### Docker가 아직 없으면 — 사전 설치 명령
+
+> 폐쇄망이면 사내 mirror 또는 Docker 공식 패키지를 USB로 미리 가져와서 설치하세요. 이 단계는 인프라팀 책임입니다.
+
+**Ubuntu 22.04 / 24.04 / Debian**:
+```bash
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo systemctl enable --now docker
+```
+
+**RHEL 8/9 / Rocky / AlmaLinux**:
+```bash
+sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo systemctl enable --now docker
+```
+
+**SUSE**:
+```bash
+sudo zypper install -y docker docker-compose
+sudo systemctl enable --now docker
+```
+
+설치 완료 확인:
+```bash
+sudo docker run --rm hello-world    # "Hello from Docker!" 메시지가 나오면 OK
+```
 
 **디스크 여유공간**: 약 **3GB** 필요합니다.
 ```bash
@@ -62,19 +90,19 @@ df -h /
 
 | 파일 | 위치 | 크기 |
 |------|------|-----|
-| **HyperCube backend 인스톨러** | `dist/hypercube-1.0-ubuntu.sh` | 약 490 MB |
+| **HyperCube backend 인스톨러** | `dist/hypercube-1.0.sh` | 약 320 MB |
 | **HyperCube agent 인스톨러** | `HyperCube-agent/dist-installer/hypercube-agent-installer-1.0.0.sh` | 약 169 MB |
 
 가이드 자체(이 문서)도 같이 가져가시면 폐쇄망에서 참고할 수 있어 좋습니다:
 - `docs/runbooks/airgap-install.md`
 
-전부 합쳐도 약 660MB라 USB 1GB짜리도 충분합니다.
+전부 합쳐도 약 490MB라 USB 1GB짜리도 충분합니다.
 
-> 💡 backend 인스톨러는 **22.04와 24.04 둘 다 지원하는 단일 파일**입니다. 호스트 OS는 인스톨러가 자동 감지하므로 OS 버전 확인 후 따로 받을 필요 없어요.
+> 💡 backend 인스톨러는 **OS 무관 단일 파일**입니다 (Docker가 사전 설치되어 있다는 전제 하에). Ubuntu / RHEL / Rocky / AlmaLinux / Debian / SUSE 등 systemd + Docker 지원 Linux면 동일하게 동작.
 
 **무결성 확인 (선택사항)**: 파일이 옮겨지는 도중 깨졌는지 확인하고 싶으시면 빌드 머신 PowerShell에서:
 ```powershell
-Get-FileHash "dist\hypercube-1.0-ubuntu.sh" -Algorithm SHA256
+Get-FileHash "dist\hypercube-1.0.sh" -Algorithm SHA256
 ```
 출력된 해시값을 메모해서 같이 USB에 넣고, 폐쇄망에서 비교하면 됩니다 (자세한 건 §10 참고).
 
@@ -88,20 +116,20 @@ Get-FileHash "dist\hypercube-1.0-ubuntu.sh" -Algorithm SHA256
 
 USB를 서버에 꽂고, 다음 폴더로 복사하세요. 예를 들어 root 사용자 홈 디렉터리:
 ```bash
-sudo cp /media/usb/hypercube-1.0-ubuntu.sh /root/
+sudo cp /media/usb/hypercube-1.0.sh /root/
 cd /root
-ls -lh hypercube-1.0-ubuntu.sh
+ls -lh hypercube-1.0.sh
 ```
 
 다음과 같이 나와야 합니다:
 ```
--rw-r--r-- 1 root root 405M ... hypercube-1.0-ubuntu.sh
+-rw-r--r-- 1 root root 405M ... hypercube-1.0.sh
 ```
 
 ### 3-2단계. 실행 권한 주기
 
 ```bash
-sudo chmod +x hypercube-1.0-ubuntu.sh
+sudo chmod +x hypercube-1.0.sh
 ```
 
 (아무 출력도 없으면 정상입니다. 권한이 부여된 거예요.)
@@ -109,7 +137,7 @@ sudo chmod +x hypercube-1.0-ubuntu.sh
 ### 3-3단계. 인스톨러 실행
 
 ```bash
-sudo ./hypercube-1.0-ubuntu.sh
+sudo ./hypercube-1.0.sh
 ```
 
 먼저 압축이 풀립니다 (수십 초):
@@ -148,9 +176,8 @@ Uncompressing HyperCube 1.0 (Ubuntu 24.04) 100%
 이제 인스톨러가 알아서 다 합니다. 화면에 다음과 같은 메시지들이 차례로 나옵니다:
 
 ```
-[+] Installing Docker from bundled .debs...
-    (Docker가 자동 설치됩니다)
-[+] Docker installed: Docker version 29.4.2
+[+] Docker detected: Docker version 28.0.2
+[+] Compose detected: v2.x.x
 [+] Loading HyperCube images (this can take a minute)...
     Loaded image: ghcr.io/qkr7287/hypercube-backend:latest
     Loaded image: ghcr.io/qkr7287/hypercube-nginx:latest
@@ -486,9 +513,9 @@ cat /root/hypercube-backup-20260506.sql | \
 개발팀에서 새 `.sh` 파일을 받으셨다면:
 
 ```bash
-sudo cp /media/usb/hypercube-1.1-ubuntu.sh /root/
-sudo chmod +x /root/hypercube-1.1-ubuntu.sh
-sudo /root/hypercube-1.1-ubuntu.sh
+sudo cp /media/usb/hypercube-1.1.sh /root/
+sudo chmod +x /root/hypercube-1.1.sh
+sudo /root/hypercube-1.1.sh
 ```
 
 기존 설정(`.env`)과 데이터베이스는 그대로 보존됩니다. 컨테이너 이미지만 새 버전으로 교체되고, DB 마이그레이션은 자동으로 처리됩니다.
@@ -536,43 +563,53 @@ sudo docker rmi hypercube-agent:1.0.0
 #### 증상: `Permission denied`
 
 ```
-bash: ./hypercube-1.0-ubuntu.sh: Permission denied
+bash: ./hypercube-1.0.sh: Permission denied
 ```
 
 **원인**: 실행 권한이 없습니다.
 **해결**:
 ```bash
-sudo chmod +x hypercube-1.0-ubuntu.sh
-sudo ./hypercube-1.0-ubuntu.sh
+sudo chmod +x hypercube-1.0.sh
+sudo ./hypercube-1.0.sh
 ```
 
-#### 증상: `Unsupported Ubuntu codename: <name>`
+#### 증상: `Docker is not installed`
 
-**원인**: 서버 OS가 22.04(jammy) / 24.04(noble) 둘 다 아닙니다.
-**확인**:
+**원인**: 서버에 Docker가 깔려있지 않습니다.
+**해결**: §1의 "Docker가 아직 없으면 — 사전 설치 명령" 절차로 Docker 먼저 설치 후 재시도. OS 종류별로 명령이 다릅니다:
+
 ```bash
-lsb_release -cs
+# Ubuntu / Debian
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+
+# RHEL / Rocky / AlmaLinux
+sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+
+# 그 후 공통
+sudo systemctl enable --now docker
+sudo docker run --rm hello-world      # 동작 확인
 ```
 
-- `focal` → Ubuntu 20.04 (지원 안 됨, 별도 빌드 필요)
-- `jammy` → 22.04 ✅ 정상 동작해야 함
-- `noble` → 24.04 ✅ 정상 동작해야 함
-- 그 외 → 개발팀 문의
+#### 증상: `Docker is installed but daemon is not running`
 
-22.04(jammy)인데도 거부됐으면 → §11 로그 모아서 보내기로 가세요.
-
-### 10-2. Docker 설치 단계에서 실패
-
-#### 증상: `dpkg: error processing package ...`
-
-**원인**: 이미 다른 방식(snap, apt)으로 Docker가 깔려있어서 충돌.
-**해결**: 기존 Docker 제거 후 재시도:
 ```bash
-sudo snap remove docker 2>/dev/null
-sudo apt-get remove -y docker docker-engine docker.io containerd runc 2>/dev/null
-sudo dpkg --configure -a
-sudo /root/hypercube-1.0-ubuntu.sh
+sudo systemctl start docker
+sudo systemctl enable docker          # 부팅 자동시작
 ```
+
+#### 증상: `docker compose plugin missing`
+
+```bash
+# Ubuntu / Debian
+sudo apt-get install -y docker-compose-plugin
+
+# RHEL / Rocky
+sudo dnf install -y docker-compose-plugin
+```
+
+옛 docker-compose v1(`docker-compose` 하이픈 명령)은 지원하지 않습니다. 반드시 v2 plugin(`docker compose` 띄어쓰기) 필요.
+
+### 10-2. Docker 자체 동작 문제
 
 #### 증상: `failed to start docker.service`
 
@@ -895,7 +932,7 @@ sudo cat /opt/hypercube/.env | grep DB_PASSWORD
 
 ### Q8. 22.04와 24.04를 분리해서 따로 받아야 하나요?
 
-**아닙니다.** 인스톨러 한 파일(`hypercube-X.Y-ubuntu.sh`)이 22.04(jammy)와 24.04(noble) **둘 다 지원**합니다. 호스트 OS는 인스톨러가 자동 감지해서 맞는 Docker `.deb`을 사용해요.
+**아닙니다.** 인스톨러 한 파일(`hypercube-X.Y.sh`)이 22.04(jammy)와 24.04(noble) **둘 다 지원**합니다. 호스트 OS는 인스톨러가 자동 감지해서 맞는 Docker `.deb`을 사용해요.
 
 20.04(focal) 같이 더 오래된 버전은 별도 빌드가 필요하니 개발팀 문의.
 
@@ -930,11 +967,11 @@ sudo cat /opt/hypercube/.env | grep DB_PASSWORD
 새로운 `.sh` 파일을 만들 때 사용 (이 문서를 USB로 가져가는 운영자용 아닙니다):
 
 - [ ] `./packaging/build.sh` 종료 코드 0
-- [ ] `dist/hypercube-X.Y-ubuntu.sh` 존재
+- [ ] `dist/hypercube-X.Y.sh` 존재
 - [ ] `--check`로 무결성 OK 확인
-- [ ] 크기 450~550MB 범위 (jammy + noble .deb 둘 다 포함이라 단일 codename 빌드보다 큼)
-- [ ] `packaging/test-airgap` 시뮬레이터에서 검증 완료
-- [ ] 깨끗한 Ubuntu 22.04 또는 24.04 VM에서 1회 설치 검증 (가능하면)
+- [ ] 크기 ~320MB (Docker 엔진 미포함, 이미지만)
+- [ ] `packaging/test-airgap` 시뮬레이터에서 검증 완료 (Docker 사전 설치된 컨테이너)
+- [ ] 깨끗한 Ubuntu/RHEL VM에서 1회 설치 검증 (가능하면 — Docker 사전 설치 후)
 - [ ] 헬스체크 200 OK
 - [ ] `sha256sum`으로 해시 기록 (USB에 같이 넣음)
 
@@ -943,11 +980,9 @@ sudo cat /opt/hypercube/.env | grep DB_PASSWORD
 ./packaging/build.sh
 ```
 
-(환경변수 따로 줄 필요 없음. 22.04 + 24.04 둘 다 자동 번들.)
-
 산출물 1개:
 ```
-dist/hypercube-X.Y-ubuntu.sh    ← 22.04 / 24.04 둘 다 지원
+dist/hypercube-X.Y.sh    ← OS 무관 (Docker만 있으면 동작)
 ```
 
 운영자에게 줄 때는 OS 버전에 맞는 `.sh` 한 개만 USB에 넣으면 됩니다.
