@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Air-gapped HyperCube installer for Ubuntu 24.04 LTS.
-# Executed automatically when the .run self-extractor finishes unpacking.
+# Air-gapped HyperCube installer for Ubuntu 22.04 LTS (jammy) and 24.04 LTS (noble).
+# The .sh self-extractor unpacks here and auto-detects the host codename.
 
 set -euo pipefail
 
@@ -16,9 +16,8 @@ err()  { printf "${RED}[x]${NC} %s\n" "$*" >&2; exit 1; }
 INSTALL_DIR="/opt/hypercube"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# build.sh substitutes these via sed at build time.
-EXPECTED_CODENAME="__CODENAME__"
-EXPECTED_VERSION="__VERSION__"
+# Codenames whose docker-debs/<codename>/ folder is bundled.
+SUPPORTED_CODENAMES="jammy noble"
 
 # ---------------------------------------------------------------- preflight
 [[ $EUID -eq 0 ]] || err "Run with sudo or as root."
@@ -28,18 +27,24 @@ if ! command -v lsb_release >/dev/null 2>&1; then
 fi
 
 codename="$(lsb_release -cs)"
-[[ "${codename}" == "${EXPECTED_CODENAME}" ]] \
-    || err "This installer targets Ubuntu ${EXPECTED_VERSION} (${EXPECTED_CODENAME}). Detected: ${codename}"
+if ! echo " ${SUPPORTED_CODENAMES} " | grep -q " ${codename} "; then
+    err "Unsupported Ubuntu codename: ${codename} (supported: ${SUPPORTED_CODENAMES})"
+fi
+log "Detected Ubuntu codename: ${codename}"
 
 [[ -f "${SCRIPT_DIR}/images/hypercube-images.tar" ]] \
     || err "Image tarball missing — installer is corrupted."
 
+DEBS_DIR="${SCRIPT_DIR}/docker-debs/${codename}"
+
 # ---------------------------------------------------------------- docker
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-    log "Docker already installed: $(docker --version)"
+    log "Docker already installed: $(docker --version) — skipping bundled .debs"
 else
-    log "Installing Docker from bundled .debs..."
-    dpkg -i "${SCRIPT_DIR}"/docker-debs/*.deb \
+    [[ -d "${DEBS_DIR}" ]] && [[ -n "$(ls "${DEBS_DIR}"/*.deb 2>/dev/null)" ]] \
+        || err "Bundled .debs missing for ${codename} (${DEBS_DIR})"
+    log "Installing Docker from bundled .debs (${codename})..."
+    dpkg -i "${DEBS_DIR}"/*.deb \
         || err "Docker install failed. Check 'dpkg -i' output above."
     systemctl enable --now docker
     log "Docker installed: $(docker --version)"

@@ -22,7 +22,9 @@ HyperCube는 **서버를 모니터링하는 도구**입니다. 두 가지 부품
 
 ## 1. 설치 전 — 폐쇄망 서버에 무엇이 있어야 하나요?
 
-**필요한 것 — Ubuntu 24.04 LTS만 있으면 됩니다.**
+**필요한 것 — Ubuntu 22.04 LTS 또는 24.04 LTS.**
+
+인스톨러는 두 OS 모두 지원하고, 호스트 OS를 자동 감지해서 맞는 Docker를 깔아줍니다.
 
 폐쇄망 서버에 다음이 깔려있을 필요가 **전혀 없습니다**:
 - ❌ Docker (인스톨러가 같이 깔아줍니다)
@@ -37,15 +39,13 @@ HyperCube는 **서버를 모니터링하는 도구**입니다. 두 가지 부품
 lsb_release -a
 ```
 
-다음과 같이 나와야 합니다:
+다음 둘 중 하나가 나와야 합니다:
 ```
-Distributor ID: Ubuntu
-Description:    Ubuntu 24.04.4 LTS
-Release:        24.04
-Codename:       noble
+Codename: jammy    ← Ubuntu 22.04 LTS
+Codename: noble    ← Ubuntu 24.04 LTS
 ```
 
-`24.04`나 `noble`이 안 보이면 다른 OS이니 개발팀에 문의하세요.
+`focal`(20.04)이나 그 외가 나오면 별도 빌드가 필요하니 개발팀에 문의하세요.
 
 **디스크 여유공간**: 약 **3GB** 필요합니다.
 ```bash
@@ -62,17 +62,19 @@ df -h /
 
 | 파일 | 위치 | 크기 |
 |------|------|-----|
-| **HyperCube backend 인스톨러** | `dist/hypercube-1.0-ubuntu2404.sh` | 약 405 MB |
+| **HyperCube backend 인스톨러** | `dist/hypercube-1.0-ubuntu.sh` | 약 490 MB |
 | **HyperCube agent 인스톨러** | `HyperCube-agent/dist-installer/hypercube-agent-installer-1.0.0.sh` | 약 169 MB |
 
 가이드 자체(이 문서)도 같이 가져가시면 폐쇄망에서 참고할 수 있어 좋습니다:
 - `docs/runbooks/airgap-install.md`
 
-전부 합쳐도 약 575MB라 USB 1GB짜리도 충분합니다.
+전부 합쳐도 약 660MB라 USB 1GB짜리도 충분합니다.
+
+> 💡 backend 인스톨러는 **22.04와 24.04 둘 다 지원하는 단일 파일**입니다. 호스트 OS는 인스톨러가 자동 감지하므로 OS 버전 확인 후 따로 받을 필요 없어요.
 
 **무결성 확인 (선택사항)**: 파일이 옮겨지는 도중 깨졌는지 확인하고 싶으시면 빌드 머신 PowerShell에서:
 ```powershell
-Get-FileHash "dist\hypercube-1.0-ubuntu2404.sh" -Algorithm SHA256
+Get-FileHash "dist\hypercube-1.0-ubuntu.sh" -Algorithm SHA256
 ```
 출력된 해시값을 메모해서 같이 USB에 넣고, 폐쇄망에서 비교하면 됩니다 (자세한 건 §10 참고).
 
@@ -86,20 +88,20 @@ Get-FileHash "dist\hypercube-1.0-ubuntu2404.sh" -Algorithm SHA256
 
 USB를 서버에 꽂고, 다음 폴더로 복사하세요. 예를 들어 root 사용자 홈 디렉터리:
 ```bash
-sudo cp /media/usb/hypercube-1.0-ubuntu2404.sh /root/
+sudo cp /media/usb/hypercube-1.0-ubuntu.sh /root/
 cd /root
-ls -lh hypercube-1.0-ubuntu2404.sh
+ls -lh hypercube-1.0-ubuntu.sh
 ```
 
 다음과 같이 나와야 합니다:
 ```
--rw-r--r-- 1 root root 405M ... hypercube-1.0-ubuntu2404.sh
+-rw-r--r-- 1 root root 405M ... hypercube-1.0-ubuntu.sh
 ```
 
 ### 3-2단계. 실행 권한 주기
 
 ```bash
-sudo chmod +x hypercube-1.0-ubuntu2404.sh
+sudo chmod +x hypercube-1.0-ubuntu.sh
 ```
 
 (아무 출력도 없으면 정상입니다. 권한이 부여된 거예요.)
@@ -107,7 +109,7 @@ sudo chmod +x hypercube-1.0-ubuntu2404.sh
 ### 3-3단계. 인스톨러 실행
 
 ```bash
-sudo ./hypercube-1.0-ubuntu2404.sh
+sudo ./hypercube-1.0-ubuntu.sh
 ```
 
 먼저 압축이 풀립니다 (수십 초):
@@ -484,9 +486,9 @@ cat /root/hypercube-backup-20260506.sql | \
 개발팀에서 새 `.sh` 파일을 받으셨다면:
 
 ```bash
-sudo cp /media/usb/hypercube-1.1-ubuntu2404.sh /root/
-sudo chmod +x /root/hypercube-1.1-ubuntu2404.sh
-sudo /root/hypercube-1.1-ubuntu2404.sh
+sudo cp /media/usb/hypercube-1.1-ubuntu.sh /root/
+sudo chmod +x /root/hypercube-1.1-ubuntu.sh
+sudo /root/hypercube-1.1-ubuntu.sh
 ```
 
 기존 설정(`.env`)과 데이터베이스는 그대로 보존됩니다. 컨테이너 이미지만 새 버전으로 교체되고, DB 마이그레이션은 자동으로 처리됩니다.
@@ -534,32 +536,30 @@ sudo docker rmi hypercube-agent:1.0.0
 #### 증상: `Permission denied`
 
 ```
-bash: ./hypercube-1.0-ubuntu2404.sh: Permission denied
+bash: ./hypercube-1.0-ubuntu.sh: Permission denied
 ```
 
 **원인**: 실행 권한이 없습니다.
 **해결**:
 ```bash
-sudo chmod +x hypercube-1.0-ubuntu2404.sh
-sudo ./hypercube-1.0-ubuntu2404.sh
+sudo chmod +x hypercube-1.0-ubuntu.sh
+sudo ./hypercube-1.0-ubuntu.sh
 ```
 
-#### 증상: `This installer targets Ubuntu 24.04 LTS only`
+#### 증상: `Unsupported Ubuntu codename: <name>`
 
-**원인**: 서버가 24.04 LTS가 아닙니다.
+**원인**: 서버 OS가 22.04(jammy) / 24.04(noble) 둘 다 아닙니다.
 **확인**:
 ```bash
-lsb_release -a
+lsb_release -cs
 ```
 
-22.04 LTS면 22.04용 `.sh` 파일이 따로 필요합니다. 개발팀에 요청하세요.
+- `focal` → Ubuntu 20.04 (지원 안 됨, 별도 빌드 필요)
+- `jammy` → 22.04 ✅ 정상 동작해야 함
+- `noble` → 24.04 ✅ 정상 동작해야 함
+- 그 외 → 개발팀 문의
 
-#### 증상: `Ubuntu 24.04 LTS only` 에러인데 진짜 24.04인 경우
-
-```bash
-cat /etc/os-release | head -5
-```
-`VERSION_ID="24.04"`로 나오는데도 인스톨러가 거부하면 → **§11. 로그 모아서 보내기**로 가서 개발팀에 보고하세요.
+22.04(jammy)인데도 거부됐으면 → §11 로그 모아서 보내기로 가세요.
 
 ### 10-2. Docker 설치 단계에서 실패
 
@@ -571,7 +571,7 @@ cat /etc/os-release | head -5
 sudo snap remove docker 2>/dev/null
 sudo apt-get remove -y docker docker-engine docker.io containerd runc 2>/dev/null
 sudo dpkg --configure -a
-sudo /root/hypercube-1.0-ubuntu2404.sh
+sudo /root/hypercube-1.0-ubuntu.sh
 ```
 
 #### 증상: `failed to start docker.service`
@@ -893,9 +893,11 @@ sudo cat /opt/hypercube/.env | grep DB_PASSWORD
 
 기존 설정과 데이터는 보존되고, 컨테이너만 재시작됩니다 (= 업그레이드와 같은 동작). 안전합니다.
 
-### Q8. 폐쇄망 서버 OS가 22.04인데 24.04용 .sh 실행했더니 거부했어요
+### Q8. 22.04와 24.04를 분리해서 따로 받아야 하나요?
 
-OS에 정확히 맞는 `.sh` 파일이 필요합니다. 개발팀에 22.04용을 따로 요청하세요.
+**아닙니다.** 인스톨러 한 파일(`hypercube-X.Y-ubuntu.sh`)이 22.04(jammy)와 24.04(noble) **둘 다 지원**합니다. 호스트 OS는 인스톨러가 자동 감지해서 맞는 Docker `.deb`을 사용해요.
+
+20.04(focal) 같이 더 오래된 버전은 별도 빌드가 필요하니 개발팀 문의.
 
 ---
 
@@ -928,24 +930,24 @@ OS에 정확히 맞는 `.sh` 파일이 필요합니다. 개발팀에 22.04용을
 새로운 `.sh` 파일을 만들 때 사용 (이 문서를 USB로 가져가는 운영자용 아닙니다):
 
 - [ ] `./packaging/build.sh` 종료 코드 0
-- [ ] `dist/hypercube-X.Y-ubuntu2404.sh` 존재
+- [ ] `dist/hypercube-X.Y-ubuntu.sh` 존재
 - [ ] `--check`로 무결성 OK 확인
-- [ ] 크기 350~500MB 범위
+- [ ] 크기 450~550MB 범위 (jammy + noble .deb 둘 다 포함이라 단일 codename 빌드보다 큼)
 - [ ] `packaging/test-airgap` 시뮬레이터에서 검증 완료
-- [ ] 깨끗한 Ubuntu 24.04 VM에서 1회 설치 검증 (가능하면)
+- [ ] 깨끗한 Ubuntu 22.04 또는 24.04 VM에서 1회 설치 검증 (가능하면)
 - [ ] 헬스체크 200 OK
 - [ ] `sha256sum`으로 해시 기록 (USB에 같이 넣음)
 
 빌드 명령:
 ```bash
-./packaging/build.sh                          # 24.04 (default)
-UBUNTU_VERSION=22.04 ./packaging/build.sh     # 22.04
+./packaging/build.sh
 ```
 
-산출물:
+(환경변수 따로 줄 필요 없음. 22.04 + 24.04 둘 다 자동 번들.)
+
+산출물 1개:
 ```
-dist/hypercube-1.0-ubuntu2404.sh
-dist/hypercube-1.0-ubuntu2204.sh
+dist/hypercube-X.Y-ubuntu.sh    ← 22.04 / 24.04 둘 다 지원
 ```
 
 운영자에게 줄 때는 OS 버전에 맞는 `.sh` 한 개만 USB에 넣으면 됩니다.

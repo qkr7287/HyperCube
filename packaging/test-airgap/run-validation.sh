@@ -40,7 +40,7 @@ chmod 600 /opt/hypercube/.env
 
 echo "==> Running installer (logs -> /tmp/airgap-install.log inside container)"
 docker exec "${CONTAINER}" bash -c '
-/root/hypercube-1.0-ubuntu2404.sh 2>&1 | tee /tmp/airgap-install.log
+/root/hypercube-1.0-ubuntu.sh 2>&1 | tee /tmp/airgap-install.log
 '
 INSTALL_EXIT=$?
 

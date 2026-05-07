@@ -6,7 +6,7 @@
 #   docker compose -f packaging/test-airgap/docker-compose.yml up -d --build
 #   docker exec -it hc-airgap-test bash
 #   # inside the container:
-#   sudo /root/hypercube-1.0-ubuntu2404.sh
+#   sudo /root/hypercube-1.0-ubuntu.sh
 
 FROM ubuntu:24.04
 
@@ -37,8 +37,8 @@ RUN mkdir -p /etc/docker && \
         > /etc/docker/daemon.json
 
 # Drop the .sh installer at /root so the operator can run it after exec.
-COPY dist/hypercube-1.0-ubuntu2404.sh /root/hypercube-1.0-ubuntu2404.sh
-RUN chmod +x /root/hypercube-1.0-ubuntu2404.sh
+COPY dist/hypercube-1.0-ubuntu.sh /root/hypercube-1.0-ubuntu.sh
+RUN chmod +x /root/hypercube-1.0-ubuntu.sh
 
 VOLUME ["/sys/fs/cgroup", "/run", "/run/lock", "/tmp"]
 
