@@ -22,6 +22,8 @@
 		height = '100%',
 		showLegend,
 		ariaLabel = '',
+		group,
+		enableZoom = false,
 	}: {
 		labels?: string[];
 		series?: LineSeries[];
@@ -29,9 +31,13 @@
 		height?: string | number;
 		showLegend?: boolean;
 		ariaLabel?: string;
+		// 같은 group 문자열을 가진 차트끼리 cursor / tooltip 동기화 (axisPointer link)
+		group?: string;
+		// 마우스 휠 / 드래그로 x축 zoom (DataZoomInsideComponent 필요)
+		enableZoom?: boolean;
 	} = $props();
 
-	let option = $derived<EChartsOption>(buildOption(labels, series, yFormat, showLegend));
+	let option = $derived<EChartsOption>(buildOption(labels, series, yFormat, showLegend, enableZoom));
 
 	function percentDecimals(seriesList: LineSeries[]): number {
 		// 모두 0 이거나 작은 값이면 axis 가 "0%" 로 뭉개지지 않게 소수점 조정.
@@ -60,6 +66,7 @@
 		seriesList: LineSeries[],
 		fmt: ValueFormat,
 		legend: boolean | undefined,
+		zoom: boolean,
 	): EChartsOption {
 		const decimals = percentDecimals(seriesList);
 		const showLegendResolved = legend ?? seriesList.length > 1;
@@ -75,6 +82,14 @@
 				bottom: 24,
 				containLabel: true,
 			},
+			// 같은 group 의 차트 간 axisPointer/tooltip 동기화는 EChartBase
+			// 의 echarts.connect 가 처리. 여기선 snap 만 켜서 가까운 점에 흡착.
+			axisPointer: { snap: true },
+			dataZoom: zoom
+				? [
+						{ type: 'inside', xAxisIndex: 0, throttle: 50, zoomLock: false },
+					]
+				: undefined,
 			tooltip: {
 				appendToBody: true,
 				trigger: 'axis',
@@ -150,7 +165,7 @@
 </script>
 
 <div class="line-host" style:height={typeof height === 'number' ? `${height}px` : height}>
-	<EChartBase {option} {ariaLabel} {height} />
+	<EChartBase {option} {ariaLabel} {height} {group} />
 </div>
 
 <style>

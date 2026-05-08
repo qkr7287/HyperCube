@@ -23,6 +23,8 @@ import {
 	TitleComponent,
 	MarkLineComponent,
 	MarkAreaComponent,
+	DataZoomComponent,
+	DataZoomInsideComponent,
 } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 
@@ -39,6 +41,8 @@ echarts.use([
 	TitleComponent,
 	MarkLineComponent,
 	MarkAreaComponent,
+	DataZoomComponent,
+	DataZoomInsideComponent,
 	CanvasRenderer,
 ]);
 

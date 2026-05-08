@@ -23,6 +23,7 @@
 		height = '100%',
 		width = '100%',
 		ariaLabel = '',
+		group,
 	}: {
 		option: EChartsOption;
 		notMerge?: boolean;
@@ -31,6 +32,9 @@
 		height?: string | number;
 		width?: string | number;
 		ariaLabel?: string;
+		// 같은 group 문자열을 가진 차트들끼리 axisPointer / tooltip 이 동기화된다.
+		// echarts.connect(group) 으로 horizontal cursor sync.
+		group?: string;
 	} = $props();
 
 	let host: HTMLDivElement | undefined = $state(undefined);
@@ -69,6 +73,10 @@
 			if (r.width <= 0 || r.height <= 0) return false;
 			if (!inst) {
 				inst = echarts.init(host, undefined, { renderer: 'canvas', useDirtyRect: true });
+				if (group) {
+					inst.group = group;
+					echarts.connect(group);
+				}
 				applyOption(option);
 			}
 			return true;

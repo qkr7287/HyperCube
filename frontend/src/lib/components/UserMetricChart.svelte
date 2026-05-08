@@ -13,15 +13,19 @@
 		labels = [],
 		datasets = [],
 		yFormat = 'percent' as ValueFormat,
+		group,
+		enableZoom = false,
 	}: {
 		labels?: string[];
 		datasets?: Series[];
 		yFormat?: ValueFormat;
+		group?: string;
+		enableZoom?: boolean;
 	} = $props();
 </script>
 
 <div class="chart-shell">
-	<EChartLine {labels} series={datasets} {yFormat} height={240} />
+	<EChartLine {labels} series={datasets} {yFormat} height={240} {group} {enableZoom} />
 </div>
 
 <style>

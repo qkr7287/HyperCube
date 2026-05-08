@@ -122,6 +122,7 @@
 	let errorMsg = $state('');
 	let selectedRange = $state<(typeof RANGE_OPTIONS)[number]['key']>('1h');
 	let refreshTimer: ReturnType<typeof setInterval> | null = null;
+	let paused = $state(false);
 
 	let containerId = $derived($page.params.containerId);
 
@@ -224,8 +225,48 @@
 		loadDashboard();
 	}
 
+	function avgOf(values: number[]): number {
+		const valid = values.filter((v) => Number.isFinite(v));
+		if (valid.length === 0) return 0;
+		let sum = 0;
+		for (const v of valid) sum += v;
+		return sum / valid.length;
+	}
+
+	function peakOf(values: number[]): number {
+		let m = 0;
+		for (const v of values) if (Number.isFinite(v) && v > m) m = v;
+		return m;
+	}
+
+	function deltaOf(values: number[]): number {
+		// 누적 metric (network/disk) 의 구간 증가량 = last - first.
+		if (values.length < 2) return 0;
+		const first = values[0] ?? 0;
+		const last = values[values.length - 1] ?? 0;
+		return Math.max(0, last - first);
+	}
+
 	let envEntries = $derived(Object.entries(container?.custom_env ?? {}));
 	let portMappings = $derived(container?.custom_ports ?? []);
+	let rangeLabel = $derived(RANGE_OPTIONS.find((o) => o.key === selectedRange)?.label ?? '');
+	let chartGroup = $derived(`hc-container-${containerId}`);
+
+	let cpuAvg = $derived(avgOf(history.map((r) => r.cpu_usage)));
+	let cpuPeak = $derived(peakOf(history.map((r) => r.cpu_usage)));
+	let memAvgPct = $derived(avgOf(history.map((r) => r.memory_percent)));
+	let memPeakPct = $derived(peakOf(history.map((r) => r.memory_percent)));
+	let netRxDelta = $derived(deltaOf(history.map((r) => r.network_rx)));
+	let netTxDelta = $derived(deltaOf(history.map((r) => r.network_tx)));
+	let diskReadDelta = $derived(deltaOf(history.map((r) => r.disk_read)));
+	let diskWriteDelta = $derived(deltaOf(history.map((r) => r.disk_write)));
+	let gpuValid = $derived(
+		history
+			.filter((r) => typeof r.gpu_usage === 'number')
+			.map((r) => r.gpu_usage as number),
+	);
+	let gpuAvg = $derived(avgOf(gpuValid));
+	let gpuPeak = $derived(peakOf(gpuValid));
 	let historyLabels = $derived(
 		history.map((row) =>
 			new Date(row.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -293,7 +334,9 @@
 
 	onMount(() => {
 		loadDashboard({ withDetail: true });
-		refreshTimer = setInterval(() => loadDashboard(), 15000);
+		refreshTimer = setInterval(() => {
+			if (!paused) loadDashboard();
+		}, 15000);
 		return () => {
 			if (refreshTimer) clearInterval(refreshTimer);
 		};
@@ -328,6 +371,14 @@
 				</div>
 			</div>
 			<div class="hero-actions">
+				<button
+					class="pause-btn"
+					class:active={paused}
+					onclick={() => (paused = !paused)}
+					title={paused ? '자동 새로고침 재개' : '자동 새로고침 일시정지'}
+				>
+					{paused ? '▶ 재개' : '❚❚ 일시정지'}
+				</button>
 				<button class="refresh-btn" onclick={() => loadDashboard({ withDetail: true })} disabled={refreshing}>
 					{refreshing ? '새로고침 중...' : '지금 새로고침'}
 				</button>
@@ -345,21 +396,25 @@
 				<span class="stat-label">CPU 사용률<InfoTooltip text={cpuHelp} placement="bottom-start" /></span>
 				<strong>{formatPercent(currentMetrics?.cpu?.usage, 2)}</strong>
 				<span class="stat-meta">최근 샘플 기준</span>
+				<span class="stat-sub">{rangeLabel} 평균 {formatPercent(cpuAvg, 1)} · 피크 {formatPercent(cpuPeak, 1)}</span>
 			</div>
 			<div class="stat-card">
 				<span class="stat-label">메모리 사용량<InfoTooltip text={memoryHelp} placement="bottom-start" /></span>
 				<strong>{formatMemoryUsage(currentMetrics?.memory?.usage, currentMetrics?.memory?.limit)}</strong>
 				<span class="stat-meta">전체 대비 {formatPercent(currentMetrics?.memory?.percent, 2)} 사용 중</span>
+				<span class="stat-sub">{rangeLabel} 평균 {formatPercent(memAvgPct, 1)} · 피크 {formatPercent(memPeakPct, 1)}</span>
 			</div>
 			<div class="stat-card">
 				<span class="stat-label">네트워크 누적<InfoTooltip text={networkHelp} placement="bottom-start" /></span>
 				<strong>{formatBytesValue(currentMetrics?.network?.rx)} / {formatBytesValue(currentMetrics?.network?.tx)}</strong>
 				<span class="stat-meta">RX(수신) / TX(송신) 누적</span>
+				<span class="stat-sub">{rangeLabel} 증가 ↓ {formatBytesValue(netRxDelta)} · ↑ {formatBytesValue(netTxDelta)}</span>
 			</div>
 			<div class="stat-card">
 				<span class="stat-label">디스크 누적<InfoTooltip text={diskHelp} placement="bottom-start" /></span>
 				<strong>{formatBytesValue(currentMetrics?.disk?.read)} / {formatBytesValue(currentMetrics?.disk?.write)}</strong>
 				<span class="stat-meta">Read(읽기) / Write(쓰기) 누적</span>
+				<span class="stat-sub">{rangeLabel} 증가 R {formatBytesValue(diskReadDelta)} · W {formatBytesValue(diskWriteDelta)}</span>
 			</div>
 		</section>
 
@@ -383,42 +438,43 @@
 				</div>
 			</div>
 
+			<p class="chart-hint">차트 위에 마우스를 올리면 모든 차트의 같은 시각이 함께 표시됩니다. 마우스 휠 / 드래그로 구간 확대 가능.</p>
 			<div class="chart-grid">
 				<div class="chart-card">
 					<div class="chart-head">
 						<h3>CPU 사용률</h3>
 						<span>현재 {formatPercent(currentMetrics?.cpu?.usage, 2)}</span>
 					</div>
-					<UserMetricChart labels={historyLabels} datasets={cpuDatasets} yFormat="percent" />
+					<UserMetricChart labels={historyLabels} datasets={cpuDatasets} yFormat="percent" group={chartGroup} enableZoom />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
 						<h3>메모리 사용률</h3>
 						<span>현재 {formatPercent(currentMetrics?.memory?.percent, 2)}</span>
 					</div>
-					<UserMetricChart labels={historyLabels} datasets={memoryDatasets} yFormat="percent" />
+					<UserMetricChart labels={historyLabels} datasets={memoryDatasets} yFormat="percent" group={chartGroup} enableZoom />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
 						<h3>네트워크 트래픽</h3>
 						<span>수신 {formatBytesValue(currentMetrics?.network?.rx)} · 송신 {formatBytesValue(currentMetrics?.network?.tx)}</span>
 					</div>
-					<UserMetricChart labels={historyLabels} datasets={networkDatasets} yFormat="bytes" />
+					<UserMetricChart labels={historyLabels} datasets={networkDatasets} yFormat="bytes" group={chartGroup} enableZoom />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
 						<h3>디스크 처리량</h3>
 						<span>읽기 {formatBytesValue(currentMetrics?.disk?.read)} · 쓰기 {formatBytesValue(currentMetrics?.disk?.write)}</span>
 					</div>
-					<UserMetricChart labels={historyLabels} datasets={diskDatasets} yFormat="bytes" />
+					<UserMetricChart labels={historyLabels} datasets={diskDatasets} yFormat="bytes" group={chartGroup} enableZoom />
 				</div>
 				{#if hasGpuHistory || (currentGpuUsage !== null && currentGpuUsage !== undefined)}
 					<div class="chart-card">
 						<div class="chart-head">
 							<h3>GPU 사용률</h3>
-							<span>현재 {currentGpuUsage !== null ? formatPercent(currentGpuUsage, 2) : '-'}</span>
+							<span>현재 {currentGpuUsage !== null ? formatPercent(currentGpuUsage, 2) : '-'}{#if gpuValid.length > 0} · {rangeLabel} 평균 {formatPercent(gpuAvg, 1)} · 피크 {formatPercent(gpuPeak, 1)}{/if}</span>
 						</div>
-						<UserMetricChart labels={historyLabels} datasets={gpuDatasets} yFormat="percent" />
+						<UserMetricChart labels={historyLabels} datasets={gpuDatasets} yFormat="percent" group={chartGroup} enableZoom />
 					</div>
 				{/if}
 			</div>
@@ -615,9 +671,12 @@
 	.hero-actions {
 		display: flex;
 		align-items: flex-start;
+		gap: 8px;
+		flex-wrap: wrap;
 	}
 
-	.refresh-btn {
+	.refresh-btn,
+	.pause-btn {
 		padding: 10px 16px;
 		border-radius: 10px;
 		background: rgba(13, 17, 23, 0.86);
@@ -625,6 +684,17 @@
 		color: var(--text-primary);
 		font-size: 12px;
 		font-weight: 700;
+	}
+
+	.pause-btn {
+		font-family: inherit;
+		cursor: pointer;
+	}
+
+	.pause-btn.active {
+		background: rgba(239, 68, 68, 0.16);
+		border-color: rgba(239, 68, 68, 0.4);
+		color: #fca5a5;
 	}
 
 	.banner {
@@ -668,6 +738,19 @@
 	.stat-meta {
 		font-size: 11px;
 		color: var(--text-muted);
+	}
+
+	.stat-sub {
+		font-size: 11px;
+		color: var(--accent);
+		opacity: 0.85;
+		margin-top: 2px;
+	}
+
+	.chart-hint {
+		font-size: 11px;
+		color: var(--text-muted);
+		margin-bottom: 12px;
 	}
 
 	.panel {
