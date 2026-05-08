@@ -302,11 +302,17 @@
 				min: bounds.min,
 				max: bounds.max,
 				interval: percentStep,
+				// compact (110px) 차트는 ECharts 기본 5~6 ticks 가 라벨끼리
+				// 세로로 겹쳐 가독성 저하 — non-percent 는 3 분할로 제한.
+				// "0 / 중간 / 최대" 패턴이라 한눈에 들어오고 라벨 간격이
+				// 약 35px 확보돼 겹침이 사라진다.
+				splitNumber: u === 'percent' ? undefined : compact ? 3 : 4,
 				axisTick: { show: false },
 				axisLine: { show: false },
 				axisLabel: {
 					color: '#64748b',
 					fontSize: 10,
+					hideOverlap: true,
 					formatter: (v: number) => formatValue(v, u),
 				},
 				splitLine: { lineStyle: { color: 'rgba(100, 116, 139, 0.12)' } },
