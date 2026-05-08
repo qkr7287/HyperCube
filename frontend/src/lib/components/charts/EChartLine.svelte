@@ -59,6 +59,7 @@
 
 	function formatValue(value: number, fmt: ValueFormat, decimals: number): string {
 		if (fmt === 'bytes') return formatBytesValue(value);
+		if (fmt === 'bytes_per_sec') return `${formatBytesValue(value)}/s`;
 		if (fmt === 'count') return `${Math.round(value)}`;
 		const d = fmt === 'percent' ? Math.max(decimals, 2) : 1;
 		return `${value.toFixed(d)}%`;
@@ -70,13 +71,17 @@
 			symbol: ['none', 'none'],
 			silent: false,
 			label: { show: false },
-			data: marks.map((m) => ({
-				xAxis: m.index,
-				name: m.label,
-				lineStyle: { color: m.color, width: 1, type: 'dashed' as const, opacity: 0.7 },
-				emphasis: { lineStyle: { width: 2, opacity: 1 } },
-				label: { show: false },
-			})),
+			data: marks.map((m) => {
+				// xAxis (vertical) vs yAxis (horizontal) 분기. 둘 중 하나만 정의됨.
+				const axis = typeof m.yAxis === 'number' ? { yAxis: m.yAxis } : { xAxis: m.index ?? 0 };
+				return {
+					...axis,
+					name: m.label,
+					lineStyle: { color: m.color, width: 1, type: 'dashed' as const, opacity: 0.7 },
+					emphasis: { lineStyle: { width: 2, opacity: 1 } },
+					label: { show: false },
+				};
+			}),
 		};
 	}
 
@@ -160,6 +165,10 @@
 			yAxis: {
 				type: 'value',
 				min: 0,
+				// percent 차트는 항상 0~100 범위 강제. 임계 markLine (80/90 등) 이
+				// 데이터 max 보다 위에 있어도 화면 안에 보이도록. 작은 값일 때 그래프가
+				// 바닥에 깔리는 트레이드오프는 capacity 시야 우위로 수용.
+				max: fmt === 'percent' ? 100 : undefined,
 				axisLabel: {
 					color: '#64748b',
 					fontSize: 10,

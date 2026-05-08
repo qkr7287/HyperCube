@@ -137,6 +137,11 @@
 	let events = $state<EventRow[]>([]);
 	let eventsError = $state('');
 	let eventsTimer: ReturnType<typeof setInterval> | null = null;
+	// 누적 metric (network/disk) 차트 모드. cumulative = 원본, rate = bucket 간 delta/sec.
+	let networkMode = $state<'cumulative' | 'rate'>('cumulative');
+	let diskMode = $state<'cumulative' | 'rate'>('cumulative');
+	// API 응답에 포함된 bucket 폭 (초) — rate 계산에 사용. fallback 으로 RANGE 매핑.
+	let bucketSeconds = $state<number>(60);
 
 	let containerId = $derived($page.params.containerId);
 
@@ -240,6 +245,8 @@
 		const url = `/api/metrics/containers/buckets/?range=${map.window}&bucket=${map.bucket}&container_id=${encodeURIComponent(cid)}`;
 		const payload = await api<{ bucket_seconds: number; results: any[] }>(url);
 		const rows = Array.isArray(payload?.results) ? payload.results : [];
+		// rate 계산용 bucket 폭. 없으면 1 (분모 0 방지).
+		bucketSeconds = Number(payload?.bucket_seconds) || 60;
 		history = rows.map((r) => ({
 			recorded_at: r.bucket_start,
 			cpu_usage: Number(r.cpu_usage_pct_avg ?? r.cpu_avg ?? 0),
@@ -303,6 +310,19 @@
 		return Math.max(0, last - first);
 	}
 
+	function rateOf(values: number[], secs: number): number[] {
+		// 누적값 → bucket 간 delta/초. 첫 점은 비교 대상 없으므로 0.
+		// 컨테이너 재시작으로 카운터가 reset(음수) 되면 그 점은 0 으로 (hold).
+		if (values.length === 0) return [];
+		const out: number[] = [0];
+		const denom = secs > 0 ? secs : 1;
+		for (let i = 1; i < values.length; i++) {
+			const diff = (values[i] ?? 0) - (values[i - 1] ?? 0);
+			out.push(diff > 0 ? diff / denom : 0);
+		}
+		return out;
+	}
+
 	let envEntries = $derived(Object.entries(container?.custom_env ?? {}));
 	let portMappings = $derived(container?.custom_ports ?? []);
 	let rangeLabel = $derived(RANGE_OPTIONS.find((o) => o.key === selectedRange)?.label ?? '');
@@ -347,34 +367,44 @@
 			format: 'percent' as const,
 		},
 	]);
+	let networkRx = $derived(history.map((row) => row.network_rx));
+	let networkTx = $derived(history.map((row) => row.network_tx));
+	let diskRead = $derived(history.map((row) => row.disk_read));
+	let diskWrite = $derived(history.map((row) => row.disk_write));
+
+	let networkFormat = $derived<'bytes' | 'bytes_per_sec'>(networkMode === 'rate' ? 'bytes_per_sec' : 'bytes');
+	let diskFormat = $derived<'bytes' | 'bytes_per_sec'>(diskMode === 'rate' ? 'bytes_per_sec' : 'bytes');
+
 	let networkDatasets = $derived([
 		{
 			label: '수신(RX)',
 			color: '#30d5c8',
-			values: history.map((row) => row.network_rx),
-			format: 'bytes' as const,
+			values: networkMode === 'rate' ? rateOf(networkRx, bucketSeconds) : networkRx,
+			format: networkFormat,
 		},
 		{
 			label: '송신(TX)',
 			color: '#f59e0b',
-			values: history.map((row) => row.network_tx),
-			format: 'bytes' as const,
+			values: networkMode === 'rate' ? rateOf(networkTx, bucketSeconds) : networkTx,
+			format: networkFormat,
 		},
 	]);
 	let diskDatasets = $derived([
 		{
 			label: '읽기(Read)',
 			color: '#38bdf8',
-			values: history.map((row) => row.disk_read),
-			format: 'bytes' as const,
+			values: diskMode === 'rate' ? rateOf(diskRead, bucketSeconds) : diskRead,
+			format: diskFormat,
 		},
 		{
 			label: '쓰기(Write)',
 			color: '#a78bfa',
-			values: history.map((row) => row.disk_write),
-			format: 'bytes' as const,
+			values: diskMode === 'rate' ? rateOf(diskWrite, bucketSeconds) : diskWrite,
+			format: diskFormat,
 		},
 	]);
+
+	// 임계 markLine 은 chartMarkLines 선언 후로 이동 (TDZ 방지).
 
 	let chartMarkLines = $derived<MarkLineEntry[]>(buildChartMarkLines(events, history));
 
@@ -406,6 +436,17 @@
 		}
 		return marks;
 	}
+
+	// 임계 markLine: CPU/Memory % 차트 위에 80% (warn) / 90% (danger) horizontal.
+	const THRESHOLD_LINES: MarkLineEntry[] = [
+		{ yAxis: 80, label: '경고 80%', color: '#eab308' },
+		{ yAxis: 90, label: '위험 90%', color: '#ef4444' },
+	];
+	// CPU/Memory 차트 markLines = events vertical + thresholds horizontal 결합.
+	let percentChartMarkLines = $derived<MarkLineEntry[]>([
+		...chartMarkLines,
+		...THRESHOLD_LINES,
+	]);
 
 	let hasGpuHistory = $derived(history.some((row) => typeof row.gpu_usage === 'number'));
 	let gpuDatasets = $derived([
@@ -552,28 +593,40 @@
 						<h3>CPU 사용률</h3>
 						<span>현재 {formatPercent(currentMetrics?.cpu?.usage, 2)}</span>
 					</div>
-					<UserMetricChart labels={historyLabels} datasets={cpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={chartMarkLines} />
+					<UserMetricChart labels={historyLabels} datasets={cpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
 						<h3>메모리 사용률</h3>
 						<span>현재 {formatPercent(currentMetrics?.memory?.percent, 2)}</span>
 					</div>
-					<UserMetricChart labels={historyLabels} datasets={memoryDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={chartMarkLines} />
+					<UserMetricChart labels={historyLabels} datasets={memoryDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
 						<h3>네트워크 트래픽</h3>
-						<span>수신 {formatBytesValue(currentMetrics?.network?.rx)} · 송신 {formatBytesValue(currentMetrics?.network?.tx)}</span>
+						<div class="chart-head-right">
+							<div class="mode-toggle" role="group" aria-label="누적/속도 전환">
+								<button class:active={networkMode === 'cumulative'} onclick={() => (networkMode = 'cumulative')}>누적</button>
+								<button class:active={networkMode === 'rate'} onclick={() => (networkMode = 'rate')}>속도</button>
+							</div>
+							<span>수신 {formatBytesValue(currentMetrics?.network?.rx)} · 송신 {formatBytesValue(currentMetrics?.network?.tx)}</span>
+						</div>
 					</div>
-					<UserMetricChart labels={historyLabels} datasets={networkDatasets} yFormat="bytes" group={chartGroup} enableZoom markLines={chartMarkLines} />
+					<UserMetricChart labels={historyLabels} datasets={networkDatasets} yFormat={networkFormat} group={chartGroup} enableZoom markLines={chartMarkLines} />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
 						<h3>디스크 처리량</h3>
-						<span>읽기 {formatBytesValue(currentMetrics?.disk?.read)} · 쓰기 {formatBytesValue(currentMetrics?.disk?.write)}</span>
+						<div class="chart-head-right">
+							<div class="mode-toggle" role="group" aria-label="누적/속도 전환">
+								<button class:active={diskMode === 'cumulative'} onclick={() => (diskMode = 'cumulative')}>누적</button>
+								<button class:active={diskMode === 'rate'} onclick={() => (diskMode = 'rate')}>속도</button>
+							</div>
+							<span>읽기 {formatBytesValue(currentMetrics?.disk?.read)} · 쓰기 {formatBytesValue(currentMetrics?.disk?.write)}</span>
+						</div>
 					</div>
-					<UserMetricChart labels={historyLabels} datasets={diskDatasets} yFormat="bytes" group={chartGroup} enableZoom markLines={chartMarkLines} />
+					<UserMetricChart labels={historyLabels} datasets={diskDatasets} yFormat={diskFormat} group={chartGroup} enableZoom markLines={chartMarkLines} />
 				</div>
 				{#if hasGpuHistory || (currentGpuUsage !== null && currentGpuUsage !== undefined)}
 					<div class="chart-card">
@@ -581,7 +634,7 @@
 							<h3>GPU 사용률</h3>
 							<span>현재 {currentGpuUsage !== null ? formatPercent(currentGpuUsage, 2) : '-'}{#if gpuValid.length > 0} · {rangeLabel} 평균 {formatPercent(gpuAvg, 1)} · 피크 {formatPercent(gpuPeak, 1)}{/if}</span>
 						</div>
-						<UserMetricChart labels={historyLabels} datasets={gpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={chartMarkLines} />
+						<UserMetricChart labels={historyLabels} datasets={gpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
 					</div>
 				{/if}
 			</div>
@@ -991,6 +1044,40 @@
 	.chart-head span {
 		font-size: 12px;
 		color: var(--text-secondary);
+	}
+
+	.chart-head-right {
+		display: inline-flex;
+		align-items: center;
+		gap: 12px;
+	}
+
+	.mode-toggle {
+		display: inline-flex;
+		gap: 0;
+		border: 1px solid rgba(31, 41, 55, 0.9);
+		border-radius: 8px;
+		overflow: hidden;
+	}
+
+	.mode-toggle button {
+		padding: 4px 10px;
+		background: rgba(13, 17, 23, 0.86);
+		border: none;
+		color: var(--text-muted);
+		font-family: inherit;
+		font-size: 11px;
+		font-weight: 700;
+		cursor: pointer;
+	}
+
+	.mode-toggle button + button {
+		border-left: 1px solid rgba(31, 41, 55, 0.9);
+	}
+
+	.mode-toggle button.active {
+		background: rgba(48, 213, 200, 0.18);
+		color: var(--accent);
 	}
 
 	.details-grid {

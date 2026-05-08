@@ -11,8 +11,10 @@ const UNITS = ['B', 'KB', 'MB', 'GB', 'TB'];
 
 export function formatBytes(bytes: number | undefined | null): string {
 	if (bytes == null || bytes === 0) return '0 B';
+	// 0 < |bytes| < 1 일 때 Math.log → 음수 idx → UNITS[-1]=undefined 버그.
+	// 단위 인덱스는 [0, UNITS.length-1] 로 clamp.
 	const i = Math.floor(Math.log(Math.abs(bytes)) / Math.log(1024));
-	const idx = Math.min(i, UNITS.length - 1);
+	const idx = Math.max(0, Math.min(i, UNITS.length - 1));
 	const value = bytes / Math.pow(1024, idx);
 	return `${value.toFixed(1)} ${UNITS[idx]}`;
 }

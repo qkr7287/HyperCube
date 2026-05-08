@@ -29,9 +29,9 @@ related-pages: /user/containers/[containerId]
 | 0 (완료) | D — 차트 sync / zoom / pause / period KPI | ✅ commit `d65bce4` | ❌ |
 | 1 (완료) | A1 — Container Ops Panel | ✅ | ❌ |
 | 2 (완료) | B2 — Events 타임라인 + 차트 markLine | ✅ | ✅ agent 송출 추가 완료 |
-| 3 (완료) | B1 — Live log streaming | ✅ 이번 세션 | ✅ agent logs_subscribe/unsubscribe 추가 완료 |
-| 4 | **C1 — Rate 차트 + Resource limit markLine** | 🔜 다음 | ❌ |
-| 5 | B3 — Per-container processes top-N | 🔜 | ✅ 선행 필요 |
+| 3 (완료) | B1 — Live log streaming | ✅ | ✅ agent logs_subscribe/unsubscribe 추가 완료 |
+| 4 (완료) | C1 — Rate 차트 + 임계 markLine | ✅ 이번 세션 | ❌ |
+| 5 | **B3 — Per-container processes top-N** | 🔜 다음 | ✅ 선행 필요 |
 | 6 | B4 — Console exec (xterm) | 🔜 | ✅ 선행 필요 |
 
 상태 이모지: ✅ 완료 · ⏳ 진행 중 · 🔜 대기 · ⚠️ 블록 / 재설계
@@ -216,7 +216,35 @@ related-pages: /user/containers/[containerId]
 
 **위험**: 다중 사용자 다중 컨테이너 stream 동시 → 메모리 / 백프레셔. 한 페이지당 1 subscription 제한.
 
-## C1. Rate 차트 + Resource Limit markLine  (Frontend/Backend only)
+## C1. Rate 차트 + 임계 markLine  (✅ 완료)
+
+### 실제 변경 (스코프 조정)
+
+원래 roadmap 의 "CPU 에 cores_quota markLine, Memory 에 limit markLine" 은
+% 정규화 차트라 의미 없어 변경: **80%/90% 임계** horizontal markLine 으로
+교체 (capacity planning 용).
+
+- types: `ValueFormat` 에 `'bytes_per_sec'` 추가 / `MarkLineEntry` 에 `yAxis?: number` 지원 (xAxis|yAxis OR)
+- `EChartLine`: bytes_per_sec format ("X/s" 접미사), buildMarkLine 이 yAxis 분기, percent 차트 yAxis.max=100 강제 (임계 라인 항상 보이게)
+- `[id]/+page.svelte`:
+  - `networkMode` / `diskMode` state ('cumulative' | 'rate')
+  - `bucketSeconds` API 응답에서 capture
+  - `rateOf(values, secs)` — 누적 → bucket 간 delta/sec, 컨테이너 재시작(음수) 은 0 hold
+  - `THRESHOLD_LINES` const + `percentChartMarkLines` 결합 (events vertical + thresholds horizontal)
+  - Network/Disk chart-head 에 "누적 / 속도" 토글 UI
+
+### 부수 fix
+
+- `data-adapter.formatBytes`: `bytes < 1` 일 때 `Math.log` 음수 → idx=-1 → `UNITS[-1]=undefined` 라벨 표시 버그. `Math.max(0, idx)` 로 clamp.
+
+### 검증 (chrome 실측)
+
+- Network 누적 → 속도 토글 → yAxis "0.4 B/s, 0.2 B/s..." 정확 표시, burst pattern 시각화
+- CPU/Memory 차트 yAxis 0~100 강제, 80% 노란 + 90% 빨간 dashed line 표시
+- ECharts instance 검증: `markCount=14` (events 12 + thresholds 2), `yAxisMax=100`
+- 콘솔 에러 0건
+
+## ~~C1. Rate 차트~~ (위로 이동, 완료)
 
 - Backend: `buckets()` 응답에 derived 필드 (`network_rx_rate_avg = (rx_max - prev_rx_max) / bucket_seconds`, 같은 방식으로 `tx_rate`, `disk_read_rate`, `disk_write_rate`). 음수일 땐 (컨테이너 재시작) `null` 또는 0.
 - Frontend
@@ -266,7 +294,8 @@ related-pages: /user/containers/[containerId]
 
 ## 변경 이력
 
-- 2026-05-08: B1 (Live log streaming) 완료. 다음 세션 = C1 (rate + limit markLine, agent 의존 0).
+- 2026-05-08: C1 (Rate 차트 + 80/90% 임계 markLine) 완료 + formatBytes < 1 버그 fix. 다음 세션 = B3 (per-container processes top-N).
+- 2026-05-08: B1 (Live log streaming) 완료.
 - 2026-05-08: B2 (Events 타임라인 + 차트 markLine) 완료.
 - 2026-05-08: A1 (Container Ops Panel) 완료.
 - 2026-05-08: 초안 작성.
