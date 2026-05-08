@@ -171,6 +171,18 @@ class MyContainerViewSet(ReadOnlyModelViewSet):
     _VALID_CONTROL_ACTIONS = frozenset(["start", "stop", "restart", "pause", "unpause", "kill"])
     _AGENT_COMMAND_TIMEOUT = 15.0  # seconds
 
+    # control 성공 시 Container.status 를 즉시 갱신할 매핑.
+    # Agent의 다음 containers snapshot(60초)을 기다리지 않고 사용자 UX 즉시 반영.
+    # 다음 snapshot이 도착하면 그 값으로 덮어씌워짐 (truth source 는 여전히 agent).
+    _ACTION_TO_STATUS = {
+        "start":   "running",
+        "restart": "running",
+        "unpause": "running",
+        "pause":   "paused",
+        "stop":    "exited",
+        "kill":    "exited",
+    }
+
     def _dispatch_and_wait(self, server_id: str, command: str, params: dict) -> dict:
         """REST에서 Agent로 명령 발송 + 동기 대기.
 
@@ -250,6 +262,15 @@ class MyContainerViewSet(ReadOnlyModelViewSet):
                 "action": action_name,
             },
         )
+
+        # Optimistic Container.status 갱신 — agent snapshot(60s) 기다리지 않고
+        # UI 즉시 반영. 다음 snapshot 이 truth 로 덮어씌움.
+        if resp.get("success"):
+            new_status = self._ACTION_TO_STATUS.get(action_name)
+            if new_status and container.status != new_status:
+                container.status = new_status
+                container.save(update_fields=["status", "last_seen"])
+
         return self._agent_resp_to_http(resp)
 
     @extend_schema(
