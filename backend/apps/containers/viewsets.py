@@ -310,6 +310,37 @@ class MyContainerViewSet(ReadOnlyModelViewSet):
         return Response(ContainerEventSerializer(rows, many=True).data)
 
     @extend_schema(
+        summary="컨테이너 내부 프로세스 top-N",
+        description=(
+            "본인 소유 컨테이너의 프로세스 목록을 sortBy(cpu|mem) 기준 내림차순 "
+            "정렬해 limit 개 반환. agent 가 호스트 관찰만으로 수집 (컨테이너 "
+            "내부 ps 의존 X) — minimal image 도 동작."
+        ),
+    )
+    @action(detail=True, methods=["get"], url_path="processes")
+    def processes(self, request, pk=None):
+        container = self.get_object()
+        sort_by = (request.query_params.get("sortBy") or "cpu").strip().lower()
+        if sort_by not in ("cpu", "mem"):
+            sort_by = "cpu"
+        try:
+            limit = int(request.query_params.get("limit", "20"))
+        except ValueError:
+            limit = 20
+        limit = max(1, min(100, limit))
+
+        resp = self._dispatch_and_wait(
+            server_id=str(container.agent_id),
+            command="container_processes",
+            params={
+                "containerId": container.container_id,
+                "sortBy": sort_by,
+                "limit": limit,
+            },
+        )
+        return self._agent_resp_to_http(resp)
+
+    @extend_schema(
         summary="컨테이너 inspect (Docker inspect subset)",
         description="본인 소유 컨테이너의 현재 inspect 데이터 (state.health, mounts, networkSettings 등).",
     )

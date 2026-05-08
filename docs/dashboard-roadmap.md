@@ -30,9 +30,9 @@ related-pages: /user/containers/[containerId]
 | 1 (완료) | A1 — Container Ops Panel | ✅ | ❌ |
 | 2 (완료) | B2 — Events 타임라인 + 차트 markLine | ✅ | ✅ agent 송출 추가 완료 |
 | 3 (완료) | B1 — Live log streaming | ✅ | ✅ agent logs_subscribe/unsubscribe 추가 완료 |
-| 4 (완료) | C1 — Rate 차트 + 임계 markLine | ✅ 이번 세션 | ❌ |
-| 5 | **B3 — Per-container processes top-N** | 🔜 다음 | ✅ 선행 필요 |
-| 6 | B4 — Console exec (xterm) | 🔜 | ✅ 선행 필요 |
+| 4 (완료) | C1 — Rate 차트 + 임계 markLine | ✅ | ❌ |
+| 5 (완료) | B3 — Per-container processes top-N | ✅ 이번 세션 | ✅ agent container_processes 추가 완료 |
+| 6 | **B4 — Console exec (xterm)** | 🔜 다음 (가장 위험) | ✅ 선행 필요 |
 
 상태 이모지: ✅ 완료 · ⏳ 진행 중 · 🔜 대기 · ⚠️ 블록 / 재설계
 
@@ -253,7 +253,25 @@ related-pages: /user/containers/[containerId]
   - Memory 차트에 `limit` markLine
   - markLine 인프라는 B2와 공유
 
-## B3. Per-Container Processes (top-N)
+## B3. Per-Container Processes (top-N)  (✅ 완료)
+
+### 실제 변경
+
+- Agent (별도 repo, 완료): `container_processes` 명령. `dockerode container.top()` 우선 + `/proc/<pid>/stat` 100ms 2회 sample CPU% + `/proc/<pid>/status` VmRSS. busy loop alpine 으로 cpu_percent=99 측정 검증됨.
+- Backend
+  - `MyContainerViewSet.processes` REST action — 기존 `_dispatch_and_wait` 헬퍼 재사용
+  - sortBy clamp(`cpu`/`mem`), limit clamp(1~100)
+- Frontend
+  - `ProcessTopPanel.svelte` 신규 — sortBy(CPU/Mem) seg toggle, limit select(10/20/50/100), 5초 폴링 (visibilityState hidden 또는 paused 시 skip), state 배지(R/S/D/Z/T/I), CPU%/RSS/PID/UID/Command 표시
+  - `[id]/+page.svelte`: 차트 패널 다음 위치에 Panel 통합
+
+### 검증 (chrome 실측)
+
+- Redis (1 process) → total=1, redis-server 표시 (cpu=0, rss=8.5MB, state=S)
+- API 200 OK, 콘솔 에러 0건
+- agent dev 측 검증: nginx multi-process / busy loop CPU=99 / paused / stopped / unknown ID / limit clamp / sortBy fallback 모두 통과
+
+## ~~B3. Per-Container Processes~~ (위로 이동, 완료)
 
 **Agent 작업**:
 - 새 명령 `container_processes(containerId, sortBy='cpu'|'mem', limit=20)`
@@ -294,7 +312,8 @@ related-pages: /user/containers/[containerId]
 
 ## 변경 이력
 
-- 2026-05-08: C1 (Rate 차트 + 80/90% 임계 markLine) 완료 + formatBytes < 1 버그 fix. 다음 세션 = B3 (per-container processes top-N).
+- 2026-05-08: B3 (Per-container processes top-N) 완료. 다음 세션 = B4 (Console exec, 가장 위험 — 권한/감사 모델 신중).
+- 2026-05-08: C1 (Rate 차트 + 80/90% 임계 markLine) 완료 + formatBytes < 1 버그 fix.
 - 2026-05-08: B1 (Live log streaming) 완료.
 - 2026-05-08: B2 (Events 타임라인 + 차트 markLine) 완료.
 - 2026-05-08: A1 (Container Ops Panel) 완료.

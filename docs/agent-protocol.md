@@ -266,6 +266,44 @@ Live log tail. 단발 명령이 아니라 long-running stream 시작/종료. `lo
 
 ---
 
+### 6. `container_processes`
+
+컨테이너 내부 프로세스 목록 (host 관찰 기반, minimal image 도 동작).
+
+**params**
+
+| field        | type   | required | default | notes                          |
+|--------------|--------|----------|---------|--------------------------------|
+| containerId  | string | yes      |         | full ID 또는 short ID          |
+| sortBy       | string | no       | `cpu`   | `cpu` \| `mem`. 그 외 → cpu fallback |
+| limit        | number | no       | 20      | 1~100 clamp                    |
+
+**success.data**
+
+```jsonc
+{
+  "containerId": "abc123def456",   // 12자 short ID
+  "total": 42,                     // limit 적용 전 전체 process 수
+  "processes": [
+    {
+      "pid": 1234,                  // host PID
+      "name": "redis-server",
+      "command": "redis-server *:6379",
+      "cpu_percent": 1.2,           // 코어 합산 (Docker stats 와 동일 정의)
+      "memory_rss": 12582912,       // bytes (RSS)
+      "state": "S",                 // /proc/<pid>/stat 의 state code
+      "user": "999"                 // uid (string)
+    }
+  ]
+}
+```
+
+**errors** — `containerId is required` / `container_not_found` / `container_not_running` (stopped 만, paused 는 정상 처리) / `permission_denied` / Dockerode 에러.
+
+**구현 (agent)**: `dockerode container.top()` 우선 (호스트 ps 사용 — 컨테이너 내부 ps 무관) + `/proc/<pid>/stat` 100ms 간격 2회 sample 로 CPU% 계산 + `/proc/<pid>/status` VmRSS 읽음. CLK_TCK=100 가정 (Linux x86/x64).
+
+---
+
 ## Commands — 컨테이너 배포 (Backend dispatch)
 
 `apps.containers.viewsets.ContainerRequestViewSet.approve`에서 admin이 요청을 승인하면 자동 발송.

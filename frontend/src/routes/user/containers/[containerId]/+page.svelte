@@ -10,6 +10,7 @@
 	import InspectPanel from '$lib/components/InspectPanel.svelte';
 	import EventList from '$lib/components/EventList.svelte';
 	import LogTailPanel from '$lib/components/LogTailPanel.svelte';
+	import ProcessTopPanel from '$lib/components/ProcessTopPanel.svelte';
 	import { eventColor, eventLabel, type EventRow } from '$lib/utils/container-events';
 	import type { MarkLineEntry } from '$lib/components/charts/types';
 	import {
@@ -639,6 +640,8 @@
 				{/if}
 			</div>
 		</section>
+
+		<ProcessTopPanel {containerId} {paused} />
 
 		<LogTailPanel agentId={container.agent ?? ''} {containerId} />
 
