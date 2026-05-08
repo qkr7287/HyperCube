@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-05-08 (B3 완료, B4 정책 결정만 남음)
+last-updated: 2026-05-08 (B3 완료, B4 정책 결정만 남음, L1 — 12-col bento 레이아웃 개편 진행)
 status: living document — 세션마다 갱신
 benchmark: Portainer container detail UI
 related-pages: /user/containers/[containerId]
@@ -13,7 +13,27 @@ related-pages: /user/containers/[containerId]
 
 **기능 단위 작업**: D / A1 / B1 / B2 / B3 / C1 모두 완료 → Portainer parity 100%.
 **남은 마지막 단계**: B4 (Console exec / xterm). 정책 결정 완료 (아래 §B4 참조), agent prompt 만 만들면 시작 가능.
+**레이아웃 개편**: L1 — 12-col bento + admin parity (관리자 메인 시각 언어 차용). 진행 중 / 검증 단계.
 **별도 scope** (현재 로드맵 외): UI/UX 폴리싱은 다음 세션에서 별도 진행. 컨테이너 modification (limit edit 등) 은 admin 도구 영역으로 분리.
+
+## L1. Layout — 12-col Bento + Admin Parity  (⏳ 진행 중)
+
+**문제**: 기존 페이지는 `max-width: 1280px` 안에서 9개 섹션이 vertical stack 으로 흐름. 1920+ 모니터에서 좌우 큰 여백, 차트·로그·이벤트·Inspect 동시 비교 시 스크롤 부담. 같은 프로젝트의 관리자 메인(`/`)은 `admin-shell` full-width + `FleetStatusBar` (compact KPI pill) + multi-column body 인 반면 사용자 페이지는 시각 언어가 비대칭.
+
+**목표**: 데이터·컴포넌트 100% 보존, 마크업/CSS 만 12-col bento grid 로 재배치. 관리자 KPI 디자인 시스템(`FleetStatusBar` 패턴: clamp() spacing, severity stripe, sparkline 하단) 차용.
+
+**범위**:
+
+1. `frontend/src/lib/components/ContainerKpiBar.svelte` 신규 — FleetStatusBar 디자인 패턴을 컨테이너 단일 metric 4~5 KPI 로 단순화. CPU/메모리/네트워크/디스크/(GPU). 각 pill: 라벨 + value + sub + sparkline. 동일 clamp 변수 / data-level 좌측 stripe.
+2. `frontend/src/routes/user/containers/[containerId]/+page.svelte` —
+   - `.page max-width 1280 → none` (full width), padding clamp 으로 압축.
+   - `.stat-grid` 4 stat-card 마크업 → `<ContainerKpiBar />` 한 줄.
+   - 차트 panel + Process/Log/Event/Inspect 4 컴포넌트를 `<div class="bento">` 로 wrap, 각 grid-area 클래스 부여.
+   - `.bento` grid: 12col, `grid-template-areas` 로 row1=charts(8)+logs(4), row2=process(5)+events(3)+inspect(4).
+   - 미디어쿼리 3단계: ≥1440 bento 풀 / 1280~1439 차트풀폭→로그풀폭→하단3분할 / ≤980 1열 stack.
+3. 검증: 192.168.0.63:3000 dev 서버에서 1920/1280/768 viewport 직접 확인. 관리자 메인 옆 탭으로 두고 KPI pill 시각 일관성 검증 (라벨 폰트, value 크기, sparkline 높이, border/radius/배경).
+
+**제외**: ECharts resize 처리, 라이프사이클 변경 (LogTailPanel stream 정책 등), 컨테이너 컨트롤 동작 변경. 모두 그대로.
 
 ## 큰 그림
 

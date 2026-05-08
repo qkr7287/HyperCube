@@ -7,6 +7,7 @@
 	import InfoTooltip from '$lib/components/InfoTooltip.svelte';
 	import UserMetricChart from '$lib/components/UserMetricChart.svelte';
 	import ContainerActions from '$lib/components/ContainerActions.svelte';
+	import ContainerKpiBar from '$lib/components/ContainerKpiBar.svelte';
 	import InspectPanel from '$lib/components/InspectPanel.svelte';
 	import EventList from '$lib/components/EventList.svelte';
 	import LogTailPanel from '$lib/components/LogTailPanel.svelte';
@@ -540,34 +541,30 @@
 			{/if}
 		</section>
 
-		<section class="stat-grid">
-			<div class="stat-card">
-				<span class="stat-label">CPU 사용률<InfoTooltip text={cpuHelp} placement="bottom-start" /></span>
-				<strong>{formatPercent(currentMetrics?.cpu?.usage, 2)}</strong>
-				<span class="stat-meta">최근 샘플 기준</span>
-				<span class="stat-sub">{rangeLabel} 평균 {formatPercent(cpuAvg, 1)} · 피크 {formatPercent(cpuPeak, 1)}</span>
-			</div>
-			<div class="stat-card">
-				<span class="stat-label">메모리 사용량<InfoTooltip text={memoryHelp} placement="bottom-start" /></span>
-				<strong>{formatMemoryUsage(currentMetrics?.memory?.usage, currentMetrics?.memory?.limit)}</strong>
-				<span class="stat-meta">전체 대비 {formatPercent(currentMetrics?.memory?.percent, 2)} 사용 중</span>
-				<span class="stat-sub">{rangeLabel} 평균 {formatPercent(memAvgPct, 1)} · 피크 {formatPercent(memPeakPct, 1)}</span>
-			</div>
-			<div class="stat-card">
-				<span class="stat-label">네트워크 누적<InfoTooltip text={networkHelp} placement="bottom-start" /></span>
-				<strong>{formatBytesValue(currentMetrics?.network?.rx)} / {formatBytesValue(currentMetrics?.network?.tx)}</strong>
-				<span class="stat-meta">RX(수신) / TX(송신) 누적</span>
-				<span class="stat-sub">{rangeLabel} 증가 ↓ {formatBytesValue(netRxDelta)} · ↑ {formatBytesValue(netTxDelta)}</span>
-			</div>
-			<div class="stat-card">
-				<span class="stat-label">디스크 누적<InfoTooltip text={diskHelp} placement="bottom-start" /></span>
-				<strong>{formatBytesValue(currentMetrics?.disk?.read)} / {formatBytesValue(currentMetrics?.disk?.write)}</strong>
-				<span class="stat-meta">Read(읽기) / Write(쓰기) 누적</span>
-				<span class="stat-sub">{rangeLabel} 증가 R {formatBytesValue(diskReadDelta)} · W {formatBytesValue(diskWriteDelta)}</span>
-			</div>
-		</section>
+		<ContainerKpiBar
+			{currentMetrics}
+			{history}
+			{rangeLabel}
+			{cpuAvg}
+			{cpuPeak}
+			{memAvgPct}
+			{memPeakPct}
+			{netRxDelta}
+			{netTxDelta}
+			{diskReadDelta}
+			{diskWriteDelta}
+			hasGpu={hasGpuHistory || (currentGpuUsage !== null && currentGpuUsage !== undefined)}
+			{currentGpuUsage}
+			{gpuAvg}
+			{gpuPeak}
+			{cpuHelp}
+			{memoryHelp}
+			{networkHelp}
+			{diskHelp}
+		/>
 
-		<section class="panel">
+		<div class="bento">
+		<section class="panel bento-area area-charts">
 			<div class="panel-header">
 				<div>
 					<h2>성능 지표 추이<InfoTooltip text={timeSeriesHelp} placement="bottom-start" /></h2>
@@ -641,13 +638,22 @@
 			</div>
 		</section>
 
-		<ProcessTopPanel {containerId} {paused} />
+		<div class="bento-area area-logs">
+			<LogTailPanel agentId={container.agent ?? ''} {containerId} />
+		</div>
 
-		<LogTailPanel agentId={container.agent ?? ''} {containerId} />
+		<div class="bento-area area-process">
+			<ProcessTopPanel {containerId} {paused} />
+		</div>
 
-		<EventList {events} errorMsg={eventsError} />
+		<div class="bento-area area-events">
+			<EventList {events} errorMsg={eventsError} />
+		</div>
 
-		<InspectPanel data={inspectData} loading={inspectLoading} errorMsg={inspectError} />
+		<div class="bento-area area-inspect">
+			<InspectPanel data={inspectData} loading={inspectLoading} errorMsg={inspectError} />
+		</div>
+		</div>
 
 		<section class="details-grid">
 			<div class="panel">
@@ -726,9 +732,11 @@
 
 <style>
 	.page {
-		max-width: 1280px;
-		margin: 0 auto;
-		padding: 24px 32px 40px;
+		/* 관리자 admin-shell 과 동일하게 max-width 없음 (full width).
+		   padding 은 clamp 로 viewport 에 따라 압축 — 1920 에서 ~28px 좌우, 1280 에서 ~16px. */
+		max-width: none;
+		margin: 0;
+		padding: clamp(12px, 1vw, 22px) clamp(14px, 1.4vw, 28px) 32px;
 	}
 
 	.back-link,
@@ -907,14 +915,6 @@
 		border: 1px solid rgba(48, 213, 200, 0.3);
 	}
 
-	.stat-grid {
-		display: grid;
-		grid-template-columns: repeat(4, minmax(0, 1fr));
-		gap: 14px;
-		margin-top: 18px;
-	}
-
-	.stat-card,
 	.panel,
 	.chart-card,
 	.config-card {
@@ -922,36 +922,59 @@
 		border: 1px solid var(--border);
 	}
 
-	.stat-card {
-		padding: 18px 20px;
-		border-radius: 16px;
+	/* 12-col bento grid — 1440+: charts(8) + logs(4) on row1, process(5) + events(3) + inspect(4) on row2.
+	   1280~1439: 차트/로그/하단 3분할이 각각 1행씩 stack.
+	   ≤980: 1열 stack (모바일 fallback). */
+	.bento {
+		display: grid;
+		grid-template-columns: repeat(12, minmax(0, 1fr));
+		grid-template-areas:
+			"charts charts charts charts charts charts charts charts logs logs logs logs"
+			"process process process process process events events events inspect inspect inspect inspect";
+		gap: clamp(10px, 0.7vw, 16px);
+		margin-top: clamp(10px, 0.8vw, 18px);
+	}
+	.bento-area {
+		min-width: 0;
+	}
+	.area-charts {
+		grid-area: charts;
+	}
+	.area-logs {
+		grid-area: logs;
+	}
+	.area-process {
+		grid-area: process;
+	}
+	.area-events {
+		grid-area: events;
+	}
+	.area-inspect {
+		grid-area: inspect;
+	}
+
+	/* bento 안의 component panel 들은 grid item 자신이 자리 잡으므로 컴포넌트 내부의
+	   margin-top 을 무력화 (관리자 일관성: 카드 간격은 grid gap 이 담당). */
+	.bento :global(.panel) {
+		margin-top: 0;
+	}
+	/* 차트 panel 도 bento 내부 grid item 으로 동작 — margin-top 제거. */
+	.bento .panel {
+		margin-top: 0;
+	}
+
+	/* 각 bento area 의 inner panel 을 grid cell 높이만큼 stretch.
+	   LogTailPanel 닫힌 상태(짧은 헤더만)에서도 cell 높이를 채워 row 1
+	   우측이 빈 공간이 되지 않도록. */
+	.bento-area {
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
 	}
-
-	.stat-label {
-		font-size: 12px;
-		color: var(--text-secondary);
+	.bento-area > :global(*) {
+		flex: 1;
 	}
-
-	.stat-card strong {
-		font-size: 22px;
-		color: var(--text-primary);
-		word-break: break-word;
-	}
-
-	.stat-meta {
-		font-size: 11px;
-		color: var(--text-muted);
-	}
-
-	.stat-sub {
-		font-size: 11px;
-		color: var(--accent);
-		opacity: 0.85;
-		margin-top: 2px;
-	}
+	/* area-charts 는 이미 .panel 자체 (wrapper div 없이) 라서 별도 처리 불필요 —
+	   .bento-area display:flex 가 적용되지만 자식이 panel 자기 자신이라 flex:1 무관. */
 
 	.chart-hint {
 		font-size: 11px;
@@ -1178,9 +1201,20 @@
 		color: var(--text-secondary);
 	}
 
+	/* 1280~1439: 차트 풀폭 → 로그 풀폭 → 하단 process/events/inspect 가로 3분할 */
+	@media (max-width: 1439px) {
+		.bento {
+			grid-template-areas:
+				"charts charts charts charts charts charts charts charts charts charts charts charts"
+				"logs logs logs logs logs logs logs logs logs logs logs logs"
+				"process process process process events events events events inspect inspect inspect inspect";
+		}
+	}
+
+	/* ≤980: 1열 stack (모바일) */
 	@media (max-width: 980px) {
 		.page {
-			padding: 20px 16px 28px;
+			padding: 14px 12px 24px;
 		}
 
 		.hero,
@@ -1191,7 +1225,16 @@
 			align-items: stretch;
 		}
 
-		.stat-grid,
+		.bento {
+			grid-template-columns: 1fr;
+			grid-template-areas:
+				'charts'
+				'logs'
+				'process'
+				'events'
+				'inspect';
+		}
+
 		.chart-grid,
 		.details-grid,
 		.info-grid {
