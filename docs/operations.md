@@ -402,4 +402,4 @@ Any new HyperCube dev stack on server 16 should pick non-conflicting ports (e.g.
 - HyperCube source: https://github.com/qkr7287/HyperCube (private)
 - Deploy bundle:   https://github.com/qkr7287/hypercube-deploy (public)
 - GHCR images:     https://github.com/qkr7287?tab=packages (public images, private profile)
-- Agent repo: **separate repository**; operational contract lives in `docs/agent-mailbox.md` in this repo.
+- Agent repo: **separate repository** (`qkr7287/hypercube-agent`). Cross-repo work is tracked via **GitHub Issues** on the agent repo. The mailbox doc was retired in favor of issue-based tracking.

@@ -10,7 +10,7 @@
 - Windows 환경 → Edit 매칭 실패 시 `Write`로 전체 재작성 (`\r\n` 줄바꿈 이슈)
 - 스크립트는 `.cjs` 확장자 (`"type": "module"` 때문에 `.js` ESM 에러)
 - serena LSP는 TypeScript만 활성. Python 백엔드는 Read/Grep 유지
-- Agent 소스 수정은 별도 세션 (이 repo는 Backend + Frontend만)
+- Agent repo(`qkr7287/hypercube-agent`)는 **별도 세션 + GitHub Issues로 소통**. agent 변경이 필요하면 `gh issue create -R qkr7287/hypercube-agent -t "..." -b "..."` 로 이슈 생성. 급할 땐 self-contained prompt를 user에게 출력해 즉시 전달도 가능. mailbox 파일 방식은 폐기됨
 
 ## 작업별 doc 인덱스 (필요 시 읽기)
 

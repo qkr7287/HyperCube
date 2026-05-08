@@ -161,4 +161,4 @@ create_container" 에러. 16번 서버는 재배포되어 OK, 로컬은 안 됐�
 - [ ] 관련 Agent/worker 프로세스 재시작 확인
 - [ ] Delta가 있다면 full snapshot 페어 존재 확인
 - [ ] 같은 계열 다른 경로와 안전장치 대칭 여부 확인
-- [ ] mailbox/커밋 hash 기록
+- [ ] Agent repo issue 링크 / 커밋 hash 기록
