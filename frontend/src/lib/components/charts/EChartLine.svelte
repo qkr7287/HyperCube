@@ -12,7 +12,7 @@
 <script lang="ts">
 	import EChartBase from './EChartBase.svelte';
 	import type { EChartsOption } from './echart-registry';
-	import type { LineSeries, ValueFormat } from './types';
+	import type { LineSeries, MarkLineEntry, ValueFormat } from './types';
 	import { formatBytesValue } from '$lib/utils/container-dashboard';
 
 	let {
@@ -24,6 +24,7 @@
 		ariaLabel = '',
 		group,
 		enableZoom = false,
+		markLines = [],
 	}: {
 		labels?: string[];
 		series?: LineSeries[];
@@ -35,9 +36,11 @@
 		group?: string;
 		// 마우스 휠 / 드래그로 x축 zoom (DataZoomInsideComponent 필요)
 		enableZoom?: boolean;
+		// 이벤트 시각을 차트 위 vertical line 으로 표시 (MarkLineComponent 사용)
+		markLines?: MarkLineEntry[];
 	} = $props();
 
-	let option = $derived<EChartsOption>(buildOption(labels, series, yFormat, showLegend, enableZoom));
+	let option = $derived<EChartsOption>(buildOption(labels, series, yFormat, showLegend, enableZoom, markLines));
 
 	function percentDecimals(seriesList: LineSeries[]): number {
 		// 모두 0 이거나 작은 값이면 axis 가 "0%" 로 뭉개지지 않게 소수점 조정.
@@ -61,12 +64,29 @@
 		return `${value.toFixed(d)}%`;
 	}
 
+	function buildMarkLine(marks: MarkLineEntry[]) {
+		if (!marks.length) return undefined;
+		return {
+			symbol: ['none', 'none'],
+			silent: false,
+			label: { show: false },
+			data: marks.map((m) => ({
+				xAxis: m.index,
+				name: m.label,
+				lineStyle: { color: m.color, width: 1, type: 'dashed' as const, opacity: 0.7 },
+				emphasis: { lineStyle: { width: 2, opacity: 1 } },
+				label: { show: false },
+			})),
+		};
+	}
+
 	function buildOption(
 		lbls: string[],
 		seriesList: LineSeries[],
 		fmt: ValueFormat,
 		legend: boolean | undefined,
 		zoom: boolean,
+		marks: MarkLineEntry[],
 	): EChartsOption {
 		const decimals = percentDecimals(seriesList);
 		const showLegendResolved = legend ?? seriesList.length > 1;
@@ -149,7 +169,7 @@
 				axisTick: { show: false },
 				splitLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.05)' } },
 			},
-			series: seriesList.map((ds) => ({
+			series: seriesList.map((ds, i) => ({
 				type: 'line',
 				name: ds.label,
 				data: ds.values,
@@ -159,6 +179,8 @@
 				itemStyle: { color: ds.color },
 				areaStyle: ds.fill !== false ? { color: `${ds.color}1f` } : undefined,
 				emphasis: { focus: 'series' },
+				// markLine 은 첫 series 에만 부착해도 차트 전체 폭에 그려진다.
+				markLine: i === 0 ? buildMarkLine(marks) : undefined,
 			})),
 		};
 	}

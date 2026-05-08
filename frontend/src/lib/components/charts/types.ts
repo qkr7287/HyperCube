@@ -13,3 +13,15 @@ export type LineSeries = {
 	fill?: boolean;
 	format?: ValueFormat;
 };
+
+/**
+ * 차트 위에 vertical mark 표시 (이벤트 시각 등).
+ * `index`: x축 카테고리 인덱스 (labels 배열의 위치).
+ * `label`: tooltip / legend 표시용 짧은 텍스트.
+ * `color`: 라인 색.
+ */
+export type MarkLineEntry = {
+	index: number;
+	label: string;
+	color: string;
+};

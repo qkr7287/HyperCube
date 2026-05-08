@@ -5,7 +5,7 @@
 -->
 <script lang="ts">
 	import EChartLine from './charts/EChartLine.svelte';
-	import type { LineSeries, ValueFormat } from './charts/types';
+	import type { LineSeries, MarkLineEntry, ValueFormat } from './charts/types';
 
 	type Series = LineSeries;
 
@@ -15,17 +15,19 @@
 		yFormat = 'percent' as ValueFormat,
 		group,
 		enableZoom = false,
+		markLines = [],
 	}: {
 		labels?: string[];
 		datasets?: Series[];
 		yFormat?: ValueFormat;
 		group?: string;
 		enableZoom?: boolean;
+		markLines?: MarkLineEntry[];
 	} = $props();
 </script>
 
 <div class="chart-shell">
-	<EChartLine {labels} series={datasets} {yFormat} height={240} {group} {enableZoom} />
+	<EChartLine {labels} series={datasets} {yFormat} height={240} {group} {enableZoom} {markLines} />
 </div>
 
 <style>

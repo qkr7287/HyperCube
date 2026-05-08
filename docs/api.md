@@ -80,6 +80,7 @@ POST /api/auth/token/
 | `/api/my-containers/{id}/metrics-history/?range=1h&limit=240` | GET | DB에서 시계열 (range: `1m/5m/1h/6h/24h/7d`, limit max 500) |
 | `/api/my-containers/{id}/inspect/` | GET | Agent에 inspect 명령을 보내고 응답까지 동기 대기 (최대 15s). state.health, mounts, networkSettings 등 포함 |
 | `/api/my-containers/{id}/control/` | POST | 라이프사이클 제어. body `{"action": "start\|stop\|restart\|pause\|unpause\|kill"}`. remove 는 `/api/requests/` (action=delete) 로 분리. |
+| `/api/my-containers/{id}/events/?since=&limit=100` | GET | 라이프사이클 이벤트 (ContainerEvent). agent의 `container_events` 메시지 누적. 시간 오름차순. limit max 500. |
 
 `current-metrics` 응답:
 ```json

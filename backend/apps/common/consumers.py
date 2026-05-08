@@ -113,6 +113,18 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
             await self._route_command_progress(data)
             return
 
+        if msg_type == "container_events":
+            await self._handle_container_events(data)
+            # 같은 메시지를 group broadcast 도 — admin/소유자 viewer 가
+            # 실시간 이벤트를 받을 수 있게 (현 단계는 frontend 가 REST polling
+            # 하지만 향후 WS push 전환 대비).
+            data["server_id"] = self.server_id
+            await self.channel_layer.group_send(
+                self.group_name,
+                {"type": "server_message", "data": data},
+            )
+            return
+
         data["server_id"] = self.server_id
 
         # 1. Redis 캐시 (최신 상태)
@@ -435,6 +447,66 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
     # ------------------------------------------------------------------
     # Redis 캐시
     # ------------------------------------------------------------------
+
+    @database_sync_to_async
+    def _handle_container_events(self, data: dict):
+        """Agent의 container_events 메시지를 ContainerEvent 행으로 저장.
+
+        - container_id 는 full(64) 또는 short(12) 둘 다 허용 — agent 가 full 송신
+          하지만 backend Container.container_id 는 12자 short 가 truth.
+        - 알 수 없는 container 는 silently skip (방금 생성됐지만 containers
+          snapshot 아직 안 도착한 케이스).
+        """
+        from datetime import datetime
+        from apps.containers.models import Container, ContainerEvent
+
+        events = (data.get("data") or {}).get("events") or []
+        if not isinstance(events, list) or not events:
+            return
+
+        # 이 agent 의 모든 컨테이너 한 번에 prefetch — N+1 방지.
+        agent_id = self.server_id
+        containers = {
+            c.container_id: c
+            for c in Container.objects.filter(agent_id=agent_id)
+        }
+
+        rows = []
+        valid_kinds = set(ContainerEvent.Kind.values)
+        for ev in events:
+            if not isinstance(ev, dict):
+                continue
+            kind = ev.get("kind")
+            if kind not in valid_kinds:
+                logger.debug("[ws] unknown container_event kind=%s", kind)
+                continue
+            cid_full = ev.get("containerId") or ""
+            cid_short = cid_full[:12]
+            container = containers.get(cid_short)
+            if container is None:
+                # 신규 컨테이너 일 수 있음 (start 이벤트가 containers snapshot 보다 먼저).
+                # 다음 snapshot 후 도착할 이벤트로 보강.
+                continue
+            ts_raw = ev.get("ts")
+            try:
+                # ISO8601 파싱. Z suffix Python 3.11+ 지원, 안전하게 +00:00 변환.
+                ts = datetime.fromisoformat((ts_raw or "").replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                logger.warning("[ws] invalid container_event ts=%r kind=%s", ts_raw, kind)
+                continue
+            rows.append(ContainerEvent(
+                container=container,
+                agent_id=agent_id,
+                ts=ts,
+                kind=kind,
+                exit_code=ev.get("exitCode") if isinstance(ev.get("exitCode"), int) else None,
+                signal=str(ev.get("signal") or "")[:20],
+                health_status=str(ev.get("healthStatus") or "")[:20],
+                raw=ev,
+            ))
+
+        if rows:
+            ContainerEvent.objects.bulk_create(rows, ignore_conflicts=False)
 
     async def _cache_to_redis(self, msg_type, data):
         """수신 데이터를 Redis에 merge 저장. Delta Sync로 부분 데이터만 올 수 있으므로

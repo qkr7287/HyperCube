@@ -8,6 +8,9 @@
 	import UserMetricChart from '$lib/components/UserMetricChart.svelte';
 	import ContainerActions from '$lib/components/ContainerActions.svelte';
 	import InspectPanel from '$lib/components/InspectPanel.svelte';
+	import EventList from '$lib/components/EventList.svelte';
+	import { eventColor, eventLabel, type EventRow } from '$lib/utils/container-events';
+	import type { MarkLineEntry } from '$lib/components/charts/types';
 	import {
 		formatBytesValue,
 		formatDateTime,
@@ -129,6 +132,9 @@
 	let inspectLoading = $state(false);
 	let inspectError = $state('');
 	let actionMsg = $state('');
+	let events = $state<EventRow[]>([]);
+	let eventsError = $state('');
+	let eventsTimer: ReturnType<typeof setInterval> | null = null;
 
 	let containerId = $derived($page.params.containerId);
 
@@ -181,6 +187,17 @@
 
 	async function loadCurrentMetrics() {
 		currentMetrics = await api<MetricsSnapshot>(`/api/my-containers/${containerId}/current-metrics/`);
+	}
+
+	async function loadEvents() {
+		try {
+			// limit 200 — 최대 보이는 이벤트 수. 시간 오름차순 응답.
+			const rows = await api<EventRow[]>(`/api/my-containers/${containerId}/events/?limit=200`);
+			events = rows ?? [];
+			eventsError = '';
+		} catch (err: any) {
+			eventsError = err?.message || '이벤트 조회 실패';
+		}
 	}
 
 	async function loadInspect() {
@@ -246,8 +263,9 @@
 			if (withDetail || !container) await loadDetail();
 			await Promise.all([loadCurrentMetrics(), loadHistory()]);
 			history = normalizeHistory(history, currentMetrics);
-			// inspect 는 실패해도 차트/메트릭 화면은 계속 보여야 하므로 별도 catch
+			// inspect / events 는 실패해도 차트/메트릭 화면은 계속 보여야 하므로 별도 catch
 			loadInspect().catch(() => {});
+			loadEvents().catch(() => {});
 		} catch (error: any) {
 			errorMsg = error?.message || '대시보드를 불러오지 못했습니다.';
 		} finally {
@@ -356,6 +374,37 @@
 		},
 	]);
 
+	let chartMarkLines = $derived<MarkLineEntry[]>(buildChartMarkLines(events, history));
+
+	function buildChartMarkLines(evs: EventRow[], hist: MetricsHistoryRow[]): MarkLineEntry[] {
+		if (hist.length === 0 || evs.length === 0) return [];
+		const bucketTs = hist.map((r) => new Date(r.recorded_at).getTime());
+		const firstTs = bucketTs[0];
+		const lastTs = bucketTs[bucketTs.length - 1];
+		// 마지막 bucket 보다 약간 미래(+ 1 bucket 폭)까지는 표시. 그 이후는 차트 범위 밖.
+		const bucketSpan = bucketTs.length >= 2 ? bucketTs[1] - bucketTs[0] : 60_000;
+		const upper = lastTs + bucketSpan;
+
+		const marks: MarkLineEntry[] = [];
+		for (const ev of evs) {
+			const t = new Date(ev.ts).getTime();
+			if (Number.isNaN(t)) continue;
+			if (t < firstTs - bucketSpan || t > upper) continue;
+			// 가장 가까운 bucket index. 데이터 적어 linear OK.
+			let idx = 0;
+			let bestDiff = Infinity;
+			for (let i = 0; i < bucketTs.length; i++) {
+				const d = Math.abs(bucketTs[i] - t);
+				if (d < bestDiff) {
+					bestDiff = d;
+					idx = i;
+				}
+			}
+			marks.push({ index: idx, label: eventLabel(ev.kind), color: eventColor(ev.kind) });
+		}
+		return marks;
+	}
+
 	let hasGpuHistory = $derived(history.some((row) => typeof row.gpu_usage === 'number'));
 	let gpuDatasets = $derived([
 		{
@@ -373,8 +422,13 @@
 		refreshTimer = setInterval(() => {
 			if (!paused) loadDashboard();
 		}, 15000);
+		// 이벤트는 metric 보다 짧은 주기로 폴링 — 발생이 드물어 부하 작음.
+		eventsTimer = setInterval(() => {
+			if (!paused) loadEvents();
+		}, 10000);
 		return () => {
 			if (refreshTimer) clearInterval(refreshTimer);
+			if (eventsTimer) clearInterval(eventsTimer);
 		};
 	});
 </script>
@@ -496,28 +550,28 @@
 						<h3>CPU 사용률</h3>
 						<span>현재 {formatPercent(currentMetrics?.cpu?.usage, 2)}</span>
 					</div>
-					<UserMetricChart labels={historyLabels} datasets={cpuDatasets} yFormat="percent" group={chartGroup} enableZoom />
+					<UserMetricChart labels={historyLabels} datasets={cpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={chartMarkLines} />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
 						<h3>메모리 사용률</h3>
 						<span>현재 {formatPercent(currentMetrics?.memory?.percent, 2)}</span>
 					</div>
-					<UserMetricChart labels={historyLabels} datasets={memoryDatasets} yFormat="percent" group={chartGroup} enableZoom />
+					<UserMetricChart labels={historyLabels} datasets={memoryDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={chartMarkLines} />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
 						<h3>네트워크 트래픽</h3>
 						<span>수신 {formatBytesValue(currentMetrics?.network?.rx)} · 송신 {formatBytesValue(currentMetrics?.network?.tx)}</span>
 					</div>
-					<UserMetricChart labels={historyLabels} datasets={networkDatasets} yFormat="bytes" group={chartGroup} enableZoom />
+					<UserMetricChart labels={historyLabels} datasets={networkDatasets} yFormat="bytes" group={chartGroup} enableZoom markLines={chartMarkLines} />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
 						<h3>디스크 처리량</h3>
 						<span>읽기 {formatBytesValue(currentMetrics?.disk?.read)} · 쓰기 {formatBytesValue(currentMetrics?.disk?.write)}</span>
 					</div>
-					<UserMetricChart labels={historyLabels} datasets={diskDatasets} yFormat="bytes" group={chartGroup} enableZoom />
+					<UserMetricChart labels={historyLabels} datasets={diskDatasets} yFormat="bytes" group={chartGroup} enableZoom markLines={chartMarkLines} />
 				</div>
 				{#if hasGpuHistory || (currentGpuUsage !== null && currentGpuUsage !== undefined)}
 					<div class="chart-card">
@@ -525,11 +579,13 @@
 							<h3>GPU 사용률</h3>
 							<span>현재 {currentGpuUsage !== null ? formatPercent(currentGpuUsage, 2) : '-'}{#if gpuValid.length > 0} · {rangeLabel} 평균 {formatPercent(gpuAvg, 1)} · 피크 {formatPercent(gpuPeak, 1)}{/if}</span>
 						</div>
-						<UserMetricChart labels={historyLabels} datasets={gpuDatasets} yFormat="percent" group={chartGroup} enableZoom />
+						<UserMetricChart labels={historyLabels} datasets={gpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={chartMarkLines} />
 					</div>
 				{/if}
 			</div>
 		</section>
+
+		<EventList {events} errorMsg={eventsError} />
 
 		<InspectPanel data={inspectData} loading={inspectLoading} errorMsg={inspectError} />
 

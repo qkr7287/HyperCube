@@ -1,6 +1,13 @@
 from rest_framework import serializers
 
-from .models import Container, ContainerRequest, ContainerTemplate
+from .models import Container, ContainerEvent, ContainerRequest, ContainerTemplate
+
+
+class ContainerEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ContainerEvent
+        fields = ["id", "ts", "kind", "exit_code", "signal", "health_status"]
+        read_only_fields = fields
 
 
 class ContainerSerializer(serializers.ModelSerializer):

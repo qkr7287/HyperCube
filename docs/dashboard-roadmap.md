@@ -27,9 +27,9 @@ related-pages: /user/containers/[containerId]
 | 세션 | 묶음 | 상태 | Agent repo 작업 |
 |---|---|---|---|
 | 0 (완료) | D — 차트 sync / zoom / pause / period KPI | ✅ commit `d65bce4` | ❌ |
-| 1 (완료) | A1 — Container Ops Panel | ✅ 이번 세션 | ❌ |
-| 2 | **B2 — Events 타임라인 + 차트 markLine** | 🔜 다음 | ✅ 선행 필요 |
-| 3 | B1 — Live log streaming | 🔜 | ✅ 선행 필요 |
+| 1 (완료) | A1 — Container Ops Panel | ✅ | ❌ |
+| 2 (완료) | B2 — Events 타임라인 + 차트 markLine | ✅ 이번 세션 | ✅ agent 송출 추가 완료 |
+| 3 | **B1 — Live log streaming** | 🔜 다음 | ✅ 선행 필요 |
 | 4 | C1 — Rate 차트 + Resource limit markLine | 🔜 | ❌ |
 | 5 | B3 — Per-container processes top-N | 🔜 | ✅ 선행 필요 |
 | 6 | B4 — Console exec (xterm) | 🔜 | ✅ 선행 필요 |
@@ -102,7 +102,38 @@ related-pages: /user/containers/[containerId]
 - `frontend/src/routes/user/containers/[containerId]/+page.svelte` — Ops bar + InspectPanel 통합, `loadInspect`, `handleControlDone/Error`
 - `docs/api.md` — `/api/my-containers/{id}/inspect|control/` 엔드포인트 추가
 
-## B2. Events 타임라인 + 차트 markLine  (다음 세션 후보)
+## B2. Events 타임라인 + 차트 markLine  (✅ 완료)
+
+### 실제 변경
+
+- Agent (별도 repo, 이미 완료): `container_events` 메시지 송출, 100ms batch, 9 kind 매핑, signal 정규화
+- Backend
+  - `apps/containers/models.ContainerEvent` + migration 0003
+  - `apps/common/consumers._handle_container_events` 핸들러 (bulk_create, agent_id + short ID 매칭, 알 수 없는 컨테이너 silently skip)
+  - `apps/containers/serializers.ContainerEventSerializer`
+  - `MyContainerViewSet.events` REST action (`?since=&limit=`)
+- Frontend
+  - `lib/components/charts/types.MarkLineEntry` 타입
+  - `EChartLine.markLines` prop + `buildMarkLine` (dashed, opacity 0.7, color per kind)
+  - `UserMetricChart.markLines` passthrough
+  - `lib/utils/container-events.ts` (kind→color/label 단일 source)
+  - `EventList.svelte` 신규
+  - `[id]/+page.svelte`: events state, 10s polling (paused 시 skip), `chartMarkLines = $derived(buildChartMarkLines)` (event ts → 가까운 bucket idx)
+- Docs: `agent-payload-contract.md` (`container_events` 섹션), `api.md` (events endpoint)
+
+### 검증 (chrome 실측)
+
+- pause + unpause 클릭 → agent가 송출 → backend가 받아 DB 저장 → REST 응답에 2건 → EventList 2건 표시 → 5개 차트 모두 markLine 표시
+- markLine 위치: 5분 단위 (63 bucket 중 마지막 62번 — 두 이벤트가 1초 차로 같은 bucket)
+- 콘솔 에러 0건
+
+### 알려진 한계 / 후속
+
+- 폴링 10s — 실시간성 떨어짐. 향후 WS push 로 전환 (server group broadcast 는 이미 됨, 사용자 페이지에서 WS 구독만 추가하면 됨)
+- 같은 bucket 안에 여러 이벤트가 떨어지면 markLine 이 겹쳐 보임. tooltip 으로 분리 가능하지만 현재 label.show=false. 호버 가시성 향후 개선 후보.
+- 알 수 없는 컨테이너 이벤트 silently skip — start 이벤트가 containers snapshot 보다 먼저 도착할 때 lost 가능. retry queue 도입 후보.
+
+## ~~B2. Events 타임라인 + 차트 markLine  (다음 세션 후보)~~ (위로 이동, 완료)
 
 **Agent 작업 (별도 세션)**:
 - Dockerode `events()` stream 구독 (filter: type=container)
@@ -207,6 +238,7 @@ related-pages: /user/containers/[containerId]
 
 ## 변경 이력
 
-- 2026-05-08: A1 (Container Ops Panel) 완료. 다음 세션 후보 = B2 (Events 타임라인). B2는 agent 변경이 선행이므로 user 가 agent 개발자에게 prompt 전달 후 backend/frontend 작업.
-- 2026-05-08: 초안 작성 + A1 진행 시작.
+- 2026-05-08: B2 (Events 타임라인 + 차트 markLine) 완료. 다음 세션 = B1 (Live log streaming). agent 변경 선행 필요.
+- 2026-05-08: A1 (Container Ops Panel) 완료.
+- 2026-05-08: 초안 작성.
 - 2026-05-08: D (차트 sync/zoom/pause/period KPI) 완료 — commit `d65bce4`.

@@ -44,6 +44,7 @@ HyperCube WebSocket payload 스펙. Agent / Backend / Frontend 세 layer 가 같
 | `heartbeat` | Backend → Agent | 15s | 좀비 세션 감지 | Agent가 수신 침묵 시 재접속 |
 | `connection` | Backend → Agent/Browser | connect 직후 | 접속 확인 | client side 만 |
 | `agent_status_change` | Backend → Browser (global) | online↔offline 전환 | global event broadcast | `GlobalEventsConsumer` group_send |
+| `container_events` | Agent → Backend | 이벤트 발생 시 (100ms batch) | 컨테이너 라이프사이클 이벤트 (start/stop/die/restart/pause/unpause/kill/oom/health_status) | `ContainerEvent` 모델 저장 + 서버 group broadcast |
 
 WS path:
 - `/ws/server/{server_id}/` → `MonitoringConsumer` (Agent + 그 서버 보는 Browser)
@@ -231,6 +232,55 @@ update_or_create 하고, 보고에서 빠진 컨테이너는 `exited`로 마킹.
 ```
 
 state 값이 위 7개 외면 `created`로 정규화 (`_normalize_status`).
+
+## type: `container_events`
+
+Agent 가 Dockerode `events()` stream 을 구독해 컨테이너 라이프사이클 이벤트를 push.
+100ms batch window 로 묶여서 옴. `events` 배열은 1개 이상.
+
+```jsonc
+{
+  "type": "container_events",
+  "timestamp": "2026-05-08T11:30:00.000Z",  // 메시지 송신 시각
+  "data": {
+    "events": [
+      {
+        "containerId": "abc123def456...",    // Docker full ID. Backend는 12자 short 로 매칭.
+        "name": "verify-redis-2",            // optional
+        "ts": "2026-05-08T11:29:58.123Z",    // Docker 이벤트 발생 시각 (UTC)
+        "kind": "start",                      // 아래 9종 중 하나
+        "exitCode": 0,                        // optional, "die" 일 때
+        "signal": "SIGTERM",                  // optional, "kill" 일 때 (숫자는 agent 가 SIGKILL 등으로 정규화)
+        "healthStatus": "healthy"             // optional, "health_status" 일 때 (healthy|unhealthy|starting)
+      }
+    ]
+  }
+}
+```
+
+### kind (Docker Action → kind)
+
+| Docker `Action` | `kind` | 추가 필드 |
+|---|---|---|
+| `start` | `start` | — |
+| `stop` | `stop` | — |
+| `die` | `die` | `exitCode` |
+| `restart` | `restart` | — |
+| `pause` | `pause` | — |
+| `unpause` | `unpause` | — |
+| `kill` | `kill` | `signal` |
+| `oom` | `oom` | — (die가 뒤이어 옴) |
+| `health_status: <state>` | `health_status` | `healthStatus` |
+
+`create / destroy / exec_* / attach / commit / rename / update / top` 등은 송출 안 함.
+
+### Backend 처리
+
+`MonitoringConsumer._handle_container_events`:
+1. `events` 배열 순회, agent_id + containerId(short 12) 로 `Container` 매칭
+2. `ContainerEvent` row 생성 (bulk_create)
+3. 알 수 없는 컨테이너는 silently skip (방금 생성됐지만 containers snapshot 미도착 케이스)
+4. 같은 메시지를 server group 에 broadcast (admin/소유자 viewer 의 향후 WS push 전환 대비)
 
 ## type: `command_response` (Agent → Browser)
 

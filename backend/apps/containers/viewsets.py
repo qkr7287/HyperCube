@@ -22,8 +22,9 @@ from apps.metrics.serializers import ContainerMetricsHistorySerializer
 
 logger = logging.getLogger(__name__)
 
-from .models import Container, ContainerRequest, ContainerTemplate
+from .models import Container, ContainerEvent, ContainerRequest, ContainerTemplate
 from .serializers import (
+    ContainerEventSerializer,
     ContainerRequestSerializer,
     ContainerSerializer,
     ContainerTemplateSerializer,
@@ -272,6 +273,41 @@ class MyContainerViewSet(ReadOnlyModelViewSet):
                 container.save(update_fields=["status", "last_seen"])
 
         return self._agent_resp_to_http(resp)
+
+    @extend_schema(
+        summary="컨테이너 라이프사이클 이벤트 조회",
+        description=(
+            "본인 소유 컨테이너의 최근 라이프사이클 이벤트(start/stop/die/restart/"
+            "pause/unpause/kill/oom/health_status). agent 가 Dockerode events stream "
+            "으로 push 한 데이터에서 읽음. since(ISO8601)/limit query."
+        ),
+    )
+    @action(detail=True, methods=["get"], url_path="events")
+    def events(self, request, pk=None):
+        container = self.get_object()
+        qs = ContainerEvent.objects.filter(container=container).order_by("-ts")
+
+        since_raw = request.query_params.get("since")
+        if since_raw:
+            from datetime import datetime
+            try:
+                since_dt = datetime.fromisoformat(since_raw.replace("Z", "+00:00"))
+                qs = qs.filter(ts__gte=since_dt)
+            except ValueError:
+                return Response(
+                    {"detail": "since must be ISO8601 timestamp"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        try:
+            limit = min(int(request.query_params.get("limit", "100")), 500)
+        except ValueError:
+            limit = 100
+
+        rows = list(qs[:limit])
+        # 시간 오름차순으로 응답 (frontend 차트 mark 편의).
+        rows.reverse()
+        return Response(ContainerEventSerializer(rows, many=True).data)
 
     @extend_schema(
         summary="컨테이너 inspect (Docker inspect subset)",

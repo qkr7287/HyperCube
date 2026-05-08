@@ -102,6 +102,59 @@ class Container(models.Model):
         return f"{self.name} ({self.get_status_display()}) @ {self.agent.hostname}"
 
 
+class ContainerEvent(models.Model):
+    """Agent가 Dockerode events stream 으로부터 push하는 컨테이너 라이프사이클 이벤트.
+
+    Frontend 차트의 markLine 표시 + 이벤트 패널의 source. agent-payload-contract
+    의 `container_events` 메시지 schema 1:1 매핑.
+    """
+
+    class Kind(models.TextChoices):
+        START = "start", "Start"
+        STOP = "stop", "Stop"
+        DIE = "die", "Die"
+        RESTART = "restart", "Restart"
+        PAUSE = "pause", "Pause"
+        UNPAUSE = "unpause", "Unpause"
+        KILL = "kill", "Kill"
+        OOM = "oom", "OOM"
+        HEALTH_STATUS = "health_status", "Health Status"
+
+    id = models.BigAutoField(primary_key=True)
+    container = models.ForeignKey(
+        Container,
+        on_delete=models.CASCADE,
+        related_name="events",
+    )
+    # 같은 agent 가 보낸 이벤트인지 cross-check 용 (container.agent 와 동일해야).
+    agent = models.ForeignKey(
+        Agent,
+        on_delete=models.CASCADE,
+        related_name="container_events",
+    )
+    ts = models.DateTimeField(help_text="Docker event 발생 시각 (UTC)")
+    kind = models.CharField(max_length=20, choices=Kind.choices)
+    # 추가 필드 (kind 별 — exitCode/signal/healthStatus). 누락은 null.
+    exit_code = models.IntegerField(null=True, blank=True)
+    signal = models.CharField(max_length=20, blank=True, default="")
+    health_status = models.CharField(max_length=20, blank=True, default="")
+    # 원본 raw payload (디버깅 / 향후 schema 확장 대비). agent 가 보낸 event dict.
+    raw = models.JSONField(default=dict, blank=True)
+    # Backend 가 받은 시각 (지연 분석용). agent ts 와 다를 수 있음.
+    received_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "container_events"
+        ordering = ["-ts"]
+        indexes = [
+            models.Index(fields=["container", "-ts"]),
+            models.Index(fields=["agent", "-ts"]),
+        ]
+
+    def __str__(self):
+        return f"{self.kind} {self.container.container_id[:12]} @ {self.ts.isoformat()}"
+
+
 class ContainerRequest(models.Model):
     """사용자가 제출하는 컨테이너 생성/삭제 요청.
 
