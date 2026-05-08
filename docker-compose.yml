@@ -4,6 +4,7 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     container_name: hc-postgres
+    restart: unless-stopped
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
@@ -23,6 +24,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: hc-redis
+    restart: unless-stopped
     ports:
       - "${REDIS_PORT:-6379}:6379"
     healthcheck:
@@ -35,6 +37,7 @@ services:
 
   backend:
     container_name: hc-backend
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -56,6 +59,7 @@ services:
 
   celery-worker:
     container_name: hc-celery-worker
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -77,6 +81,7 @@ services:
 
   celery-beat:
     container_name: hc-celery-beat
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy

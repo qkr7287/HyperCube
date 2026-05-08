@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.utils import timezone
 from rest_framework import serializers
 
-from .models import Agent
+from .models import Agent, AgentStatusEvent
 
 # 메인 UI active 판정 grace (Backend tasks.py와 일치 시켜야 함)
 _ACTIVE_GRACE_SECONDS = 5 * 60
@@ -54,5 +54,22 @@ class AgentStatusSerializer(serializers.ModelSerializer):
     class Meta:
         model = Agent
         fields = ["id", "status", "token"]
+
+
+class AgentStatusEventSerializer(serializers.ModelSerializer):
+    """Snapshot of one online/offline transition for the dashboard log."""
+
+    server_id = serializers.CharField(source="agent_id", read_only=True)
+
+    class Meta:
+        model = AgentStatusEvent
+        fields = [
+            "id",
+            "server_id",
+            "hostname",
+            "status",
+            "occurred_at",
+            "previous_offline_seconds",
+        ]
 
 

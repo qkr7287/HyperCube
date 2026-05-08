@@ -153,7 +153,14 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
         if was_already_active:
             return
 
-        # transition: offline → online
+        # transition: offline → online — record durably first, then push
+        # so a browser that polls the REST endpoint immediately after a
+        # missed websocket frame still finds the event in the log.
+        await self._record_online_event(
+            hostname=agent["hostname"],
+            occurred_at_iso=agent["last_seen_at"],
+            previous_offline_seconds=agent["previous_offline_seconds"],
+        )
         await self.channel_layer.group_send(
             GLOBAL_GROUP,
             {
@@ -199,6 +206,34 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
             "last_seen_at": now.isoformat(),
             "previous_offline_seconds": offline_secs,
         }
+
+    @database_sync_to_async
+    def _record_online_event(self, hostname: str, occurred_at_iso: str,
+                             previous_offline_seconds: int | None) -> None:
+        """Persist an online transition for the dashboard event log.
+
+        Called only on the offline→online edge (`mark_notified_active`
+        returned a fresh add). Mirrors the offline write in
+        detect_offline_agents so the event-log panel can replay both
+        sides of every flap.
+        """
+        from datetime import datetime
+
+        from apps.agents.models import AgentStatusEvent
+
+        try:
+            occurred_at = datetime.fromisoformat(occurred_at_iso)
+        except ValueError:
+            from django.utils import timezone
+            occurred_at = timezone.now()
+
+        AgentStatusEvent.objects.create(
+            agent_id=self.server_id,
+            hostname=hostname,
+            status=AgentStatusEvent.Status.ONLINE,
+            occurred_at=occurred_at,
+            previous_offline_seconds=previous_offline_seconds,
+        )
 
     async def ws_send(self, event):
         """임의의 payload를 현재 WS로 그대로 전달 (직접 라우팅용)."""

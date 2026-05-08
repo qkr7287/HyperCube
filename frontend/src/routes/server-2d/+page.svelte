@@ -11,7 +11,13 @@
 		connect,
 		disconnect,
 	} from '$lib/stores/ws-store';
-	import { connectGlobal, disconnectGlobal, seedActiveAgents } from '$lib/stores/global-events';
+	import {
+		connectGlobal,
+		disconnectGlobal,
+		seedActiveAgents,
+		seedStatusEventsFromBackend,
+		statusEvents,
+	} from '$lib/stores/global-events';
 	import AdminHeader from '$lib/components/AdminHeader.svelte';
 	import ContainerDetailModal from '$lib/components/ContainerDetailModal.svelte';
 	import InfoTooltip from '$lib/components/InfoTooltip.svelte';
@@ -498,13 +504,63 @@
 				action: '용량 확보',
 			});
 		}
+		// Agent online/offline transitions — pulled from the global store
+		// so 1/N-down outages and reconnections appear in the dashboard's
+		// 실시간 이벤트 panel even if no toast was shown at the moment of
+		// transition. NOT filtered by selectedServerId on purpose: when
+		// only one of two agents is down, the operator is necessarily
+		// viewing the surviving one and still needs to see that the other
+		// one dropped.
+		for (const evt of $statusEvents) {
+			const at = evt.last_seen_at ? new Date(evt.last_seen_at) : new Date(evt.receivedAt);
+			if (evt.status === 'offline') {
+				events.push({
+					id: `agent-offline-${evt.server_id}-${evt.receivedAt}`,
+					severity: 'critical',
+					at,
+					stack: '시스템',
+					target: evt.hostname || 'Agent',
+					message: 'Agent 연결 끊김',
+					action: '점검 필요',
+				});
+			} else {
+				const reconnectedAfter = formatOfflineDuration(evt.previous_offline_seconds);
+				events.push({
+					id: `agent-online-${evt.server_id}-${evt.receivedAt}`,
+					severity: 'info',
+					at,
+					stack: '시스템',
+					target: evt.hostname || 'Agent',
+					message: reconnectedAfter
+						? `Agent 재연결 (${reconnectedAfter} 끊김)`
+						: 'Agent 재연결',
+				});
+			}
+		}
+
 		return events
 			.sort((a, b) => {
 				const weight = (sev: string) => (sev === 'critical' ? 0 : sev === 'warn' ? 1 : 2);
-				return weight(a.severity) - weight(b.severity);
+				const w = weight(a.severity) - weight(b.severity);
+				if (w !== 0) return w;
+				return b.at.getTime() - a.at.getTime();
 			})
 			.slice(0, 50);
 	});
+
+	function formatOfflineDuration(secs: number | null | undefined): string {
+		if (secs == null || secs < 0) return '';
+		if (secs < 60) return `${secs}초`;
+		if (secs < 3600) return `${Math.round(secs / 60)}분`;
+		if (secs < 86400) {
+			const h = Math.floor(secs / 3600);
+			const m = Math.round((secs % 3600) / 60);
+			return m > 0 ? `${h}시간 ${m}분` : `${h}시간`;
+		}
+		const d = Math.floor(secs / 86400);
+		const h = Math.round((secs % 86400) / 3600);
+		return h > 0 ? `${d}일 ${h}시간` : `${d}일`;
+	}
 
 	function topNamesBySeries(series: { label: string; values: number[] }[]): string[] {
 		return [...series]
@@ -644,6 +700,24 @@
 			}
 			agents = liveAgents;
 			seedActiveAgents(liveAgents.map((agent: Agent) => agent.id));
+			// Seed the persisted transition log so the 실시간 이벤트 panel shows
+			// agent online/offline events the user might have missed (browser
+			// closed, backend restarted, ...). Live WS events will then prepend
+			// on top of this baseline.
+			try {
+				const eventsRes = await fetch(`${base}/api/agents/status-events/?limit=20`, {
+					headers: authHeaders(),
+				});
+				if (eventsRes.ok) {
+					const ej = await eventsRes.json();
+					const events = ej.data ?? ej.results ?? ej ?? [];
+					if (Array.isArray(events) && events.length > 0) {
+						seedStatusEventsFromBackend(events);
+					}
+				}
+			} catch {
+				/* ignore */
+			}
 			const saved = browser ? localStorage.getItem('hc_selected_server') : '';
 			const preferred = selectedServerId && agents.some((agent) => agent.id === selectedServerId)
 				? selectedServerId

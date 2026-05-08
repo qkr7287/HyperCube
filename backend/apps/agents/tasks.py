@@ -15,7 +15,7 @@ from celery import shared_task
 from channels.layers import get_channel_layer
 from django.utils import timezone
 
-from apps.agents.models import Agent
+from apps.agents.models import Agent, AgentStatusEvent
 from apps.common import agent_presence
 
 logger = logging.getLogger(__name__)
@@ -57,7 +57,17 @@ def detect_offline_agents():
 
         if agent.last_seen_at is None or agent.last_seen_at < cutoff:
             agent_presence.clear_notified_active(server_id)
-            offline_at = (agent.last_seen_at or timezone.now()).isoformat()
+            occurred_at = agent.last_seen_at or timezone.now()
+            offline_at = occurred_at.isoformat()
+            # Persist BEFORE broadcasting so a refresh that lands between
+            # the broadcast and the DB write still surfaces the event in
+            # the dashboard's "최근 상태 변화" panel.
+            AgentStatusEvent.objects.create(
+                agent=agent,
+                hostname=agent.hostname,
+                status=AgentStatusEvent.Status.OFFLINE,
+                occurred_at=occurred_at,
+            )
             _push_global_event({
                 "type": "agent_status_change",
                 "status": "offline",

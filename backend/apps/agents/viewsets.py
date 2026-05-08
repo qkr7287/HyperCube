@@ -7,18 +7,19 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.viewsets import ModelViewSet
+from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
 # 메인 UI active 판정 grace (serializers.py / tasks.py와 일치)
 ACTIVE_GRACE_SECONDS = 5 * 60
 
 from apps.common.permissions import IsServerAdminOrAbove, IsSuperAdmin
 
-from .models import Agent
+from .models import Agent, AgentStatusEvent
 from .serializers import (
     AgentSerializer,
+    AgentStatusEventSerializer,
     AgentStatusSerializer,
 )
 
@@ -185,6 +186,29 @@ class AgentViewSet(ModelViewSet):
     def check_status(self, request, pk=None):
         agent = self.get_object()
         return Response(AgentStatusSerializer(agent).data)
+
+    @extend_schema(
+        summary="Agent 상태 변화 이력 조회",
+        description=(
+            "최근 Agent online/offline 전환 이력을 시간 역순으로 반환합니다. "
+            "기본 50건, ?limit=N 으로 조절. Dashboard '최근 상태 변화' 패널이 "
+            "mount 시 호출하여 백엔드/브라우저 down 동안 놓친 이벤트를 복구합니다."
+        ),
+    )
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="status-events",
+        permission_classes=[IsAuthenticated],
+    )
+    def status_events(self, request):
+        try:
+            limit = int(request.query_params.get("limit", 50))
+        except ValueError:
+            limit = 50
+        limit = max(1, min(limit, 500))
+        qs = AgentStatusEvent.objects.order_by("-occurred_at")[:limit]
+        return Response(AgentStatusEventSerializer(qs, many=True).data)
 
     @extend_schema(
         summary="Agent 최신 메트릭 조회",

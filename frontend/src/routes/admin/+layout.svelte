@@ -3,7 +3,13 @@
 	import { browser } from '$app/environment';
 	import { base } from '$app/paths';
 	import { goto } from '$app/navigation';
-	import { connectGlobal, disconnectGlobal, seedActiveAgents, seedStatusEvents } from '$lib/stores/global-events';
+	import {
+		connectGlobal,
+		disconnectGlobal,
+		seedActiveAgents,
+		seedStatusEvents,
+		seedStatusEventsFromBackend,
+	} from '$lib/stores/global-events';
 	import AdminHeader from '$lib/components/AdminHeader.svelte';
 	import StatusToasts from '$lib/components/StatusToasts.svelte';
 
@@ -53,6 +59,21 @@
 				// offline 인 agent 들을 synthetic 이벤트로 seed → 페이지 첫 진입 때도
 				// "최근 상태 변화" 가 비어있지 않고 현재 offline 상태 reflects.
 				seedStatusEvents(agents);
+			}
+		} catch {
+			/* ignore */
+		}
+		// Persisted transition log overrides the synthetic seed when present.
+		try {
+			const res = await fetch(`${base}/api/agents/status-events/?limit=20`, {
+				headers: { Authorization: `Bearer ${token}` },
+			});
+			if (res.ok) {
+				const json = await res.json();
+				const events = json.data ?? json.results ?? json ?? [];
+				if (Array.isArray(events) && events.length > 0) {
+					seedStatusEventsFromBackend(events);
+				}
 			}
 		} catch {
 			/* ignore */

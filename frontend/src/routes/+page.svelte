@@ -25,7 +25,13 @@
 		buildSimulatedAgents,
 		isSimulatedAgentId,
 	} from '$lib/utils/fleet-simulate';
-	import { connectGlobal, disconnectGlobal, seedActiveAgents, seedStatusEvents } from '$lib/stores/global-events';
+	import {
+		connectGlobal,
+		disconnectGlobal,
+		seedActiveAgents,
+		seedStatusEvents,
+		seedStatusEventsFromBackend,
+	} from '$lib/stores/global-events';
 	import { rangeBucketLabel, rangeLabel } from '$lib/utils/fleet-format';
 	import FleetStatusBar from '$lib/components/fleet/FleetStatusBar.svelte';
 	import FleetCardRotator from '$lib/components/fleet/FleetCardRotator.svelte';
@@ -109,7 +115,25 @@
 				totalAgents = json.data?.count ?? 0;
 				const agents = json.data?.results ?? [];
 				seedActiveAgents(agents.filter((agent: any) => agent.is_active).map((agent: any) => agent.id));
+				// Fallback synthetic events from current is_active state — overridden
+				// below if the persisted log is reachable.
 				seedStatusEvents(agents);
+			}
+		} catch {
+			/* ignore */
+		}
+		// Persisted transition log: covers events fired while the browser was
+		// closed or the backend itself was down at the moment of transition.
+		try {
+			const res = await fetch(`${base}/api/agents/status-events/?limit=20`, {
+				headers: { Authorization: `Bearer ${token}` },
+			});
+			if (res.ok) {
+				const json = await res.json();
+				const events = json.data ?? json.results ?? json ?? [];
+				if (Array.isArray(events) && events.length > 0) {
+					seedStatusEventsFromBackend(events);
+				}
 			}
 		} catch {
 			/* ignore */
