@@ -84,3 +84,50 @@ def fetch_response(request_id: str) -> Optional[dict]:
     except json.JSONDecodeError:
         logger.warning("Malformed response entry for %s", request_id)
         return None
+
+
+# ----- Long-running stream subscriptions (logs_subscribe etc.) -----
+# stream_id 단위로 browser_channel 을 별도 보관. 일반 command pending 과 달리
+# pop 하지 않고 다중 메시지 routing 에 사용. TTL 1h (장시간 tail 허용).
+
+STREAM_KEY = "cmd_stream:{stream_id}"
+STREAM_BY_CHANNEL_KEY = "cmd_streams_by_channel:{channel}"
+STREAM_TTL = 3600  # 1 hour — tail 세션 최대 수명
+
+
+def record_stream(stream_id: str, browser_channel: str, server_id: str) -> None:
+    r = get_redis_client()
+    payload = json.dumps({"browser": browser_channel, "server_id": server_id})
+    r.set(STREAM_KEY.format(stream_id=stream_id), payload, ex=STREAM_TTL)
+    by_channel = STREAM_BY_CHANNEL_KEY.format(channel=browser_channel)
+    r.sadd(by_channel, stream_id)
+    r.expire(by_channel, STREAM_TTL)
+
+
+def get_stream_info(stream_id: str) -> Optional[dict]:
+    r = get_redis_client()
+    raw = r.get(STREAM_KEY.format(stream_id=stream_id))
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+
+
+def remove_stream(stream_id: str) -> None:
+    """stream entry 와 by-channel set 양쪽에서 정리."""
+    r = get_redis_client()
+    info = get_stream_info(stream_id)
+    if info:
+        by_channel = STREAM_BY_CHANNEL_KEY.format(channel=info.get("browser", ""))
+        r.srem(by_channel, stream_id)
+    r.delete(STREAM_KEY.format(stream_id=stream_id))
+
+
+def streams_by_channel(browser_channel: str) -> list:
+    """browser_channel 이 활성으로 가진 모든 stream_id 목록.
+    Browser disconnect 시 일괄 cleanup 용."""
+    r = get_redis_client()
+    members = r.smembers(STREAM_BY_CHANNEL_KEY.format(channel=browser_channel))
+    return list(members)

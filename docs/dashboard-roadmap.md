@@ -28,9 +28,9 @@ related-pages: /user/containers/[containerId]
 |---|---|---|---|
 | 0 (완료) | D — 차트 sync / zoom / pause / period KPI | ✅ commit `d65bce4` | ❌ |
 | 1 (완료) | A1 — Container Ops Panel | ✅ | ❌ |
-| 2 (완료) | B2 — Events 타임라인 + 차트 markLine | ✅ 이번 세션 | ✅ agent 송출 추가 완료 |
-| 3 | **B1 — Live log streaming** | 🔜 다음 | ✅ 선행 필요 |
-| 4 | C1 — Rate 차트 + Resource limit markLine | 🔜 | ❌ |
+| 2 (완료) | B2 — Events 타임라인 + 차트 markLine | ✅ | ✅ agent 송출 추가 완료 |
+| 3 (완료) | B1 — Live log streaming | ✅ 이번 세션 | ✅ agent logs_subscribe/unsubscribe 추가 완료 |
+| 4 | **C1 — Rate 차트 + Resource limit markLine** | 🔜 다음 | ❌ |
 | 5 | B3 — Per-container processes top-N | 🔜 | ✅ 선행 필요 |
 | 6 | B4 — Console exec (xterm) | 🔜 | ✅ 선행 필요 |
 
@@ -165,7 +165,35 @@ related-pages: /user/containers/[containerId]
 
 **가치**: HC 차트 강점 ↑ — "왜 metric이 0이 됐지?" 답이 차트 위에 직접.
 
-## B1. Live Log Streaming  (다음 세션 후보)
+## B1. Live Log Streaming  (✅ 완료)
+
+### 실제 변경
+
+- Agent (별도 repo, 완료): `logs_subscribe / logs_unsubscribe` 명령, `log_chunk / log_stream_end` flat-envelope 메시지, 200ms / 50줄 batch, demuxStream(stdout/stderr)
+- Backend
+  - `command_router`: `record_stream / get_stream_info / remove_stream / streams_by_channel` (TTL 1h)
+  - `_handle_browser_command`: `logs_subscribe` forward 시 record_stream, `logs_unsubscribe` 시 optimistic remove
+  - `_route_log_stream_message`: streamId → browser_channel 매핑 후 forward, `log_stream_end` 시 registry 정리
+  - `disconnect`: Browser disconnect 시 활성 stream 마다 `logs_unsubscribe` agent 발송 + registry 정리
+- Frontend
+  - `LogTailPanel.svelte`: 자체 WS 연결, regex 필터, auto-scroll / pause 토글, 복사 / 다운로드, MAX_LINES=5000 cap, stdout/stderr 색 구분
+  - `[id]/+page.svelte`: 차트 패널 다음 위치에 패널 통합
+
+### 검증 (chrome 실측)
+
+- 패널 열기 → WS 연결 → command_response(success:true, subscribed:true) → 27줄 tail backfill 즉시 표시 ("● 수신 중")
+- 정규식 필터 "WARNING" → 4 / 27줄 매치, 빈 필터 복귀 시 27줄 전체
+- 닫기 → unsubscribe 발송 + WS close → UI 정리
+- 콘솔 에러 0건
+
+### 알려진 한계
+
+- 한 페이지에 LogTailPanel 1개. 다중 streams 지원은 의도적 미구현.
+- log_stream_end 의 `container_removed` reason 은 agent 가 `container_stopped` 로 통합 (inspect 호출 비용 회피). backend 가 `container_events.die` 와 cross-reference 가능.
+- 가상 스크롤 없음 — 5000줄 cap 으로 메모리 보호. 폭주 환경에선 후속 가상 스크롤 도입 검토.
+- WS 끊김 자동 reconnect 없음. 사용자가 재시작 버튼 또는 패널 닫기/열기로 재구독.
+
+## ~~B1. Live Log Streaming~~ (위로 이동, 완료)
 
 **Agent 작업 (별도 세션)**:
 - 새 명령 `logs_subscribe(containerId, tail, since, timestamps)` — Dockerode `logs({follow:true, tail, since})` stream 시작
@@ -238,7 +266,8 @@ related-pages: /user/containers/[containerId]
 
 ## 변경 이력
 
-- 2026-05-08: B2 (Events 타임라인 + 차트 markLine) 완료. 다음 세션 = B1 (Live log streaming). agent 변경 선행 필요.
+- 2026-05-08: B1 (Live log streaming) 완료. 다음 세션 = C1 (rate + limit markLine, agent 의존 0).
+- 2026-05-08: B2 (Events 타임라인 + 차트 markLine) 완료.
 - 2026-05-08: A1 (Container Ops Panel) 완료.
 - 2026-05-08: 초안 작성.
 - 2026-05-08: D (차트 sync/zoom/pause/period KPI) 완료 — commit `d65bce4`.

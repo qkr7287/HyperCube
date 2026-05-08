@@ -76,6 +76,33 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
         if getattr(self, "is_agent", False):
             command_router.unregister_agent(self.server_id, self.channel_name)
+        else:
+            # Browser disconnect: 이 channel 이 가지고 있던 활성 log stream 모두
+            # agent 에 unsubscribe 송신 + registry 정리. agent 가 해당 streamId 를
+            # 모르면 idempotent 처리한다는 합의대로.
+            await self._cleanup_browser_streams()
+
+    async def _cleanup_browser_streams(self):
+        import uuid
+        active = command_router.streams_by_channel(self.channel_name)
+        for stream_id in active:
+            info = command_router.get_stream_info(stream_id)
+            agent_channel = command_router.get_agent_channel((info or {}).get("server_id", ""))
+            if agent_channel:
+                payload = {
+                    "type": "command",
+                    "requestId": str(uuid.uuid4()),
+                    "command": "logs_unsubscribe",
+                    "params": {"streamId": stream_id},
+                }
+                try:
+                    await self.channel_layer.send(agent_channel, {
+                        "type": "ws.send",
+                        "payload": payload,
+                    })
+                except Exception:
+                    logger.exception("[ws] failed to forward logs_unsubscribe on disconnect")
+            command_router.remove_stream(stream_id)
 
     async def receive(self, text_data=None, bytes_data=None):
         """Agent: 데이터 송신 + command_response. Browser: command 발행만."""
@@ -111,6 +138,10 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
 
         if msg_type == "command_progress":
             await self._route_command_progress(data)
+            return
+
+        if msg_type in ("log_chunk", "log_stream_end"):
+            await self._route_log_stream_message(data)
             return
 
         if msg_type == "container_events":
@@ -278,11 +309,39 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
 
         command_router.record_pending(request_id, self.channel_name, self.server_id)
 
+        # Long-running stream subscription 등록 / 해제 hook.
+        # logs_subscribe: 이 requestId 가 곧 streamId 가 됨 → log_chunk/end 라우팅 키.
+        # logs_unsubscribe: optimistic remove (agent 응답 기다리지 않음 — 실패해도
+        #                   browser 가 이미 cleanup 의도).
+        command_name = data.get("command")
+        if command_name == "logs_subscribe":
+            command_router.record_stream(request_id, self.channel_name, self.server_id)
+        elif command_name == "logs_unsubscribe":
+            stream_id = ((data.get("params") or {}).get("streamId")) or ""
+            if stream_id:
+                command_router.remove_stream(stream_id)
+
         # Agent에게 원본 메시지 그대로 전달 (Agent는 requestId로 매칭)
         await self.channel_layer.send(agent_channel, {
             "type": "ws.send",
             "payload": data,
         })
+
+    async def _route_log_stream_message(self, data: dict):
+        """Agent의 log_chunk / log_stream_end 를 streamId 매핑된 Browser 로 forward.
+        log_stream_end 도착 시 stream registry 도 정리."""
+        stream_id = data.get("streamId")
+        if not stream_id:
+            return
+        info = command_router.get_stream_info(stream_id)
+        browser_channel = (info or {}).get("browser")
+        if browser_channel:
+            await self.channel_layer.send(browser_channel, {
+                "type": "ws.send",
+                "payload": data,
+            })
+        if data.get("type") == "log_stream_end":
+            command_router.remove_stream(stream_id)
 
     async def _route_command_response(self, data: dict):
         """Agent가 보낸 command_response를 요청 Browser로 라우팅.

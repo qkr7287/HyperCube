@@ -45,6 +45,8 @@ HyperCube WebSocket payload 스펙. Agent / Backend / Frontend 세 layer 가 같
 | `connection` | Backend → Agent/Browser | connect 직후 | 접속 확인 | client side 만 |
 | `agent_status_change` | Backend → Browser (global) | online↔offline 전환 | global event broadcast | `GlobalEventsConsumer` group_send |
 | `container_events` | Agent → Backend | 이벤트 발생 시 (100ms batch) | 컨테이너 라이프사이클 이벤트 (start/stop/die/restart/pause/unpause/kill/oom/health_status) | `ContainerEvent` 모델 저장 + 서버 group broadcast |
+| `log_chunk` | Agent → Backend → Browser | tail 시 (200ms batch / 50줄 threshold) | 로그 라인 chunk | `streamId` 로 browser channel 매핑 후 forward (DB 저장 X) |
+| `log_stream_end` | Agent → Backend → Browser | stream 자연 종료 시 1회 | 컨테이너 stop / docker error 등 | forward + stream registry 정리 |
 
 WS path:
 - `/ws/server/{server_id}/` → `MonitoringConsumer` (Agent + 그 서버 보는 Browser)
@@ -281,6 +283,56 @@ Agent 가 Dockerode `events()` stream 을 구독해 컨테이너 라이프사이
 2. `ContainerEvent` row 생성 (bulk_create)
 3. 알 수 없는 컨테이너는 silently skip (방금 생성됐지만 containers snapshot 미도착 케이스)
 4. 같은 메시지를 server group 에 broadcast (admin/소유자 viewer 의 향후 WS push 전환 대비)
+
+## type: `log_chunk` / `log_stream_end`
+
+Live log tail 용 push 메시지. envelope 다른 메시지(`type`+`timestamp`+`data`)
+와 달리 **flat 구조** (agent 측 결정사항).
+
+### `log_chunk`
+
+```jsonc
+{
+  "type": "log_chunk",
+  "streamId": "<sub-uuid>",          // logs_subscribe 의 requestId
+  "stream": "stdout",                 // "stdout" | "stderr" | "mixed" (tty-mode 만)
+  "lines": [
+    "2026-05-08T15:30:00.123Z [info] hello",
+    "..."
+  ]
+}
+```
+
+Backend 처리: `command_router.get_stream_info(streamId)` 로 browser channel
+조회 후 그대로 forward. DB 저장 안 함.
+
+### `log_stream_end`
+
+```jsonc
+{
+  "type": "log_stream_end",
+  "streamId": "<sub-uuid>",
+  "reason": "container_stopped",      // container_stopped | container_removed (현재 통합) | stream_error | agent_shutdown
+  "error": "<optional>"
+}
+```
+
+Backend 처리: forward + `remove_stream(streamId)` 로 registry 정리.
+`logs_unsubscribe` 로 인한 종료에는 emit 되지 않음 (그건 command_response 로
+충분).
+
+## 새 명령: `logs_subscribe` / `logs_unsubscribe`
+
+`docs/agent-protocol.md` §5 / §6 참조 (envelope 은 일반 `command` 형식).
+`logs_subscribe` 의 requestId 가 곧 `streamId` 가 되고, 이후 `log_chunk` /
+`log_stream_end` 모든 메시지가 이 streamId 를 참조.
+
+Backend `_handle_browser_command` 에서:
+- `logs_subscribe` forward 직전 → `command_router.record_stream(requestId, browser_channel, server_id)`
+- `logs_unsubscribe` forward 직전 → `command_router.remove_stream(streamId)` (optimistic)
+
+Browser disconnect 시 `_cleanup_browser_streams` 가 활성 stream 마다
+unsubscribe 발송 + registry 정리.
 
 ## type: `command_response` (Agent → Browser)
 

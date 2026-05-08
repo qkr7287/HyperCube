@@ -232,6 +232,40 @@ Invalid `subCommand` → `"Invalid subCommand: <x>. Valid: cpu_detail, processes
 
 ---
 
+### 5. `logs_subscribe` / `logs_unsubscribe`
+
+Live log tail. 단발 명령이 아니라 long-running stream 시작/종료. `logs_subscribe`
+의 `requestId` 가 그대로 `streamId` 로 사용되고, 이후 모든 `log_chunk` /
+`log_stream_end` 메시지가 이 streamId 를 참조.
+
+#### `logs_subscribe` — params
+
+| field        | type    | required | default | notes                                         |
+|--------------|---------|----------|---------|-----------------------------------------------|
+| containerId  | string  | yes      |         | full ID 또는 short ID                         |
+| tail         | number  | no       | 100     | 시작 전 backfill 라인 수. 0 = 현재 시점부터만. |
+| since        | string  | no       |         | ISO8601 또는 relative (`5m`, `1h`, `30s`)     |
+| timestamps   | boolean | no       | true    | Docker timestamp prefix 포함                  |
+
+**즉시 응답**: `command_response { success:true, data:{ streamId, subscribed:true } }`. 이후 라인이 들어올 때마다 `log_chunk` 메시지가 흐름. 자연 종료 시 `log_stream_end` 1회.
+
+#### `logs_unsubscribe` — params
+
+| field    | type   | required | notes                                  |
+|----------|--------|----------|----------------------------------------|
+| streamId | string | yes      | 종료할 subscribe 의 `streamId` |
+
+**응답**: `command_response { success:true, data:{ ended:true, streamId } }`. unknown streamId 도 `success:true` (idempotent — agent 결정).
+
+`logs_unsubscribe` 로 인한 종료에는 `log_stream_end` emit 안 함.
+
+#### 메시지 schema
+
+`log_chunk`, `log_stream_end` 의 정확한 schema 와 backend routing 동작은
+`agent-payload-contract.md` 참조. 두 메시지 모두 **flat envelope** (data/timestamp 없음).
+
+---
+
 ## Commands — 컨테이너 배포 (Backend dispatch)
 
 `apps.containers.viewsets.ContainerRequestViewSet.approve`에서 admin이 요청을 승인하면 자동 발송.

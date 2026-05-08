@@ -9,6 +9,7 @@
 	import ContainerActions from '$lib/components/ContainerActions.svelte';
 	import InspectPanel from '$lib/components/InspectPanel.svelte';
 	import EventList from '$lib/components/EventList.svelte';
+	import LogTailPanel from '$lib/components/LogTailPanel.svelte';
 	import { eventColor, eventLabel, type EventRow } from '$lib/utils/container-events';
 	import type { MarkLineEntry } from '$lib/components/charts/types';
 	import {
@@ -68,6 +69,7 @@
 		image: string;
 		status: string;
 		last_seen: string;
+		agent?: string; // Agent UUID (FK)
 		agent_hostname?: string;
 		template_name?: string | null;
 		request_id?: string | null;
@@ -584,6 +586,8 @@
 				{/if}
 			</div>
 		</section>
+
+		<LogTailPanel agentId={container.agent ?? ''} {containerId} />
 
 		<EventList {events} errorMsg={eventsError} />
 
