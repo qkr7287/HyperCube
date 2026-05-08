@@ -39,6 +39,19 @@
 
 	function applyOption(o: EChartsOption) {
 		if (!inst || inst.isDisposed()) return;
+		// Hide any active tooltip BEFORE swapping the option. ECharts' axis
+		// pointer caches the data index of the hovered point, and when
+		// notMerge:true rebuilds the series the cached index can dangle past
+		// the new data length. The next mousemove then hits
+		// `getDataParams → getRawIndex` on `undefined` and throws
+		// (TypeError: Cannot read properties of undefined (reading
+		// 'getRawIndex')). Dispatching hideTip clears the cached pointer
+		// so the post-swap hover starts from a clean state.
+		try {
+			inst.dispatchAction({ type: 'hideTip' });
+		} catch {
+			/* dispatchAction throws on disposed/empty chart — safe to ignore */
+		}
 		// notMerge:true 로 항상 통째 교체. ECharts 의 alpha-merge 가 이전 option
 		// 의 axis/series 를 누적 보관해 axis index 가 꼬이는 케이스가 있어
 		// (xAxis "0" not found 류) 매번 fresh option 으로 안전.
