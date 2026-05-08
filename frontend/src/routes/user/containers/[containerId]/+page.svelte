@@ -6,6 +6,8 @@
 	import { page } from '$app/stores';
 	import InfoTooltip from '$lib/components/InfoTooltip.svelte';
 	import UserMetricChart from '$lib/components/UserMetricChart.svelte';
+	import ContainerActions from '$lib/components/ContainerActions.svelte';
+	import InspectPanel from '$lib/components/InspectPanel.svelte';
 	import {
 		formatBytesValue,
 		formatDateTime,
@@ -123,6 +125,10 @@
 	let selectedRange = $state<(typeof RANGE_OPTIONS)[number]['key']>('1h');
 	let refreshTimer: ReturnType<typeof setInterval> | null = null;
 	let paused = $state(false);
+	let inspectData = $state<any>(null);
+	let inspectLoading = $state(false);
+	let inspectError = $state('');
+	let actionMsg = $state('');
 
 	let containerId = $derived($page.params.containerId);
 
@@ -177,6 +183,34 @@
 		currentMetrics = await api<MetricsSnapshot>(`/api/my-containers/${containerId}/current-metrics/`);
 	}
 
+	async function loadInspect() {
+		inspectLoading = true;
+		inspectError = '';
+		try {
+			inspectData = await api<any>(`/api/my-containers/${containerId}/inspect/`);
+		} catch (err: any) {
+			inspectError = err?.message || 'inspect 조회 실패';
+			// agent_offline / timeout 은 차트/메트릭 갱신은 막지 않음
+		} finally {
+			inspectLoading = false;
+		}
+	}
+
+	async function handleControlDone(action: string) {
+		actionMsg = `'${action}' 명령 완료. 상태를 새로고침합니다.`;
+		// 상태 변화는 즉시 반영되지 않을 수 있어 짧게 기다린 뒤 reload
+		setTimeout(() => {
+			loadDashboard({ withDetail: true });
+			loadInspect();
+		}, 500);
+		setTimeout(() => (actionMsg = ''), 3000);
+	}
+
+	function handleControlError(msg: string) {
+		actionMsg = msg;
+		setTimeout(() => (actionMsg = ''), 6000);
+	}
+
 	async function loadHistory() {
 		const map = RANGE_BUCKET_MAP[selectedRange];
 		const cid = (container?.container_id ?? '').slice(0, 12);
@@ -212,6 +246,8 @@
 			if (withDetail || !container) await loadDetail();
 			await Promise.all([loadCurrentMetrics(), loadHistory()]);
 			history = normalizeHistory(history, currentMetrics);
+			// inspect 는 실패해도 차트/메트릭 화면은 계속 보여야 하므로 별도 catch
+			loadInspect().catch(() => {});
 		} catch (error: any) {
 			errorMsg = error?.message || '대시보드를 불러오지 못했습니다.';
 		} finally {
@@ -391,6 +427,21 @@
 			</div>
 		{/if}
 
+		<section class="ops-bar">
+			<div class="ops-left">
+				<span class="ops-label">컨테이너 컨트롤</span>
+				<ContainerActions
+					containerId={container.container_id}
+					currentStatus={container.status}
+					onActionDone={handleControlDone}
+					onError={handleControlError}
+				/>
+			</div>
+			{#if actionMsg}
+				<div class="ops-msg">{actionMsg}</div>
+			{/if}
+		</section>
+
 		<section class="stat-grid">
 			<div class="stat-card">
 				<span class="stat-label">CPU 사용률<InfoTooltip text={cpuHelp} placement="bottom-start" /></span>
@@ -479,6 +530,8 @@
 				{/if}
 			</div>
 		</section>
+
+		<InspectPanel data={inspectData} loading={inspectLoading} errorMsg={inspectError} />
 
 		<section class="details-grid">
 			<div class="panel">
@@ -699,6 +752,43 @@
 
 	.banner {
 		margin-top: 14px;
+	}
+
+	.ops-bar {
+		margin-top: 14px;
+		padding: 14px 16px;
+		border-radius: 14px;
+		background: rgba(18, 23, 32, 0.96);
+		border: 1px solid var(--border);
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
+		align-items: center;
+		gap: 12px;
+	}
+
+	.ops-left {
+		display: flex;
+		align-items: center;
+		gap: 14px;
+		flex-wrap: wrap;
+	}
+
+	.ops-label {
+		font-size: 11px;
+		font-weight: 800;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--text-muted);
+	}
+
+	.ops-msg {
+		font-size: 12px;
+		color: var(--accent);
+		padding: 6px 10px;
+		border-radius: 8px;
+		background: rgba(48, 213, 200, 0.1);
+		border: 1px solid rgba(48, 213, 200, 0.3);
 	}
 
 	.stat-grid {

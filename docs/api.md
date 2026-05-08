@@ -78,6 +78,8 @@ POST /api/auth/token/
 | `/api/my-containers/{id}/` | GET | 상세 |
 | `/api/my-containers/{id}/current-metrics/` | GET | Redis 캐시에서 실시간 cpu/memory/network/disk |
 | `/api/my-containers/{id}/metrics-history/?range=1h&limit=240` | GET | DB에서 시계열 (range: `1m/5m/1h/6h/24h/7d`, limit max 500) |
+| `/api/my-containers/{id}/inspect/` | GET | Agent에 inspect 명령을 보내고 응답까지 동기 대기 (최대 15s). state.health, mounts, networkSettings 등 포함 |
+| `/api/my-containers/{id}/control/` | POST | 라이프사이클 제어. body `{"action": "start\|stop\|restart\|pause\|unpause\|kill"}`. remove 는 `/api/requests/` (action=delete) 로 분리. |
 
 `current-metrics` 응답:
 ```json
@@ -91,6 +93,12 @@ POST /api/auth/token/
 }
 ```
 캐시 미스 시 모든 값 null.
+
+`inspect` / `control` 동작:
+- 둘 다 backend → Agent WS로 명령 발송 → Agent의 `command_response`를 Redis에 저장 → REST endpoint가 polling (100ms 간격, 15s 타임아웃) 후 반환.
+- Agent 오프라인 → `503 Service Unavailable`, 타임아웃 → `504 Gateway Timeout`, dispatch 실패 → `502 Bad Gateway`.
+- Agent의 inspect/control schema 는 `agent-protocol.md` §2 / §3 참조. `inspect` 응답 본문은 Agent `data` 그대로 (`state`, `image`, `config`, `networkSettings`, `mounts`, `restartCount`).
+- `control` 성공 시 `{ "containerId": "...", "action": "...", "success": true }`. 권한: `IsAuthenticated` + `MyContainerViewSet.get_queryset` 가 `requester=self.request.user` 로 필터하므로 본인 컨테이너만 가능.
 
 ## Templates — `/api/templates/`
 

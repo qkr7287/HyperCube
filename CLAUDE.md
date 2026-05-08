@@ -22,6 +22,7 @@
 - 로컬 개발 / Docker Compose: `docs/docker-workflow.md`
 - 아키텍처: `docs/architecture.md`, `docs/to-be-architecture.md`
 - 운영 메모: `docs/operations.md`
+- **컨테이너 대시보드 개선 로드맵**: `docs/dashboard-roadmap.md` — 다음 세션은 여기 보고 어디부터 할지 결정. 세션 시작/끝마다 진행 상황 갱신.
 
 ## sync 룰 (코드 변경 시 docs 업데이트 필수)
 

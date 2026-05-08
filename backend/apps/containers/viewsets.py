@@ -1,5 +1,7 @@
 import json
 import logging
+import time
+import uuid
 from datetime import timedelta
 
 from asgiref.sync import async_to_sync
@@ -161,6 +163,108 @@ class MyContainerViewSet(ReadOnlyModelViewSet):
 
         serializer = ContainerMetricsHistorySerializer(metrics_qs, many=True)
         return Response(list(reversed(serializer.data)))
+
+    # ----- Agent on-demand control / inspect -----
+
+    # Agent.control 이 허용하는 7개 중, "remove" 는 request flow(action=delete)로
+    # 분리되어야 하므로 제외. 사용자 페이지에서 destructive remove 직접 노출 금지.
+    _VALID_CONTROL_ACTIONS = frozenset(["start", "stop", "restart", "pause", "unpause", "kill"])
+    _AGENT_COMMAND_TIMEOUT = 15.0  # seconds
+
+    def _dispatch_and_wait(self, server_id: str, command: str, params: dict) -> dict:
+        """REST에서 Agent로 명령 발송 + 동기 대기.
+
+        Redis에 store_response 된 응답을 polling. Agent 오프라인이면 즉시 fail.
+        timeout 도달 시 success=False, error="timeout".
+        """
+        agent_channel = command_router.get_agent_channel(server_id)
+        if not agent_channel:
+            return {"success": False, "error": "agent_offline"}
+
+        request_id = str(uuid.uuid4())
+        command_router.record_pending(request_id, command_router.REST_SENTINEL, server_id)
+
+        payload = {
+            "type": "command",
+            "requestId": request_id,
+            "command": command,
+            "params": params,
+        }
+
+        try:
+            layer = get_channel_layer()
+            async_to_sync(layer.send)(agent_channel, {
+                "type": "ws.send",
+                "payload": payload,
+            })
+        except Exception:
+            logger.exception("[my-container] dispatch failed cmd=%s", command)
+            return {"success": False, "error": "dispatch_failed"}
+
+        deadline = time.monotonic() + self._AGENT_COMMAND_TIMEOUT
+        while time.monotonic() < deadline:
+            resp = command_router.fetch_response(request_id)
+            if resp is not None:
+                return resp
+            time.sleep(0.1)
+        return {"success": False, "error": "timeout"}
+
+    def _agent_resp_to_http(self, resp: dict) -> Response:
+        """Agent command_response → DRF Response. EnvelopeJSONRenderer 더블래핑 방지를 위해
+        success 시엔 data만, fail 시엔 error 만 직접 반환 (renderer 가 envelope 추가)."""
+        if resp.get("success"):
+            return Response(resp.get("data") or {}, status=status.HTTP_200_OK)
+
+        err = resp.get("error") or "agent_error"
+        if err == "agent_offline":
+            return Response({"detail": "Agent 오프라인 — 명령 발송 불가"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        if err == "timeout":
+            return Response({"detail": "Agent 응답 타임아웃 (15초)"}, status=status.HTTP_504_GATEWAY_TIMEOUT)
+        if err == "dispatch_failed":
+            return Response({"detail": "Agent 명령 발송 실패"}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response({"detail": str(err)}, status=status.HTTP_502_BAD_GATEWAY)
+
+    @extend_schema(
+        summary="컨테이너 라이프사이클 제어",
+        description=(
+            "본인 소유 컨테이너에 start/stop/restart/pause/unpause/kill 명령 발송. "
+            "Agent에 WS 명령을 보내고 응답까지 동기 대기 (최대 15초). "
+            "remove는 request flow(action=delete)로 분리되어 있어 여기서는 차단."
+        ),
+    )
+    @action(detail=True, methods=["post"], url_path="control")
+    def control(self, request, pk=None):
+        container = self.get_object()
+        action_name = (request.data.get("action") or "").strip().lower()
+        if action_name not in self._VALID_CONTROL_ACTIONS:
+            return Response(
+                {"detail": f"invalid action. valid: {sorted(self._VALID_CONTROL_ACTIONS)}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        resp = self._dispatch_and_wait(
+            server_id=str(container.agent_id),
+            command="control",
+            params={
+                "containerId": container.container_id,
+                "action": action_name,
+            },
+        )
+        return self._agent_resp_to_http(resp)
+
+    @extend_schema(
+        summary="컨테이너 inspect (Docker inspect subset)",
+        description="본인 소유 컨테이너의 현재 inspect 데이터 (state.health, mounts, networkSettings 등).",
+    )
+    @action(detail=True, methods=["get"], url_path="inspect")
+    def inspect(self, request, pk=None):
+        container = self.get_object()
+        resp = self._dispatch_and_wait(
+            server_id=str(container.agent_id),
+            command="inspect",
+            params={"containerId": container.container_id},
+        )
+        return self._agent_resp_to_http(resp)
 
 
 # ---------- Templates ----------

@@ -273,7 +273,12 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
         })
 
     async def _route_command_response(self, data: dict):
-        """Agent가 보낸 command_response를 요청 Browser로 라우팅."""
+        """Agent가 보낸 command_response를 요청 Browser로 라우팅.
+
+        browser_channel 이 REST sentinel(`__rest__`) 이면 forward 대신 Redis
+        에 저장 → REST endpoint 가 fetch_response 로 polling.
+        `__api__` 는 dispatch-only(요청 승인 flow) — DB 갱신만 일어남.
+        """
         request_id = data.get("requestId")
         if not request_id:
             logger.warning("[ws] command_response missing requestId")
@@ -286,6 +291,14 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
 
         browser_channel = pending.get("browser")
         if not browser_channel:
+            return
+
+        if browser_channel == command_router.REST_SENTINEL:
+            command_router.store_response(request_id, data)
+            return
+
+        if browser_channel.startswith("__"):
+            # 다른 sentinel (예: __api__) — DB 갱신만 (`_update_request_from_response` 가 처리)
             return
 
         await self.channel_layer.send(browser_channel, {
