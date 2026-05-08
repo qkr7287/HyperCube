@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-05-08 (A1 완료 후)
+last-updated: 2026-05-08 (B3 완료, B4 정책 결정만 남음)
 status: living document — 세션마다 갱신
 benchmark: Portainer container detail UI
 related-pages: /user/containers/[containerId]
@@ -8,6 +8,12 @@ related-pages: /user/containers/[containerId]
 # Container Dashboard Roadmap
 
 `/user/containers/[containerId]` 페이지를 Portainer 수준의 operability + HyperCube 시계열 분석 강점을 결합한 대시보드로 끌어올리기 위한 작업 로드맵. **세션마다 진행 상황과 결정 사항을 갱신한다**.
+
+## 현재 상태 (요약 — 다음 세션 시작 시 여기부터 읽기)
+
+**기능 단위 작업**: D / A1 / B1 / B2 / B3 / C1 모두 완료 → Portainer parity 100%.
+**남은 마지막 단계**: B4 (Console exec / xterm). 정책 결정 완료 (아래 §B4 참조), agent prompt 만 만들면 시작 가능.
+**별도 scope** (현재 로드맵 외): UI/UX 폴리싱은 다음 세션에서 별도 진행. 컨테이너 modification (limit edit 등) 은 admin 도구 영역으로 분리.
 
 ## 큰 그림
 
@@ -282,23 +288,48 @@ related-pages: /user/containers/[containerId]
 - Frontend: 새 패널, sortBy 토글, 5초 폴링 (페이지 active 시만)
 - Backend routing 만
 
-## B4. Console Exec (xterm.js)
+## B4. Console Exec (xterm.js)  (🔜 대기 — 정책 결정 완료, agent prompt 만들기부터 시작)
 
-**가장 위험. 마지막에**.
+### 정책 결정 (Portainer 모델 채택)
 
-**Agent 작업**:
-- 새 long-running 세션: `exec_open(containerId, cmd, tty)` → execId 반환
-- `exec_input(execId, data)`, `exec_close(execId)`
-- Dockerode `exec` + duplex stream
+| 항목 | 결정 |
+|---|---|
+| 권한 | 본인 소유 컨테이너에 한해 console 가능 (control 과 동급). admin grant 별도 X. |
+| Audit | **세션 레벨만** — `ConsoleSession` 모델 (user, container, opened_at, closed_at, duration). 키스트로크 미기록. |
+| 명령 차단 | **없음** (Portainer 와 동일 — escape 우회 막을 수 없음). console 권한 = full shell 권한. |
+| Session timeout | WS 끊김 시 자동 종료. 별도 idle 타이머 없음. JWT 만료 (8h) 가 자연 한계. |
+| UI | xterm.js, shell 선택 (sh / bash), user 선택 (--user UID), 터미널 resize 자동 전달. 끊김 시 reconnect = 새 세션. |
 
-**This repo 작업**:
-- Backend: 권한 (본인 소유 + admin 토글), audit log (누가 언제 무슨 명령), session timeout
-- Frontend: xterm.js 통합, resize 처리
+### Agent 작업
 
-**선행 결정 필요**:
-- 권한 모델 (사용자 본인은 default 차단? admin만? 별도 권한 grant?)
-- audit 저장 (input 키스트로크 다 보관? 명령 단위?)
-- session 타임아웃 정책
+새 long-running 명령 (B1 logs_subscribe 패턴 참조 — streamId 기반 라우팅):
+
+- `exec_open(containerId, cmd, user, tty)` → 즉시 `command_response { execId, ready:true }`. execId 가 streamId 역할.
+- `exec_input(execId, data)` — stdin 데이터 (base64? raw? 결정 필요)
+- `exec_resize(execId, cols, rows)` — 터미널 크기 변경
+- `exec_close(execId)` — 정리
+- 새 push 메시지 `exec_chunk { execId, stream: stdout|stderr, data }` (raw bytes — base64 권장, xterm 가 ANSI escape 처리)
+- 새 push 메시지 `exec_end { execId, exitCode, reason }`
+- 구현: Dockerode `container.exec({ AttachStdin, AttachStdout, AttachStderr, Tty, User, Cmd })` + duplex stream
+
+### This repo 작업
+
+- Backend
+  - `apps/containers/models.ConsoleSession` 신규 (FK Container, FK User, opened_at, closed_at, duration_seconds)
+  - WS routing: B1 의 stream registry 패턴 재활용 (execId == streamId)
+  - Browser disconnect 시 `exec_close` 자동 발송 (B1 cleanup 패턴)
+  - REST `/api/my-containers/<id>/console-sessions/` (audit 조회) — admin 또는 본인
+- Frontend
+  - `ConsolePanel.svelte` — xterm.js 통합 (npm 의존성 추가 필요)
+  - shell / user 선택 dropdown
+  - 터미널 resize observer → exec_resize 발송
+  - Ctrl+Shift+C/V 복사/붙여넣기 (Ctrl+C 는 SIGINT 로 컨테이너에 전달)
+
+### 진행 절차
+
+1. Agent prompt 만들기 (B1 prompt 형식 따라)
+2. agent 작업 끝나면 backend WS routing + ConsoleSession 모델 + REST + frontend xterm 통합
+3. chrome 검증: redis-cli 실행 / sh 진입 / Ctrl+C SIGINT 전달 / resize / 끊김 시 cleanup
 
 ## 코딩 룰 (반복 실수 방지 — 모든 세션 공통)
 
