@@ -361,6 +361,10 @@
 	}
 	.mono {
 		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+		/* path / UUID / env value 처럼 공백 없는 긴 token 도 카드 안에서 줄바꿈. */
+		word-break: break-all;
+		overflow-wrap: anywhere;
+		min-width: 0;
 	}
 
 	.subsection {
@@ -389,6 +393,16 @@
 		font-size: 12px;
 		padding-bottom: 6px;
 		border-bottom: 1px solid rgba(31, 41, 55, 0.6);
+		min-width: 0;
+		max-width: 100%;
+		word-break: break-all;
+		overflow-wrap: anywhere;
+	}
+
+	.mount-list .mono {
+		flex: 1 1 auto;
+		min-width: 0;
+		max-width: 100%;
 	}
 	.mount-list li:last-child {
 		border-bottom: none;
