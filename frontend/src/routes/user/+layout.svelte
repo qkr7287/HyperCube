@@ -1,10 +1,11 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { browser } from '$app/environment';
 	import { base } from '$app/paths';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import logoHypercube from '$lib/assets/logo_hypercube.png';
+	import { connectGlobal, disconnectGlobal } from '$lib/stores/global-events';
 
 	let { children } = $props();
 	let ready = $state(false);
@@ -36,6 +37,13 @@
 		const payload = decodeJwt(token);
 		username = payload.username ?? '';
 		ready = true;
+		// agent_status_change 같은 cross-cutting 이벤트 받기 위해 global WS 연결
+		// (admin 만 받던 거 → user 페이지에서도 agent online/offline 표시 위해)
+		connectGlobal(token);
+	});
+
+	onDestroy(() => {
+		if (browser) disconnectGlobal();
 	});
 
 	let currentPath = $derived($page.url.pathname);

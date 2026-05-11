@@ -13,6 +13,7 @@
 	import LogTailPanel from '$lib/components/LogTailPanel.svelte';
 	import ProcessTopPanel from '$lib/components/ProcessTopPanel.svelte';
 	import ConsolePanel from '$lib/components/ConsolePanel.svelte';
+	import StateBox from '$lib/components/StateBox.svelte';
 	import { eventColor, eventLabel, type EventRow } from '$lib/utils/container-events';
 	import type { MarkLineEntry } from '$lib/components/charts/types';
 	import {
@@ -483,9 +484,16 @@
 	<button class="back-link" onclick={() => goto(`${base}/user/containers`)}>← 내 컨테이너 목록으로</button>
 
 	{#if loading}
-		<div class="state-box">대시보드 불러오는 중...</div>
+		<div class="state-wrap"><StateBox kind="loading" message="대시보드 불러오는 중..." /></div>
 	{:else if errorMsg}
-		<div class="state-box error">{errorMsg}</div>
+		<div class="state-wrap">
+			<StateBox
+				kind="error"
+				message={errorMsg}
+				action={() => loadDashboard({ withDetail: true })}
+				actionLabel="다시 시도"
+			/>
+		</div>
 	{:else if container}
 		<div class="topbar-sticky">
 			<section class="hero">
@@ -759,7 +767,6 @@
 		color: var(--accent);
 	}
 
-	.state-box,
 	.banner {
 		padding: 16px 18px;
 		border-radius: 14px;
@@ -768,10 +775,11 @@
 		color: var(--text-secondary);
 	}
 
-	.state-box.error {
-		color: #fecaca;
-		border-color: rgba(239, 68, 68, 0.3);
-		background: rgba(127, 29, 29, 0.18);
+	/* StateBox wrapper — page-level loading/error 상태를 가운데 정렬 */
+	.state-wrap {
+		display: flex;
+		justify-content: center;
+		padding: clamp(40px, 6vh, 80px) clamp(16px, 2vw, 32px);
 	}
 
 	/* topbar-sticky — hero + ops 를 묶어 스크롤 시에도 상단 고정.

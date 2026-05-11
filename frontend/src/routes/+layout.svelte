@@ -63,7 +63,16 @@
 		--tag-bg: #334155;
 		--radius-sm: 8px;
 		--radius-md: 12px;
+		--radius-panel: 14px;
 		--radius-full: 9999px;
+		--ease-fast: 0.15s ease;
+		/* State box tokens — loading/empty/error 통일 표현 */
+		--state-box-bg: rgba(13, 17, 23, 0.76);
+		--state-box-border: rgba(31, 41, 55, 0.86);
+		--state-error-bg: rgba(127, 29, 29, 0.18);
+		--state-error-border: rgba(239, 68, 68, 0.3);
+		--state-error-text: #fecaca;
+		--state-loading-spinner: var(--accent);
 	}
 
 	:global(body) {
