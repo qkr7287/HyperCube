@@ -281,12 +281,14 @@
 	.grid {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 12px;
+		gap: clamp(8px, 0.6vw, 12px);
+		max-height: clamp(180px, 24vh, 420px);
+		overflow-y: auto;
 	}
 
 	.card {
-		padding: 14px 16px;
-		border-radius: 14px;
+		padding: clamp(8px, 0.7vw, 14px) clamp(10px, 0.8vw, 16px);
+		border-radius: var(--radius-panel);
 		background: rgba(13, 17, 23, 0.76);
 		border: 1px solid rgba(31, 41, 55, 0.86);
 	}
@@ -474,7 +476,7 @@
 	}
 
 	.raw-json {
-		max-height: 360px;
+		max-height: clamp(160px, 22vh, 360px);
 		overflow: auto;
 		padding: 12px;
 		border-radius: 10px;

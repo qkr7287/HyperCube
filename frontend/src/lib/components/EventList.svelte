@@ -142,8 +142,8 @@
 		list-style: none;
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
-		max-height: 360px;
+		gap: 6px;
+		max-height: clamp(160px, 22vh, 360px);
 		overflow-y: auto;
 	}
 

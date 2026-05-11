@@ -493,7 +493,7 @@
 	}
 
 	.logbox {
-		height: 420px;
+		height: clamp(220px, 32vh, 460px);
 		overflow-y: auto;
 		padding: 12px;
 		border-radius: 10px;

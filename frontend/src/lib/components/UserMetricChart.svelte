@@ -1,7 +1,6 @@
 <!--
   UserMetricChart — 사용자(컨테이너 상세) 페이지의 시계열 metric chart.
-  EChartLine 위임. 기존 props (labels, datasets, yFormat) 그대로 유지 →
-  /user/containers/[id] 호출처 변경 0건.
+  EChartLine 위임. compact 모드용 height prop 추가 (default 컴팩트).
 -->
 <script lang="ts">
 	import EChartLine from './charts/EChartLine.svelte';
@@ -16,6 +15,7 @@
 		group,
 		enableZoom = false,
 		markLines = [],
+		height = 200,
 	}: {
 		labels?: string[];
 		datasets?: Series[];
@@ -23,19 +23,20 @@
 		group?: string;
 		enableZoom?: boolean;
 		markLines?: MarkLineEntry[];
+		height?: number;
 	} = $props();
 </script>
 
-<div class="chart-shell">
-	<EChartLine {labels} series={datasets} {yFormat} height={240} {group} {enableZoom} {markLines} />
+<div class="chart-shell" style="--chart-h: {height}px">
+	<EChartLine {labels} series={datasets} {yFormat} height="100%" {group} {enableZoom} {markLines} />
 </div>
 
 <style>
 	.chart-shell {
 		position: relative;
-		height: 240px;
-		min-height: 240px;
-		max-height: 240px;
+		/* 반응형: viewport 높이에 따라 자동. compact 우선 (1080p 한 화면 안에 다른 panel 도). */
+		height: clamp(120px, 14vh, var(--chart-h, 200px));
+		min-height: 120px;
 		overflow: hidden;
 	}
 </style>

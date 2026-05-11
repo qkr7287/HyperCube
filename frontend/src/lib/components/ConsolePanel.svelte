@@ -518,8 +518,8 @@
 	}
 
 	.termbox {
-		height: 420px;
-		min-height: 280px;
+		height: clamp(260px, 36vh, 480px);
+		min-height: 220px;
 		padding: 10px;
 		border-radius: 10px;
 		background: #02060c;

@@ -708,7 +708,13 @@
 		</div>
 		</div>
 
-		<section class="details-grid">
+		<details class="details-accordion">
+			<summary>
+				<span class="details-title">런타임 정보 · 요청 시 설정</span>
+				<span class="details-hint">컨테이너 ID / 요청 출처 / 포트·환경 변수</span>
+				<span class="details-chevron" aria-hidden="true">▾</span>
+			</summary>
+			<section class="details-grid">
 			<div class="panel">
 				<div class="panel-header slim">
 					<div>
@@ -779,7 +785,8 @@
 					</div>
 				</div>
 			</div>
-		</section>
+			</section>
+		</details>
 	{/if}
 </div>
 
@@ -789,7 +796,7 @@
 		   padding 은 clamp 로 viewport 에 따라 압축 — 1920 에서 ~28px 좌우, 1280 에서 ~16px. */
 		max-width: none;
 		margin: 0;
-		padding: clamp(12px, 1vw, 22px) clamp(14px, 1.4vw, 28px) 32px;
+		padding: clamp(8px, 0.7vw, 16px) clamp(12px, 1.2vw, 26px) clamp(14px, 1.2vw, 28px);
 	}
 
 	.back-link,
@@ -845,32 +852,34 @@
 	.hero {
 		display: flex;
 		justify-content: space-between;
-		gap: 14px;
-		padding: clamp(10px, 0.7vw, 16px) clamp(14px, 1vw, 20px);
+		gap: clamp(8px, 0.8vw, 14px);
+		padding: clamp(6px, 0.5vw, 12px) clamp(12px, 1vw, 18px);
 		border-radius: 12px;
 		background:
 			linear-gradient(140deg, rgba(48, 213, 200, 0.12), rgba(9, 75, 102, 0.14)),
 			rgba(18, 23, 32, 0.98);
 		border: 1px solid rgba(48, 213, 200, 0.18);
 		align-items: center;
+		flex-wrap: wrap;
 	}
 
 	.hero-main {
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
+		gap: 3px;
 		min-width: 0;
+		flex: 1 1 auto;
 	}
 
 	.hero-titlebar {
 		display: inline-flex;
 		align-items: baseline;
-		gap: 12px;
+		gap: clamp(6px, 0.6vw, 10px);
 		flex-wrap: wrap;
 	}
 
 	h1 {
-		font-size: clamp(18px, 1.4vw, 24px);
+		font-size: clamp(15px, 1.1vw, 21px);
 		line-height: 1.1;
 		font-weight: 800;
 	}
@@ -955,7 +964,7 @@
 	.ops-bar {
 		/* topbar-sticky 안에 있으므로 margin-top 제거 (gap 으로 간격). */
 		margin-top: 0;
-		padding: clamp(8px, 0.6vw, 12px) clamp(12px, 1vw, 16px);
+		padding: clamp(6px, 0.45vw, 10px) clamp(10px, 0.8vw, 14px);
 		border-radius: 12px;
 		background: rgba(18, 23, 32, 0.96);
 		border: 1px solid var(--border);
@@ -1049,8 +1058,8 @@
 			"charts charts charts charts charts charts charts charts logs logs logs logs"
 			"process process process process process events events events inspect inspect inspect inspect"
 			"console console console console console console console console console console console console";
-		gap: clamp(10px, 0.7vw, 16px);
-		margin-top: clamp(10px, 0.8vw, 18px);
+		gap: clamp(8px, 0.6vw, 14px);
+		margin-top: clamp(8px, 0.6vw, 14px);
 	}
 	.bento-area {
 		min-width: 0;
@@ -1107,12 +1116,12 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: flex-end;
-		gap: 18px;
-		margin-bottom: 14px;
+		gap: clamp(8px, 0.8vw, 18px);
+		margin-bottom: clamp(8px, 0.6vw, 14px);
 	}
 
 	.panel-header.slim {
-		margin-bottom: 12px;
+		margin-bottom: clamp(6px, 0.5vw, 12px);
 	}
 
 	/* compact = 차트 panel 처럼 dense workbench 헤더. 부제·hint 없이
@@ -1199,7 +1208,7 @@
 	.chart-grid {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 16px;
+		gap: clamp(8px, 0.7vw, 14px);
 	}
 
 	.chart-card {
@@ -1215,9 +1224,9 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		gap: 12px;
-		margin-bottom: 20px;
-		padding-bottom: 8px;
+		gap: clamp(6px, 0.6vw, 12px);
+		margin-bottom: clamp(6px, 0.6vw, 14px);
+		padding-bottom: clamp(4px, 0.4vw, 8px);
 		border-bottom: 1px solid rgba(100, 116, 139, 0.12);
 	}
 
@@ -1267,7 +1276,56 @@
 	.details-grid {
 		display: grid;
 		grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
-		gap: 18px;
+		gap: clamp(10px, 0.8vw, 18px);
+		margin-top: clamp(8px, 0.6vw, 14px);
+	}
+
+	/* 런타임/요청 설정 accordion — 기본 닫힘. 한 화면 fit 위해 하단으로 mute. */
+	.details-accordion {
+		margin-top: clamp(10px, 0.8vw, 16px);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-panel);
+		background: rgba(18, 23, 32, 0.96);
+		overflow: hidden;
+	}
+	.details-accordion > summary {
+		list-style: none;
+		cursor: pointer;
+		padding: clamp(8px, 0.6vw, 12px) clamp(12px, 1vw, 18px);
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		user-select: none;
+		font-size: 12px;
+		transition: background-color var(--ease-fast);
+	}
+	.details-accordion > summary::-webkit-details-marker { display: none; }
+	.details-accordion > summary:hover {
+		background: rgba(48, 213, 200, 0.06);
+	}
+	.details-title {
+		font-weight: 800;
+		color: var(--text-primary);
+	}
+	.details-hint {
+		font-size: 11px;
+		color: var(--text-muted);
+	}
+	.details-chevron {
+		margin-left: auto;
+		font-size: 14px;
+		color: var(--text-secondary);
+		transition: transform var(--ease-fast);
+	}
+	.details-accordion[open] > summary > .details-chevron {
+		transform: rotate(180deg);
+	}
+	.details-accordion[open] > summary {
+		border-bottom: 1px solid var(--border);
+	}
+	.details-accordion > .details-grid {
+		padding: clamp(10px, 0.8vw, 16px);
+		margin-top: 0;
 	}
 
 	.info-grid {
