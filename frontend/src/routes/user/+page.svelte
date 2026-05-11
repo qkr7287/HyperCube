@@ -234,39 +234,36 @@
 />
 
 <style>
+	/* admin-shell parity: max-width 제거, padding clamp (관리자 / 와 동일 톤). */
 	.page {
-		padding: 28px 32px 36px;
-		max-width: 1120px;
-		margin: 0 auto;
+		padding: clamp(12px, 1vw, 22px) clamp(14px, 1.4vw, 28px) 32px;
+		max-width: none;
+		margin: 0;
 	}
 
 	.hero {
 		display: flex;
 		justify-content: space-between;
-		align-items: flex-end;
-		gap: 24px;
-		padding: 26px 28px;
-		margin-bottom: 20px;
+		align-items: center;
+		gap: 14px;
+		padding: clamp(10px, 0.7vw, 16px) clamp(14px, 1vw, 20px);
+		margin-bottom: clamp(10px, 0.7vw, 14px);
 		background:
-			linear-gradient(135deg, rgba(48, 213, 200, 0.18), rgba(9, 75, 102, 0.22)),
+			linear-gradient(135deg, rgba(48, 213, 200, 0.12), rgba(9, 75, 102, 0.14)),
 			var(--bg-card);
 		border: 1px solid rgba(48, 213, 200, 0.18);
-		border-radius: 18px;
+		border-radius: 12px;
 	}
 
 	.eyebrow {
-		font-size: 11px;
-		font-weight: 700;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		color: var(--accent);
-		margin-bottom: 8px;
+		display: none;
 	}
 
 	h1 {
-		font-size: 28px;
+		font-size: clamp(18px, 1.4vw, 24px);
 		line-height: 1.1;
-		margin-bottom: 8px;
+		margin-bottom: 4px;
+		font-weight: 800;
 	}
 
 	.title-row,
@@ -279,18 +276,18 @@
 	}
 
 	.subtitle {
-		font-size: 13px;
+		font-size: 12px;
 		color: var(--text-secondary);
-		max-width: 620px;
+		max-width: 720px;
 	}
 
 	.new-btn,
 	.empty-btn,
 	.monitor-btn {
 		border: none;
-		border-radius: 10px;
-		padding: 11px 18px;
-		font-size: 13px;
+		border-radius: 8px;
+		padding: 8px 14px;
+		font-size: 12px;
 		font-weight: 700;
 		cursor: pointer;
 		background: var(--accent);
@@ -303,36 +300,45 @@
 		filter: brightness(1.06);
 	}
 
+	/* FleetStatusBar 패턴: auto-fit minmax 로 화면폭에 맞춰 자동 분할.
+	   1920에서 3개 균등, 좁아지면 그대로 wrap. */
 	.summary-grid {
 		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 14px;
-		margin-bottom: 22px;
+		grid-template-columns: repeat(auto-fit, minmax(clamp(170px, 12vw, 240px), 1fr));
+		gap: clamp(6px, 0.5vw, 12px);
+		margin-bottom: clamp(10px, 0.7vw, 14px);
 	}
 
 	.summary-card {
-		padding: 18px 20px;
-		background: rgba(18, 23, 32, 0.92);
+		padding: clamp(9px, 0.6vw, 14px);
+		background: var(--bg-card);
 		border: 1px solid var(--border);
-		border-radius: 14px;
+		border-radius: clamp(6px, 0.4vw, 10px);
 		display: flex;
 		flex-direction: column;
-		gap: 4px;
+		gap: 3px;
+		min-height: clamp(80px, 6.5vh, 110px);
 	}
 
 	.summary-label {
-		font-size: 12px;
-		color: var(--text-secondary);
+		font-size: clamp(10px, 0.62vw, 13px);
+		color: var(--text-muted);
+		font-weight: 800;
+		letter-spacing: 0.3px;
 	}
 
 	.summary-card strong {
-		font-size: 28px;
+		font-size: clamp(20px, 1.4vw, 28px);
 		color: var(--text-primary);
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
 	}
 
 	.summary-meta {
-		font-size: 11px;
+		font-size: clamp(10px, 0.62vw, 13px);
 		color: var(--text-muted);
+		font-weight: 600;
+		margin-top: auto;
 	}
 
 	.empty {
@@ -366,20 +372,22 @@
 		margin-bottom: 20px;
 	}
 
+	/* 요청 카드: vertical stack 대신 auto-fit grid 다열. 1920에서 ~3-4 column
+	   minmax 440 = 한 카드 충분히 정보 표시 가능한 폭, 좁아지면 자동 wrap. */
 	.cards {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
+		gap: clamp(8px, 0.6vw, 14px);
 	}
 
 	.request-card {
 		display: flex;
 		justify-content: space-between;
-		gap: 18px;
-		padding: 18px 20px;
-		background: rgba(18, 23, 32, 0.94);
+		gap: 14px;
+		padding: 14px 16px;
+		background: var(--bg-card);
 		border: 1px solid var(--border);
-		border-radius: 16px;
+		border-radius: 12px;
 	}
 
 	.card-main {

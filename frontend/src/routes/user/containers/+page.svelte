@@ -205,36 +205,37 @@
 </div>
 
 <style>
+	/* admin-shell parity: max-width 제거, padding clamp. */
 	.page {
-		max-width: 1180px;
-		margin: 0 auto;
-		padding: 28px 32px 36px;
+		max-width: none;
+		margin: 0;
+		padding: clamp(12px, 1vw, 22px) clamp(14px, 1.4vw, 28px) 32px;
 	}
 
 	.page-header,
 	.toolbar {
 		display: flex;
 		justify-content: space-between;
-		align-items: flex-end;
-		gap: 18px;
+		align-items: center;
+		gap: 14px;
 	}
 
 	.page-header {
-		margin-bottom: 18px;
+		margin-bottom: clamp(8px, 0.6vw, 12px);
+		padding: clamp(8px, 0.6vw, 14px) clamp(12px, 1vw, 18px);
+		background: var(--bg-card);
+		border: 1px solid var(--border);
+		border-radius: 12px;
 	}
 
 	.eyebrow {
-		font-size: 11px;
-		font-weight: 700;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		color: var(--accent);
-		margin-bottom: 6px;
+		display: none;
 	}
 
 	h1 {
-		font-size: 30px;
-		margin-bottom: 8px;
+		font-size: clamp(18px, 1.4vw, 24px);
+		margin-bottom: 4px;
+		font-weight: 800;
 	}
 
 	.title-row,
@@ -246,32 +247,33 @@
 	}
 
 	.subtitle {
-		font-size: 13px;
+		font-size: 12px;
 		color: var(--text-secondary);
 	}
 
 	.refresh-btn {
-		padding: 10px 16px;
-		border-radius: 10px;
+		padding: 7px 12px;
+		border-radius: 8px;
 		border: 1px solid var(--border);
 		background: var(--bg-card);
 		color: var(--text-primary);
 		font-size: 12px;
 		font-weight: 700;
 		cursor: pointer;
+		flex-shrink: 0;
 	}
 
 	.toolbar {
-		margin-bottom: 22px;
+		margin-bottom: clamp(10px, 0.7vw, 14px);
 	}
 
 	.search-shell {
 		flex: 1;
-		max-width: 420px;
-		padding: 12px 14px;
-		border-radius: 12px;
+		max-width: 480px;
+		padding: 8px 12px;
+		border-radius: 10px;
 		border: 1px solid var(--border);
-		background: rgba(18, 23, 32, 0.94);
+		background: var(--bg-card);
 	}
 
 	.search-label {
@@ -335,24 +337,25 @@
 		color: var(--text-secondary);
 	}
 
+	/* auto-fit minmax 다열 — 1920에서 ~5열, 1440에서 ~4열, 1280에서 ~3열. */
 	.grid {
 		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 16px;
+		grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+		gap: clamp(8px, 0.6vw, 14px);
 	}
 
 	.container-card {
-		padding: 20px;
+		padding: clamp(12px, 0.8vw, 16px);
 		text-align: left;
 		background:
 			linear-gradient(180deg, rgba(48, 213, 200, 0.06), transparent 28%),
-			rgba(18, 23, 32, 0.96);
+			var(--bg-card);
 		border: 1px solid var(--border);
-		border-radius: 18px;
+		border-radius: 12px;
 		cursor: pointer;
 		display: flex;
 		flex-direction: column;
-		gap: 18px;
+		gap: 12px;
 		transition: transform 0.14s ease, border-color 0.14s ease;
 	}
 
@@ -375,8 +378,9 @@
 	}
 
 	h2 {
-		font-size: 18px;
+		font-size: 15px;
 		color: var(--text-primary);
+		font-weight: 700;
 	}
 
 	.status-pill {
