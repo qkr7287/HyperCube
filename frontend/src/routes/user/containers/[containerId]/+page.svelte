@@ -1329,22 +1329,33 @@
 	}
 	.range-tabs {
 		display: flex;
-		gap: 6px;
+		gap: 3px;
 		flex-wrap: wrap;
+		padding: 2px;
+		background: rgba(13, 17, 23, 0.5);
+		border: 1px solid rgba(31, 41, 55, 0.6);
+		border-radius: 8px;
 	}
 
 	.range-btn {
-		padding: 8px 12px;
-		border-radius: 10px;
-		background: rgba(13, 17, 23, 0.8);
+		padding: 4px 10px;
+		border-radius: 6px;
+		background: transparent;
 		color: var(--text-secondary);
-		font-size: 12px;
+		font-size: 11px;
 		font-weight: 700;
+		transition: background-color var(--ease-fast), color var(--ease-fast);
+	}
+
+	.range-btn:hover:not(.active) {
+		background: rgba(48, 213, 200, 0.08);
+		color: var(--text-primary);
 	}
 
 	.range-btn.active {
-		background: rgba(48, 213, 200, 0.18);
+		background: rgba(48, 213, 200, 0.22);
 		color: var(--accent);
+		box-shadow: 0 0 0 1px rgba(48, 213, 200, 0.35) inset;
 	}
 
 	.chart-grid {
@@ -1411,14 +1422,20 @@
 	}
 
 	.mode-toggle button {
-		padding: 4px 10px;
+		padding: 3px 9px;
 		background: rgba(13, 17, 23, 0.86);
 		border: none;
 		color: var(--text-muted);
 		font-family: inherit;
-		font-size: 11px;
+		font-size: 10px;
 		font-weight: 700;
 		cursor: pointer;
+		transition: background-color var(--ease-fast), color var(--ease-fast);
+	}
+
+	.mode-toggle button:hover:not(.active) {
+		background: rgba(48, 213, 200, 0.06);
+		color: var(--text-primary);
 	}
 
 	.mode-toggle button + button {
@@ -1426,7 +1443,7 @@
 	}
 
 	.mode-toggle button.active {
-		background: rgba(48, 213, 200, 0.18);
+		background: rgba(48, 213, 200, 0.22);
 		color: var(--accent);
 	}
 
