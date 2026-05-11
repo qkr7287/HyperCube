@@ -35,12 +35,17 @@
 		return () => clearInterval(id);
 	});
 
-	let online = $derived(agentId ? $activeAgentIds.has(agentId) : false);
 	let secondsSince = $derived.by(() => {
 		if (!lastSeen) return Number.POSITIVE_INFINITY;
 		const t = new Date(lastSeen).getTime();
 		if (!Number.isFinite(t)) return Number.POSITIVE_INFINITY;
 		return Math.max(0, Math.floor((now - t) / 1000));
+	});
+	// online 판단: global event store 우선, 비어있으면 last_seen 60초 이내면 online 가정.
+	// (사용자 페이지 globalWS 연결이 늦거나 backend 가 transition event 못 보낸 케이스 대비)
+	let online = $derived.by(() => {
+		if (agentId && $activeAgentIds.has(agentId)) return true;
+		return secondsSince < 60;
 	});
 	let stale = $derived(online && secondsSince >= STALE_SECONDS);
 	let relative = $derived(formatRelativeTime(lastSeen));

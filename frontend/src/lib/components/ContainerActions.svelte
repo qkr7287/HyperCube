@@ -16,12 +16,14 @@
 		containerId,
 		currentStatus,
 		disabled = false,
+		agentOnline = true,
 		onActionDone = (_a: Action) => {},
 		onError = (_msg: string) => {},
 	}: {
 		containerId: string;
 		currentStatus: string;
 		disabled?: boolean;
+		agentOnline?: boolean;
 		onActionDone?: (action: Action) => void;
 		onError?: (msg: string) => void;
 	} = $props();
@@ -118,9 +120,9 @@
 			type="button"
 			class="btn"
 			class:destructive={meta.destructive}
-			disabled={disabled || !isAllowed || busyAction !== null}
+			disabled={disabled || !isAllowed || busyAction !== null || !agentOnline}
 			onclick={() => handleClick(action)}
-			title={meta.help || meta.label}
+			title={!agentOnline ? 'Agent 오프라인 — 명령 발송 불가' : (meta.help || meta.label)}
 		>
 			<span class="icon">{meta.icon}</span>
 			<span>{isBusy ? '처리 중...' : meta.label}</span>

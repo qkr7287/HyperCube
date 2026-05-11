@@ -14,6 +14,8 @@
 	import ProcessTopPanel from '$lib/components/ProcessTopPanel.svelte';
 	import ConsolePanel from '$lib/components/ConsolePanel.svelte';
 	import StateBox from '$lib/components/StateBox.svelte';
+	import AgentStatusIndicator from '$lib/components/AgentStatusIndicator.svelte';
+	import { activeAgentIds } from '$lib/stores/global-events';
 	import { eventColor, eventLabel, type EventRow } from '$lib/utils/container-events';
 	import type { MarkLineEntry } from '$lib/components/charts/types';
 	import {
@@ -138,6 +140,19 @@
 	let inspectLoading = $state(false);
 	let inspectError = $state('');
 	let actionMsg = $state('');
+	let actionMsgKind = $state<'info' | 'success' | 'error'>('info');
+	let actionMsgTimer: ReturnType<typeof setTimeout> | null = null;
+
+	// agent online 판단: global event store 우선, 없으면 last_seen 60초 이내면 online 가정.
+	// (사용자 페이지 globalWS 가 늦게 붙거나 backend 가 아직 transition 안 보낸 케이스 대비)
+	let agentOnline = $derived.by<boolean>(() => {
+		if (!container?.agent) return false;
+		if ($activeAgentIds.has(container.agent)) return true;
+		const lastIso = currentMetrics?.timestamp || container.last_seen;
+		if (!lastIso) return false;
+		const ts = new Date(lastIso).getTime();
+		return Number.isFinite(ts) && Date.now() - ts < 60_000;
+	});
 	let events = $state<EventRow[]>([]);
 	let eventsError = $state('');
 	let eventsTimer: ReturnType<typeof setInterval> | null = null;
@@ -224,19 +239,33 @@
 		}
 	}
 
+	function showActionMsg(text: string, kind: 'info' | 'success' | 'error', ttlMs: number) {
+		actionMsg = text;
+		actionMsgKind = kind;
+		if (actionMsgTimer) clearTimeout(actionMsgTimer);
+		actionMsgTimer = setTimeout(() => {
+			actionMsg = '';
+			actionMsgTimer = null;
+		}, ttlMs);
+	}
+
+	function dismissActionMsg() {
+		if (actionMsgTimer) clearTimeout(actionMsgTimer);
+		actionMsgTimer = null;
+		actionMsg = '';
+	}
+
 	async function handleControlDone(action: string) {
-		actionMsg = `'${action}' 명령 완료. 상태를 새로고침합니다.`;
+		showActionMsg(`'${action}' 명령 완료. 상태를 새로고침합니다.`, 'success', 3500);
 		// 상태 변화는 즉시 반영되지 않을 수 있어 짧게 기다린 뒤 reload
 		setTimeout(() => {
 			loadDashboard({ withDetail: true });
 			loadInspect();
 		}, 500);
-		setTimeout(() => (actionMsg = ''), 3000);
 	}
 
 	function handleControlError(msg: string) {
-		actionMsg = msg;
-		setTimeout(() => (actionMsg = ''), 6000);
+		showActionMsg(msg, 'error', 8000);
 	}
 
 	async function loadHistory() {
@@ -506,10 +535,13 @@
 						<span class="hero-image">{container.selected_image || container.image}</span>
 					</div>
 					<div class="hero-meta">
-						<span>호스트 {container.agent_hostname ?? '-'}</span>
+						<AgentStatusIndicator
+							agentId={container.agent}
+							hostname={container.agent_hostname}
+							lastSeen={currentMetrics?.timestamp || container.last_seen}
+						/>
 						<span>템플릿 {container.template_name ?? '-'}</span>
 						<span>요청 {formatDateTime(container.requested_at)}</span>
-						<span>샘플 {formatDateTime(currentMetrics?.timestamp || container.last_seen)}</span>
 					</div>
 				</div>
 				<div class="hero-actions">
@@ -533,18 +565,29 @@
 					<ContainerActions
 						containerId={container.container_id}
 						currentStatus={container.status}
+						{agentOnline}
 						onActionDone={handleControlDone}
 						onError={handleControlError}
 					/>
 				</div>
 				{#if actionMsg}
-					<div class="ops-msg">{actionMsg}</div>
+					<div class="ops-msg" data-kind={actionMsgKind} role="status">
+						<span class="ops-msg-icon" aria-hidden="true">
+							{actionMsgKind === 'error' ? '⚠' : actionMsgKind === 'success' ? '✓' : 'ℹ'}
+						</span>
+						<span class="ops-msg-text">{actionMsg}</span>
+						<button class="ops-msg-close" onclick={dismissActionMsg} aria-label="닫기">✕</button>
+					</div>
 				{/if}
 			</section>
 		</div>
 
-		{#if container.status !== 'running'}
-			<div class="banner">
+		{#if !agentOnline}
+			<div class="banner banner-error">
+				<strong>Agent 오프라인</strong> — 이 컨테이너를 보고 있는 agent 가 응답하지 않습니다. 실시간 메트릭·로그·콘솔이 모두 멈춰 있을 수 있습니다.
+			</div>
+		{:else if container.status !== 'running'}
+			<div class="banner banner-warn">
 				컨테이너가 현재 <strong>{statusLabel(container.status)}</strong> 상태입니다. 다시 실행되기 전까지 실시간 메트릭이 비어 있거나 오래된 값일 수 있습니다.
 			</div>
 		{/if}
@@ -840,9 +883,12 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 6px;
+		align-items: center;
 	}
 
-	.hero-meta span {
+	/* AgentStatusIndicator (자체 .agent-indicator 클래스) 는 본인 스타일 유지하고
+	   기존 chip 형태의 메타 span 만 잡는다 (:not 으로 격리). */
+	.hero-meta > span:not(.agent-indicator):not(.agent-indicator *) {
 		padding: 3px 8px;
 		border-radius: 999px;
 		background: rgba(13, 17, 23, 0.52);
@@ -892,6 +938,16 @@
 	.banner {
 		margin-top: 14px;
 	}
+	.banner-warn {
+		background: rgba(251, 191, 36, 0.1);
+		border-color: rgba(251, 191, 36, 0.32);
+		color: #fde68a;
+	}
+	.banner-error {
+		background: rgba(239, 68, 68, 0.12);
+		border-color: rgba(239, 68, 68, 0.36);
+		color: #fca5a5;
+	}
 
 	.ops-bar {
 		/* topbar-sticky 안에 있으므로 margin-top 제거 (gap 으로 간격). */
@@ -923,12 +979,53 @@
 	}
 
 	.ops-msg {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
 		font-size: 12px;
-		color: var(--accent);
-		padding: 6px 10px;
+		font-weight: 700;
+		padding: 6px 8px 6px 10px;
 		border-radius: 8px;
 		background: rgba(48, 213, 200, 0.1);
 		border: 1px solid rgba(48, 213, 200, 0.3);
+		color: var(--accent);
+		max-width: 100%;
+	}
+	.ops-msg[data-kind='success'] {
+		background: rgba(16, 185, 129, 0.14);
+		border-color: rgba(16, 185, 129, 0.35);
+		color: #34d399;
+	}
+	.ops-msg[data-kind='error'] {
+		background: var(--state-error-bg);
+		border-color: var(--state-error-border);
+		color: var(--state-error-text);
+	}
+	.ops-msg-icon {
+		font-size: 13px;
+		line-height: 1;
+	}
+	.ops-msg-text {
+		font-weight: 600;
+	}
+	.ops-msg-close {
+		all: unset;
+		cursor: pointer;
+		padding: 2px 6px;
+		font-size: 11px;
+		font-weight: 800;
+		color: inherit;
+		opacity: 0.55;
+		border-radius: 4px;
+		transition: opacity var(--ease-fast), background-color var(--ease-fast);
+	}
+	.ops-msg-close:hover {
+		opacity: 1;
+		background: rgba(255, 255, 255, 0.08);
+	}
+	.ops-msg-close:focus-visible {
+		outline: 2px solid currentColor;
+		outline-offset: 2px;
 	}
 
 	.panel,
