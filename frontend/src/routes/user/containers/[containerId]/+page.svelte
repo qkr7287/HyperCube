@@ -12,7 +12,7 @@
 	import EventList from '$lib/components/EventList.svelte';
 	import LogTailPanel from '$lib/components/LogTailPanel.svelte';
 	import ProcessTopPanel from '$lib/components/ProcessTopPanel.svelte';
-	import ConsolePanel from '$lib/components/ConsolePanel.svelte';
+	import ConsoleModal from '$lib/components/ConsoleModal.svelte';
 	import StateBox from '$lib/components/StateBox.svelte';
 	import AgentStatusIndicator from '$lib/components/AgentStatusIndicator.svelte';
 	import ContainerLimitModal from '$lib/components/ContainerLimitModal.svelte';
@@ -144,6 +144,7 @@
 	let actionMsgKind = $state<'info' | 'success' | 'error'>('info');
 	let actionMsgTimer: ReturnType<typeof setTimeout> | null = null;
 	let limitModalOpen = $state(false);
+	let consoleModalOpen = $state(false);
 
 	// === 운영 인사이트 derived (hero meta 옆 chip) ===
 	// 최근 5분 안의 die/restart 횟수 — "재시작 반복" 자동 탐지
@@ -675,6 +676,14 @@
 					/>
 					<button
 						class="limit-btn"
+						onclick={() => (consoleModalOpen = true)}
+						disabled={!agentOnline}
+						title={agentOnline ? '컨테이너 내부 shell (xterm) — modal 로 띄움' : 'Agent 오프라인 — 콘솔 사용 불가'}
+					>
+						›_ 콘솔
+					</button>
+					<button
+						class="limit-btn"
 						onclick={() => (limitModalOpen = true)}
 						disabled={!agentOnline}
 						title={agentOnline ? '메모리 / CPU / 재시작 정책 수정' : 'Agent 오프라인 — 수정 불가'}
@@ -773,10 +782,6 @@
 		<div class="bento-area area-inspect">
 			<InspectPanel data={inspectData} loading={inspectLoading} errorMsg={inspectError} />
 		</div>
-
-		<div class="bento-area area-console">
-			<ConsolePanel agentId={container.agent ?? ''} {containerId} />
-		</div>
 		</div>
 
 		<details class="details-accordion">
@@ -868,6 +873,13 @@
 				showActionMsg('자원 한도 수정 완료', 'success', 3500);
 				loadInspect();
 			}}
+		/>
+
+		<ConsoleModal
+			open={consoleModalOpen}
+			agentId={container.agent ?? ''}
+			containerId={container.container_id}
+			onclose={() => (consoleModalOpen = false)}
 		/>
 	{/if}
 </div>
@@ -1232,11 +1244,12 @@
 	.bento {
 		display: grid;
 		grid-template-columns: repeat(12, minmax(0, 1fr));
-		grid-template-rows: minmax(0, 1.45fr) minmax(0, 1fr) auto;
+		grid-template-rows: minmax(0, 1.6fr) minmax(0, 1fr);
+		/* col 비율 재조정: process 5→4, events 3→3, inspect 4→5 — events 더 좁게,
+		   inspect 가 가장 정보 많아 가장 넓게. (console row3 은 modal 로 이전, 제거) */
 		grid-template-areas:
 			"charts charts charts charts charts charts charts charts logs logs logs logs"
-			"process process process process process events events events inspect inspect inspect inspect"
-			"console console console console console console console console console console console console";
+			"process process process process events events events inspect inspect inspect inspect inspect";
 		gap: clamp(2px, 0.2vw, 6px);
 		margin-top: 0;
 		flex: 1 1 0;
@@ -1259,9 +1272,6 @@
 	}
 	.area-inspect {
 		grid-area: inspect;
-	}
-	.area-console {
-		grid-area: console;
 	}
 
 	/* bento 안의 component panel 들은 grid item 자신이 자리 잡으므로 컴포넌트 내부의
@@ -1642,14 +1652,13 @@
 		color: var(--text-secondary);
 	}
 
-	/* 1280~1439: 차트 풀폭 → 로그 풀폭 → 하단 process/events/inspect 가로 3분할 → console 풀폭 */
+	/* 1280~1439: 차트 풀폭 → 로그 풀폭 → 하단 process/events/inspect 가로 3분할 */
 	@media (max-width: 1439px) {
 		.bento {
 			grid-template-areas:
 				"charts charts charts charts charts charts charts charts charts charts charts charts"
 				"logs logs logs logs logs logs logs logs logs logs logs logs"
-				"process process process process events events events events inspect inspect inspect inspect"
-				"console console console console console console console console console console console console";
+				"process process process process events events events inspect inspect inspect inspect inspect";
 		}
 	}
 
@@ -1674,8 +1683,7 @@
 				'logs'
 				'process'
 				'events'
-				'inspect'
-				'console';
+				'inspect';
 		}
 
 		.chart-grid,

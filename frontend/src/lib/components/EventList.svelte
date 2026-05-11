@@ -151,7 +151,7 @@
 		list-style: none;
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
+		gap: 3px;
 		max-height: clamp(120px, 16vh, 300px);
 		overflow-y: auto;
 	}
@@ -159,12 +159,12 @@
 	.list li {
 		display: flex;
 		align-items: center;
-		gap: 10px;
-		padding: 10px 12px;
-		border-radius: 10px;
+		gap: 6px;
+		padding: 4px 8px;
+		border-radius: 8px;
 		background: rgba(13, 17, 23, 0.62);
 		border: 1px solid rgba(31, 41, 55, 0.6);
-		font-size: 12px;
+		font-size: 11px;
 	}
 
 	.dot {
@@ -177,10 +177,10 @@
 	.badge {
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
-		padding: 3px 9px;
+		gap: 4px;
+		padding: 2px 7px;
 		border-radius: 999px;
-		font-size: 11px;
+		font-size: 10px;
 		font-weight: 700;
 	}
 	.badge.success { background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); }

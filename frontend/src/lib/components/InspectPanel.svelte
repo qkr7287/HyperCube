@@ -292,7 +292,7 @@
 	}
 
 	.card {
-		padding: clamp(8px, 0.7vw, 14px) clamp(10px, 0.8vw, 16px);
+		padding: clamp(5px, 0.5vw, 10px) clamp(7px, 0.6vw, 12px);
 		border-radius: var(--radius-panel);
 		background: rgba(13, 17, 23, 0.76);
 		border: 1px solid rgba(31, 41, 55, 0.86);
@@ -300,25 +300,25 @@
 
 	.card-title {
 		display: block;
-		font-size: 11px;
+		font-size: 10px;
 		color: var(--text-muted);
-		margin-bottom: 10px;
-		letter-spacing: 0.04em;
+		margin-bottom: 4px;
+		letter-spacing: 0.03em;
 		text-transform: uppercase;
 	}
 
 	.status-line {
 		display: flex;
-		gap: 6px;
+		gap: 4px;
 		flex-wrap: wrap;
-		margin-bottom: 10px;
+		margin-bottom: 4px;
 	}
 
 	.badge {
 		display: inline-flex;
-		padding: 4px 10px;
+		padding: 2px 7px;
 		border-radius: 999px;
-		font-size: 11px;
+		font-size: 10px;
 		font-weight: 700;
 	}
 	.badge.success {

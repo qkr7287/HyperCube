@@ -287,7 +287,7 @@
 	table {
 		width: 100%;
 		border-collapse: collapse;
-		font-size: 12px;
+		font-size: 11px;
 	}
 
 	thead {
@@ -299,12 +299,12 @@
 
 	th {
 		text-align: left;
-		padding: 10px 12px;
-		font-size: 11px;
+		padding: 5px 6px;
+		font-size: 10px;
 		font-weight: 700;
 		color: var(--text-muted);
 		text-transform: uppercase;
-		letter-spacing: 0.04em;
+		letter-spacing: 0.03em;
 		border-bottom: 1px solid rgba(31, 41, 55, 0.7);
 	}
 	th.num,
@@ -313,7 +313,7 @@
 	}
 
 	td {
-		padding: 8px 12px;
+		padding: 4px 6px;
 		border-bottom: 1px solid rgba(31, 41, 55, 0.4);
 		color: var(--text-primary);
 	}
