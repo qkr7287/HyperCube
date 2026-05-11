@@ -259,17 +259,27 @@
 	}
 
 	async function loadInspect({ silent = false } = {}) {
-		// silent: 폴링 중 백그라운드 갱신은 화면 loading state 토글 안 함 → 깜빡임 제거.
-		// 첫 fetch 또는 control action 직후 등 명시적 reload 시에만 loading=true.
-		if (!silent || !inspectData) inspectLoading = true;
-		inspectError = '';
+		// silent (=백그라운드 polling): loading bar / error 잠시 표시 모두 끔.
+		//   - 이미 데이터 있으면 in-place 갱신만, 잠깐의 fetch 실패는 화면에 안 띄움.
+		//   - 진짜 fail 이 지속되면 다음 fetch 도 안 들어와서 데이터는 stale 이지만
+		//     UI 가 매 5초 깜빡이는 것보단 stale 상태로 두는 게 운영자 시야에 낫다.
+		// 첫 fetch (또는 명시적 reload) 만 loading=true / error clear 동작.
+		const showLoading = !silent || !inspectData;
+		if (showLoading) {
+			inspectLoading = true;
+			inspectError = '';
+		}
 		try {
 			inspectData = await api<any>(`/api/my-containers/${containerId}/inspect/`);
+			// 성공 시는 silent 라도 stale error chip 은 지워준다.
+			if (inspectError) inspectError = '';
 		} catch (err: any) {
-			inspectError = err?.message || 'inspect 조회 실패';
-			// agent_offline / timeout 은 차트/메트릭 갱신은 막지 않음
+			if (showLoading) {
+				inspectError = err?.message || 'inspect 조회 실패';
+			}
+			// silent 폴링 실패는 조용히 — 다음 cycle 에 다시 시도.
 		} finally {
-			inspectLoading = false;
+			if (showLoading) inspectLoading = false;
 		}
 	}
 
@@ -291,10 +301,10 @@
 
 	async function handleControlDone(action: string) {
 		showActionMsg(`'${action}' 명령 완료. 상태를 새로고침합니다.`, 'success', 3500);
-		// 상태 변화는 즉시 반영되지 않을 수 있어 짧게 기다린 뒤 reload
+		// 상태 변화는 즉시 반영되지 않을 수 있어 짧게 기다린 뒤 reload (silent — 이미 데이터 있으니 깜빡임 안 일으킴)
 		setTimeout(() => {
 			loadDashboard({ withDetail: true });
-			loadInspect();
+			loadInspect({ silent: true });
 		}, 500);
 	}
 
@@ -339,8 +349,9 @@
 			if (withDetail || !container) await loadDetail();
 			await Promise.all([loadCurrentMetrics(), loadHistory()]);
 			history = normalizeHistory(history, currentMetrics);
-			// inspect / events 는 실패해도 차트/메트릭 화면은 계속 보여야 하므로 별도 catch
-			loadInspect().catch(() => {});
+			// inspect / events 는 실패해도 차트/메트릭 화면은 계속 보여야 하므로 별도 catch.
+			// silent — polling 마다 loading bar / error chip 깜빡임 방지.
+			loadInspect({ silent: true }).catch(() => {});
 			loadEvents().catch(() => {});
 		} catch (error: any) {
 			errorMsg = error?.message || '대시보드를 불러오지 못했습니다.';
@@ -868,7 +879,7 @@
 			onclose={() => (limitModalOpen = false)}
 			onsaved={() => {
 				showActionMsg('자원 한도 수정 완료', 'success', 3500);
-				loadInspect();
+				loadInspect({ silent: true });
 			}}
 		/>
 
