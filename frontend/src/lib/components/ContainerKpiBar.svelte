@@ -147,9 +147,8 @@
 
 <style>
 	.kpi-bar {
-		/* 압축 (compact) — 한 화면 fit 우선. min-height / sparkline / value 모두 작게.
-		   1080p 에서 KPI bar 80~95px, sparkline 18~26px. */
-		--kpi-pad: clamp(7px, 0.5vw, 12px);
+		/* 정보는 그대로, 여백만 한 번 더 압축. min-height / padding / gap 추가 축소. */
+		--kpi-pad: clamp(5px, 0.4vw, 9px);
 		--kpi-radius: clamp(6px, 0.4vw, 10px);
 		--font-xs: clamp(9px, 0.55vw, 12px);
 		--font-sm: clamp(10px, 0.65vw, 13px);
@@ -160,19 +159,19 @@
 		/* CPU/메모리/네트워크/디스크 (+GPU) → 4~5개 KPI. 1920 한 줄 보장.
 		   minmax 하한을 작게 둬서 좁아지면 자동 wrap. */
 		grid-template-columns: repeat(auto-fit, minmax(clamp(160px, 11vw, 220px), 1fr));
-		gap: clamp(6px, 0.5vw, 12px);
-		margin-top: clamp(8px, 0.6vw, 14px);
+		gap: clamp(4px, 0.4vw, 10px);
+		margin-top: clamp(4px, 0.4vw, 10px);
 	}
 	.kpi {
 		min-width: 0;
-		min-height: clamp(72px, 6.5vh, 100px);
-		padding: var(--kpi-pad);
+		min-height: clamp(60px, 5.5vh, 88px);
+		padding: var(--kpi-pad) calc(var(--kpi-pad) + 2px);
 		background: var(--bg-card);
 		border: 1px solid var(--border);
 		border-radius: var(--kpi-radius);
 		display: flex;
 		flex-direction: column;
-		gap: 3px;
+		gap: 1px;
 		position: relative;
 		overflow: hidden;
 	}
@@ -230,7 +229,7 @@
 	}
 	.spark {
 		margin-top: auto;
-		height: clamp(18px, 1.8vh, 30px);
+		height: clamp(14px, 1.5vh, 26px);
 		overflow: hidden;
 	}
 	.spark :global(svg) {

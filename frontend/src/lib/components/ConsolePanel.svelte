@@ -356,7 +356,7 @@
 		background: rgba(18, 23, 32, 0.96);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-panel);
-		padding: clamp(12px, 1vw, 18px);
+		padding: clamp(6px, 0.6vw, 14px);
 		transition: border-color var(--ease-fast);
 	}
 	.panel:hover {
@@ -367,7 +367,7 @@
 		justify-content: space-between;
 		align-items: flex-end;
 		gap: 18px;
-		margin-bottom: 14px;
+		margin-bottom: clamp(4px, 0.4vw, 10px);
 	}
 	h2 {
 		font-size: 20px;

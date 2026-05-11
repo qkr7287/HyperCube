@@ -797,7 +797,7 @@
 		   padding 은 clamp 로 viewport 에 따라 압축 — 1920 에서 ~28px 좌우, 1280 에서 ~16px. */
 		max-width: none;
 		margin: 0;
-		padding: clamp(8px, 0.7vw, 16px) clamp(12px, 1.2vw, 26px) clamp(14px, 1.2vw, 28px);
+		padding: clamp(4px, 0.4vw, 12px) clamp(8px, 0.9vw, 22px) clamp(10px, 1vw, 22px);
 	}
 
 	.back-link,
@@ -814,7 +814,7 @@
 		color: var(--text-secondary);
 		font-size: 12px;
 		font-weight: 700;
-		margin-bottom: 14px;
+		margin-bottom: clamp(4px, 0.4vw, 10px);
 	}
 
 	.back-link:hover {
@@ -844,17 +844,17 @@
 		top: 0;
 		z-index: 10;
 		background: var(--bg-base);
-		padding-top: clamp(2px, 0.2vw, 6px);
+		padding-top: clamp(1px, 0.1vw, 4px);
 		display: flex;
 		flex-direction: column;
-		gap: clamp(6px, 0.5vw, 10px);
+		gap: clamp(3px, 0.3vw, 8px);
 	}
 
 	.hero {
 		display: flex;
 		justify-content: space-between;
-		gap: clamp(8px, 0.8vw, 14px);
-		padding: clamp(6px, 0.5vw, 12px) clamp(12px, 1vw, 18px);
+		gap: clamp(6px, 0.6vw, 12px);
+		padding: clamp(4px, 0.4vw, 10px) clamp(10px, 0.9vw, 16px);
 		border-radius: 12px;
 		background:
 			linear-gradient(140deg, rgba(48, 213, 200, 0.12), rgba(9, 75, 102, 0.14)),
@@ -965,7 +965,7 @@
 	.ops-bar {
 		/* topbar-sticky 안에 있으므로 margin-top 제거 (gap 으로 간격). */
 		margin-top: 0;
-		padding: clamp(6px, 0.45vw, 10px) clamp(10px, 0.8vw, 14px);
+		padding: clamp(3px, 0.3vw, 8px) clamp(8px, 0.7vw, 12px);
 		border-radius: 12px;
 		background: rgba(18, 23, 32, 0.96);
 		border: 1px solid var(--border);
@@ -1059,8 +1059,8 @@
 			"charts charts charts charts charts charts charts charts logs logs logs logs"
 			"process process process process process events events events inspect inspect inspect inspect"
 			"console console console console console console console console console console console console";
-		gap: clamp(8px, 0.6vw, 14px);
-		margin-top: clamp(8px, 0.6vw, 14px);
+		gap: clamp(4px, 0.4vw, 10px);
+		margin-top: clamp(4px, 0.4vw, 10px);
 	}
 	.bento-area {
 		min-width: 0;
@@ -1117,12 +1117,12 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: flex-end;
-		gap: clamp(8px, 0.8vw, 18px);
-		margin-bottom: clamp(8px, 0.6vw, 14px);
+		gap: clamp(6px, 0.6vw, 14px);
+		margin-bottom: clamp(4px, 0.4vw, 10px);
 	}
 
 	.panel-header.slim {
-		margin-bottom: clamp(6px, 0.5vw, 12px);
+		margin-bottom: clamp(3px, 0.3vw, 8px);
 	}
 
 	/* compact = 차트 panel 처럼 dense workbench 헤더. 부제·hint 없이
@@ -1209,12 +1209,12 @@
 	.chart-grid {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: clamp(8px, 0.7vw, 14px);
+		gap: clamp(4px, 0.45vw, 10px);
 	}
 
 	.chart-card {
 		border-radius: var(--radius-panel);
-		padding: clamp(12px, 1vw, 16px);
+		padding: clamp(6px, 0.6vw, 12px) clamp(8px, 0.7vw, 14px);
 		transition: border-color var(--ease-fast);
 	}
 	.chart-card:hover {
@@ -1225,9 +1225,9 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		gap: clamp(6px, 0.6vw, 12px);
-		margin-bottom: clamp(6px, 0.6vw, 14px);
-		padding-bottom: clamp(4px, 0.4vw, 8px);
+		gap: clamp(4px, 0.45vw, 10px);
+		margin-bottom: clamp(3px, 0.35vw, 8px);
+		padding-bottom: clamp(2px, 0.25vw, 6px);
 		border-bottom: 1px solid rgba(100, 116, 139, 0.12);
 	}
 
