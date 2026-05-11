@@ -48,7 +48,17 @@
 		if (e.kind === 'die' && typeof e.exit_code === 'number') parts.push(`exit ${e.exit_code}`);
 		if (e.kind === 'kill' && e.signal) parts.push(e.signal);
 		if (e.kind === 'health_status' && e.health_status) parts.push(e.health_status);
+		if (e.kind === 'oom') parts.push('Out of Memory');
 		return parts.join(' · ');
+	}
+
+	function detailTone(e: EventRow): 'danger' | 'warn' | 'muted' {
+		if (e.kind === 'oom') return 'danger';
+		if (e.kind === 'die' && typeof e.exit_code === 'number' && e.exit_code !== 0) return 'danger';
+		if (e.kind === 'kill') return 'danger';
+		if (e.kind === 'health_status' && e.health_status === 'unhealthy') return 'danger';
+		if (e.kind === 'health_status' && e.health_status === 'starting') return 'warn';
+		return 'muted';
 	}
 
 	let displayed = $derived([...events].reverse()); // 시간 내림차순 (최신이 위)
@@ -78,7 +88,7 @@
 						<span class="icon">{m.icon}</span>{m.label}
 					</span>
 					{#if detail(ev)}
-						<span class="detail">{detail(ev)}</span>
+						<span class="detail" data-tone={detailTone(ev)}>{detail(ev)}</span>
 					{/if}
 					<span class="time">{formatDateTime(ev.ts)}</span>
 				</li>
@@ -187,7 +197,20 @@
 	.detail {
 		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 		font-size: 11px;
+		font-weight: 700;
+		padding: 2px 6px;
+		border-radius: 4px;
+	}
+	.detail[data-tone='muted'] {
 		color: var(--text-muted);
+	}
+	.detail[data-tone='warn'] {
+		color: #fde68a;
+		background: rgba(251, 191, 36, 0.12);
+	}
+	.detail[data-tone='danger'] {
+		color: #fca5a5;
+		background: rgba(239, 68, 68, 0.14);
 	}
 
 	.time {

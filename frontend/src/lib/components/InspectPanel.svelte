@@ -345,15 +345,15 @@
 	dl {
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
+		gap: 3px;
 	}
 	dl > div {
 		display: flex;
 		justify-content: space-between;
-		gap: 12px;
-		font-size: 12px;
-		padding-bottom: 6px;
-		border-bottom: 1px solid rgba(31, 41, 55, 0.6);
+		gap: 10px;
+		font-size: 11px;
+		padding: 2px 0;
+		border-bottom: 1px solid rgba(31, 41, 55, 0.4);
 	}
 	dl > div:last-child {
 		border-bottom: none;

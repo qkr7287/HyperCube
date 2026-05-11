@@ -100,8 +100,12 @@
 			CPU
 			{#if cpuHelp}<InfoTooltip text={cpuHelp} placement="bottom-start" />{/if}
 		</span>
-		<strong class="value">{formatPercent(currentMetrics?.cpu?.usage, 2)}</strong>
-		<span class="sub">{rangeLabel} 평균 {formatPercent(cpuAvg, 1)} · 피크 {formatPercent(cpuPeak, 1)}</span>
+		<div class="value-line">
+			<strong class="value">{formatPercent(currentMetrics?.cpu?.usage, 2)}</strong>
+			<span class="trend" title="{rangeLabel} 평균 {formatPercent(cpuAvg, 1)} · 피크 {formatPercent(cpuPeak, 1)}">
+				avg {formatPercent(cpuAvg, 1)} · pk {formatPercent(cpuPeak, 1)}
+			</span>
+		</div>
 		<div class="spark"><MetricSparkline values={cpuTrend} color="#30d5c8" label="CPU 추이" /></div>
 	</div>
 
@@ -110,8 +114,12 @@
 			메모리
 			{#if memoryHelp}<InfoTooltip text={memoryHelp} placement="bottom-start" />{/if}
 		</span>
-		<strong class="value">{formatPercent(currentMetrics?.memory?.percent, 2)}</strong>
-		<span class="sub">{formatMemoryUsage(currentMetrics?.memory?.usage, currentMetrics?.memory?.limit)} · 평균 {formatPercent(memAvgPct, 1)} · 피크 {formatPercent(memPeakPct, 1)}</span>
+		<div class="value-line">
+			<strong class="value">{formatPercent(currentMetrics?.memory?.percent, 2)}</strong>
+			<span class="trend" title="{formatMemoryUsage(currentMetrics?.memory?.usage, currentMetrics?.memory?.limit)} · {rangeLabel} 평균 {formatPercent(memAvgPct, 1)} · 피크 {formatPercent(memPeakPct, 1)}">
+				{formatMemoryUsage(currentMetrics?.memory?.usage, currentMetrics?.memory?.limit)}
+			</span>
+		</div>
 		<div class="spark"><MetricSparkline values={memTrend} color="#60a5fa" label="메모리 추이" /></div>
 	</div>
 
@@ -120,8 +128,12 @@
 			네트워크
 			{#if networkHelp}<InfoTooltip text={networkHelp} placement="bottom-start" />{/if}
 		</span>
-		<strong class="value net">↓ {formatBytesValue(currentMetrics?.network?.rx)} · ↑ {formatBytesValue(currentMetrics?.network?.tx)}</strong>
-		<span class="sub">{rangeLabel} 증가 ↓ {formatBytesValue(netRxDelta)} · ↑ {formatBytesValue(netTxDelta)}</span>
+		<div class="value-line">
+			<strong class="value net">↓ {formatBytesValue(currentMetrics?.network?.rx)} · ↑ {formatBytesValue(currentMetrics?.network?.tx)}</strong>
+		</div>
+		<span class="trend" title="{rangeLabel} 증가 ↓ {formatBytesValue(netRxDelta)} · ↑ {formatBytesValue(netTxDelta)}">
+			Δ ↓ {formatBytesValue(netRxDelta)} · ↑ {formatBytesValue(netTxDelta)}
+		</span>
 		<div class="spark"><MetricSparkline values={netTrend} color="#fbbf24" label="네트워크 추이" /></div>
 	</div>
 
@@ -130,16 +142,24 @@
 			디스크
 			{#if diskHelp}<InfoTooltip text={diskHelp} placement="bottom-start" />{/if}
 		</span>
-		<strong class="value net">R {formatBytesValue(currentMetrics?.disk?.read)} · W {formatBytesValue(currentMetrics?.disk?.write)}</strong>
-		<span class="sub">{rangeLabel} 증가 R {formatBytesValue(diskReadDelta)} · W {formatBytesValue(diskWriteDelta)}</span>
+		<div class="value-line">
+			<strong class="value net">R {formatBytesValue(currentMetrics?.disk?.read)} · W {formatBytesValue(currentMetrics?.disk?.write)}</strong>
+		</div>
+		<span class="trend" title="{rangeLabel} 증가 R {formatBytesValue(diskReadDelta)} · W {formatBytesValue(diskWriteDelta)}">
+			Δ R {formatBytesValue(diskReadDelta)} · W {formatBytesValue(diskWriteDelta)}
+		</span>
 		<div class="spark"><MetricSparkline values={diskTrend} color="#a78bfa" label="디스크 추이" /></div>
 	</div>
 
 	{#if hasGpu}
 		<div class="kpi" data-level={gpuLevel}>
 			<span class="label">GPU</span>
-			<strong class="value">{currentGpuUsage !== null ? formatPercent(currentGpuUsage, 2) : '-'}</strong>
-			<span class="sub">{rangeLabel} 평균 {formatPercent(gpuAvg, 1)} · 피크 {formatPercent(gpuPeak, 1)}</span>
+			<div class="value-line">
+				<strong class="value">{currentGpuUsage !== null ? formatPercent(currentGpuUsage, 2) : '-'}</strong>
+				<span class="trend" title="{rangeLabel} 평균 {formatPercent(gpuAvg, 1)} · 피크 {formatPercent(gpuPeak, 1)}">
+					avg {formatPercent(gpuAvg, 1)} · pk {formatPercent(gpuPeak, 1)}
+				</span>
+			</div>
 			<div class="spark"><MetricSparkline values={gpuTrend} color="#f472b6" label="GPU 추이" /></div>
 		</div>
 	{/if}
@@ -252,9 +272,27 @@
 		overflow: hidden;
 	}
 
-	/* sub line 제거 — 한 줄로 압축. value 와 같은 row label 옆에 작게 inline.
-	   현재 markup 은 label/value/sub 가 별도 줄이라 sub 만 display:none 으로 빠르게
-	   대체 (정보 손실은 다음 step 에서 tooltip 으로 이전). */
+	/* value-line: value (큰 글씨) 와 trend (작은 인라인 텍스트) 가 같은 row.
+	   평균/피크 정보를 별도 줄로 두지 않고 value 옆 baseline 정렬해 정보 손실 X +
+	   세로 공간 절약. trend hover tooltip 에 정식 텍스트 fallback. */
+	.value-line {
+		display: flex;
+		align-items: baseline;
+		gap: clamp(4px, 0.4vw, 8px);
+		flex-wrap: wrap;
+		min-width: 0;
+	}
+	.trend {
+		color: var(--text-muted);
+		font-size: clamp(9px, 0.55vw, 11px);
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		cursor: help;
+	}
+	/* sub 는 deprecated — 혹시 남아있는 markup safe-guard */
 	.sub {
 		display: none;
 	}

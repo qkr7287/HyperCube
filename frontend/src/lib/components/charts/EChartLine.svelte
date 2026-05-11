@@ -101,10 +101,10 @@
 			animationDurationUpdate: 600,
 			animationEasingUpdate: 'cubicInOut',
 			grid: {
-				top: showLegendResolved ? 32 : 8,
-				left: 8,
-				right: 8,
-				bottom: 24,
+				top: showLegendResolved ? 28 : 6,
+				left: 4,
+				right: 6,
+				bottom: 18,
 				containLabel: true,
 			},
 			// 같은 group 의 차트 간 axisPointer/tooltip 동기화는 EChartBase
@@ -158,7 +158,7 @@
 				axisLabel: {
 					color: '#64748b',
 					hideOverlap: true,
-					fontSize: 10,
+					fontSize: 9,
 				},
 				splitLine: { show: false },
 			},
@@ -171,12 +171,14 @@
 				max: fmt === 'percent' ? 100 : undefined,
 				axisLabel: {
 					color: '#64748b',
-					fontSize: 10,
+					fontSize: 9,
 					formatter: (v: number) => formatValue(v, fmt, decimals),
 				},
 				axisLine: { show: false },
 				axisTick: { show: false },
 				splitLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.05)' } },
+				/* percent 차트 yAxis 라벨 자릿수 통일 — split 5 면 0/20/40/60/80/100 */
+				splitNumber: fmt === 'percent' ? 4 : undefined,
 			},
 			series: seriesList.map((ds, i) => ({
 				// id 는 ECharts 가 두 setOption 사이에서 같은 series 인지 식별하는 키.
