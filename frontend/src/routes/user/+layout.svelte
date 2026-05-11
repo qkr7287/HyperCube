@@ -5,7 +5,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import logoHypercube from '$lib/assets/logo_hypercube.png';
-	import { connectGlobal, disconnectGlobal } from '$lib/stores/global-events';
+	import { connectGlobal, disconnectGlobal, seedActiveAgents } from '$lib/stores/global-events';
 
 	let { children } = $props();
 	let ready = $state(false);
@@ -27,6 +27,25 @@
 		goto(`${base}/`);
 	}
 
+	async function seedAgentsFromBackend(token: string) {
+		// agent_status_change 는 transition 시점에만 broadcast 됨 → 페이지 진입 시
+		// store 가 비어있으면 AgentStatusIndicator 가 잠깐 offline 으로 깜빡인다.
+		// admin 페이지들과 동일하게 active 한 agent 목록을 fetch 해 seed.
+		try {
+			const res = await fetch(`${base}/api/agents/?status=approved&active=true&page_size=200`, {
+				headers: { Authorization: `Bearer ${token}` },
+			});
+			if (!res.ok) return;
+			const json = await res.json();
+			const agents = json.data?.results ?? json.results ?? [];
+			seedActiveAgents(
+				agents.filter((a: any) => a.is_active).map((a: any) => String(a.id)),
+			);
+		} catch {
+			/* ignore — fallback (currentMetrics.timestamp < 120s) 가 동작 */
+		}
+	}
+
 	onMount(() => {
 		if (!browser) return;
 		const token = localStorage.getItem('hc_access_token');
@@ -40,6 +59,8 @@
 		// agent_status_change 같은 cross-cutting 이벤트 받기 위해 global WS 연결
 		// (admin 만 받던 거 → user 페이지에서도 agent online/offline 표시 위해)
 		connectGlobal(token);
+		// active agent 목록을 seed — transition event 만 의지하면 첫 로드 깜빡임.
+		seedAgentsFromBackend(token);
 	});
 
 	onDestroy(() => {

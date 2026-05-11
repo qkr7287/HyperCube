@@ -143,15 +143,16 @@
 	let actionMsgKind = $state<'info' | 'success' | 'error'>('info');
 	let actionMsgTimer: ReturnType<typeof setTimeout> | null = null;
 
-	// agent online 판단: global event store 우선, 없으면 last_seen 60초 이내면 online 가정.
-	// (사용자 페이지 globalWS 가 늦게 붙거나 backend 가 아직 transition 안 보낸 케이스 대비)
+	// agent online 판단: global event store 우선, 없으면 last_seen 2분 이내면 online 가정.
+	// (사용자 페이지 globalWS 가 늦게 붙거나 backend 가 transition event 못 보낸 케이스,
+	//  메트릭 폴링이 잠깐 지연되는 경우까지 흡수 — 120s 안전마진)
 	let agentOnline = $derived.by<boolean>(() => {
 		if (!container?.agent) return false;
 		if ($activeAgentIds.has(container.agent)) return true;
 		const lastIso = currentMetrics?.timestamp || container.last_seen;
 		if (!lastIso) return false;
 		const ts = new Date(lastIso).getTime();
-		return Number.isFinite(ts) && Date.now() - ts < 60_000;
+		return Number.isFinite(ts) && Date.now() - ts < 120_000;
 	});
 	let events = $state<EventRow[]>([]);
 	let eventsError = $state('');
