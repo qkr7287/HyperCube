@@ -209,6 +209,23 @@
 		execId = null;
 		connected = false;
 		ready = false;
+
+		// xterm 도 같이 정리. 다음 "열기" 시 새 termEl(svelte 가 새로 mount 한 DOM)에
+		// fresh xterm 을 attach 해야 한다. term 만 살려두면 옛 destroyed DOM 을
+		// 가리켜 화면이 빈 채로 표시됨.
+		try {
+			resizeObs?.disconnect();
+		} catch {
+			/* ignore */
+		}
+		resizeObs = null;
+		try {
+			term?.dispose();
+		} catch {
+			/* ignore */
+		}
+		term = null;
+		fitAddon = null;
 	}
 
 	function handleMessage(msg: any) {
