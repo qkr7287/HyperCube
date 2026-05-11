@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-05-11 (B4 + L1 + L2(4축 UI 폴리싱) 모두 완료)
+last-updated: 2026-05-11 (모든 P0/P1/P2 완료, viewport-fit + polish 25 commits, agent #13 머지만 남음)
 status: living document — 세션마다 갱신
 benchmark: Portainer container detail UI
 related-pages: /user/containers/[containerId]
@@ -11,10 +11,25 @@ related-pages: /user/containers/[containerId]
 
 ## 현재 상태 (요약 — 다음 세션 시작 시 여기부터 읽기)
 
-**기능 단위 작업**: D / A1 / B1 / B2 / B3 / C1 / B4 모두 완료 → Portainer parity 100%.
-**B4 상태**: backend (ConsoleSession 모델 + WS routing + REST audit) + frontend (xterm.js ConsolePanel) 모두 구현. **agent repo 작업만 대기** — `exec_open` / `exec_input` / `exec_resize` / `exec_close` 명령 + `exec_chunk` / `exec_end` push 메시지. issue 발행해서 agent 측 구현 받기.
-**레이아웃 개편**: L1 — 12-col bento + admin parity (관리자 메인 시각 언어 차용). 진행 중 / 검증 단계.
-**별도 scope** (현재 로드맵 외): UI/UX 폴리싱은 다음 세션에서 별도 진행. 컨테이너 modification (limit edit 등) 은 admin 도구 영역으로 분리.
+**기능 단위**: D / A1 / B1 / B2 / B3 / B4 / C1 모두 완료. Portainer parity 100%.
+**B4 (Console exec)**: HyperCube + agent dev 모두 완료, end-to-end 검증 통과 (verify-redis-2 alpine /bin/sh + ConsoleSession audit).
+**P0 (Resource limit edit)**: HyperCube backend + frontend 모두 완료 (ContainerLimitModal). **agent issue #13 머지 대기**.
+**레이아웃 / UI**: L1 12-col bento + L2 4축 polish + Phase E viewport-fit (세로 스크롤 0, 한 화면 fit) + 추가 25 commits 폴리싱.
+
+**평가**: 시작 44/60 (73%) → 현재 53.5/60 (89%). agent #13 머지 시 Portainer parity 10/10.
+
+## 다음 세션 시작점
+
+1. **agent issue #13** (`update_container` memory/cpu/restart) — agent repo 별도 세션. main 머지 후 HyperCube 검증.
+2. **dev → main 머지 + prod 배포** — 25 commits 누적, prod `http://192.168.0.16:3334/hypercube` 적용.
+3. (필요 시 polish) Logs 검색 강화, 차트 zoom reset, 1920+ inspect 4col, Logs/Console toggle 토글 단축키.
+
+## 핵심 코딩 룰 (반복 실수 방지)
+
+- 컨테이너 상세 `+page.svelte` 는 runes mode. polling 시 `loadInspect({silent: true})` 필수 (loading bar 깜빡임 방지).
+- ECharts streaming: 첫 setOption 만 `notMerge:true`, 그 후 `notMerge:false + replaceMerge:['series']` + series 에 `id` 부여.
+- 모든 panel inner area `flex:1 + min-height:0` + 자체 `overflow:auto` (viewport-fit 환경).
+- `.bento-area > :global(.panel)` selector 만 (descendant 까지 매칭되면 panel-header 도 flex stretch 되어 layout 깨짐).
 
 ## L2. 4축 UI 폴리싱  (✅ 완료 2026-05-11)
 
@@ -383,6 +398,7 @@ Commits (this repo): `d7be13f` (A) / `3414a73` (B) / `b50d692` (C) / Phase D.
 
 ## 변경 이력
 
+- 2026-05-11: **종합 폴리싱 sweep 25 commits** — viewport-fit (zero scroll), KPI bar+ops 한 row 통합, 운영 인사이트 chip (restart/OOM/health), danger value pulse, EventList severity tone, KPI trend inline, ContainerLimitModal (P0 resource limit edit + agent issue #13 발행), Inspect cards stretch (잘림 fix), polling 깜빡임 fix (silent flag), ECharts streaming smooth (notMerge:false + id), range tabs segmented control. 평가 44/60→53.5/60 (89%).
 - 2026-05-11: **L2 — 4축 UI 폴리싱** 완료 (Phase A~D 4 commit). StateBox / AgentStatusIndicator 신규 컴포넌트, --radius-panel 14px 토큰 통일, agent offline banner / dismissible toast, chart sync chip.
 - 2026-05-11: B4 (Console exec / xterm) HyperCube 측 구현 완료 — `ConsoleSession` 모델 / migration 0004 / WS routing (exec_chunk·exec_end + browser disconnect cleanup) / REST `/console-sessions/` / frontend `ConsolePanel.svelte` (xterm.js) / bento area-console row 3 추가. agent repo 작업 issue #12 발행 후 dev branch 머지 완료, end-to-end 검증 통과 (verify-redis-2 alpine `/bin/sh`).
 - 2026-05-08: B3 (Per-container processes top-N) 완료. 다음 세션 = B4 (Console exec, 가장 위험 — 권한/감사 모델 신중).
