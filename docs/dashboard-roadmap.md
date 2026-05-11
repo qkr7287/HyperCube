@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-05-08 (B3 완료, B4 정책 결정만 남음, L1 — 12-col bento 레이아웃 개편 진행)
+last-updated: 2026-05-11 (B4 backend + frontend 구현 완료, agent repo 작업만 대기)
 status: living document — 세션마다 갱신
 benchmark: Portainer container detail UI
 related-pages: /user/containers/[containerId]
@@ -11,8 +11,8 @@ related-pages: /user/containers/[containerId]
 
 ## 현재 상태 (요약 — 다음 세션 시작 시 여기부터 읽기)
 
-**기능 단위 작업**: D / A1 / B1 / B2 / B3 / C1 모두 완료 → Portainer parity 100%.
-**남은 마지막 단계**: B4 (Console exec / xterm). 정책 결정 완료 (아래 §B4 참조), agent prompt 만 만들면 시작 가능.
+**기능 단위 작업**: D / A1 / B1 / B2 / B3 / C1 / B4 모두 완료 → Portainer parity 100%.
+**B4 상태**: backend (ConsoleSession 모델 + WS routing + REST audit) + frontend (xterm.js ConsolePanel) 모두 구현. **agent repo 작업만 대기** — `exec_open` / `exec_input` / `exec_resize` / `exec_close` 명령 + `exec_chunk` / `exec_end` push 메시지. issue 발행해서 agent 측 구현 받기.
 **레이아웃 개편**: L1 — 12-col bento + admin parity (관리자 메인 시각 언어 차용). 진행 중 / 검증 단계.
 **별도 scope** (현재 로드맵 외): UI/UX 폴리싱은 다음 세션에서 별도 진행. 컨테이너 modification (limit edit 등) 은 admin 도구 영역으로 분리.
 
@@ -57,8 +57,8 @@ related-pages: /user/containers/[containerId]
 | 2 (완료) | B2 — Events 타임라인 + 차트 markLine | ✅ | ✅ agent 송출 추가 완료 |
 | 3 (완료) | B1 — Live log streaming | ✅ | ✅ agent logs_subscribe/unsubscribe 추가 완료 |
 | 4 (완료) | C1 — Rate 차트 + 임계 markLine | ✅ | ❌ |
-| 5 (완료) | B3 — Per-container processes top-N | ✅ 이번 세션 | ✅ agent container_processes 추가 완료 |
-| 6 | **B4 — Console exec (xterm)** | 🔜 다음 (가장 위험) | ✅ 선행 필요 |
+| 5 (완료) | B3 — Per-container processes top-N | ✅ | ✅ agent container_processes 추가 완료 |
+| 6 (완료) | B4 — Console exec (xterm) | ⏳ HyperCube 측 완료 / agent 대기 | 🔜 issue 발행 — `exec_open/input/resize/close` + `exec_chunk/end` |
 
 상태 이모지: ✅ 완료 · ⏳ 진행 중 · 🔜 대기 · ⚠️ 블록 / 재설계
 
@@ -308,7 +308,7 @@ related-pages: /user/containers/[containerId]
 - Frontend: 새 패널, sortBy 토글, 5초 폴링 (페이지 active 시만)
 - Backend routing 만
 
-## B4. Console Exec (xterm.js)  (🔜 대기 — 정책 결정 완료, agent prompt 만들기부터 시작)
+## B4. Console Exec (xterm.js)  (⏳ HyperCube 측 완료, agent 대기)
 
 ### 정책 결정 (Portainer 모델 채택)
 
@@ -347,9 +347,12 @@ related-pages: /user/containers/[containerId]
 
 ### 진행 절차
 
-1. Agent prompt 만들기 (B1 prompt 형식 따라)
-2. agent 작업 끝나면 backend WS routing + ConsoleSession 모델 + REST + frontend xterm 통합
-3. chrome 검증: redis-cli 실행 / sh 진입 / Ctrl+C SIGINT 전달 / resize / 끊김 시 cleanup
+1. ✅ HyperCube 측 구현 완료 (2026-05-11):
+   - Backend: `ConsoleSession` 모델 + migration 0004, `consumers.py` 에 exec_chunk/exec_end routing + exec_open ConsoleSession 자동 생성 + browser disconnect cleanup → `exec_close` + ConsoleSession close 갱신. `command_router.record_stream(kind="exec")`. REST audit `GET /api/my-containers/<id>/console-sessions/`.
+   - Frontend: `ConsolePanel.svelte` (xterm + addon-fit, base64 encode/decode, resize observer). `+page.svelte` bento area-console row 3 full-width. `package.json` 에 `@xterm/xterm`, `@xterm/addon-fit` 추가.
+   - Docs: `agent-protocol.md` §7, `agent-payload-contract.md` exec_chunk/exec_end.
+2. 🔜 Agent issue 발행 (qkr7287/HyperCube-agent) — `exec_open` / `exec_input` / `exec_resize` / `exec_close` + `exec_chunk` / `exec_end`. Schema 는 `docs/agent-protocol.md` §7 + `docs/agent-payload-contract.md` 참조.
+3. 🔜 agent merge 후 검증: alpine `/bin/sh` 진입 / Ctrl+C SIGINT 전달 / resize / 끊김 시 cleanup / `ConsoleSession` audit row 확인.
 
 ## 코딩 룰 (반복 실수 방지 — 모든 세션 공통)
 
@@ -363,6 +366,7 @@ related-pages: /user/containers/[containerId]
 
 ## 변경 이력
 
+- 2026-05-11: B4 (Console exec / xterm) HyperCube 측 구현 완료 — `ConsoleSession` 모델 / migration 0004 / WS routing (exec_chunk·exec_end + browser disconnect cleanup) / REST `/console-sessions/` / frontend `ConsolePanel.svelte` (xterm.js) / bento area-console row 3 추가. agent repo 작업 issue 발행 대기.
 - 2026-05-08: B3 (Per-container processes top-N) 완료. 다음 세션 = B4 (Console exec, 가장 위험 — 권한/감사 모델 신중).
 - 2026-05-08: C1 (Rate 차트 + 80/90% 임계 markLine) 완료 + formatBytes < 1 버그 fix.
 - 2026-05-08: B1 (Live log streaming) 완료.

@@ -95,9 +95,20 @@ STREAM_BY_CHANNEL_KEY = "cmd_streams_by_channel:{channel}"
 STREAM_TTL = 3600  # 1 hour — tail 세션 최대 수명
 
 
-def record_stream(stream_id: str, browser_channel: str, server_id: str) -> None:
+def record_stream(
+    stream_id: str,
+    browser_channel: str,
+    server_id: str,
+    kind: str = "logs",
+) -> None:
+    """kind 는 "logs" | "exec". disconnect cleanup 에서 어떤 unsubscribe 명령을
+    보낼지 결정하는 데 사용."""
     r = get_redis_client()
-    payload = json.dumps({"browser": browser_channel, "server_id": server_id})
+    payload = json.dumps({
+        "browser": browser_channel,
+        "server_id": server_id,
+        "kind": kind,
+    })
     r.set(STREAM_KEY.format(stream_id=stream_id), payload, ex=STREAM_TTL)
     by_channel = STREAM_BY_CHANNEL_KEY.format(channel=browser_channel)
     r.sadd(by_channel, stream_id)

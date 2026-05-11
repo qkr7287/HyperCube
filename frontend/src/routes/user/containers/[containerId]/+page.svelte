@@ -12,6 +12,7 @@
 	import EventList from '$lib/components/EventList.svelte';
 	import LogTailPanel from '$lib/components/LogTailPanel.svelte';
 	import ProcessTopPanel from '$lib/components/ProcessTopPanel.svelte';
+	import ConsolePanel from '$lib/components/ConsolePanel.svelte';
 	import { eventColor, eventLabel, type EventRow } from '$lib/utils/container-events';
 	import type { MarkLineEntry } from '$lib/components/charts/types';
 	import {
@@ -647,6 +648,10 @@
 		<div class="bento-area area-inspect">
 			<InspectPanel data={inspectData} loading={inspectLoading} errorMsg={inspectError} />
 		</div>
+
+		<div class="bento-area area-console">
+			<ConsolePanel agentId={container.agent ?? ''} {containerId} />
+		</div>
 		</div>
 
 		<section class="details-grid">
@@ -925,15 +930,17 @@
 		border: 1px solid var(--border);
 	}
 
-	/* 12-col bento grid — 1440+: charts(8) + logs(4) on row1, process(5) + events(3) + inspect(4) on row2.
-	   1280~1439: 차트/로그/하단 3분할이 각각 1행씩 stack.
+	/* 12-col bento grid — 1440+: row1 charts(8) + logs(4), row2 process(5) + events(3) + inspect(4),
+	   row3 console(12, full-width — 사용 빈도 낮지만 작업 시엔 가로폭 필요).
+	   1280~1439: 차트/로그/하단 3분할/console 각각 1행씩 stack.
 	   ≤980: 1열 stack (모바일 fallback). */
 	.bento {
 		display: grid;
 		grid-template-columns: repeat(12, minmax(0, 1fr));
 		grid-template-areas:
 			"charts charts charts charts charts charts charts charts logs logs logs logs"
-			"process process process process process events events events inspect inspect inspect inspect";
+			"process process process process process events events events inspect inspect inspect inspect"
+			"console console console console console console console console console console console console";
 		gap: clamp(10px, 0.7vw, 16px);
 		margin-top: clamp(10px, 0.8vw, 18px);
 	}
@@ -954,6 +961,9 @@
 	}
 	.area-inspect {
 		grid-area: inspect;
+	}
+	.area-console {
+		grid-area: console;
 	}
 
 	/* bento 안의 component panel 들은 grid item 자신이 자리 잡으므로 컴포넌트 내부의
@@ -1215,13 +1225,14 @@
 		color: var(--text-secondary);
 	}
 
-	/* 1280~1439: 차트 풀폭 → 로그 풀폭 → 하단 process/events/inspect 가로 3분할 */
+	/* 1280~1439: 차트 풀폭 → 로그 풀폭 → 하단 process/events/inspect 가로 3분할 → console 풀폭 */
 	@media (max-width: 1439px) {
 		.bento {
 			grid-template-areas:
 				"charts charts charts charts charts charts charts charts charts charts charts charts"
 				"logs logs logs logs logs logs logs logs logs logs logs logs"
-				"process process process process events events events events inspect inspect inspect inspect";
+				"process process process process events events events events inspect inspect inspect inspect"
+				"console console console console console console console console console console console console";
 		}
 	}
 
@@ -1246,7 +1257,8 @@
 				'logs'
 				'process'
 				'events'
-				'inspect';
+				'inspect'
+				'console';
 		}
 
 		.chart-grid,

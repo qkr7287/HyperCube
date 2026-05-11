@@ -22,8 +22,15 @@ from apps.metrics.serializers import ContainerMetricsHistorySerializer
 
 logger = logging.getLogger(__name__)
 
-from .models import Container, ContainerEvent, ContainerRequest, ContainerTemplate
+from .models import (
+    ConsoleSession,
+    Container,
+    ContainerEvent,
+    ContainerRequest,
+    ContainerTemplate,
+)
 from .serializers import (
+    ConsoleSessionSerializer,
     ContainerEventSerializer,
     ContainerRequestSerializer,
     ContainerSerializer,
@@ -353,6 +360,23 @@ class MyContainerViewSet(ReadOnlyModelViewSet):
             params={"containerId": container.container_id},
         )
         return self._agent_resp_to_http(resp)
+
+    @extend_schema(
+        summary="컨테이너 콘솔 세션 audit 조회",
+        description=(
+            "본인 소유 컨테이너의 콘솔 exec 세션 audit 로그. 세션 레벨만 기록 "
+            "(누가/언제/cmd/얼마/exitCode/close_reason). 키스트로크는 미기록."
+        ),
+    )
+    @action(detail=True, methods=["get"], url_path="console-sessions")
+    def console_sessions(self, request, pk=None):
+        container = self.get_object()
+        try:
+            limit = min(int(request.query_params.get("limit", "50")), 200)
+        except ValueError:
+            limit = 50
+        qs = ConsoleSession.objects.filter(container=container).select_related("user").order_by("-opened_at")[:limit]
+        return Response(ConsoleSessionSerializer(qs, many=True).data)
 
 
 # ---------- Templates ----------

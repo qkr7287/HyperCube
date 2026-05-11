@@ -1,12 +1,39 @@
 from rest_framework import serializers
 
-from .models import Container, ContainerEvent, ContainerRequest, ContainerTemplate
+from .models import (
+    ConsoleSession,
+    Container,
+    ContainerEvent,
+    ContainerRequest,
+    ContainerTemplate,
+)
 
 
 class ContainerEventSerializer(serializers.ModelSerializer):
     class Meta:
         model = ContainerEvent
         fields = ["id", "ts", "kind", "exit_code", "signal", "health_status"]
+        read_only_fields = fields
+
+
+class ConsoleSessionSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source="user.username", read_only=True)
+
+    class Meta:
+        model = ConsoleSession
+        fields = [
+            "id",
+            "exec_id",
+            "username",
+            "cmd",
+            "user_param",
+            "tty",
+            "opened_at",
+            "closed_at",
+            "duration_seconds",
+            "exit_code",
+            "close_reason",
+        ]
         read_only_fields = fields
 
 

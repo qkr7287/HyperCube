@@ -246,3 +246,47 @@ class ContainerRequest(models.Model):
 
     def __str__(self):
         return f"{self.action} [{self.status}] by {self.requester.username} @ {self.created_at:%Y-%m-%d %H:%M}"
+
+
+class ConsoleSession(models.Model):
+    """B4 — Console exec 감사 로그 (세션 레벨만, 키스트로크 미기록).
+
+    Portainer 모델 채택: console 권한 = full shell 권한. 명령 차단 X.
+    audit 은 누가 / 언제 / 어떤 컨테이너로 / 얼마나 사용했는지만 추적.
+    """
+
+    id = models.BigAutoField(primary_key=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="console_sessions",
+    )
+    container = models.ForeignKey(
+        Container,
+        on_delete=models.CASCADE,
+        related_name="console_sessions",
+    )
+    # exec_open 의 requestId == streamId == execId. UUID 문자열.
+    exec_id = models.CharField(max_length=64, unique=True)
+    # exec_open 시 보낸 cmd / user / tty (사용 흔적 보존)
+    cmd = models.JSONField(default=list, blank=True)
+    user_param = models.CharField(max_length=64, blank=True, default="")
+    tty = models.BooleanField(default=True)
+
+    opened_at = models.DateTimeField(auto_now_add=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    duration_seconds = models.PositiveIntegerField(null=True, blank=True)
+    # exec_end 의 exitCode/reason (정상 종료 / disconnect / container_stopped)
+    exit_code = models.IntegerField(null=True, blank=True)
+    close_reason = models.CharField(max_length=32, blank=True, default="")
+
+    class Meta:
+        db_table = "console_sessions"
+        ordering = ["-opened_at"]
+        indexes = [
+            models.Index(fields=["user", "-opened_at"]),
+            models.Index(fields=["container", "-opened_at"]),
+        ]
+
+    def __str__(self):
+        return f"console {self.exec_id[:8]} {self.user.username} -> {self.container.name}"

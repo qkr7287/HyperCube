@@ -27,6 +27,8 @@
 		"@sveltejs/adapter-static": "^3.0.10",
 		"@tweenjs/tween.js": "^25.0.0",
 		"@types/dockerode": "^3.3.43",
+		"@xterm/addon-fit": "^0.10.0",
+		"@xterm/xterm": "^5.5.0",
 		"3d-force-graph": "^1.79.1",
 		"d3-force-3d": "^3.0.5",
 		"dockerode": "^4.0.8",

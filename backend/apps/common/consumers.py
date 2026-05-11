@@ -86,22 +86,37 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
         import uuid
         active = command_router.streams_by_channel(self.channel_name)
         for stream_id in active:
-            info = command_router.get_stream_info(stream_id)
-            agent_channel = command_router.get_agent_channel((info or {}).get("server_id", ""))
+            info = command_router.get_stream_info(stream_id) or {}
+            agent_channel = command_router.get_agent_channel(info.get("server_id", ""))
+            kind = info.get("kind", "logs")
             if agent_channel:
-                payload = {
-                    "type": "command",
-                    "requestId": str(uuid.uuid4()),
-                    "command": "logs_unsubscribe",
-                    "params": {"streamId": stream_id},
-                }
+                if kind == "exec":
+                    payload = {
+                        "type": "command",
+                        "requestId": str(uuid.uuid4()),
+                        "command": "exec_close",
+                        "params": {"execId": stream_id},
+                    }
+                else:
+                    payload = {
+                        "type": "command",
+                        "requestId": str(uuid.uuid4()),
+                        "command": "logs_unsubscribe",
+                        "params": {"streamId": stream_id},
+                    }
                 try:
                     await self.channel_layer.send(agent_channel, {
                         "type": "ws.send",
                         "payload": payload,
                     })
                 except Exception:
-                    logger.exception("[ws] failed to forward logs_unsubscribe on disconnect")
+                    logger.exception("[ws] failed to forward stream cleanup kind=%s", kind)
+            if kind == "exec":
+                await self._close_console_session(
+                    exec_id=stream_id,
+                    exit_code=None,
+                    reason="browser_disconnect",
+                )
             command_router.remove_stream(stream_id)
 
     async def receive(self, text_data=None, bytes_data=None):
@@ -142,6 +157,10 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
 
         if msg_type in ("log_chunk", "log_stream_end"):
             await self._route_log_stream_message(data)
+            return
+
+        if msg_type in ("exec_chunk", "exec_end"):
+            await self._route_exec_stream_message(data)
             return
 
         if msg_type == "container_events":
@@ -315,11 +334,24 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
         #                   browser 가 이미 cleanup 의도).
         command_name = data.get("command")
         if command_name == "logs_subscribe":
-            command_router.record_stream(request_id, self.channel_name, self.server_id)
+            command_router.record_stream(request_id, self.channel_name, self.server_id, kind="logs")
         elif command_name == "logs_unsubscribe":
             stream_id = ((data.get("params") or {}).get("streamId")) or ""
             if stream_id:
                 command_router.remove_stream(stream_id)
+        elif command_name == "exec_open":
+            # requestId 가 곧 execId (== streamId).
+            command_router.record_stream(request_id, self.channel_name, self.server_id, kind="exec")
+            # ConsoleSession audit row 즉시 생성. 응답 실패 시 _route_command_response 가
+            # close_reason="open_failed" 로 갱신.
+            await self._open_console_session(
+                exec_id=request_id,
+                params=data.get("params") or {},
+            )
+        elif command_name == "exec_close":
+            exec_id = ((data.get("params") or {}).get("execId")) or ""
+            if exec_id:
+                command_router.remove_stream(exec_id)
 
         # Agent에게 원본 메시지 그대로 전달 (Agent는 requestId로 매칭)
         await self.channel_layer.send(agent_channel, {
@@ -342,6 +374,88 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
             })
         if data.get("type") == "log_stream_end":
             command_router.remove_stream(stream_id)
+
+    async def _route_exec_stream_message(self, data: dict):
+        """Agent의 exec_chunk / exec_end 를 execId(=streamId) 매핑된 Browser 로 forward.
+        exec_end 도착 시 stream registry 정리 + ConsoleSession 닫기."""
+        exec_id = data.get("execId")
+        if not exec_id:
+            return
+        info = command_router.get_stream_info(exec_id)
+        browser_channel = (info or {}).get("browser")
+        if browser_channel:
+            await self.channel_layer.send(browser_channel, {
+                "type": "ws.send",
+                "payload": data,
+            })
+        if data.get("type") == "exec_end":
+            await self._close_console_session(
+                exec_id=exec_id,
+                exit_code=data.get("exitCode"),
+                reason=str(data.get("reason") or "natural"),
+            )
+            command_router.remove_stream(exec_id)
+
+    @database_sync_to_async
+    def _open_console_session(self, exec_id: str, params: dict) -> None:
+        """exec_open 발신 시점에 ConsoleSession audit row 생성.
+
+        user/container 매핑 실패해도 routing 자체는 막지 않음 — 단지 audit 누락만
+        발생. 권한 검사는 별도 (Browser 측에서 본인 컨테이너만 exec_open 발송).
+        """
+        from apps.containers.models import ConsoleSession, Container
+
+        container_id = params.get("containerId") or ""
+        if not container_id:
+            return
+        try:
+            container = Container.objects.filter(
+                container_id__startswith=container_id[:12],
+            ).first()
+        except Exception:
+            container = None
+        if not container:
+            return
+
+        user = self.scope.get("user")
+        if user is None or not getattr(user, "is_authenticated", False):
+            return
+
+        cmd = params.get("cmd") or []
+        if not isinstance(cmd, list):
+            cmd = [str(cmd)]
+        try:
+            ConsoleSession.objects.create(
+                user=user,
+                container=container,
+                exec_id=exec_id,
+                cmd=cmd,
+                user_param=str(params.get("user") or ""),
+                tty=bool(params.get("tty", True)),
+            )
+        except Exception:
+            logger.exception("[exec] failed to create ConsoleSession exec_id=%s", exec_id)
+
+    @database_sync_to_async
+    def _close_console_session(self, exec_id: str, exit_code, reason: str) -> None:
+        """exec_end 또는 disconnect 시 ConsoleSession 종료 갱신. idempotent."""
+        from django.utils import timezone
+
+        from apps.containers.models import ConsoleSession
+
+        try:
+            sess = ConsoleSession.objects.filter(exec_id=exec_id).first()
+        except Exception:
+            sess = None
+        if not sess or sess.closed_at:
+            return
+        now = timezone.now()
+        sess.closed_at = now
+        sess.duration_seconds = max(0, int((now - sess.opened_at).total_seconds()))
+        if isinstance(exit_code, int):
+            sess.exit_code = exit_code
+        sess.close_reason = reason[:32]
+        sess.save(update_fields=["closed_at", "duration_seconds", "exit_code", "close_reason"])
 
     async def _route_command_response(self, data: dict):
         """Agent가 보낸 command_response를 요청 Browser로 라우팅.
@@ -376,6 +490,18 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
             "type": "ws.send",
             "payload": data,
         })
+
+        # exec_open 실패 응답: stream registry 정리 + ConsoleSession close.
+        # success 응답이면 stream 은 유지 (계속 exec_chunk routing 필요).
+        if not data.get("success"):
+            info = command_router.get_stream_info(request_id)
+            if info and info.get("kind") == "exec":
+                await self._close_console_session(
+                    exec_id=request_id,
+                    exit_code=None,
+                    reason=str(data.get("error") or "open_failed")[:32],
+                )
+                command_router.remove_stream(request_id)
 
     async def _route_command_progress(self, data: dict):
         """Agent의 command_progress를 요청 Browser로 포워딩 + DB 갱신 + global broadcast."""

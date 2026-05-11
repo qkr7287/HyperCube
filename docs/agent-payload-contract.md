@@ -47,6 +47,8 @@ HyperCube WebSocket payload 스펙. Agent / Backend / Frontend 세 layer 가 같
 | `container_events` | Agent → Backend | 이벤트 발생 시 (100ms batch) | 컨테이너 라이프사이클 이벤트 (start/stop/die/restart/pause/unpause/kill/oom/health_status) | `ContainerEvent` 모델 저장 + 서버 group broadcast |
 | `log_chunk` | Agent → Backend → Browser | tail 시 (200ms batch / 50줄 threshold) | 로그 라인 chunk | `streamId` 로 browser channel 매핑 후 forward (DB 저장 X) |
 | `log_stream_end` | Agent → Backend → Browser | stream 자연 종료 시 1회 | 컨테이너 stop / docker error 등 | forward + stream registry 정리 |
+| `exec_chunk` | Agent → Backend → Browser | exec 활성 (50ms batch / 64KB threshold 권장) | console stdout/stderr raw bytes (base64) | `execId` 로 browser channel 매핑 후 forward (DB 저장 X) |
+| `exec_end` | Agent → Backend → Browser | exec 종료 시 1회 | shell exit / disconnect / container_stopped | forward + stream registry 정리 + `ConsoleSession` close 갱신 |
 
 WS path:
 - `/ws/server/{server_id}/` → `MonitoringConsumer` (Agent + 그 서버 보는 Browser)
@@ -328,11 +330,56 @@ Backend 처리: forward + `remove_stream(streamId)` 로 registry 정리.
 `log_stream_end` 모든 메시지가 이 streamId 를 참조.
 
 Backend `_handle_browser_command` 에서:
-- `logs_subscribe` forward 직전 → `command_router.record_stream(requestId, browser_channel, server_id)`
+- `logs_subscribe` forward 직전 → `command_router.record_stream(requestId, browser_channel, server_id, kind="logs")`
 - `logs_unsubscribe` forward 직전 → `command_router.remove_stream(streamId)` (optimistic)
 
-Browser disconnect 시 `_cleanup_browser_streams` 가 활성 stream 마다
-unsubscribe 발송 + registry 정리.
+Browser disconnect 시 `_cleanup_browser_streams` 가 활성 stream 마다 kind
+별로 `logs_unsubscribe` 또는 `exec_close` 발송 + registry 정리.
+
+## type: `exec_chunk` / `exec_end`
+
+Console exec (B4) 용 push 메시지. envelope 형식은 `log_chunk` / `log_stream_end`
+와 동일한 **flat 구조** (`type` + key fields 직접). `execId == streamId` 로
+라우팅됨.
+
+### `exec_chunk`
+
+```jsonc
+{
+  "type": "exec_chunk",
+  "execId": "<exec-uuid>",            // exec_open 의 requestId
+  "stream": "stdout",                  // "stdout" | "stderr". TTY 모드면 stdout 단일
+  "data": "<base64-bytes>"             // raw bytes (ANSI escape 포함). xterm.js 가 해석
+}
+```
+
+Backend 처리: `command_router.get_stream_info(execId)` 로 browser channel 조회
+후 그대로 forward. DB 저장 안 함.
+
+### `exec_end`
+
+```jsonc
+{
+  "type": "exec_end",
+  "execId": "<exec-uuid>",
+  "exitCode": 0,                       // null 가능 (detach / TTY)
+  "reason": "natural"                  // natural | kill | container_stopped | error | browser_disconnect
+}
+```
+
+Backend 처리: forward + `remove_stream(execId)` + `ConsoleSession` row 의
+`closed_at` / `duration_seconds` / `exit_code` / `close_reason` 갱신.
+
+## 새 명령: `exec_open` / `exec_input` / `exec_resize` / `exec_close`
+
+`docs/agent-protocol.md` §7 참조. `exec_open` 의 requestId 가 곧 `execId`
+(== streamId), 이후 `exec_chunk` / `exec_end` 가 이 키로 라우팅. Backend
+`_handle_browser_command` 에서:
+
+- `exec_open` forward 직전 → `command_router.record_stream(requestId, browser_channel, server_id, kind="exec")` + `ConsoleSession.objects.create(...)`
+- `exec_close` forward 직전 → `command_router.remove_stream(execId)` (optimistic)
+- `exec_open` 실패 응답 시 → registry 정리 + `ConsoleSession.close_reason = error`
+- Browser disconnect 시 → `_cleanup_browser_streams` 가 kind="exec" entry 별로 `exec_close` 발송 + `ConsoleSession.close_reason = "browser_disconnect"`
 
 ## type: `command_response` (Agent → Browser)
 

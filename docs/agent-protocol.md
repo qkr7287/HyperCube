@@ -304,6 +304,76 @@ Live log tail. 단발 명령이 아니라 long-running stream 시작/종료. `lo
 
 ---
 
+### 7. `exec_open` / `exec_input` / `exec_resize` / `exec_close`
+
+Web 기반 console (B4 Console exec). 컨테이너 안에 shell 을 띄워 양방향 stdin/stdout
+스트림을 WS 로 노출. `logs_subscribe` 패턴과 동일하게 `exec_open` 의 `requestId`
+가 그대로 `execId`(== streamId) 로 사용되어 이후 모든 `exec_chunk` / `exec_end`
+메시지가 이 키로 라우팅됨. 정책: 본인 소유 컨테이너에 한해 console 가능, 명령
+차단 없음 (Portainer 모델). 세션 audit 은 backend `ConsoleSession` 모델에만 기록.
+
+#### `exec_open` — params
+
+| field        | type    | required | default       | notes                                |
+|--------------|---------|----------|---------------|--------------------------------------|
+| containerId  | string  | yes      |               | full 또는 short ID                    |
+| cmd          | string[] | no      | `["/bin/sh"]` | 실행 명령. 예: `["/bin/bash"]`, `["sh","-lc","ls"]` |
+| user         | string  | no       |               | `--user` 옵션. UID 또는 `uid:gid`     |
+| tty          | boolean | no       | true          | TTY 할당 여부                          |
+| env          | string[] | no      |               | `["KEY=VAL", ...]`                    |
+| cols         | number  | no       | 80            | 초기 터미널 width                       |
+| rows         | number  | no       | 24            | 초기 터미널 height                      |
+
+**즉시 응답** (`command_response`):
+
+```json
+{ "success": true, "data": { "execId": "<requestId>", "ready": true } }
+```
+
+이후 stdout/stderr 가 발생할 때마다 `exec_chunk` 메시지가 흐름. 자연 종료
+(shell exit) 시 `exec_end` 1회.
+
+**errors** — `containerId is required`, `container_not_found`, `container_not_running`,
+`cmd_not_found` (`exec /bin/bash: no such file or directory`), dockerode 에러.
+
+#### `exec_input` — params
+
+| field    | type   | required | notes                                                        |
+|----------|--------|----------|--------------------------------------------------------------|
+| execId   | string | yes      | exec_open 의 requestId                                       |
+| data     | string | yes      | **base64** encoded raw bytes (binary safe, Ctrl 키 / UTF-8) |
+
+응답: `command_response { success: true, data: { execId, wrote: <bytes> } }`.
+unknown execId → `success: false, error: "unknown execId"`.
+
+#### `exec_resize` — params
+
+| field   | type   | required | notes      |
+|---------|--------|----------|------------|
+| execId  | string | yes      |            |
+| cols    | number | yes      | 1~500      |
+| rows    | number | yes      | 1~200      |
+
+응답: `command_response { success: true, data: { execId, resized: true } }`.
+
+#### `exec_close` — params
+
+| field   | type   | required | notes                       |
+|---------|--------|----------|-----------------------------|
+| execId  | string | yes      | 종료할 exec 의 execId       |
+
+응답: `command_response { success: true, data: { execId, closed: true } }`.
+unknown execId 도 `success: true` (idempotent — agent 결정). `exec_close` 로
+인한 종료에는 `exec_end` 도 emit (exitCode 전달 필요).
+
+#### 메시지 schema
+
+`exec_chunk`, `exec_end` 의 정확한 schema 와 backend routing 동작은
+`agent-payload-contract.md` 참조. 두 메시지 모두 **flat envelope** (data/timestamp
+없음, `log_chunk` 와 동일 형식).
+
+---
+
 ## Commands — 컨테이너 배포 (Backend dispatch)
 
 `apps.containers.viewsets.ContainerRequestViewSet.approve`에서 admin이 요청을 승인하면 자동 발송.
@@ -400,5 +470,6 @@ Backend → Agent dispatch (`ContainerRequestViewSet._dispatch_to_agent`):
 
 ## 변경 이력
 
+- 2026-05-11: `exec_open` / `exec_input` / `exec_resize` / `exec_close` (B4 Console exec) 추가. `execId == streamId` 라우팅 패턴 (`logs_subscribe` 재사용).
 - 2026-04-29 (`7f82ff8`): `compose_up`, `create_container`, `delete_container` 추가 (Backend dispatch). routing 동작 표 추가.
 - 2026-03-31: 초안 (Browser-issued 4개 command).
