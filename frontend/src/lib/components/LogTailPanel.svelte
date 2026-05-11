@@ -247,7 +247,7 @@
 	});
 </script>
 
-<section class="panel">
+<section class="panel" class:closed={!open}>
 	<div class="panel-header slim">
 		<div>
 			<h2>실시간 로그</h2>
@@ -258,7 +258,15 @@
 		</button>
 	</div>
 
-	{#if open}
+	{#if !open}
+		<!-- 닫힌 상태 CTA — bento 우측 영역(col 9-12) 의 남은 세로 공간을 채우는
+		     큰 클릭 영역. agent stream 부담 없이 유저가 명시적으로 시작하도록. -->
+		<button class="placeholder" onclick={togglePanel} aria-label="실시간 로그 시작">
+			<span class="placeholder-icon">▶</span>
+			<span class="placeholder-title">로그 스트림 시작</span>
+			<span class="placeholder-desc">클릭하면 agent 가 tail 을 시작하고<br />실시간 로그가 표시됩니다.</span>
+		</button>
+	{:else}
 		<div class="toolbar">
 			<span class="status" class:ok={subscribed} class:err={!!errorMsg || endedReason}>
 				{#if errorMsg}
@@ -328,6 +336,59 @@
 	.panel-header p {
 		font-size: 12px;
 		color: var(--text-secondary);
+	}
+
+	/* 닫힌 상태 panel — 자식 placeholder 가 영역 채우도록 flex column. */
+	.panel.closed {
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+		height: 100%;
+	}
+
+	.placeholder {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 12px;
+		padding: 32px 20px;
+		min-height: 200px;
+		border: 1px dashed rgba(48, 213, 200, 0.28);
+		border-radius: 12px;
+		background: rgba(48, 213, 200, 0.04);
+		color: var(--text-secondary);
+		font-family: inherit;
+		cursor: pointer;
+		transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+	}
+	.placeholder:hover {
+		background: rgba(48, 213, 200, 0.1);
+		border-color: rgba(48, 213, 200, 0.5);
+		color: var(--accent);
+	}
+	.placeholder-icon {
+		font-size: 28px;
+		line-height: 1;
+		color: var(--accent);
+		opacity: 0.7;
+	}
+	.placeholder:hover .placeholder-icon {
+		opacity: 1;
+	}
+	.placeholder-title {
+		font-size: 14px;
+		font-weight: 800;
+		letter-spacing: 0.02em;
+		color: var(--text-primary);
+	}
+	.placeholder-desc {
+		font-size: 12px;
+		font-weight: 500;
+		text-align: center;
+		line-height: 1.5;
+		color: var(--text-muted);
 	}
 
 	.toggle {

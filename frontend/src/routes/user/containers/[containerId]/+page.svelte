@@ -486,60 +486,59 @@
 	{:else if errorMsg}
 		<div class="state-box error">{errorMsg}</div>
 	{:else if container}
-		<section class="hero">
-			<div class="hero-left">
-				<div class="hero-title">
-					<p class="eyebrow">2D 모니터링 대시보드</p>
-					<div class="hero-name-row">
+		<div class="topbar-sticky">
+			<section class="hero">
+				<div class="hero-main">
+					<div class="hero-titlebar">
 						<h1>{container.name}</h1>
 						<span class="status-pill" style="background: {statusTone(container.status)};">
 							{statusLabel(container.status)}
 						</span>
+						<span class="hero-image">{container.selected_image || container.image}</span>
+					</div>
+					<div class="hero-meta">
+						<span>호스트 {container.agent_hostname ?? '-'}</span>
+						<span>템플릿 {container.template_name ?? '-'}</span>
+						<span>요청 {formatDateTime(container.requested_at)}</span>
+						<span>샘플 {formatDateTime(currentMetrics?.timestamp || container.last_seen)}</span>
 					</div>
 				</div>
-				<p class="hero-subtitle">{container.selected_image || container.image}</p>
-				<div class="hero-meta">
-					<span>호스트 {container.agent_hostname ?? '-'}</span>
-					<span>템플릿 {container.template_name ?? '-'}</span>
-					<span>요청 시각 {formatDateTime(container.requested_at)}</span>
-					<span>최근 샘플 {formatDateTime(currentMetrics?.timestamp || container.last_seen)}</span>
+				<div class="hero-actions">
+					<button
+						class="pause-btn"
+						class:active={paused}
+						onclick={() => (paused = !paused)}
+						title={paused ? '자동 새로고침 재개' : '자동 새로고침 일시정지'}
+					>
+						{paused ? '▶ 재개' : '❚❚ 일시정지'}
+					</button>
+					<button class="refresh-btn" onclick={() => loadDashboard({ withDetail: true })} disabled={refreshing}>
+						{refreshing ? '새로고침 중...' : '지금 새로고침'}
+					</button>
 				</div>
-			</div>
-			<div class="hero-actions">
-				<button
-					class="pause-btn"
-					class:active={paused}
-					onclick={() => (paused = !paused)}
-					title={paused ? '자동 새로고침 재개' : '자동 새로고침 일시정지'}
-				>
-					{paused ? '▶ 재개' : '❚❚ 일시정지'}
-				</button>
-				<button class="refresh-btn" onclick={() => loadDashboard({ withDetail: true })} disabled={refreshing}>
-					{refreshing ? '새로고침 중...' : '지금 새로고침'}
-				</button>
-			</div>
-		</section>
+			</section>
+
+			<section class="ops-bar">
+				<div class="ops-left">
+					<span class="ops-label">컨트롤</span>
+					<ContainerActions
+						containerId={container.container_id}
+						currentStatus={container.status}
+						onActionDone={handleControlDone}
+						onError={handleControlError}
+					/>
+				</div>
+				{#if actionMsg}
+					<div class="ops-msg">{actionMsg}</div>
+				{/if}
+			</section>
+		</div>
 
 		{#if container.status !== 'running'}
 			<div class="banner">
 				컨테이너가 현재 <strong>{statusLabel(container.status)}</strong> 상태입니다. 다시 실행되기 전까지 실시간 메트릭이 비어 있거나 오래된 값일 수 있습니다.
 			</div>
 		{/if}
-
-		<section class="ops-bar">
-			<div class="ops-left">
-				<span class="ops-label">컨테이너 컨트롤</span>
-				<ContainerActions
-					containerId={container.container_id}
-					currentStatus={container.status}
-					onActionDone={handleControlDone}
-					onError={handleControlError}
-				/>
-			</div>
-			{#if actionMsg}
-				<div class="ops-msg">{actionMsg}</div>
-			{/if}
-		</section>
 
 		<ContainerKpiBar
 			{currentMetrics}
@@ -565,13 +564,9 @@
 
 		<div class="bento">
 		<section class="panel bento-area area-charts">
-			<div class="panel-header">
-				<div>
-					<h2>성능 지표 추이<InfoTooltip text={timeSeriesHelp} placement="bottom-start" /></h2>
-					<p>선택한 조회 단위마다 한 점씩 집계된 평균값을 보여줍니다.</p>
-				</div>
+			<div class="panel-header compact">
+				<h2>성능 지표 추이<InfoTooltip text={timeSeriesHelp + '\n\n차트 위에 마우스를 올리면 모든 차트의 같은 시각이 함께 표시됩니다. 휠/드래그로 줌.'} placement="bottom-start" /></h2>
 				<div class="range-tools">
-					<span class="range-label">조회 단위</span>
 					<div class="range-tabs">
 						{#each RANGE_OPTIONS as option}
 							<button
@@ -584,7 +579,6 @@
 				</div>
 			</div>
 
-			<p class="chart-hint">차트 위에 마우스를 올리면 모든 차트의 같은 시각이 함께 표시됩니다. 마우스 휠 / 드래그로 구간 확대 가능.</p>
 			<div class="chart-grid">
 				<div class="chart-card">
 					<div class="chart-head">
@@ -775,87 +769,95 @@
 		background: rgba(127, 29, 29, 0.18);
 	}
 
+	/* topbar-sticky — hero + ops 를 묶어 스크롤 시에도 상단 고정.
+	   z-index 10 으로 차트 hover tooltip(보통 z 5~9) 위. 배경 var(--bg-base) 로
+	   아래 콘텐츠가 비치지 않도록. */
+	.topbar-sticky {
+		position: sticky;
+		top: 0;
+		z-index: 10;
+		background: var(--bg-base);
+		padding-top: clamp(2px, 0.2vw, 6px);
+		display: flex;
+		flex-direction: column;
+		gap: clamp(6px, 0.5vw, 10px);
+	}
+
 	.hero {
 		display: flex;
 		justify-content: space-between;
-		gap: 20px;
-		padding: 24px 26px;
-		border-radius: 20px;
+		gap: 14px;
+		padding: clamp(10px, 0.7vw, 16px) clamp(14px, 1vw, 20px);
+		border-radius: 12px;
 		background:
-			linear-gradient(140deg, rgba(48, 213, 200, 0.16), rgba(9, 75, 102, 0.18)),
+			linear-gradient(140deg, rgba(48, 213, 200, 0.12), rgba(9, 75, 102, 0.14)),
 			rgba(18, 23, 32, 0.98);
 		border: 1px solid rgba(48, 213, 200, 0.18);
+		align-items: center;
 	}
 
-	.hero-title {
+	.hero-main {
 		display: flex;
 		flex-direction: column;
-		align-items: flex-start;
-		gap: 4px;
+		gap: 6px;
+		min-width: 0;
 	}
-	.hero-name-row {
+
+	.hero-titlebar {
 		display: inline-flex;
-		align-items: center;
-		gap: 14px;
+		align-items: baseline;
+		gap: 12px;
 		flex-wrap: wrap;
 	}
 
-	.eyebrow {
-		font-size: 11px;
-		font-weight: 700;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		color: var(--accent);
-		margin-bottom: 6px;
-	}
-
 	h1 {
-		font-size: 32px;
+		font-size: clamp(18px, 1.4vw, 24px);
 		line-height: 1.1;
+		font-weight: 800;
 	}
 
-	.hero-subtitle {
-		margin-top: 8px;
-		font-size: 14px;
+	.hero-image {
+		font-size: 12px;
 		color: var(--text-secondary);
+		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 		word-break: break-all;
 	}
 
 	.hero-meta {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 8px;
-		margin-top: 14px;
+		gap: 6px;
 	}
 
 	.hero-meta span {
-		padding: 6px 10px;
+		padding: 3px 8px;
 		border-radius: 999px;
 		background: rgba(13, 17, 23, 0.52);
 		border: 1px solid rgba(31, 41, 55, 0.8);
-		font-size: 12px;
+		font-size: 11px;
 		color: var(--text-secondary);
 	}
 
 	.status-pill {
-		padding: 5px 12px;
+		padding: 3px 10px;
 		border-radius: 999px;
-		font-size: 12px;
+		font-size: 11px;
 		font-weight: 700;
 		color: white;
 	}
 
 	.hero-actions {
 		display: flex;
-		align-items: flex-start;
-		gap: 8px;
+		align-items: center;
+		gap: 6px;
 		flex-wrap: wrap;
+		flex-shrink: 0;
 	}
 
 	.refresh-btn,
 	.pause-btn {
-		padding: 10px 16px;
-		border-radius: 10px;
+		padding: 7px 12px;
+		border-radius: 8px;
 		background: rgba(13, 17, 23, 0.86);
 		border: 1px solid rgba(31, 41, 55, 0.9);
 		color: var(--text-primary);
@@ -879,16 +881,17 @@
 	}
 
 	.ops-bar {
-		margin-top: 14px;
-		padding: 14px 16px;
-		border-radius: 14px;
+		/* topbar-sticky 안에 있으므로 margin-top 제거 (gap 으로 간격). */
+		margin-top: 0;
+		padding: clamp(8px, 0.6vw, 12px) clamp(12px, 1vw, 16px);
+		border-radius: 12px;
 		background: rgba(18, 23, 32, 0.96);
 		border: 1px solid var(--border);
 		display: flex;
 		flex-wrap: wrap;
 		justify-content: space-between;
 		align-items: center;
-		gap: 12px;
+		gap: 10px;
 	}
 
 	.ops-left {
@@ -976,16 +979,10 @@
 	/* area-charts 는 이미 .panel 자체 (wrapper div 없이) 라서 별도 처리 불필요 —
 	   .bento-area display:flex 가 적용되지만 자식이 panel 자기 자신이라 flex:1 무관. */
 
-	.chart-hint {
-		font-size: 11px;
-		color: var(--text-muted);
-		margin-bottom: 12px;
-	}
-
 	.panel {
-		border-radius: 18px;
-		padding: 20px;
-		margin-top: 18px;
+		border-radius: 14px;
+		padding: clamp(12px, 1vw, 18px);
+		margin-top: 14px;
 	}
 
 	.panel-header {
@@ -993,16 +990,33 @@
 		justify-content: space-between;
 		align-items: flex-end;
 		gap: 18px;
-		margin-bottom: 18px;
+		margin-bottom: 14px;
 	}
 
 	.panel-header.slim {
-		margin-bottom: 16px;
+		margin-bottom: 12px;
+	}
+
+	/* compact = 차트 panel 처럼 dense workbench 헤더. 부제·hint 없이
+	   h2 + 우측 range tabs 한 줄로. */
+	.panel-header.compact {
+		align-items: center;
+		margin-bottom: 10px;
 	}
 
 	h2 {
-		font-size: 20px;
+		font-size: 16px;
 		margin-bottom: 4px;
+		font-weight: 700;
+	}
+
+	.panel-header.compact h2 {
+		margin-bottom: 0;
+		font-size: 14px;
+		font-weight: 800;
+		letter-spacing: 0.02em;
+		text-transform: uppercase;
+		color: var(--text-secondary);
 	}
 
 	h2 + p,
