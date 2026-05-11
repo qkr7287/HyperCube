@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-05-11 (B4 backend + frontend 구현 완료, agent repo 작업만 대기)
+last-updated: 2026-05-11 (B4 + L1 + L2(4축 UI 폴리싱) 모두 완료)
 status: living document — 세션마다 갱신
 benchmark: Portainer container detail UI
 related-pages: /user/containers/[containerId]
@@ -15,6 +15,23 @@ related-pages: /user/containers/[containerId]
 **B4 상태**: backend (ConsoleSession 모델 + WS routing + REST audit) + frontend (xterm.js ConsolePanel) 모두 구현. **agent repo 작업만 대기** — `exec_open` / `exec_input` / `exec_resize` / `exec_close` 명령 + `exec_chunk` / `exec_end` push 메시지. issue 발행해서 agent 측 구현 받기.
 **레이아웃 개편**: L1 — 12-col bento + admin parity (관리자 메인 시각 언어 차용). 진행 중 / 검증 단계.
 **별도 scope** (현재 로드맵 외): UI/UX 폴리싱은 다음 세션에서 별도 진행. 컨테이너 modification (limit edit 등) 은 admin 도구 영역으로 분리.
+
+## L2. 4축 UI 폴리싱  (✅ 완료 2026-05-11)
+
+L1 bento 레이아웃 위에서 발견된 4가지 시각·정보 일관성 격차를 phase 단위로 정돈.
+
+1. **상태 표시 강화** — hero meta 에 AgentStatusIndicator (online/stale/offline dot + last_seen relative), ContainerActions agent offline 시 전체 disable + tooltip, 상단 banner 3단 분기 (agent-offline > not-running > 정상), actionMsg severity-aware + dismissible ✕.
+2. **Empty/Loading/Error 통일** — 신규 `StateBox.svelte` (loading/empty/error + compact·inline variant + retry action) 로 ProcessTopPanel / EventList / InspectPanel / LogTailPanel / +page.svelte 의 산재된 `.empty` / `.state-row` / `.state-box` 통일.
+3. **타이포 / 밀도 / 모션** — `--radius-panel: 14px` 토큰 도입 + 5 컴포넌트 panel radius/padding clamp 통일, chart-card 16→14, h2/h3 clamp, `.panel:hover` / `.chart-card:hover` border tint, `button:focus-visible` outline (global), panel transition `--ease-fast`.
+4. **차트 sync 표시** — 차트 panel-header 에 "⤬ 동기화" chip (4 차트 hover/zoom/marker 동기 안내).
+
+신규 자산:
+- `frontend/src/lib/components/StateBox.svelte`
+- `frontend/src/lib/components/AgentStatusIndicator.svelte`
+- `frontend/src/routes/+layout.svelte`: `--radius-panel` / `--ease-fast` / `--state-*` 토큰
+- `frontend/src/routes/user/+layout.svelte`: `connectGlobal/disconnectGlobal` 호출 (agent_status_change global event 사용자 페이지에도 흐르도록)
+
+Commits (this repo): `d7be13f` (A) / `3414a73` (B) / `b50d692` (C) / Phase D.
 
 ## L1. Layout — 12-col Bento + Admin Parity  (⏳ 진행 중)
 
@@ -366,7 +383,8 @@ related-pages: /user/containers/[containerId]
 
 ## 변경 이력
 
-- 2026-05-11: B4 (Console exec / xterm) HyperCube 측 구현 완료 — `ConsoleSession` 모델 / migration 0004 / WS routing (exec_chunk·exec_end + browser disconnect cleanup) / REST `/console-sessions/` / frontend `ConsolePanel.svelte` (xterm.js) / bento area-console row 3 추가. agent repo 작업 issue 발행 대기.
+- 2026-05-11: **L2 — 4축 UI 폴리싱** 완료 (Phase A~D 4 commit). StateBox / AgentStatusIndicator 신규 컴포넌트, --radius-panel 14px 토큰 통일, agent offline banner / dismissible toast, chart sync chip.
+- 2026-05-11: B4 (Console exec / xterm) HyperCube 측 구현 완료 — `ConsoleSession` 모델 / migration 0004 / WS routing (exec_chunk·exec_end + browser disconnect cleanup) / REST `/console-sessions/` / frontend `ConsolePanel.svelte` (xterm.js) / bento area-console row 3 추가. agent repo 작업 issue #12 발행 후 dev branch 머지 완료, end-to-end 검증 통과 (verify-redis-2 alpine `/bin/sh`).
 - 2026-05-08: B3 (Per-container processes top-N) 완료. 다음 세션 = B4 (Console exec, 가장 위험 — 권한/감사 모델 신중).
 - 2026-05-08: C1 (Rate 차트 + 80/90% 임계 markLine) 완료 + formatBytes < 1 버그 fix.
 - 2026-05-08: B1 (Live log streaming) 완료.

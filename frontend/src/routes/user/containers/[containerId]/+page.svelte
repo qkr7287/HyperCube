@@ -618,6 +618,9 @@
 		<section class="panel bento-area area-charts">
 			<div class="panel-header compact">
 				<h2>성능 지표 추이<InfoTooltip text={timeSeriesHelp + '\n\n차트 위에 마우스를 올리면 모든 차트의 같은 시각이 함께 표시됩니다. 휠/드래그로 줌.'} placement="bottom-start" /></h2>
+				<span class="sync-chip" title="4개 차트가 함께 hover · zoom · marker 동기화됩니다">
+					<span class="sync-icon" aria-hidden="true">⤬</span> 동기화
+				</span>
 				<div class="range-tools">
 					<div class="range-tabs">
 						{#each RANGE_OPTIONS as option}
@@ -1120,14 +1123,14 @@
 	}
 
 	h2 {
-		font-size: 16px;
+		font-size: clamp(14px, 1.1vw, 18px);
 		margin-bottom: 4px;
 		font-weight: 700;
 	}
 
 	.panel-header.compact h2 {
 		margin-bottom: 0;
-		font-size: 14px;
+		font-size: clamp(12px, 0.9vw, 14px);
 		font-weight: 800;
 		letter-spacing: 0.02em;
 		text-transform: uppercase;
@@ -1138,6 +1141,28 @@
 	.panel-header p {
 		font-size: 12px;
 		color: var(--text-secondary);
+	}
+
+	.sync-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		margin-right: auto;
+		padding: 3px 9px;
+		border-radius: var(--radius-full);
+		background: rgba(48, 213, 200, 0.1);
+		border: 1px solid rgba(48, 213, 200, 0.28);
+		color: var(--accent);
+		font-size: 10px;
+		font-weight: 800;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		cursor: help;
+		user-select: none;
+	}
+	.sync-icon {
+		font-size: 11px;
+		line-height: 1;
 	}
 
 	.range-tools {
@@ -1178,8 +1203,12 @@
 	}
 
 	.chart-card {
-		border-radius: 16px;
-		padding: 16px;
+		border-radius: var(--radius-panel);
+		padding: clamp(12px, 1vw, 16px);
+		transition: border-color var(--ease-fast);
+	}
+	.chart-card:hover {
+		border-color: rgba(48, 213, 200, 0.22);
 	}
 
 	.chart-head {
@@ -1193,7 +1222,7 @@
 	}
 
 	.chart-head h3 {
-		font-size: 15px;
+		font-size: clamp(13px, 0.9vw, 16px);
 	}
 
 	.chart-head span {

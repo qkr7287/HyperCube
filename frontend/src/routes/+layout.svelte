@@ -47,6 +47,13 @@
 		font-family: inherit;
 	}
 
+	:global(button:focus-visible),
+	:global(a:focus-visible) {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
+		border-radius: inherit;
+	}
+
 	:global(:root) {
 		--bg-base: #0d1117;
 		--bg-card: #121720;

@@ -92,9 +92,13 @@
 	.panel {
 		background: rgba(18, 23, 32, 0.96);
 		border: 1px solid var(--border);
-		border-radius: 18px;
-		padding: 20px;
+		border-radius: var(--radius-panel);
+		padding: clamp(12px, 1vw, 18px);
 		margin-top: 18px;
+		transition: border-color var(--ease-fast);
+	}
+	.panel:hover {
+		border-color: rgba(48, 213, 200, 0.22);
 	}
 	.panel-header {
 		display: flex;
