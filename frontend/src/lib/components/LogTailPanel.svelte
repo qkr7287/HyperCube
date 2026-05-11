@@ -11,6 +11,7 @@
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { browser } from '$app/environment';
 	import { base } from '$app/paths';
+	import StateBox from './StateBox.svelte';
 
 	type LineRow = { id: number; stream: 'stdout' | 'stderr' | 'mixed'; text: string };
 
@@ -302,9 +303,11 @@
 
 		<div class="logbox" bind:this={logBox}>
 			{#if displayed.length === 0}
-				<div class="empty">
-					{#if subscribed}로그를 기다리는 중...{:else if endedReason}로그가 없습니다.{:else}구독 중...{/if}
-				</div>
+				<StateBox
+					kind={subscribed ? 'loading' : endedReason ? 'empty' : 'loading'}
+					compact
+					message={subscribed ? '로그를 기다리는 중...' : endedReason ? '로그가 없습니다.' : '구독 중...'}
+				/>
 			{:else}
 				{#each displayed as line (line.id)}
 					<div class="line {line.stream}">{line.text}</div>

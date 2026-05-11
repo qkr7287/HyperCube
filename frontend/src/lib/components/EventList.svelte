@@ -5,6 +5,7 @@
 -->
 <script lang="ts">
 	import { formatDateTime } from '$lib/utils/container-dashboard';
+	import StateBox from './StateBox.svelte';
 
 	export type EventRow = {
 		id: number;
@@ -62,12 +63,12 @@
 		<span class="count">{events.length}건</span>
 	</div>
 
-	{#if loading && events.length === 0}
-		<div class="empty">불러오는 중...</div>
-	{:else if errorMsg}
-		<div class="empty error">{errorMsg}</div>
+	{#if errorMsg}
+		<StateBox kind="error" message={errorMsg} />
+	{:else if loading && events.length === 0}
+		<StateBox kind="loading" message="이벤트 불러오는 중..." />
 	{:else if displayed.length === 0}
-		<div class="empty">표시할 이벤트가 없습니다.</div>
+		<StateBox kind="empty" message="표시할 이벤트가 없습니다." icon="📭" />
 	{:else}
 		<ul class="list">
 			{#each displayed as ev (ev.id)}

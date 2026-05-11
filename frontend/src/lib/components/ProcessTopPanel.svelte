@@ -9,6 +9,7 @@
 	import { base } from '$app/paths';
 	import { onDestroy, onMount } from 'svelte';
 	import { formatBytesValue } from '$lib/utils/container-dashboard';
+	import StateBox from './StateBox.svelte';
 
 	type ProcessRow = {
 		pid: number;
@@ -128,9 +129,11 @@
 	</div>
 
 	{#if errorMsg}
-		<div class="empty error">{errorMsg}</div>
-	{:else if processes.length === 0 && !loading}
-		<div class="empty">표시할 프로세스가 없습니다.</div>
+		<StateBox kind="error" message={errorMsg} action={load} actionLabel="다시 시도" />
+	{:else if loading && processes.length === 0}
+		<StateBox kind="loading" message="프로세스 목록 불러오는 중..." />
+	{:else if processes.length === 0}
+		<StateBox kind="empty" message="표시할 프로세스가 없습니다." icon="🛈" />
 	{:else}
 		<div class="table-wrap">
 			<table>

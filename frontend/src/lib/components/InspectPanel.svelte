@@ -8,6 +8,7 @@
 -->
 <script lang="ts">
 	import { formatDateTime } from '$lib/utils/container-dashboard';
+	import StateBox from './StateBox.svelte';
 
 	type InspectData = {
 		id?: string;
@@ -126,12 +127,12 @@
 		</div>
 	</div>
 
-	{#if loading}
-		<div class="state-row">불러오는 중...</div>
-	{:else if errorMsg}
-		<div class="state-row error">{errorMsg}</div>
+	{#if errorMsg}
+		<StateBox kind="error" message={errorMsg} />
+	{:else if loading}
+		<StateBox kind="loading" message="Inspect 불러오는 중..." />
 	{:else if !data}
-		<div class="state-row">아직 데이터가 없습니다.</div>
+		<StateBox kind="empty" message="아직 데이터가 없습니다." icon="🛈" />
 	{:else}
 		<div class="grid">
 			<!-- Health & Lifecycle -->
