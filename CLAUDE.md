@@ -10,7 +10,7 @@
 - Windows 환경 → Edit 매칭 실패 시 `Write`로 전체 재작성 (`\r\n` 줄바꿈 이슈)
 - 스크립트는 `.cjs` 확장자 (`"type": "module"` 때문에 `.js` ESM 에러)
 - serena LSP는 TypeScript만 활성. Python 백엔드는 Read/Grep 유지
-- Agent repo(`qkr7287/hypercube-agent`)는 **별도 세션 + GitHub Issues로 소통**. agent 변경이 필요하면 `gh issue create -R qkr7287/hypercube-agent -t "..." -b "..."` 로 이슈 생성. 급할 땐 self-contained prompt를 user에게 출력해 즉시 전달도 가능. mailbox 파일 방식은 폐기됨
+- Agent repo(`qkr7287/HyperCube-agent`)는 별도 세션. 작업 요청은 GitHub Issues로 — 절차/템플릿/예시는 `docs/agent-channel.md` 보고 그대로 이행
 
 ## 작업별 doc 인덱스 (필요 시 읽기)
 
@@ -22,6 +22,7 @@
 - 로컬 개발 / Docker Compose: `docs/docker-workflow.md`
 - 아키텍처: `docs/architecture.md`, `docs/to-be-architecture.md`
 - 운영 메모: `docs/operations.md`
+- Agent 작업 요청 흐름 (Issues): `docs/agent-channel.md`
 - **컨테이너 대시보드 개선 로드맵**: `docs/dashboard-roadmap.md` — 다음 세션은 여기 보고 어디부터 할지 결정. 세션 시작/끝마다 진행 상황 갱신.
 
 ## sync 룰 (코드 변경 시 docs 업데이트 필수)
