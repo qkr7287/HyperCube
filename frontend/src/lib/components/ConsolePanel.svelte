@@ -9,7 +9,7 @@
   세션 audit 은 backend ConsoleSession 모델에서 처리.
 -->
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { browser } from '$app/environment';
 	import { base } from '$app/paths';
 
@@ -77,7 +77,13 @@
 	}
 
 	async function ensureTerm() {
-		if (term || !termEl) return;
+		if (term) return;
+		// open=true 직후 호출되면 {:else} 블록의 <div bind:this={termEl}> 가
+		// 아직 mount 안 됐을 수 있다. Svelte 가 DOM patch 끝낼 때까지 대기.
+		if (!termEl) {
+			await tick();
+		}
+		if (!termEl) return;
 		const [{ Terminal }, { FitAddon }] = await Promise.all([
 			import('@xterm/xterm'),
 			import('@xterm/addon-fit'),
