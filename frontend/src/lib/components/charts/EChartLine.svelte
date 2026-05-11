@@ -179,6 +179,12 @@
 				splitLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.05)' } },
 			},
 			series: seriesList.map((ds, i) => ({
+				// id 는 ECharts 가 두 setOption 사이에서 같은 series 인지 식별하는 키.
+				// id 가 일치하면 series 통째 교체 대신 data 만 diff → animation smooth
+				// (실시간 streaming 처럼 점이 좌측으로 흐르는 느낌). id 가 없으면
+				// notMerge:false + replaceMerge:['series'] 조합이라도 매번 새 series
+				// 로 인식해 enter animation 다시 시작.
+				id: ds.label || `s_${i}`,
 				type: 'line',
 				name: ds.label,
 				data: ds.values,

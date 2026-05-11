@@ -41,25 +41,23 @@
 	let inst: EChartsType | null = null;
 	let resizeObs: ResizeObserver | null = null;
 
+	let firstApply = true;
+
 	function applyOption(o: EChartsOption) {
 		if (!inst || inst.isDisposed()) return;
-		// Hide any active tooltip BEFORE swapping the option. ECharts' axis
-		// pointer caches the data index of the hovered point, and when
-		// notMerge:true rebuilds the series the cached index can dangle past
-		// the new data length. The next mousemove then hits
-		// `getDataParams → getRawIndex` on `undefined` and throws
-		// (TypeError: Cannot read properties of undefined (reading
-		// 'getRawIndex')). Dispatching hideTip clears the cached pointer
-		// so the post-swap hover starts from a clean state.
-		try {
-			inst.dispatchAction({ type: 'hideTip' });
-		} catch {
-			/* dispatchAction throws on disposed/empty chart — safe to ignore */
+		// 첫 setOption 만 notMerge:true 로 깨끗하게 시작 — 이전 instance 의 잔여
+		// option (특히 prop 변경으로 series 개수가 바뀐 직후) 을 깔끔히 치움.
+		// 두 번째부터는 merge 모드로 series.data 만 diff → 실시간 streaming 처럼
+		// 점이 좌측으로 흐르는 smooth animation. series 는 id 기반 replaceMerge
+		// 로 추가/제거가 자유롭고 axis (특히 xAxis.data 새 array) 도 같은 호출에서
+		// merge 로 update 되어 dangling index 없음 (호버 tooltip 이 잘리지 않음).
+		if (firstApply) {
+			inst.setOption(o, { notMerge: true, lazyUpdate, replaceMerge });
+			firstApply = false;
+			return;
 		}
-		// notMerge:true 로 항상 통째 교체. ECharts 의 alpha-merge 가 이전 option
-		// 의 axis/series 를 누적 보관해 axis index 가 꼬이는 케이스가 있어
-		// (xAxis "0" not found 류) 매번 fresh option 으로 안전.
-		inst.setOption(o, { notMerge: true, lazyUpdate, replaceMerge });
+		const mergeReplace = replaceMerge ?? 'series';
+		inst.setOption(o, { notMerge: false, lazyUpdate, replaceMerge: mergeReplace });
 	}
 
 	onMount(() => {
