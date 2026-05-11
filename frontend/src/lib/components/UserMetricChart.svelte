@@ -35,8 +35,8 @@
 	.chart-shell {
 		position: relative;
 		/* 반응형: viewport 높이에 따라 자동. compact 우선 (1080p 한 화면 안에 다른 panel 도). */
-		height: clamp(120px, 14vh, var(--chart-h, 200px));
-		min-height: 120px;
+		height: clamp(100px, 11vh, var(--chart-h, 180px));
+		min-height: 100px;
 		overflow: hidden;
 	}
 </style>

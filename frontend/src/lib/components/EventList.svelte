@@ -143,7 +143,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
-		max-height: clamp(160px, 22vh, 360px);
+		max-height: clamp(120px, 16vh, 300px);
 		overflow-y: auto;
 	}
 

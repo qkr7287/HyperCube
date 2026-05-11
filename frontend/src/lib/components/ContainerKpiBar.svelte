@@ -164,7 +164,7 @@
 	}
 	.kpi {
 		min-width: 0;
-		min-height: clamp(60px, 5.5vh, 88px);
+		min-height: clamp(52px, 4.5vh, 78px);
 		padding: var(--kpi-pad) calc(var(--kpi-pad) + 2px);
 		background: var(--bg-card);
 		border: 1px solid var(--border);

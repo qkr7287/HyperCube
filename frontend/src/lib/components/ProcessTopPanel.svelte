@@ -279,7 +279,7 @@
 	}
 
 	.table-wrap {
-		max-height: clamp(160px, 22vh, 380px);
+		max-height: clamp(120px, 16vh, 300px);
 		overflow: auto;
 		border-radius: 10px;
 		border: 1px solid rgba(31, 41, 55, 0.7);

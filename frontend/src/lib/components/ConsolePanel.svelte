@@ -308,11 +308,8 @@
 	</div>
 
 	{#if !open}
-		<button class="placeholder" onclick={togglePanel} aria-label="콘솔 세션 시작">
-			<span class="placeholder-icon">›_</span>
-			<span class="placeholder-title">콘솔 세션 시작</span>
-			<span class="placeholder-desc">클릭하면 컨테이너 안에 shell 이 열립니다.<br />세션은 audit 로그에 기록됩니다.</span>
-		</button>
+		<!-- closed 상태: panel-header 만 보이게 (열기 토글 위주). 큰 CTA placeholder
+		     는 한 화면 fit 위해 제거. 사용자는 우측 "열기" 버튼으로 시작. -->
 	{:else}
 		<div class="toolbar">
 			<span class="status" class:ok={ready} class:err={!!errorMsg || endedReason}>

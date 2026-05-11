@@ -281,8 +281,8 @@
 	.grid {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: clamp(8px, 0.6vw, 12px);
-		max-height: clamp(180px, 24vh, 420px);
+		gap: clamp(6px, 0.5vw, 10px);
+		max-height: clamp(140px, 18vh, 340px);
 		overflow-y: auto;
 	}
 
@@ -476,7 +476,7 @@
 	}
 
 	.raw-json {
-		max-height: clamp(160px, 22vh, 360px);
+		max-height: clamp(120px, 16vh, 300px);
 		overflow: auto;
 		padding: 12px;
 		border-radius: 10px;
