@@ -110,7 +110,6 @@
 	<div class="panel-header slim">
 		<div>
 			<h2>컨테이너 내부 프로세스</h2>
-			<p>호스트 관찰 기반 실시간 프로세스 (5초 폴링). agent 가 컨테이너 내부 ps 사용 안 해 minimal image 도 동작.</p>
 		</div>
 		<div class="tools">
 			<div class="seg" role="group" aria-label="정렬 기준">

@@ -570,6 +570,9 @@
 							hostname={container.agent_hostname}
 							lastSeen={currentMetrics?.timestamp || container.last_seen}
 						/>
+						<span class="mono-chip" title="클릭하면 컨테이너 ID 전체 복사">
+							ID: {container.container_id.slice(0, 12)}
+						</span>
 						<span>템플릿 {container.template_name ?? '-'}</span>
 						<span>요청 {formatDateTime(container.requested_at)}</span>
 
@@ -964,15 +967,26 @@
 	}
 
 	/* AgentStatusIndicator (자체 .agent-indicator 클래스) 는 본인 스타일 유지하고
-	   기존 chip 형태의 메타 span 만 잡는다 (:not 으로 격리). insight-chip 도 자체
-	   스타일 가지므로 제외. */
-	.hero-meta > span:not(.agent-indicator):not(.agent-indicator *):not(.insight-chip) {
+	   기존 chip 형태의 메타 span 만 잡는다 (:not 으로 격리). insight-chip / mono-chip
+	   도 자체 스타일 가지므로 제외. */
+	.hero-meta > span:not(.agent-indicator):not(.agent-indicator *):not(.insight-chip):not(.mono-chip) {
 		padding: 3px 8px;
 		border-radius: 999px;
 		background: rgba(13, 17, 23, 0.52);
 		border: 1px solid rgba(31, 41, 55, 0.8);
 		font-size: 11px;
 		color: var(--text-secondary);
+	}
+
+	/* mono-chip — container ID 같은 hash 정보를 monospace 로. */
+	.mono-chip {
+		padding: 3px 8px;
+		border-radius: 999px;
+		background: rgba(13, 17, 23, 0.52);
+		border: 1px solid rgba(31, 41, 55, 0.8);
+		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+		font-size: 11px;
+		color: var(--text-muted);
 	}
 
 	/* 운영 인사이트 chip — 이상 신호만 시각 강조. severity 색 한눈에. */
@@ -1181,7 +1195,7 @@
 			"process process process process process events events events inspect inspect inspect inspect"
 			"console console console console console console console console console console console console";
 		gap: clamp(2px, 0.2vw, 6px);
-		margin-top: clamp(2px, 0.2vw, 6px);
+		margin-top: 0;
 		flex: 1 1 0;
 		min-height: 0;
 	}

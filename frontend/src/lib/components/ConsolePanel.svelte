@@ -376,9 +376,28 @@
 		margin-bottom: 0;
 		font-size: clamp(12px, 0.85vw, 14px);
 	}
-	/* closed 상태에서 panel 자체 padding 도 줄여 row 3 최소 height */
+	.panel-header.closed-row h2::before {
+		content: '›_ ';
+		color: var(--accent);
+		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+		opacity: 0.7;
+		margin-right: 6px;
+	}
+	/* closed 상태 panel — h2 + toggle 한 줄 컴팩트. accent 좌측 stripe 로 클릭
+	   가능 영역임을 암시 (logs 의 placeholder 와 톤 통일). */
 	.panel.closed {
-		padding: clamp(3px, 0.3vw, 8px) clamp(6px, 0.6vw, 14px);
+		padding: clamp(5px, 0.45vw, 9px) clamp(8px, 0.7vw, 14px);
+		border-color: rgba(48, 213, 200, 0.22);
+		background:
+			linear-gradient(90deg, rgba(48, 213, 200, 0.06), rgba(18, 23, 32, 0.96) 40%),
+			rgba(18, 23, 32, 0.96);
+	}
+	.panel.closed:hover {
+		border-color: rgba(48, 213, 200, 0.45);
+	}
+	.panel.closed .toggle {
+		padding: 5px 12px;
+		font-size: 11px;
 	}
 	h2 {
 		font-size: 20px;

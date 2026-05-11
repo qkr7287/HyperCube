@@ -123,7 +123,6 @@
 	<div class="panel-header slim">
 		<div>
 			<h2>현재 컨테이너 상태 (Inspect)</h2>
-			<p>Agent에서 직접 받아온 Docker inspect 결과입니다. 요청 시점 정보가 아닌 <strong>실제 현재 상태</strong>입니다.</p>
 		</div>
 	</div>
 
@@ -244,6 +243,9 @@
 		padding: clamp(6px, 0.6vw, 14px);
 		margin-top: 18px;
 		transition: border-color var(--ease-fast);
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
 	}
 	.panel:hover {
 		border-color: rgba(48, 213, 200, 0.22);
@@ -282,7 +284,10 @@
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: clamp(6px, 0.5vw, 10px);
-		max-height: clamp(140px, 18vh, 340px);
+		/* parent panel 이 area-inspect 셀 안에서 flex column 으로 동작. grid 가
+		   panel 의 남은 공간 자동 fill + 내부 overflow. */
+		flex: 1 1 0;
+		min-height: 0;
 		overflow-y: auto;
 	}
 

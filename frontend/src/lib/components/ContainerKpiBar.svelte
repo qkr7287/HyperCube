@@ -251,6 +251,13 @@
 		height: clamp(14px, 1.5vh, 26px);
 		overflow: hidden;
 	}
+
+	/* sub line 제거 — 한 줄로 압축. value 와 같은 row label 옆에 작게 inline.
+	   현재 markup 은 label/value/sub 가 별도 줄이라 sub 만 display:none 으로 빠르게
+	   대체 (정보 손실은 다음 step 에서 tooltip 으로 이전). */
+	.sub {
+		display: none;
+	}
 	.spark :global(svg) {
 		width: 100%;
 		height: 100%;

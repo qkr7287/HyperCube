@@ -58,7 +58,6 @@
 	<div class="panel-header slim">
 		<div>
 			<h2>최근 이벤트</h2>
-			<p>Docker 라이프사이클 이벤트 (start/stop/die/restart/oom/health 등). 차트 위 점선 marker 와 같은 시각.</p>
 		</div>
 		<span class="count">{events.length}건</span>
 	</div>

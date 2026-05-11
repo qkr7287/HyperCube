@@ -252,7 +252,6 @@
 	<div class="panel-header slim">
 		<div>
 			<h2>실시간 로그</h2>
-			<p>컨테이너 로그를 실시간으로 tail. 패널을 열면 agent 가 stream 시작, 닫으면 즉시 정리.</p>
 		</div>
 		<button class="toggle" class:on={open} onclick={togglePanel}>
 			{open ? '닫기' : '열기'}
