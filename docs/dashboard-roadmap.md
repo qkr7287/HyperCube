@@ -351,7 +351,7 @@ related-pages: /user/containers/[containerId]
    - Backend: `ConsoleSession` 모델 + migration 0004, `consumers.py` 에 exec_chunk/exec_end routing + exec_open ConsoleSession 자동 생성 + browser disconnect cleanup → `exec_close` + ConsoleSession close 갱신. `command_router.record_stream(kind="exec")`. REST audit `GET /api/my-containers/<id>/console-sessions/`.
    - Frontend: `ConsolePanel.svelte` (xterm + addon-fit, base64 encode/decode, resize observer). `+page.svelte` bento area-console row 3 full-width. `package.json` 에 `@xterm/xterm`, `@xterm/addon-fit` 추가.
    - Docs: `agent-protocol.md` §7, `agent-payload-contract.md` exec_chunk/exec_end.
-2. 🔜 Agent issue 발행 (qkr7287/HyperCube-agent) — `exec_open` / `exec_input` / `exec_resize` / `exec_close` + `exec_chunk` / `exec_end`. Schema 는 `docs/agent-protocol.md` §7 + `docs/agent-payload-contract.md` 참조.
+2. ✅ Agent issue 발행: <https://github.com/qkr7287/HyperCube-agent/issues/12> (2026-05-11). Schema 는 `docs/agent-protocol.md` §7 + `docs/agent-payload-contract.md` 참조.
 3. 🔜 agent merge 후 검증: alpine `/bin/sh` 진입 / Ctrl+C SIGINT 전달 / resize / 끊김 시 cleanup / `ConsoleSession` audit row 확인.
 
 ## 코딩 룰 (반복 실수 방지 — 모든 세션 공통)
