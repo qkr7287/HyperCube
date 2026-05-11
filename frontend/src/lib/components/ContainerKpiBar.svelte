@@ -184,17 +184,36 @@
 		width: 3px;
 		background: transparent;
 	}
+	/* warn: 노란 stripe + 살짝 노란 background */
+	.kpi[data-level='warn'] {
+		background: linear-gradient(90deg, rgba(251, 191, 36, 0.08), var(--bg-card) 60%);
+		border-color: rgba(251, 191, 36, 0.32);
+	}
 	.kpi[data-level='warn']::before {
 		background: #fbbf24;
-	}
-	.kpi[data-level='danger']::before {
-		background: #f87171;
+		width: 4px;
 	}
 	.kpi[data-level='warn'] .value {
 		color: #fbbf24;
 	}
+	/* danger: 빨간 stripe (두꺼움) + 빨간 background + value pulse */
+	.kpi[data-level='danger'] {
+		background: linear-gradient(90deg, rgba(239, 68, 68, 0.14), var(--bg-card) 60%);
+		border-color: rgba(239, 68, 68, 0.4);
+		box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.15);
+	}
+	.kpi[data-level='danger']::before {
+		background: #f87171;
+		width: 5px;
+		box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+	}
 	.kpi[data-level='danger'] .value {
 		color: #f87171;
+		animation: danger-pulse 1.6s ease-in-out infinite;
+	}
+	@keyframes danger-pulse {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.65; }
 	}
 	.label {
 		display: inline-flex;

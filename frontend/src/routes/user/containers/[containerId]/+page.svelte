@@ -143,6 +143,35 @@
 	let actionMsgKind = $state<'info' | 'success' | 'error'>('info');
 	let actionMsgTimer: ReturnType<typeof setTimeout> | null = null;
 
+	// === 운영 인사이트 derived (hero meta 옆 chip) ===
+	// 최근 5분 안의 die/restart 횟수 — "재시작 반복" 자동 탐지
+	let recentRestarts = $derived.by(() => {
+		const cutoff = Date.now() - 5 * 60 * 1000;
+		return events.filter((e) => {
+			if (e.kind !== 'die' && e.kind !== 'restart' && e.kind !== 'oom') return false;
+			const ts = new Date(e.ts).getTime();
+			return Number.isFinite(ts) && ts > cutoff;
+		}).length;
+	});
+	// 가장 최근 die / kill 이벤트의 exit_code / signal — last exit reason
+	let lastExit = $derived.by(() => {
+		const dieOrKill = events
+			.filter((e) => e.kind === 'die' || e.kind === 'kill')
+			.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())[0];
+		return dieOrKill || null;
+	});
+	// inspect 기반 OOM / health 신호
+	let isOomKilled = $derived<boolean>(!!inspectData?.state?.oomKilled);
+	let healthStatus = $derived<string | null>(inspectData?.state?.health?.status ?? null);
+	let healthFailing = $derived(
+		healthStatus === 'unhealthy' ||
+			healthStatus === 'starting' ||
+			(inspectData?.state?.health?.failingStreak ?? 0) > 0,
+	);
+	let hasInsight = $derived(
+		recentRestarts > 0 || isOomKilled || (healthStatus && healthStatus !== 'healthy'),
+	);
+
 	// agent online 판단: global event store 우선, 없으면 last_seen 2분 이내면 online 가정.
 	// (사용자 페이지 globalWS 가 늦게 붙거나 backend 가 transition event 못 보낸 케이스,
 	//  메트릭 폴링이 잠깐 지연되는 경우까지 흡수 — 120s 안전마진)
@@ -543,6 +572,39 @@
 						/>
 						<span>템플릿 {container.template_name ?? '-'}</span>
 						<span>요청 {formatDateTime(container.requested_at)}</span>
+
+						<!-- 운영 인사이트 chip — 이상 신호 있을 때만 표시 -->
+						{#if recentRestarts >= 2}
+							<span class="insight-chip danger" title="최근 5분 안에 컨테이너가 {recentRestarts}회 die/restart/oom — 재시작 루프 의심">
+								🔄 재시작 {recentRestarts}회 (5분)
+							</span>
+						{:else if recentRestarts === 1}
+							<span class="insight-chip warn" title="최근 5분 안에 컨테이너가 1회 재시작 또는 종료됨">
+								🔄 재시작 1회 (5분)
+							</span>
+						{/if}
+						{#if isOomKilled}
+							<span class="insight-chip danger" title="컨테이너가 OOM (Out of Memory) 으로 강제 종료된 적 있음">
+								⚠ OOM Kill
+							</span>
+						{:else if lastExit && typeof lastExit.exit_code === 'number' && lastExit.exit_code !== 0}
+							<span class="insight-chip warn" title="가장 최근 종료 exit code {lastExit.exit_code}">
+								⚠ 최근 exit {lastExit.exit_code}
+							</span>
+						{/if}
+						{#if healthStatus === 'unhealthy'}
+							<span class="insight-chip danger" title="Docker healthcheck 결과 unhealthy">
+								❤ Health: unhealthy
+							</span>
+						{:else if healthStatus === 'starting'}
+							<span class="insight-chip warn" title="healthcheck 가 아직 starting 단계">
+								❤ Health: starting
+							</span>
+						{:else if healthStatus === 'healthy'}
+							<span class="insight-chip ok" title="healthcheck 통과">
+								❤ Health: healthy
+							</span>
+						{/if}
 					</div>
 				</div>
 				<div class="hero-actions">
@@ -643,26 +705,21 @@
 				<div class="chart-card">
 					<div class="chart-head">
 						<h3>CPU 사용률</h3>
-						<span>현재 {formatPercent(currentMetrics?.cpu?.usage, 2)}</span>
 					</div>
 					<UserMetricChart labels={historyLabels} datasets={cpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
 						<h3>메모리 사용률</h3>
-						<span>현재 {formatPercent(currentMetrics?.memory?.percent, 2)}</span>
 					</div>
 					<UserMetricChart labels={historyLabels} datasets={memoryDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
 						<h3>네트워크 트래픽</h3>
-						<div class="chart-head-right">
-							<div class="mode-toggle" role="group" aria-label="누적/속도 전환">
-								<button class:active={networkMode === 'cumulative'} onclick={() => (networkMode = 'cumulative')}>누적</button>
-								<button class:active={networkMode === 'rate'} onclick={() => (networkMode = 'rate')}>속도</button>
-							</div>
-							<span>수신 {formatBytesValue(currentMetrics?.network?.rx)} · 송신 {formatBytesValue(currentMetrics?.network?.tx)}</span>
+						<div class="mode-toggle" role="group" aria-label="누적/속도 전환">
+							<button class:active={networkMode === 'cumulative'} onclick={() => (networkMode = 'cumulative')}>누적</button>
+							<button class:active={networkMode === 'rate'} onclick={() => (networkMode = 'rate')}>속도</button>
 						</div>
 					</div>
 					<UserMetricChart labels={historyLabels} datasets={networkDatasets} yFormat={networkFormat} group={chartGroup} enableZoom markLines={chartMarkLines} />
@@ -670,12 +727,9 @@
 				<div class="chart-card">
 					<div class="chart-head">
 						<h3>디스크 처리량</h3>
-						<div class="chart-head-right">
-							<div class="mode-toggle" role="group" aria-label="누적/속도 전환">
-								<button class:active={diskMode === 'cumulative'} onclick={() => (diskMode = 'cumulative')}>누적</button>
-								<button class:active={diskMode === 'rate'} onclick={() => (diskMode = 'rate')}>속도</button>
-							</div>
-							<span>읽기 {formatBytesValue(currentMetrics?.disk?.read)} · 쓰기 {formatBytesValue(currentMetrics?.disk?.write)}</span>
+						<div class="mode-toggle" role="group" aria-label="누적/속도 전환">
+							<button class:active={diskMode === 'cumulative'} onclick={() => (diskMode = 'cumulative')}>누적</button>
+							<button class:active={diskMode === 'rate'} onclick={() => (diskMode = 'rate')}>속도</button>
 						</div>
 					</div>
 					<UserMetricChart labels={historyLabels} datasets={diskDatasets} yFormat={diskFormat} group={chartGroup} enableZoom markLines={chartMarkLines} />
@@ -684,7 +738,6 @@
 					<div class="chart-card">
 						<div class="chart-head">
 							<h3>GPU 사용률</h3>
-							<span>현재 {currentGpuUsage !== null ? formatPercent(currentGpuUsage, 2) : '-'}{#if gpuValid.length > 0} · {rangeLabel} 평균 {formatPercent(gpuAvg, 1)} · 피크 {formatPercent(gpuPeak, 1)}{/if}</span>
 						</div>
 						<UserMetricChart labels={historyLabels} datasets={gpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
 					</div>
@@ -911,14 +964,50 @@
 	}
 
 	/* AgentStatusIndicator (자체 .agent-indicator 클래스) 는 본인 스타일 유지하고
-	   기존 chip 형태의 메타 span 만 잡는다 (:not 으로 격리). */
-	.hero-meta > span:not(.agent-indicator):not(.agent-indicator *) {
+	   기존 chip 형태의 메타 span 만 잡는다 (:not 으로 격리). insight-chip 도 자체
+	   스타일 가지므로 제외. */
+	.hero-meta > span:not(.agent-indicator):not(.agent-indicator *):not(.insight-chip) {
 		padding: 3px 8px;
 		border-radius: 999px;
 		background: rgba(13, 17, 23, 0.52);
 		border: 1px solid rgba(31, 41, 55, 0.8);
 		font-size: 11px;
 		color: var(--text-secondary);
+	}
+
+	/* 운영 인사이트 chip — 이상 신호만 시각 강조. severity 색 한눈에. */
+	.insight-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 3px 9px;
+		border-radius: 999px;
+		font-size: 11px;
+		font-weight: 800;
+		letter-spacing: 0.02em;
+		cursor: help;
+		user-select: none;
+		white-space: nowrap;
+	}
+	.insight-chip.warn {
+		background: rgba(251, 191, 36, 0.14);
+		border: 1px solid rgba(251, 191, 36, 0.4);
+		color: #fde68a;
+	}
+	.insight-chip.danger {
+		background: rgba(239, 68, 68, 0.16);
+		border: 1px solid rgba(239, 68, 68, 0.45);
+		color: #fca5a5;
+		animation: insight-pulse 1.8s ease-in-out infinite;
+	}
+	.insight-chip.ok {
+		background: rgba(16, 185, 129, 0.12);
+		border: 1px solid rgba(16, 185, 129, 0.38);
+		color: #6ee7b7;
+	}
+	@keyframes insight-pulse {
+		0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.2); }
+		50% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0); }
 	}
 
 	.status-pill {
