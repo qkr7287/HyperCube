@@ -159,8 +159,8 @@
 	.list li {
 		display: flex;
 		align-items: center;
-		gap: 6px;
-		padding: 4px 8px;
+		gap: 8px;
+		padding: 6px 10px;
 		border-radius: 8px;
 		background: rgba(13, 17, 23, 0.62);
 		border: 1px solid rgba(31, 41, 55, 0.6);
