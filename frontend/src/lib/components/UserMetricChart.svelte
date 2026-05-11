@@ -34,9 +34,12 @@
 <style>
 	.chart-shell {
 		position: relative;
-		/* 반응형: viewport 높이에 따라 자동. compact 우선 (1080p 한 화면 안에 다른 panel 도). */
+		/* viewport-fit 모드: 부모 chart-card 가 flex column 이라 자기 영역을 채움.
+		   ResizeObserver 가 ECharts resize 자동 처리. fallback height clamp 는 부모
+		   가 flex 환경이 아닐 때 (예: 모달 안) 안전망. */
+		flex: 1 1 0;
+		min-height: 0;
 		height: clamp(100px, 11vh, var(--chart-h, 180px));
-		min-height: 100px;
 		overflow: hidden;
 	}
 </style>

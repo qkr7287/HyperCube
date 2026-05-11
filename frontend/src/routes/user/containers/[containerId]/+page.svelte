@@ -798,10 +798,17 @@
 <style>
 	.page {
 		/* 관리자 admin-shell 과 동일하게 max-width 없음 (full width).
-		   padding 은 clamp 로 viewport 에 따라 압축 — 1920 에서 ~28px 좌우, 1280 에서 ~16px. */
+		   padding 은 clamp 로 viewport 에 따라 압축 — 1920 에서 ~28px 좌우, 1280 에서 ~16px.
+		   user-body 가 overflow:hidden 이라 .page 자체가 100% height + flex column 으로
+		   topbar/kpi-row 자연 height, bento 가 남은 공간 fill. */
 		max-width: none;
 		margin: 0;
-		padding: clamp(4px, 0.4vw, 12px) clamp(8px, 0.9vw, 22px) clamp(10px, 1vw, 22px);
+		padding: clamp(0px, 0.1vw, 4px) clamp(6px, 0.7vw, 18px) clamp(0px, 0.1vw, 4px);
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+		overflow: hidden;
 	}
 
 	.back-link,
@@ -818,7 +825,7 @@
 		color: var(--text-secondary);
 		font-size: 12px;
 		font-weight: 700;
-		margin-bottom: clamp(4px, 0.4vw, 10px);
+		margin-bottom: clamp(2px, 0.2vw, 6px);
 	}
 
 	.back-link:hover {
@@ -848,10 +855,10 @@
 		top: 0;
 		z-index: 10;
 		background: var(--bg-base);
-		padding-top: clamp(1px, 0.1vw, 4px);
+		padding-top: 0;
 		display: flex;
 		flex-direction: column;
-		gap: clamp(3px, 0.3vw, 8px);
+		gap: clamp(2px, 0.2vw, 6px);
 	}
 
 	.hero {
@@ -971,8 +978,8 @@
 	.kpi-row {
 		display: flex;
 		align-items: stretch;
-		gap: clamp(4px, 0.4vw, 10px);
-		margin-top: clamp(4px, 0.4vw, 10px);
+		gap: clamp(3px, 0.3vw, 8px);
+		margin-top: clamp(2px, 0.2vw, 6px);
 		flex-wrap: wrap;
 	}
 	.kpi-wrap {
@@ -1072,16 +1079,22 @@
 	/* 12-col bento grid — 1440+: row1 charts(8) + logs(4), row2 process(5) + events(3) + inspect(4),
 	   row3 console(12, full-width — 사용 빈도 낮지만 작업 시엔 가로폭 필요).
 	   1280~1439: 차트/로그/하단 3분할/console 각각 1행씩 stack.
-	   ≤980: 1열 stack (모바일 fallback). */
+	   ≤980: 1열 stack (모바일 fallback).
+
+	   viewport fit: .page flex column 안에서 bento 가 flex:1 로 남은 공간 차지.
+	   row1/row2 는 fr 비율로 stretch, row3 (console closed) 는 auto (header 만). */
 	.bento {
 		display: grid;
 		grid-template-columns: repeat(12, minmax(0, 1fr));
+		grid-template-rows: minmax(0, 1.45fr) minmax(0, 1fr) auto;
 		grid-template-areas:
 			"charts charts charts charts charts charts charts charts logs logs logs logs"
 			"process process process process process events events events inspect inspect inspect inspect"
 			"console console console console console console console console console console console console";
-		gap: clamp(4px, 0.4vw, 10px);
-		margin-top: clamp(4px, 0.4vw, 10px);
+		gap: clamp(2px, 0.2vw, 6px);
+		margin-top: clamp(2px, 0.2vw, 6px);
+		flex: 1 1 0;
+		min-height: 0;
 	}
 	.bento-area {
 		min-width: 0;
@@ -1122,11 +1135,15 @@
 		display: flex;
 		flex-direction: column;
 	}
-	.bento-area > :global(*) {
-		flex: 1;
+	/* area-logs / area-process / area-events / area-inspect / area-console 은
+	   bento-area wrapper 가 따로 있고 그 안에 panel 컴포넌트 1개 — panel 이 cell
+	   height 100% 차지하도록 flex:1.
+	   area-charts 는 .bento-area 와 .panel 이 같은 element 라 wrapper 가 없음 —
+	   이 selector 매칭 안 됨, panel-header/chart-grid 는 별도 룰로 처리. */
+	.bento-area > :global(.panel) {
+		flex: 1 1 0;
+		min-height: 0;
 	}
-	/* area-charts 는 이미 .panel 자체 (wrapper div 없이) 라서 별도 처리 불필요 —
-	   .bento-area display:flex 가 적용되지만 자식이 panel 자기 자신이라 flex:1 무관. */
 
 	.panel {
 		border-radius: 14px;
@@ -1230,13 +1247,28 @@
 	.chart-grid {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
+		grid-template-rows: repeat(2, minmax(0, 1fr));
 		gap: clamp(4px, 0.45vw, 10px);
+		flex: 1 1 0;
+		min-height: 0;
+	}
+
+	/* area-charts panel 자체가 flex column → chart-grid 가 남은 공간 fill */
+	.area-charts {
+		display: flex;
+		flex-direction: column;
+	}
+	.area-charts.panel {
+		min-height: 0;
 	}
 
 	.chart-card {
 		border-radius: var(--radius-panel);
 		padding: clamp(6px, 0.6vw, 12px) clamp(8px, 0.7vw, 14px);
 		transition: border-color var(--ease-fast);
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
 	}
 	.chart-card:hover {
 		border-color: rgba(48, 213, 200, 0.22);
@@ -1302,13 +1334,21 @@
 		margin-top: clamp(8px, 0.6vw, 14px);
 	}
 
-	/* 런타임/요청 설정 accordion — 기본 닫힘. 한 화면 fit 위해 하단으로 mute. */
+	/* 런타임/요청 설정 accordion — 기본 닫힘. 한 화면 fit 위해 desktop 에선 hide
+	   (정보 손실은 미미 — hero 의 last_seen + container ID 우측 등 핵심은 이미 표시).
+	   ≤980 모바일에서는 스크롤 허용하므로 보이게. */
 	.details-accordion {
-		margin-top: clamp(10px, 0.8vw, 16px);
+		display: none;
+		margin-top: clamp(8px, 0.6vw, 14px);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-panel);
 		background: rgba(18, 23, 32, 0.96);
 		overflow: hidden;
+	}
+	@media (max-width: 980px) {
+		.details-accordion {
+			display: block;
+		}
 	}
 	.details-accordion > summary {
 		list-style: none;

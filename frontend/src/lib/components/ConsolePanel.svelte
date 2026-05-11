@@ -297,10 +297,12 @@
 </script>
 
 <section class="panel" class:closed={!open}>
-	<div class="panel-header slim">
+	<div class="panel-header slim" class:closed-row={!open}>
 		<div>
 			<h2>콘솔 (exec)</h2>
-			<p>컨테이너 내부에 shell 을 띄워 직접 명령을 실행. 패널을 열면 새 exec 세션이 시작되고, 닫으면 정리됩니다.</p>
+			{#if open}
+				<p>컨테이너 내부에 shell 을 띄워 직접 명령을 실행. 패널을 열면 새 exec 세션이 시작되고, 닫으면 정리됩니다.</p>
+			{/if}
 		</div>
 		<button class="toggle" class:on={open} onclick={togglePanel}>
 			{open ? '닫기' : '열기'}
@@ -365,6 +367,18 @@
 		align-items: flex-end;
 		gap: 18px;
 		margin-bottom: clamp(4px, 0.4vw, 10px);
+	}
+	.panel-header.closed-row {
+		align-items: center;
+		margin-bottom: 0;
+	}
+	.panel-header.closed-row h2 {
+		margin-bottom: 0;
+		font-size: clamp(12px, 0.85vw, 14px);
+	}
+	/* closed 상태에서 panel 자체 padding 도 줄여 row 3 최소 height */
+	.panel.closed {
+		padding: clamp(3px, 0.3vw, 8px) clamp(6px, 0.6vw, 14px);
 	}
 	h2 {
 		font-size: 20px;

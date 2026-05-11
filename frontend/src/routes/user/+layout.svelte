@@ -195,6 +195,15 @@
 
 	.user-body {
 		flex: 1;
-		overflow-y: auto;
+		min-height: 0;
+		/* desktop 에선 컨테이너 상세가 viewport 안에 fit → 세로 스크롤 제거.
+		   ≤980 모바일은 1열 stack 이라 스크롤 필요 → @media 로 풀어줌. */
+		overflow-y: hidden;
+	}
+
+	@media (max-width: 980px) {
+		.user-body {
+			overflow-y: auto;
+		}
 	}
 </style>
