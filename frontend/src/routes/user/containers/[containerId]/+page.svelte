@@ -15,6 +15,7 @@
 	import ConsolePanel from '$lib/components/ConsolePanel.svelte';
 	import StateBox from '$lib/components/StateBox.svelte';
 	import AgentStatusIndicator from '$lib/components/AgentStatusIndicator.svelte';
+	import ContainerLimitModal from '$lib/components/ContainerLimitModal.svelte';
 	import { activeAgentIds } from '$lib/stores/global-events';
 	import { eventColor, eventLabel, type EventRow } from '$lib/utils/container-events';
 	import type { MarkLineEntry } from '$lib/components/charts/types';
@@ -142,6 +143,7 @@
 	let actionMsg = $state('');
 	let actionMsgKind = $state<'info' | 'success' | 'error'>('info');
 	let actionMsgTimer: ReturnType<typeof setTimeout> | null = null;
+	let limitModalOpen = $state(false);
 
 	// === 운영 인사이트 derived (hero meta 옆 chip) ===
 	// 최근 5분 안의 die/restart 횟수 — "재시작 반복" 자동 탐지
@@ -671,6 +673,14 @@
 						onActionDone={handleControlDone}
 						onError={handleControlError}
 					/>
+					<button
+						class="limit-btn"
+						onclick={() => (limitModalOpen = true)}
+						disabled={!agentOnline}
+						title={agentOnline ? '메모리 / CPU / 재시작 정책 수정' : 'Agent 오프라인 — 수정 불가'}
+					>
+						⚙ 한도 수정
+					</button>
 				</div>
 				{#if actionMsg}
 					<div class="ops-msg" data-kind={actionMsgKind} role="status">
@@ -848,6 +858,17 @@
 			</div>
 			</section>
 		</details>
+
+		<ContainerLimitModal
+			open={limitModalOpen}
+			containerId={container.container_id}
+			{inspectData}
+			onclose={() => (limitModalOpen = false)}
+			onsaved={() => {
+				showActionMsg('자원 한도 수정 완료', 'success', 3500);
+				loadInspect();
+			}}
+		/>
 	{/if}
 </div>
 
@@ -1112,6 +1133,28 @@
 		align-items: center;
 		gap: 14px;
 		flex-wrap: wrap;
+	}
+
+	.limit-btn {
+		padding: 6px 12px;
+		border-radius: 8px;
+		background: rgba(13, 17, 23, 0.86);
+		border: 1px solid rgba(31, 41, 55, 0.9);
+		color: var(--text-primary);
+		font-family: inherit;
+		font-size: 12px;
+		font-weight: 700;
+		cursor: pointer;
+		transition: background-color var(--ease-fast), border-color var(--ease-fast), color var(--ease-fast);
+	}
+	.limit-btn:hover:not(:disabled) {
+		background: rgba(48, 213, 200, 0.14);
+		border-color: rgba(48, 213, 200, 0.4);
+		color: var(--accent);
+	}
+	.limit-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
 	}
 
 	.ops-label {

@@ -83,6 +83,7 @@ POST /api/auth/token/
 | `/api/my-containers/{id}/events/?since=&limit=100` | GET | 라이프사이클 이벤트 (ContainerEvent). agent의 `container_events` 메시지 누적. 시간 오름차순. limit max 500. |
 | `/api/my-containers/{id}/processes/?sortBy=cpu&limit=20` | GET | 컨테이너 내부 process top-N. agent `container_processes` 명령 dispatch + 동기 대기 (15s). sortBy: `cpu` \| `mem`, limit 1~100. minimal image 도 동작 (호스트 관찰). |
 | `/api/my-containers/{id}/console-sessions/?limit=50` | GET | B4 Console exec audit 조회. 세션 레벨만 (user / cmd / opened_at / closed_at / duration_seconds / exit_code / close_reason). 키스트로크 미기록. limit max 200. |
+| `/api/my-containers/{id}/update-limits/` | POST | P0 자원 한도 / 재시작 정책 수정. body `{memory_mb?, cpu_percent?, restart_policy?, restart_max_retry?}`. agent `update_container` 명령 dispatch + 동기 대기. 한 필드만 보내도 그것만 갱신. |
 
 `current-metrics` 응답:
 ```json

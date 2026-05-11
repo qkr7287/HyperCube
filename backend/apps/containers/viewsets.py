@@ -347,6 +347,73 @@ class MyContainerViewSet(ReadOnlyModelViewSet):
         )
         return self._agent_resp_to_http(resp)
 
+    _VALID_RESTART_POLICIES = frozenset(["no", "on-failure", "unless-stopped", "always"])
+
+    @extend_schema(
+        summary="컨테이너 자원 한도 / 재시작 정책 수정",
+        description=(
+            "본인 소유 컨테이너의 메모리 / CPU 한도, 재시작 정책을 즉시 수정. "
+            "agent 의 dockerode container.update() 호출 — 재시작 불필요. "
+            "body: { memory_mb?: int, cpu_percent?: int (0~N00), restart_policy?: 'no'|'on-failure'|'unless-stopped'|'always', restart_max_retry?: int }. "
+            "한 필드만 보내도 그것만 갱신 (나머지는 기존 값 유지)."
+        ),
+    )
+    @action(detail=True, methods=["post"], url_path="update-limits")
+    def update_limits(self, request, pk=None):
+        container = self.get_object()
+        body = request.data or {}
+        params: dict = {"containerId": container.container_id}
+
+        # memory_mb 1MB 이상. 0 이면 unlimited (params 에 0 그대로 전달, agent 해석).
+        mem_raw = body.get("memory_mb")
+        if mem_raw is not None:
+            try:
+                mem = int(mem_raw)
+            except (TypeError, ValueError):
+                return Response({"detail": "memory_mb must be integer"}, status=status.HTTP_400_BAD_REQUEST)
+            if mem < 0:
+                return Response({"detail": "memory_mb must be >= 0"}, status=status.HTTP_400_BAD_REQUEST)
+            params["memory_mb"] = mem
+
+        # cpu_percent: 100 = 1 core. 0 = unlimited.
+        cpu_raw = body.get("cpu_percent")
+        if cpu_raw is not None:
+            try:
+                cpu = int(cpu_raw)
+            except (TypeError, ValueError):
+                return Response({"detail": "cpu_percent must be integer"}, status=status.HTTP_400_BAD_REQUEST)
+            if cpu < 0 or cpu > 10000:
+                return Response({"detail": "cpu_percent must be 0~10000"}, status=status.HTTP_400_BAD_REQUEST)
+            params["cpu_percent"] = cpu
+
+        # restart_policy
+        rp = body.get("restart_policy")
+        if rp is not None:
+            rp = str(rp).strip()
+            if rp not in self._VALID_RESTART_POLICIES:
+                return Response(
+                    {"detail": f"invalid restart_policy. valid: {sorted(self._VALID_RESTART_POLICIES)}"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            params["restart_policy"] = rp
+
+        max_retry = body.get("restart_max_retry")
+        if max_retry is not None:
+            try:
+                params["restart_max_retry"] = max(0, int(max_retry))
+            except (TypeError, ValueError):
+                return Response({"detail": "restart_max_retry must be integer"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if len(params) == 1:  # containerId 만, 다른 필드 없음
+            return Response({"detail": "no fields to update"}, status=status.HTTP_400_BAD_REQUEST)
+
+        resp = self._dispatch_and_wait(
+            server_id=str(container.agent_id),
+            command="update_container",
+            params=params,
+        )
+        return self._agent_resp_to_http(resp)
+
     @extend_schema(
         summary="컨테이너 inspect (Docker inspect subset)",
         description="본인 소유 컨테이너의 현재 inspect 데이터 (state.health, mounts, networkSettings 등).",

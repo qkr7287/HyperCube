@@ -468,8 +468,41 @@ Backend → Agent dispatch (`ContainerRequestViewSet._dispatch_to_agent`):
 3. `channel_layer.send(agent_channel, {"type": "ws.send", "payload": {...command...}})`
 4. Agent 응답 시 위 routing 표대로 처리. browser_channel이 `__api__`이면 forward 생략, DB 갱신만.
 
+### 8. `update_container`
+
+컨테이너 자원 한도 / 재시작 정책 즉시 변경 (재시작 없음). Portainer container
+settings parity. Dockerode `container.update()` 호출.
+
+**params**
+
+| field | type | required | notes |
+|-------|------|----------|-------|
+| containerId | string | yes | full 또는 short ID |
+| memory_mb | number | no | MB. 0 = unlimited. 미전송 = 변경 X |
+| cpu_percent | number | no | 100 = 1 core. 0 = unlimited |
+| restart_policy | string | no | `no` \| `on-failure` \| `unless-stopped` \| `always` |
+| restart_max_retry | number | no | on-failure 일 때만 의미 |
+
+**success.data**
+
+```json
+{
+  "containerId": "abc123def456",
+  "warnings": [],
+  "updated": { "memory_mb": 256, "cpu_percent": 50, "restart_policy": "unless-stopped" }
+}
+```
+
+errors: `containerId is required`, `container_not_found`, dockerode 에러 forward.
+
+agent 구현: `Memory = memory_mb * 1024 * 1024`, `CpuPeriod = 100000`,
+`CpuQuota = cpu_percent * 1000`, `RestartPolicy = { Name, MaximumRetryCount }`.
+
+---
+
 ## 변경 이력
 
+- 2026-05-11: `update_container` (P0 — Resource limit edit) 추가. memory/cpu/restart 한 명령 patch. dockerode container.update() 위임.
 - 2026-05-11: `exec_open` / `exec_input` / `exec_resize` / `exec_close` (B4 Console exec) 추가. `execId == streamId` 라우팅 패턴 (`logs_subscribe` 재사용).
 - 2026-04-29 (`7f82ff8`): `compose_up`, `create_container`, `delete_container` 추가 (Backend dispatch). routing 동작 표 추가.
 - 2026-03-31: 초안 (Browser-issued 4개 command).
