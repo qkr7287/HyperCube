@@ -559,6 +559,42 @@
 					</button>
 				</div>
 			</section>
+		</div>
+
+		{#if !agentOnline}
+			<div class="banner banner-error">
+				<strong>Agent 오프라인</strong> — 이 컨테이너를 보고 있는 agent 가 응답하지 않습니다. 실시간 메트릭·로그·콘솔이 모두 멈춰 있을 수 있습니다.
+			</div>
+		{:else if container.status !== 'running'}
+			<div class="banner banner-warn">
+				컨테이너가 현재 <strong>{statusLabel(container.status)}</strong> 상태입니다. 다시 실행되기 전까지 실시간 메트릭이 비어 있거나 오래된 값일 수 있습니다.
+			</div>
+		{/if}
+
+		<section class="kpi-row">
+			<div class="kpi-wrap">
+				<ContainerKpiBar
+					{currentMetrics}
+					{history}
+					{rangeLabel}
+					{cpuAvg}
+					{cpuPeak}
+					{memAvgPct}
+					{memPeakPct}
+					{netRxDelta}
+					{netTxDelta}
+					{diskReadDelta}
+					{diskWriteDelta}
+					hasGpu={hasGpuHistory || (currentGpuUsage !== null && currentGpuUsage !== undefined)}
+					{currentGpuUsage}
+					{gpuAvg}
+					{gpuPeak}
+					{cpuHelp}
+					{memoryHelp}
+					{networkHelp}
+					{diskHelp}
+				/>
+			</div>
 
 			<section class="ops-bar">
 				<div class="ops-left">
@@ -581,39 +617,7 @@
 					</div>
 				{/if}
 			</section>
-		</div>
-
-		{#if !agentOnline}
-			<div class="banner banner-error">
-				<strong>Agent 오프라인</strong> — 이 컨테이너를 보고 있는 agent 가 응답하지 않습니다. 실시간 메트릭·로그·콘솔이 모두 멈춰 있을 수 있습니다.
-			</div>
-		{:else if container.status !== 'running'}
-			<div class="banner banner-warn">
-				컨테이너가 현재 <strong>{statusLabel(container.status)}</strong> 상태입니다. 다시 실행되기 전까지 실시간 메트릭이 비어 있거나 오래된 값일 수 있습니다.
-			</div>
-		{/if}
-
-		<ContainerKpiBar
-			{currentMetrics}
-			{history}
-			{rangeLabel}
-			{cpuAvg}
-			{cpuPeak}
-			{memAvgPct}
-			{memPeakPct}
-			{netRxDelta}
-			{netTxDelta}
-			{diskReadDelta}
-			{diskWriteDelta}
-			hasGpu={hasGpuHistory || (currentGpuUsage !== null && currentGpuUsage !== undefined)}
-			{currentGpuUsage}
-			{gpuAvg}
-			{gpuPeak}
-			{cpuHelp}
-			{memoryHelp}
-			{networkHelp}
-			{diskHelp}
-		/>
+		</section>
 
 		<div class="bento">
 		<section class="panel bento-area area-charts">
@@ -962,8 +966,25 @@
 		color: #fca5a5;
 	}
 
+	/* KPI 4 pill (좌, flex:1) + ops 컨트롤 (우, auto width) 한 row.
+	   1920+ 에서 KPI 가 너무 풀폭 stretch 되며 우측이 비어 보이던 문제 해결. */
+	.kpi-row {
+		display: flex;
+		align-items: stretch;
+		gap: clamp(4px, 0.4vw, 10px);
+		margin-top: clamp(4px, 0.4vw, 10px);
+		flex-wrap: wrap;
+	}
+	.kpi-wrap {
+		flex: 1 1 0;
+		min-width: 0;
+	}
+	.kpi-wrap :global(.kpi-bar) {
+		margin-top: 0;
+	}
+
 	.ops-bar {
-		/* topbar-sticky 안에 있으므로 margin-top 제거 (gap 으로 간격). */
+		/* kpi-row 우측에 배치 — auto width, KPI 와 같은 row. */
 		margin-top: 0;
 		padding: clamp(3px, 0.3vw, 8px) clamp(8px, 0.7vw, 12px);
 		border-radius: 12px;
