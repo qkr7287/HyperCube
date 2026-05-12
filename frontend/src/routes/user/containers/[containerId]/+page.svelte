@@ -144,10 +144,6 @@
 	let actionMsgKind = $state<'info' | 'success' | 'error'>('info');
 	let actionMsgTimer: ReturnType<typeof setTimeout> | null = null;
 	let limitModalOpen = $state(false);
-	type WorkbenchMode = 'monitor' | 'diagnose';
-	const WORKBENCH_MODE_KEY = 'hc_container_detail_workbench_mode';
-	let workbenchMode = $state<WorkbenchMode>('monitor');
-
 	// === 운영 인사이트 derived (hero meta 옆 chip) ===
 	// 최근 5분 안의 die/restart 횟수 — "재시작 반복" 자동 탐지
 	let recentRestarts = $derived.by(() => {
@@ -386,11 +382,6 @@
 		loadDashboard();
 	}
 
-	function setWorkbenchMode(mode: WorkbenchMode) {
-		workbenchMode = mode;
-		if (browser) localStorage.setItem(WORKBENCH_MODE_KEY, mode);
-	}
-
 	function avgOf(values: number[]): number {
 		const valid = values.filter((v) => Number.isFinite(v));
 		if (valid.length === 0) return 0;
@@ -454,6 +445,11 @@
 
 	let envEntries = $derived(Object.entries(container?.custom_env ?? {}));
 	let portMappings = $derived(container?.custom_ports ?? []);
+	let hasRequestConfig = $derived(portMappings.length > 0 || envEntries.length > 0);
+	let requestConfigMode = $derived(hasRequestConfig ? '사용자 지정' : '기본값');
+	let requestConfigSource = $derived(
+		container?.template_name || container?.selected_image || container?.image || '요청 이미지',
+	);
 	let rangeLabel = $derived(RANGE_OPTIONS.find((o) => o.key === selectedRange)?.label ?? '');
 	let chartGroup = $derived(`hc-container-${containerId}`);
 
@@ -592,10 +588,6 @@
 	let currentGpuUsage = $derived(snapshotGpu(currentMetrics));
 
 	onMount(() => {
-		if (browser) {
-			const savedMode = localStorage.getItem(WORKBENCH_MODE_KEY);
-			if (savedMode === 'monitor' || savedMode === 'diagnose') workbenchMode = savedMode;
-		}
 		loadDashboard({ withDetail: true });
 		refreshTimer = setInterval(() => {
 			if (!paused) loadDashboard();
@@ -806,30 +798,7 @@
 			</div>
 		{/if}
 
-		<div class="workbench-tabs" role="tablist" aria-label="상세 화면 모드">
-			<button
-				type="button"
-				role="tab"
-				class:active={workbenchMode === 'monitor'}
-				aria-selected={workbenchMode === 'monitor'}
-				onclick={() => setWorkbenchMode('monitor')}
-			>
-				<span class="mode-title">모니터링</span>
-				<span class="mode-sub">차트와 상태 중심</span>
-			</button>
-			<button
-				type="button"
-				role="tab"
-				class:active={workbenchMode === 'diagnose'}
-				aria-selected={workbenchMode === 'diagnose'}
-				onclick={() => setWorkbenchMode('diagnose')}
-			>
-				<span class="mode-title">진단</span>
-				<span class="mode-sub">로그와 콘솔 확장</span>
-			</button>
-		</div>
-
-		<div class="bento" class:diagnose={workbenchMode === 'diagnose'}>
+		<div class="bento">
 		<section class="panel bento-area area-charts">
 			<div class="panel-header compact">
 				<h2>성능 지표 추이<InfoTooltip text={timeSeriesHelp + '\n\n차트 위에 마우스를 올리면 모든 차트의 같은 시각이 함께 표시됩니다. 휠/드래그로 줌.'} placement="bottom-start" /></h2>
@@ -914,7 +883,7 @@
 
 		<div class="bento-area area-context">
 			<section class="details-grid context-grid" aria-label="런타임 정보 및 요청 시 설정">
-			<div class="panel">
+			<div class="panel runtime-panel">
 				<div class="panel-header slim">
 					<div>
 						<h2>런타임 정보<InfoTooltip text={runtimeHelp} placement="bottom-start" /></h2>
@@ -947,42 +916,63 @@
 				{/if}
 			</div>
 
-			<div class="panel">
+			<div class="panel config-panel">
 				<div class="panel-header slim">
 					<div>
 						<h2>요청 시 설정<InfoTooltip text={configHelp} placement="bottom-start" /></h2>
 						<p>요청을 만들 때 입력했던 포트 매핑과 환경 변수입니다.</p>
 					</div>
 				</div>
-				<div class="config-split">
-					<div class="config-card">
-						<span class="config-title">포트 매핑</span>
-						{#if portMappings.length > 0}
-							<div class="tag-list">
-								{#each portMappings as port}
-									<span class="tag">호스트 {port.host ?? '-'} → 컨테이너 {port.container ?? '-'} ({port.protocol ?? 'tcp'})</span>
-								{/each}
-							</div>
-						{:else}
-							<p class="config-empty">별도로 지정한 포트 매핑이 없습니다.</p>
-						{/if}
+				<div class="config-summary" aria-label="요청 설정 요약">
+					<div class="config-summary-card">
+						<span>포트</span>
+						<strong>{portMappings.length}개</strong>
+						<em>{portMappings.length > 0 ? '외부 연결 있음' : '기본 네트워크'}</em>
 					</div>
-					<div class="config-card">
-						<span class="config-title">환경 변수</span>
-						{#if envEntries.length > 0}
-							<div class="env-list">
-								{#each envEntries as [key, value]}
-									<div class="env-row">
-										<span>{key}</span>
-										<span>{value}</span>
-									</div>
-								{/each}
-							</div>
-						{:else}
-							<p class="config-empty">추가로 입력한 환경 변수가 없습니다.</p>
-						{/if}
+					<div class="config-summary-card">
+						<span>환경 변수</span>
+						<strong>{envEntries.length}개</strong>
+						<em>{envEntries.length > 0 ? '주입 값 있음' : '추가 값 없음'}</em>
+					</div>
+					<div class="config-summary-card">
+						<span>실행 설정</span>
+						<strong>{requestConfigMode}</strong>
+						<em title={requestConfigSource}>{requestConfigSource}</em>
 					</div>
 				</div>
+
+				{#if hasRequestConfig}
+					<div class="config-detail-grid">
+						{#if portMappings.length > 0}
+							<div class="config-card">
+								<span class="config-title">포트 매핑</span>
+								<div class="tag-list">
+									{#each portMappings as port}
+										<span class="tag">호스트 {port.host ?? '-'} → 컨테이너 {port.container ?? '-'} ({port.protocol ?? 'tcp'})</span>
+									{/each}
+								</div>
+							</div>
+						{/if}
+						{#if envEntries.length > 0}
+							<div class="config-card">
+								<span class="config-title">환경 변수</span>
+								<div class="env-list">
+									{#each envEntries as [key, value]}
+										<div class="env-row">
+											<span>{key}</span>
+											<span>{value}</span>
+										</div>
+									{/each}
+								</div>
+							</div>
+						{/if}
+					</div>
+				{:else}
+					<div class="config-empty-state">
+						<strong>추가 설정 없음</strong>
+						<span>별도 포트 매핑이나 환경 변수 없이 요청 이미지/템플릿 기본값으로 실행 중입니다.</span>
+					</div>
+				{/if}
 			</div>
 			</section>
 		</div>
@@ -1715,50 +1705,7 @@
 			inset 0 1px 0 rgba(255, 255, 255, 0.025);
 	}
 
-	.workbench-tabs {
-		display: inline-flex;
-		align-self: flex-end;
-		gap: 3px;
-		padding: 3px;
-		border-radius: 999px;
-		background: rgba(13, 17, 23, 0.58);
-		border: 1px solid rgba(100, 116, 139, 0.18);
-		flex: 0 0 auto;
-	}
-	.workbench-tabs button {
-		display: inline-flex;
-		align-items: baseline;
-		gap: 6px;
-		border: 0;
-		border-radius: 999px;
-		padding: 4px 10px;
-		background: transparent;
-		color: var(--text-muted);
-		font-family: inherit;
-		cursor: pointer;
-		transition: background-color var(--ease-fast), color var(--ease-fast);
-	}
-	.workbench-tabs button:hover:not(.active) {
-		background: rgba(48, 213, 200, 0.08);
-		color: var(--text-secondary);
-	}
-	.workbench-tabs button.active {
-		background: rgba(48, 213, 200, 0.18);
-		color: var(--accent);
-		box-shadow: inset 0 0 0 1px rgba(48, 213, 200, 0.28);
-	}
-	.mode-title {
-		font-size: 10.5px;
-		font-weight: 850;
-	}
-	.mode-sub {
-		font-size: 9.5px;
-		font-weight: 650;
-		color: currentColor;
-		opacity: 0.72;
-	}
-
-	/* Desktop workbench: charts stay compact, events/status sit directly below them. */
+	/* Desktop layout: charts stay compact, events/status sit directly below them. */
 	.bento {
 		display: grid;
 		grid-template-columns: repeat(12, minmax(0, 1fr));
@@ -1772,12 +1719,6 @@
 		flex: 1 1 0;
 		min-height: 0;
 		overflow: hidden;
-	}
-	.bento.diagnose {
-		grid-template-areas:
-			"charts charts charts charts live live live live live process process process"
-			"charts charts charts charts live live live live live context context context"
-			"events events inspect inspect live live live live live context context context";
 	}
 	.bento-area {
 		min-width: 0;
@@ -2098,7 +2039,7 @@
 
 	.context-grid {
 		grid-template-columns: 1fr;
-		grid-template-rows: minmax(0, 0.88fr) minmax(0, 1fr);
+		grid-template-rows: auto minmax(0, 1fr);
 		height: 100%;
 		min-height: 0;
 		margin-top: 0;
@@ -2109,6 +2050,12 @@
 		min-height: 0;
 		overflow: hidden;
 	}
+	.context-grid > .runtime-panel {
+		overflow: auto;
+	}
+	.context-grid > .config-panel {
+		gap: 7px;
+	}
 	.context-grid .panel-header.slim {
 		margin-bottom: 6px;
 		padding-bottom: 6px;
@@ -2116,20 +2063,41 @@
 	.context-grid .panel-header.slim p {
 		display: none;
 	}
-	.context-grid .info-grid {
-		grid-template-columns: 1fr;
+	.context-grid .runtime-panel .info-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 6px;
+	}
+	.context-grid .runtime-panel .info-item {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		gap: 4px;
+		min-height: 46px;
+	}
+	.context-grid .runtime-panel .info-label {
+		margin-bottom: 0;
+	}
+	.context-grid .runtime-panel .info-value {
+		overflow-wrap: anywhere;
+		line-height: 1.25;
+	}
+	.context-grid .runtime-panel .info-value.mono {
+		font-size: 11px;
 	}
 	.context-grid .info-item,
 	.context-grid .note-box,
-	.context-grid .config-card {
+	.context-grid .config-card,
+	.context-grid .config-summary-card,
+	.context-grid .config-empty-state {
 		padding: 8px;
 		border-radius: 9px;
 	}
 	.context-grid .note-box {
 		margin-top: 6px;
+		max-height: 64px;
+		overflow: auto;
 	}
-	.context-grid .config-split {
+	.context-grid .config-detail-grid {
 		gap: 7px;
 		min-height: 0;
 		overflow: auto;
@@ -2232,10 +2200,80 @@
 		color: var(--text-secondary);
 	}
 
-	.config-split {
+	.config-summary {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 7px;
+		flex: 0 0 auto;
+	}
+
+	.config-summary-card,
+	.config-empty-state {
+		background:
+			linear-gradient(180deg, rgba(13, 17, 23, 0.84), rgba(8, 12, 19, 0.78)),
+			rgba(13, 17, 23, 0.76);
+		border: 1px solid rgba(31, 41, 55, 0.86);
+	}
+
+	.config-summary-card {
 		display: flex;
 		flex-direction: column;
+		justify-content: center;
+		gap: 3px;
+		min-width: 0;
+		min-height: 58px;
+	}
+
+	.config-summary-card span {
+		color: var(--text-muted);
+		font-size: 10px;
+		font-weight: 800;
+	}
+
+	.config-summary-card strong {
+		color: var(--text-primary);
+		font-size: 14px;
+		font-weight: 900;
+		line-height: 1.05;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.config-summary-card em {
+		color: var(--text-secondary);
+		font-size: 10px;
+		font-style: normal;
+		font-weight: 650;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.config-detail-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
 		gap: 12px;
+		min-height: 0;
+		overflow: auto;
+	}
+
+	.config-empty-state {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		gap: 4px;
+		min-height: 70px;
+		color: var(--text-secondary);
+	}
+
+	.config-empty-state strong {
+		color: var(--text-primary);
+		font-size: 12px;
+		font-weight: 850;
+	}
+
+	.config-empty-state span {
+		font-size: 11px;
+		line-height: 1.35;
 	}
 
 	.tag-list {
@@ -2287,12 +2325,6 @@
 				"charts charts charts charts charts live live live live process process process"
 				"charts charts charts charts charts live live live live context context context"
 				"events events inspect inspect inspect live live live live context context context";
-		}
-		.bento.diagnose {
-			grid-template-areas:
-				"charts charts charts charts live live live live live process process process"
-				"charts charts charts charts live live live live live context context context"
-				"events events inspect inspect live live live live live context context context";
 		}
 	}
 
@@ -2370,23 +2402,17 @@
 		.context-grid > .panel {
 			overflow: visible;
 		}
-		.workbench-tabs {
-			align-self: stretch;
-			display: grid;
-			grid-template-columns: 1fr 1fr;
-			border-radius: 12px;
+		.context-grid .runtime-panel .info-grid,
+		.context-grid .runtime-panel .info-item {
+			grid-template-columns: 1fr;
 		}
-		.workbench-tabs button {
-			justify-content: center;
-			border-radius: 9px;
-			flex-direction: column;
-			align-items: center;
-			gap: 1px;
+		.context-grid .runtime-panel .info-value {
+			text-align: left;
 		}
-
 		.chart-grid,
 		.details-grid,
-		.info-grid {
+		.info-grid,
+		.config-summary {
 			grid-template-columns: 1fr;
 		}
 

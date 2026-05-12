@@ -138,7 +138,7 @@
 			<table>
 				<thead>
 					<tr>
-						<th class="num">PID</th>
+						<th class="pid">PID</th>
 						<th>이름</th>
 						<th class="num">CPU%</th>
 						<th class="num">RSS</th>
@@ -151,7 +151,7 @@
 					{#each processes as p (p.pid)}
 						{@const st = stateMeta(p.state)}
 						<tr>
-							<td class="num mono">{p.pid}</td>
+							<td class="pid mono">{p.pid}</td>
 							<td class="mono name">{p.name}</td>
 							<td class="num">{p.cpu_percent.toFixed(1)}</td>
 							<td class="num">{formatBytesValue(p.memory_rss)}</td>
@@ -363,6 +363,10 @@
 	th.num,
 	td.num {
 		text-align: right;
+	}
+	th.pid,
+	td.pid {
+		text-align: left;
 	}
 
 	td {
