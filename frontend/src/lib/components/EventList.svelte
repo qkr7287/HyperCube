@@ -102,9 +102,18 @@
 		background: rgba(18, 23, 32, 0.96);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-panel);
-		padding: clamp(6px, 0.6vw, 14px);
-		margin-top: 18px;
+		padding: clamp(5px, 0.45vw, 8px);
+		margin-top: 0;
 		transition: border-color var(--ease-fast);
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+		min-width: 0;
+		height: 100%;
+		width: 100%;
+		max-width: 100%;
+		box-sizing: border-box;
+		overflow: hidden;
 	}
 	.panel:hover {
 		border-color: rgba(48, 213, 200, 0.22);
@@ -112,33 +121,34 @@
 	.panel-header {
 		display: flex;
 		justify-content: space-between;
-		align-items: flex-end;
-		gap: 18px;
-		margin-bottom: clamp(4px, 0.4vw, 10px);
+		align-items: center;
+		gap: 8px;
+		margin-bottom: 5px;
 	}
 	h2 {
-		font-size: 20px;
-		margin-bottom: 4px;
+		font-size: 14px;
+		margin-bottom: 0;
 	}
 	.panel-header p {
-		font-size: 12px;
+		display: none;
+		font-size: 11px;
 		color: var(--text-secondary);
 	}
 	.count {
-		font-size: 11px;
+		font-size: 10px;
 		color: var(--text-muted);
-		padding: 4px 10px;
+		padding: 2px 7px;
 		border-radius: 999px;
 		background: rgba(13, 17, 23, 0.86);
 		border: 1px solid rgba(31, 41, 55, 0.86);
 	}
 
 	.empty {
-		padding: 16px;
-		border-radius: 12px;
+		padding: 10px;
+		border-radius: 8px;
 		background: rgba(13, 17, 23, 0.76);
 		border: 1px solid rgba(31, 41, 55, 0.86);
-		font-size: 13px;
+		font-size: 11px;
 		color: var(--text-secondary);
 	}
 	.empty.error {
@@ -151,20 +161,26 @@
 		list-style: none;
 		display: flex;
 		flex-direction: column;
-		gap: 3px;
-		max-height: clamp(120px, 16vh, 300px);
+		gap: 2px;
+		flex: 1 1 0;
+		min-height: 0;
+		min-width: 0;
+		width: 100%;
+		max-width: 100%;
+		box-sizing: border-box;
+		max-height: none;
 		overflow-y: auto;
 	}
 
 	.list li {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		padding: 6px 10px;
-		border-radius: 8px;
+		gap: 5px;
+		padding: 4px 6px;
+		border-radius: 7px;
 		background: rgba(13, 17, 23, 0.62);
 		border: 1px solid rgba(31, 41, 55, 0.6);
-		font-size: 11px;
+		font-size: 10px;
 	}
 
 	.dot {
@@ -178,9 +194,9 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
-		padding: 2px 7px;
+		padding: 1px 5px;
 		border-radius: 999px;
-		font-size: 10px;
+		font-size: 9.5px;
 		font-weight: 700;
 	}
 	.badge.success { background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); }
@@ -196,7 +212,7 @@
 
 	.detail {
 		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-		font-size: 11px;
+		font-size: 10px;
 		font-weight: 700;
 		padding: 2px 6px;
 		border-radius: 4px;
@@ -215,7 +231,7 @@
 
 	.time {
 		margin-left: auto;
-		font-size: 11px;
+		font-size: 10px;
 		color: var(--text-secondary);
 	}
 </style>

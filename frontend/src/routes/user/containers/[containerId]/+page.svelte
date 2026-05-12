@@ -211,7 +211,7 @@
 	// API 응답에 포함된 bucket 폭 (초) — rate 계산에 사용. fallback 으로 RANGE 매핑.
 	let bucketSeconds = $state<number>(60);
 
-	let containerId = $derived($page.params.containerId);
+	let containerId = $derived($page.params.containerId ?? '');
 
 	function token(): string | null {
 		if (!browser) return null;
@@ -802,8 +802,11 @@
 			</div>
 		</section>
 
-		<div class="bento-area area-logs">
-			<LogTailPanel agentId={container.agent ?? ''} {containerId} />
+		<div class="bento-area area-live">
+			<div class="live-stack">
+				<LogTailPanel agentId={container.agent ?? ''} {containerId} startOpen={true} />
+				<ConsolePanel agentId={container.agent ?? ''} {containerId} startOpen={true} />
+			</div>
 		</div>
 
 		<div class="bento-area area-process">
@@ -818,9 +821,6 @@
 			<InspectPanel data={inspectData} loading={inspectLoading} errorMsg={inspectError} />
 		</div>
 
-		<div class="bento-area area-console">
-			<ConsolePanel agentId={container.agent ?? ''} {containerId} startOpen={true} />
-		</div>
 		</div>
 
 		<details class="details-accordion">
@@ -919,14 +919,15 @@
 
 <style>
 	.page {
-		/* full width, 자연 스크롤. user-body 가 스크롤 컨테이너 (overflow-y:auto) 라
-		   .page 는 height 강제 없이 콘텐츠 만큼 늘어남. padding 은 시원하게. */
 		max-width: none;
 		margin: 0;
-		padding: clamp(14px, 1.2vw, 24px) clamp(14px, 1.4vw, 28px) clamp(20px, 2vw, 32px);
+		padding: clamp(6px, 0.55vw, 10px) clamp(8px, 0.8vw, 16px);
+		height: 100%;
 		display: flex;
 		flex-direction: column;
-		gap: clamp(10px, 0.9vw, 16px);
+		gap: clamp(5px, 0.45vw, 8px);
+		min-height: 0;
+		overflow: hidden;
 	}
 
 	.back-link,
@@ -941,9 +942,9 @@
 		padding: 0;
 		background: transparent;
 		color: var(--text-secondary);
-		font-size: 12px;
+		font-size: 11px;
 		font-weight: 700;
-		margin-bottom: clamp(4px, 0.3vw, 8px);
+		margin-bottom: 0;
 		align-self: flex-start;
 		text-align: left;
 	}
@@ -970,15 +971,15 @@
 	/* topbar-sticky — unified-bar (hero + KPI + ops 한 row) 를 묶어 스크롤 시에도 상단 고정.
 	   z-index 10 으로 차트 hover tooltip(보통 z 5~9) 위. 배경 var(--bg-base). */
 	.topbar-sticky {
-		position: sticky;
-		top: 0;
+		position: static;
 		z-index: 10;
 		background: var(--bg-base);
-		padding: 4px 0 8px;
-		margin: -4px 0 0;
+		padding: 0;
+		margin: 0;
 		display: flex;
 		flex-direction: column;
-		gap: clamp(8px, 0.7vw, 14px);
+		gap: clamp(4px, 0.35vw, 8px);
+		flex: 0 0 auto;
 	}
 
 	/* 한 row 안에 [hero | KPI | ops]. 좁아지면 wrap.
@@ -988,16 +989,16 @@
 		display: flex;
 		flex-wrap: wrap;
 		align-items: stretch;
-		gap: clamp(8px, 0.7vw, 14px);
+		gap: clamp(5px, 0.45vw, 9px);
 	}
 
 	.hero {
 		display: flex;
 		justify-content: space-between;
-		gap: clamp(12px, 0.9vw, 18px);
-		padding: clamp(14px, 1vw, 18px) clamp(16px, 1.1vw, 20px);
-		padding-top: clamp(18px, 1.3vw, 22px);
-		border-radius: 14px;
+		gap: clamp(7px, 0.6vw, 12px);
+		padding: clamp(7px, 0.55vw, 10px) clamp(10px, 0.8vw, 14px);
+		padding-top: clamp(10px, 0.75vw, 13px);
+		border-radius: 10px;
 		background:
 			radial-gradient(ellipse at top left, rgba(48, 213, 200, 0.18), transparent 65%),
 			linear-gradient(135deg, rgba(48, 213, 200, 0.08), rgba(9, 75, 102, 0.12)),
@@ -1005,9 +1006,9 @@
 		border: 1px solid rgba(48, 213, 200, 0.22);
 		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 		align-items: center;
-		flex: 1.5 1 525px;
-		min-width: 420px;
-		max-width: 680px;
+		flex: 1.1 1 380px;
+		min-width: 340px;
+		max-width: 520px;
 		position: relative;
 		overflow: hidden;
 	}
@@ -1025,9 +1026,9 @@
 	/* CONTAINER caption — ops-bar 의 CONTROL 캡션과 미러링 */
 	.hero-caption {
 		position: absolute;
-		top: 5px;
-		left: 14px;
-		font-size: 9px;
+		top: 3px;
+		left: 12px;
+		font-size: 8px;
 		font-weight: 800;
 		letter-spacing: 0.12em;
 		color: var(--accent);
@@ -1038,7 +1039,7 @@
 	.hero-main {
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
+		gap: 4px;
 		min-width: 0;
 		flex: 1 1 auto;
 	}
@@ -1046,12 +1047,12 @@
 	.hero-titlebar {
 		display: inline-flex;
 		align-items: center;
-		gap: clamp(10px, 0.8vw, 14px);
+		gap: clamp(6px, 0.5vw, 10px);
 		flex-wrap: wrap;
 	}
 
 	h1 {
-		font-size: clamp(20px, 1.5vw, 28px);
+		font-size: clamp(16px, 1.15vw, 22px);
 		line-height: 1.05;
 		font-weight: 800;
 		letter-spacing: -0.018em;
@@ -1062,11 +1063,11 @@
 	.hero-image {
 		display: inline-flex;
 		align-items: center;
-		padding: 3px 10px;
+		padding: 2px 7px;
 		border-radius: 7px;
 		background: rgba(13, 17, 23, 0.6);
 		border: 1px solid rgba(48, 213, 200, 0.2);
-		font-size: 12px;
+		font-size: 10.5px;
 		color: rgba(48, 213, 200, 0.95);
 		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 		word-break: break-all;
@@ -1076,11 +1077,11 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
-		padding: 3px 9px;
+		padding: 2px 7px;
 		border-radius: 999px;
 		background: rgba(13, 17, 23, 0.55);
 		border: 1px solid rgba(31, 41, 55, 0.85);
-		font-size: 11px;
+		font-size: 10.5px;
 		color: var(--text-secondary);
 		font-weight: 600;
 	}
@@ -1088,7 +1089,7 @@
 	.hero-meta {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 6px;
+		gap: 4px;
 		align-items: center;
 	}
 
@@ -1096,22 +1097,22 @@
 	   기존 chip 형태의 메타 span 만 잡는다 (:not 으로 격리). insight-chip / mono-chip
 	   도 자체 스타일 가지므로 제외. */
 	.hero-meta > span:not(.agent-indicator):not(.agent-indicator *):not(.insight-chip):not(.mono-chip) {
-		padding: 3px 8px;
+		padding: 2px 7px;
 		border-radius: 999px;
 		background: rgba(13, 17, 23, 0.52);
 		border: 1px solid rgba(31, 41, 55, 0.8);
-		font-size: 11px;
+		font-size: 10.5px;
 		color: var(--text-secondary);
 	}
 
 	/* mono-chip — container ID 같은 hash 정보를 monospace 로. */
 	.mono-chip {
-		padding: 3px 8px;
+		padding: 2px 7px;
 		border-radius: 999px;
 		background: rgba(13, 17, 23, 0.52);
 		border: 1px solid rgba(31, 41, 55, 0.8);
 		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-		font-size: 11px;
+		font-size: 10.5px;
 		color: var(--text-muted);
 	}
 
@@ -1120,9 +1121,9 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
-		padding: 3px 9px;
+		padding: 2px 7px;
 		border-radius: 999px;
-		font-size: 11px;
+		font-size: 10.5px;
 		font-weight: 800;
 		letter-spacing: 0.02em;
 		cursor: help;
@@ -1154,9 +1155,9 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
-		padding: 4px 12px 4px 10px;
+		padding: 3px 9px 3px 8px;
 		border-radius: 999px;
-		font-size: 12px;
+		font-size: 11px;
 		font-weight: 800;
 		letter-spacing: 0.02em;
 		color: white;
@@ -1165,8 +1166,8 @@
 	.status-pill::before {
 		content: '';
 		display: inline-block;
-		width: 8px;
-		height: 8px;
+		width: 6px;
+		height: 6px;
 		border-radius: 50%;
 		background: currentColor;
 		box-shadow: 0 0 8px currentColor;
@@ -1174,11 +1175,11 @@
 
 	.hero-actions {
 		display: flex;
-		flex-direction: column;
+		flex-direction: row;
 		align-items: stretch;
-		gap: 6px;
+		gap: 5px;
 		flex-shrink: 0;
-		padding-left: clamp(12px, 0.9vw, 16px);
+		padding-left: clamp(7px, 0.55vw, 10px);
 		border-left: 1px solid rgba(48, 213, 200, 0.2);
 		align-self: stretch;
 		justify-content: center;
@@ -1190,13 +1191,13 @@
 		align-items: center;
 		justify-content: center;
 		gap: 5px;
-		padding: 7px 14px;
-		min-width: 110px;
+		padding: 5px 9px;
+		min-width: 78px;
 		border-radius: 8px;
 		background: rgba(13, 17, 23, 0.7);
 		border: 1px solid rgba(31, 41, 55, 0.9);
 		color: var(--text-secondary);
-		font-size: 11.5px;
+		font-size: 10.5px;
 		font-weight: 700;
 		font-family: inherit;
 		cursor: pointer;
@@ -1223,7 +1224,10 @@
 	}
 
 	.banner {
-		margin-top: 14px;
+		margin-top: 0;
+		padding: 8px 12px;
+		border-radius: 10px;
+		font-size: 12px;
 	}
 	.banner-warn {
 		background: rgba(251, 191, 36, 0.1);
@@ -1240,7 +1244,7 @@
 	   auto-fit grid 라 4 pill 자동 분배. */
 	.kpi-row {
 		flex: 1 1 0;
-		min-width: 320px;
+		min-width: 300px;
 		display: flex;
 		align-items: stretch;
 	}
@@ -1253,9 +1257,9 @@
 	   caption 라벨이 좌측 상단, 메인 영역은 단순 row. */
 	.ops-bar {
 		margin-top: 0;
-		padding: clamp(10px, 0.8vw, 14px) clamp(12px, 0.9vw, 16px);
-		padding-top: clamp(14px, 1vw, 18px);
-		border-radius: 14px;
+		padding: clamp(7px, 0.55vw, 10px) clamp(9px, 0.7vw, 12px);
+		padding-top: clamp(11px, 0.8vw, 14px);
+		border-radius: 10px;
 		background:
 			linear-gradient(180deg, rgba(13, 17, 23, 0.55), rgba(18, 23, 32, 0.98)),
 			rgba(18, 23, 32, 0.98);
@@ -1263,10 +1267,10 @@
 		display: flex;
 		flex-wrap: nowrap;
 		align-items: center;
-		gap: clamp(10px, 0.8vw, 14px);
-		flex: 1 1 380px;
-		min-width: 320px;
-		max-width: 580px;
+		gap: clamp(6px, 0.5vw, 10px);
+		flex: 0.95 1 330px;
+		min-width: 300px;
+		max-width: 500px;
 		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
 		position: relative;
 		overflow: hidden;
@@ -1275,9 +1279,9 @@
 	/* CONTROL caption — ops-bar 상단 좌측 작은 라벨 (overlay) */
 	.ops-caption {
 		position: absolute;
-		top: 5px;
-		left: 12px;
-		font-size: 9px;
+		top: 3px;
+		left: 10px;
+		font-size: 8px;
 		font-weight: 800;
 		letter-spacing: 0.12em;
 		color: var(--accent);
@@ -1289,21 +1293,21 @@
 	.ops-status {
 		display: flex;
 		align-items: center;
-		gap: 10px;
+		gap: 7px;
 		flex-shrink: 0;
 	}
 	.status-orb {
 		position: relative;
-		width: 38px;
-		height: 38px;
+		width: 28px;
+		height: 28px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		flex-shrink: 0;
 	}
 	.orb-core {
-		width: 14px;
-		height: 14px;
+		width: 10px;
+		height: 10px;
 		border-radius: 50%;
 		background: var(--orb-color, #6b7280);
 		box-shadow:
@@ -1346,14 +1350,14 @@
 		min-width: 0;
 	}
 	.status-name {
-		font-size: 13px;
+		font-size: 11.5px;
 		font-weight: 800;
 		color: var(--text-primary);
 		letter-spacing: -0.005em;
 		line-height: 1.1;
 	}
 	.status-meta {
-		font-size: 10.5px;
+		font-size: 9.5px;
 		color: var(--text-muted);
 		font-weight: 600;
 		white-space: nowrap;
@@ -1372,7 +1376,7 @@
 	.ops-actions {
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: 5px;
 		flex: 1 1 auto;
 		min-width: 0;
 		justify-content: flex-end;
@@ -1383,15 +1387,15 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 32px;
-		height: 32px;
+		width: 28px;
+		height: 28px;
 		padding: 0;
 		border-radius: 8px;
 		background: rgba(13, 17, 23, 0.6);
 		border: 1px solid rgba(31, 41, 55, 0.9);
 		color: var(--text-muted);
 		font-family: inherit;
-		font-size: 15px;
+		font-size: 13px;
 		cursor: pointer;
 		flex-shrink: 0;
 		transition: background-color var(--ease-fast), border-color var(--ease-fast), color var(--ease-fast);
@@ -1515,32 +1519,30 @@
 		border: 1px solid var(--border);
 	}
 
-	/* 12-col bento grid — 1440+: row1 charts(8) + logs(4), row2 process(5) + events(3) + inspect(4),
-	   row3 console(12, full-width).
-	   1280~1439: 차트/로그/하단 3분할/console 각각 1행씩 stack.
-	   ≤980: 1열 stack (모바일 fallback).
-
-	   row 는 자연 height (auto) — 각 cell 콘텐츠에 맞춰 늘어나고, grid 가 같은 row 내
-	   cell 들을 가장 큰 cell 에 맞춰 stretch 시킨다. viewport-fit 강제 X. */
+	/* Desktop workbench: charts left, logs+console live lane center, support panels right. */
 	.bento {
 		display: grid;
 		grid-template-columns: repeat(12, minmax(0, 1fr));
-		grid-template-rows: auto auto auto;
+		grid-template-rows: minmax(0, 1fr) minmax(0, 0.86fr) minmax(0, 0.9fr);
 		grid-template-areas:
-			"charts charts charts charts charts charts charts charts logs logs logs logs"
-			"process process process process events events events console console console console console"
-			"inspect inspect inspect inspect inspect inspect inspect inspect inspect inspect inspect inspect";
-		gap: clamp(10px, 0.9vw, 16px);
+			"charts charts charts charts charts live live live live process process process"
+			"charts charts charts charts charts live live live live events events events"
+			"charts charts charts charts charts live live live live inspect inspect inspect";
+		gap: clamp(5px, 0.45vw, 9px);
 		margin-top: 0;
+		flex: 1 1 0;
+		min-height: 0;
+		overflow: hidden;
 	}
 	.bento-area {
 		min-width: 0;
+		min-height: 0;
 	}
 	.area-charts {
 		grid-area: charts;
 	}
-	.area-logs {
-		grid-area: logs;
+	.area-live {
+		grid-area: live;
 	}
 	.area-process {
 		grid-area: process;
@@ -1551,8 +1553,48 @@
 	.area-inspect {
 		grid-area: inspect;
 	}
-	.area-console {
-		grid-area: console;
+
+	.live-stack {
+		display: grid;
+		grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+		gap: clamp(5px, 0.45vw, 9px);
+		height: 100%;
+		min-height: 0;
+		min-width: 0;
+		width: 100%;
+		max-width: 100%;
+		overflow: hidden;
+	}
+
+	.live-stack :global(.panel) {
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+		min-width: 0;
+		height: 100%;
+		width: 100%;
+		max-width: 100%;
+		margin-top: 0;
+		box-sizing: border-box;
+		overflow: hidden;
+	}
+
+	.live-stack :global(.toolbar) {
+		flex: 0 0 auto;
+		min-width: 0;
+		max-width: 100%;
+		box-sizing: border-box;
+	}
+
+	.live-stack :global(.logbox),
+	.live-stack :global(.termbox) {
+		flex: 1 1 0;
+		min-height: 0;
+		min-width: 0;
+		height: auto;
+		width: 100%;
+		max-width: 100%;
+		box-sizing: border-box;
 	}
 
 	/* bento 안의 component panel 들은 grid item 자신이 자리 잡으므로 컴포넌트 내부의
@@ -1577,20 +1619,22 @@
 		width: 100%;
 		height: 100%;
 		margin-top: 0;
+		min-height: 0;
 	}
 
 	.panel {
-		border-radius: var(--radius-panel, 14px);
-		padding: clamp(16px, 1.2vw, 22px);
-		margin-top: 14px;
+		border-radius: 10px;
+		padding: clamp(8px, 0.7vw, 12px);
+		margin-top: 0;
+		min-height: 0;
 	}
 
 	.panel-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: flex-end;
-		gap: clamp(8px, 0.7vw, 14px);
-		margin-bottom: clamp(8px, 0.6vw, 14px);
+		gap: clamp(5px, 0.45vw, 10px);
+		margin-bottom: clamp(5px, 0.45vw, 8px);
 	}
 
 	.panel-header.slim {
@@ -1605,8 +1649,8 @@
 	}
 
 	h2 {
-		font-size: clamp(15px, 1.15vw, 19px);
-		margin-bottom: 4px;
+		font-size: clamp(13px, 0.95vw, 16px);
+		margin-bottom: 2px;
 		font-weight: 700;
 		letter-spacing: -0.005em;
 	}
@@ -1622,7 +1666,7 @@
 
 	h2 + p,
 	.panel-header p {
-		font-size: 12px;
+		font-size: 11px;
 		color: var(--text-secondary);
 	}
 
@@ -1631,12 +1675,12 @@
 		align-items: center;
 		gap: 4px;
 		margin-right: auto;
-		padding: 3px 9px;
+		padding: 2px 7px;
 		border-radius: var(--radius-full);
 		background: rgba(48, 213, 200, 0.1);
 		border: 1px solid rgba(48, 213, 200, 0.28);
 		color: var(--accent);
-		font-size: 10px;
+		font-size: 9.5px;
 		font-weight: 800;
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
@@ -1663,18 +1707,18 @@
 		display: flex;
 		gap: 3px;
 		flex-wrap: wrap;
-		padding: 2px;
+		padding: 1px;
 		background: rgba(13, 17, 23, 0.5);
 		border: 1px solid rgba(31, 41, 55, 0.6);
 		border-radius: 8px;
 	}
 
 	.range-btn {
-		padding: 4px 10px;
-		border-radius: 6px;
+		padding: 3px 7px;
+		border-radius: 5px;
 		background: transparent;
 		color: var(--text-secondary);
-		font-size: 11px;
+		font-size: 10px;
 		font-weight: 700;
 		transition: background-color var(--ease-fast), color var(--ease-fast);
 	}
@@ -1693,9 +1737,10 @@
 	.chart-grid {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
-		grid-template-rows: repeat(2, minmax(300px, 1fr));
-		gap: clamp(10px, 0.8vw, 16px);
-		flex: 1 1 auto;
+		grid-template-rows: repeat(2, minmax(0, 1fr));
+		grid-auto-rows: minmax(0, 1fr);
+		gap: clamp(5px, 0.45vw, 8px);
+		flex: 1 1 0;
 		min-height: 0;
 	}
 
@@ -1703,15 +1748,16 @@
 	.area-charts {
 		display: flex;
 		flex-direction: column;
+		min-height: 0;
 	}
 
 	.chart-card {
-		border-radius: var(--radius-panel);
-		padding: clamp(10px, 0.8vw, 14px) clamp(12px, 0.9vw, 16px);
+		border-radius: 9px;
+		padding: clamp(6px, 0.5vw, 9px);
 		transition: border-color var(--ease-fast);
 		display: flex;
 		flex-direction: column;
-		min-height: 300px;
+		min-height: 0;
 	}
 	.chart-card:hover {
 		border-color: rgba(48, 213, 200, 0.22);
@@ -1721,14 +1767,14 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		gap: clamp(6px, 0.6vw, 12px);
-		margin-bottom: clamp(6px, 0.5vw, 10px);
-		padding-bottom: clamp(5px, 0.4vw, 8px);
+		gap: clamp(4px, 0.35vw, 8px);
+		margin-bottom: clamp(3px, 0.25vw, 5px);
+		padding-bottom: clamp(3px, 0.25vw, 5px);
 		border-bottom: 1px solid rgba(100, 116, 139, 0.14);
 	}
 
 	.chart-head h3 {
-		font-size: clamp(13px, 0.95vw, 16px);
+		font-size: clamp(11px, 0.75vw, 13px);
 		font-weight: 700;
 	}
 
@@ -1752,12 +1798,12 @@
 	}
 
 	.mode-toggle button {
-		padding: 3px 9px;
+		padding: 2px 7px;
 		background: rgba(13, 17, 23, 0.86);
 		border: none;
 		color: var(--text-muted);
 		font-family: inherit;
-		font-size: 10px;
+		font-size: 9.5px;
 		font-weight: 700;
 		cursor: pointer;
 		transition: background-color var(--ease-fast), color var(--ease-fast);
@@ -1780,28 +1826,29 @@
 	.details-grid {
 		display: grid;
 		grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
-		gap: clamp(10px, 0.8vw, 18px);
-		margin-top: clamp(8px, 0.6vw, 14px);
+		gap: clamp(6px, 0.5vw, 10px);
+		margin-top: clamp(5px, 0.4vw, 8px);
 	}
 
 	/* 런타임/요청 설정 accordion — 기본 닫힘 (사용자가 펼쳐서 본다).
 	   자연 스크롤 환경이라 모든 viewport 에서 표시. */
 	.details-accordion {
-		margin-top: clamp(8px, 0.6vw, 14px);
+		margin-top: 0;
 		border: 1px solid var(--border);
-		border-radius: var(--radius-panel);
+		border-radius: 10px;
 		background: rgba(18, 23, 32, 0.96);
 		overflow: hidden;
+		flex: 0 0 auto;
 	}
 	.details-accordion > summary {
 		list-style: none;
 		cursor: pointer;
-		padding: clamp(8px, 0.6vw, 12px) clamp(12px, 1vw, 18px);
+		padding: 6px 10px;
 		display: flex;
 		align-items: center;
 		gap: 10px;
 		user-select: none;
-		font-size: 12px;
+		font-size: 11px;
 		transition: background-color var(--ease-fast);
 	}
 	.details-accordion > summary::-webkit-details-marker { display: none; }
@@ -1813,7 +1860,7 @@
 		color: var(--text-primary);
 	}
 	.details-hint {
-		font-size: 11px;
+		font-size: 10px;
 		color: var(--text-muted);
 	}
 	.details-chevron {
@@ -1829,7 +1876,7 @@
 		border-bottom: 1px solid var(--border);
 	}
 	.details-accordion > .details-grid {
-		padding: clamp(10px, 0.8vw, 16px);
+		padding: clamp(6px, 0.5vw, 10px);
 		margin-top: 0;
 	}
 
@@ -1922,14 +1969,13 @@
 		color: var(--text-secondary);
 	}
 
-	/* 1280~1439: 차트 풀폭 → 로그 풀폭 → 하단 process/events/console 가로 3분할 → inspect 풀폭 */
+	/* 1280~1439: 차트와 라이브 패널을 위에 두고 보조 패널은 한 줄로 압축. */
 	@media (max-width: 1439px) {
 		.bento {
+			grid-template-rows: minmax(0, 1.15fr) minmax(0, 0.85fr);
 			grid-template-areas:
-				"charts charts charts charts charts charts charts charts charts charts charts charts"
-				"logs logs logs logs logs logs logs logs logs logs logs logs"
-				"process process process process events events events console console console console console"
-				"inspect inspect inspect inspect inspect inspect inspect inspect inspect inspect inspect inspect";
+				"charts charts charts charts charts charts charts charts live live live live"
+				"process process process events events events inspect inspect live live live live";
 		}
 	}
 
@@ -1937,6 +1983,9 @@
 	@media (max-width: 980px) {
 		.page {
 			padding: 14px 12px 24px;
+			height: auto;
+			min-height: 100%;
+			overflow: visible;
 		}
 
 		.hero,
@@ -1951,17 +2000,22 @@
 			grid-template-columns: 1fr;
 			grid-template-areas:
 				'charts'
-				'logs'
+				'live'
 				'process'
 				'events'
-				'console'
 				'inspect';
+			overflow: visible;
+			flex: 0 0 auto;
 		}
 
 		.chart-grid,
 		.details-grid,
 		.info-grid {
 			grid-template-columns: 1fr;
+		}
+
+		.live-stack {
+			grid-template-rows: minmax(260px, auto) minmax(260px, auto);
 		}
 	}
 </style>

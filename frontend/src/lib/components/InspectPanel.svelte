@@ -240,12 +240,18 @@
 		background: rgba(18, 23, 32, 0.96);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-panel);
-		padding: clamp(6px, 0.6vw, 14px);
-		margin-top: 18px;
+		padding: clamp(5px, 0.45vw, 8px);
+		margin-top: 0;
 		transition: border-color var(--ease-fast);
 		display: flex;
 		flex-direction: column;
 		min-height: 0;
+		min-width: 0;
+		height: 100%;
+		width: 100%;
+		max-width: 100%;
+		box-sizing: border-box;
+		overflow: hidden;
 	}
 	.panel:hover {
 		border-color: rgba(48, 213, 200, 0.22);
@@ -253,25 +259,26 @@
 	.panel-header {
 		display: flex;
 		justify-content: space-between;
-		align-items: flex-end;
-		gap: clamp(8px, 0.8vw, 16px);
-		margin-bottom: clamp(4px, 0.4vw, 10px);
+		align-items: center;
+		gap: 8px;
+		margin-bottom: 5px;
 	}
 	h2 {
-		font-size: 20px;
-		margin-bottom: 4px;
+		font-size: 14px;
+		margin-bottom: 0;
 	}
 	.panel-header p {
-		font-size: 12px;
+		display: none;
+		font-size: 11px;
 		color: var(--text-secondary);
 	}
 
 	.state-row {
-		padding: 16px;
-		border-radius: 12px;
+		padding: 10px;
+		border-radius: 8px;
 		background: rgba(13, 17, 23, 0.76);
 		border: 1px solid rgba(31, 41, 55, 0.86);
-		font-size: 13px;
+		font-size: 11px;
 		color: var(--text-secondary);
 	}
 	.state-row.error {
@@ -282,22 +289,28 @@
 
 	.grid {
 		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: clamp(10px, 0.7vw, 14px);
-		/* 자연 height — auto rows. 카드 콘텐츠 만큼 늘어남 (긴 mounts 도 잘리지 X).
-		   page 자체가 스크롤 되므로 panel 안에서 스크롤 없음. */
+		grid-template-columns: 1fr;
+		gap: 5px;
+		flex: 1 1 0;
+		min-height: 0;
+		min-width: 0;
+		width: 100%;
+		max-width: 100%;
+		box-sizing: border-box;
+		overflow: auto;
+		padding-right: 2px;
 	}
 
 	.card {
-		padding: clamp(5px, 0.5vw, 10px) clamp(7px, 0.6vw, 12px);
-		border-radius: var(--radius-panel);
+		padding: 6px 7px;
+		border-radius: 8px;
 		background: rgba(13, 17, 23, 0.76);
 		border: 1px solid rgba(31, 41, 55, 0.86);
 	}
 
 	.card-title {
 		display: block;
-		font-size: 10px;
+		font-size: 9.5px;
 		color: var(--text-muted);
 		margin-bottom: 4px;
 		letter-spacing: 0.03em;
@@ -313,9 +326,9 @@
 
 	.badge {
 		display: inline-flex;
-		padding: 2px 7px;
+		padding: 1px 6px;
 		border-radius: 999px;
-		font-size: 10px;
+		font-size: 9.5px;
 		font-weight: 700;
 	}
 	.badge.success {
@@ -342,14 +355,14 @@
 	dl {
 		display: flex;
 		flex-direction: column;
-		gap: 3px;
+		gap: 2px;
 	}
 	dl > div {
 		display: flex;
 		justify-content: space-between;
-		gap: 10px;
-		font-size: 11px;
-		padding: 2px 0;
+		gap: 8px;
+		font-size: 10.5px;
+		padding: 1px 0;
 		border-bottom: 1px solid rgba(31, 41, 55, 0.4);
 	}
 	dl > div:last-child {
@@ -377,30 +390,30 @@
 	}
 
 	.subsection {
-		margin-top: 12px;
-		padding-top: 10px;
+		margin-top: 6px;
+		padding-top: 6px;
 		border-top: 1px dashed rgba(100, 116, 139, 0.2);
 	}
 	.sub-title {
 		display: block;
-		font-size: 11px;
+		font-size: 10px;
 		color: var(--text-muted);
-		margin-bottom: 6px;
+		margin-bottom: 4px;
 	}
 
 	.mount-list {
 		list-style: none;
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
+		gap: 4px;
 	}
 	.mount-list li {
 		display: flex;
 		gap: 6px;
 		flex-wrap: wrap;
 		align-items: center;
-		font-size: 12px;
-		padding-bottom: 6px;
+		font-size: 10.5px;
+		padding-bottom: 4px;
 		border-bottom: 1px solid rgba(31, 41, 55, 0.6);
 		min-width: 0;
 		max-width: 100%;
@@ -436,12 +449,13 @@
 	}
 
 	.empty {
-		font-size: 12px;
+		font-size: 11px;
 		color: var(--text-secondary);
 	}
 
 	.raw {
-		margin-top: 14px;
+		margin-top: 5px;
+		flex: 0 0 auto;
 	}
 
 	.raw-toggle {
@@ -450,9 +464,9 @@
 		color: var(--text-secondary);
 		cursor: pointer;
 		font-family: inherit;
-		font-size: 12px;
+		font-size: 10.5px;
 		font-weight: 700;
-		padding: 4px 0;
+		padding: 2px 0;
 	}
 	.raw-toggle:hover {
 		color: var(--accent);

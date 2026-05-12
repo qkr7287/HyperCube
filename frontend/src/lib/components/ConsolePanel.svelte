@@ -355,8 +355,17 @@
 		background: rgba(18, 23, 32, 0.96);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-panel);
-		padding: clamp(6px, 0.6vw, 14px);
+		padding: clamp(5px, 0.45vw, 8px);
 		transition: border-color var(--ease-fast);
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+		min-width: 0;
+		height: 100%;
+		width: 100%;
+		max-width: 100%;
+		box-sizing: border-box;
+		overflow: hidden;
 	}
 	.panel:hover {
 		border-color: rgba(48, 213, 200, 0.22);
@@ -364,9 +373,9 @@
 	.panel-header {
 		display: flex;
 		justify-content: space-between;
-		align-items: flex-end;
-		gap: 18px;
-		margin-bottom: clamp(4px, 0.4vw, 10px);
+		align-items: center;
+		gap: 8px;
+		margin-bottom: 5px;
 	}
 	.panel-header.closed-row {
 		align-items: center;
@@ -374,7 +383,7 @@
 	}
 	.panel-header.closed-row h2 {
 		margin-bottom: 0;
-		font-size: clamp(12px, 0.85vw, 14px);
+		font-size: clamp(12px, 0.8vw, 14px);
 	}
 	.panel-header.closed-row h2::before {
 		content: '›_ ';
@@ -400,11 +409,12 @@
 		font-size: 11px;
 	}
 	h2 {
-		font-size: 20px;
-		margin-bottom: 4px;
+		font-size: 14px;
+		margin-bottom: 0;
 	}
 	.panel-header p {
-		font-size: 12px;
+		display: none;
+		font-size: 11px;
 		color: var(--text-secondary);
 	}
 
@@ -462,13 +472,13 @@
 	}
 
 	.toggle {
-		padding: 8px 14px;
-		border-radius: 10px;
+		padding: 5px 9px;
+		border-radius: 7px;
 		background: rgba(13, 17, 23, 0.86);
 		border: 1px solid rgba(31, 41, 55, 0.9);
 		color: var(--text-primary);
 		font-family: inherit;
-		font-size: 12px;
+		font-size: 10.5px;
 		font-weight: 700;
 		cursor: pointer;
 	}
@@ -481,18 +491,21 @@
 	.toolbar {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 8px;
+		gap: 5px;
 		align-items: center;
-		margin-bottom: 10px;
-		padding: 10px;
-		border-radius: 10px;
+		min-width: 0;
+		max-width: 100%;
+		box-sizing: border-box;
+		margin-bottom: 5px;
+		padding: 5px 6px;
+		border-radius: 8px;
 		background: rgba(13, 17, 23, 0.5);
 		border: 1px solid rgba(31, 41, 55, 0.6);
 	}
 	.status {
-		font-size: 11px;
+		font-size: 10px;
 		font-weight: 700;
-		padding: 4px 10px;
+		padding: 3px 7px;
 		border-radius: 999px;
 		background: rgba(100, 116, 139, 0.16);
 		color: var(--text-secondary);
@@ -511,30 +524,30 @@
 
 	.sel {
 		display: inline-flex;
-		gap: 6px;
+		gap: 4px;
 		align-items: center;
-		font-size: 11px;
+		font-size: 10px;
 		color: var(--text-secondary);
 	}
 	.sel select,
 	.sel input {
-		padding: 4px 8px;
-		border-radius: 8px;
+		padding: 3px 6px;
+		border-radius: 7px;
 		background: rgba(13, 17, 23, 0.86);
 		border: 1px solid rgba(31, 41, 55, 0.9);
 		color: var(--text-primary);
 		font-family: inherit;
-		font-size: 11px;
+		font-size: 10px;
 	}
 
 	.btn {
-		padding: 6px 10px;
-		border-radius: 8px;
+		padding: 4px 7px;
+		border-radius: 7px;
 		background: rgba(13, 17, 23, 0.86);
 		border: 1px solid rgba(31, 41, 55, 0.9);
 		color: var(--text-secondary);
 		font-family: inherit;
-		font-size: 11px;
+		font-size: 10px;
 		font-weight: 700;
 		cursor: pointer;
 	}
@@ -548,10 +561,15 @@
 	}
 
 	.termbox {
-		height: clamp(260px, 36vh, 480px);
-		min-height: 220px;
-		padding: 10px;
-		border-radius: 10px;
+		flex: 1 1 0;
+		height: auto;
+		min-height: 0;
+		min-width: 0;
+		width: 100%;
+		max-width: 100%;
+		box-sizing: border-box;
+		padding: 7px;
+		border-radius: 8px;
 		background: #02060c;
 		border: 1px solid rgba(31, 41, 55, 0.7);
 		overflow: hidden;

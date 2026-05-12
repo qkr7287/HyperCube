@@ -321,9 +321,18 @@
 		background: rgba(18, 23, 32, 0.96);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-panel);
-		padding: clamp(6px, 0.6vw, 14px);
-		margin-top: 18px;
+		padding: clamp(5px, 0.45vw, 8px);
+		margin-top: 0;
 		transition: border-color var(--ease-fast);
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+		min-width: 0;
+		height: 100%;
+		width: 100%;
+		max-width: 100%;
+		box-sizing: border-box;
+		overflow: hidden;
 	}
 	.panel:hover {
 		border-color: rgba(48, 213, 200, 0.22);
@@ -331,16 +340,17 @@
 	.panel-header {
 		display: flex;
 		justify-content: space-between;
-		align-items: flex-end;
-		gap: 18px;
-		margin-bottom: clamp(4px, 0.4vw, 10px);
+		align-items: center;
+		gap: 8px;
+		margin-bottom: 5px;
 	}
 	h2 {
-		font-size: 20px;
-		margin-bottom: 4px;
+		font-size: 14px;
+		margin-bottom: 0;
 	}
 	.panel-header p {
-		font-size: 12px;
+		display: none;
+		font-size: 11px;
 		color: var(--text-secondary);
 	}
 
@@ -358,9 +368,9 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 12px;
-		padding: 32px 20px;
-		min-height: 200px;
+		gap: 8px;
+		padding: 14px 12px;
+		min-height: 0;
 		border: 1px dashed rgba(48, 213, 200, 0.28);
 		border-radius: 12px;
 		background: rgba(48, 213, 200, 0.04);
@@ -375,7 +385,7 @@
 		color: var(--accent);
 	}
 	.placeholder-icon {
-		font-size: 28px;
+		font-size: 20px;
 		line-height: 1;
 		color: var(--accent);
 		opacity: 0.7;
@@ -384,13 +394,13 @@
 		opacity: 1;
 	}
 	.placeholder-title {
-		font-size: 14px;
+		font-size: 12px;
 		font-weight: 800;
 		letter-spacing: 0.02em;
 		color: var(--text-primary);
 	}
 	.placeholder-desc {
-		font-size: 12px;
+		font-size: 10.5px;
 		font-weight: 500;
 		text-align: center;
 		line-height: 1.5;
@@ -398,13 +408,13 @@
 	}
 
 	.toggle {
-		padding: 8px 14px;
-		border-radius: 10px;
+		padding: 5px 9px;
+		border-radius: 7px;
 		background: rgba(13, 17, 23, 0.86);
 		border: 1px solid rgba(31, 41, 55, 0.9);
 		color: var(--text-primary);
 		font-family: inherit;
-		font-size: 12px;
+		font-size: 10.5px;
 		font-weight: 700;
 		cursor: pointer;
 	}
@@ -417,18 +427,21 @@
 	.toolbar {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 8px;
+		gap: 5px;
 		align-items: center;
-		margin-bottom: 10px;
-		padding: 10px;
-		border-radius: 10px;
+		min-width: 0;
+		max-width: 100%;
+		box-sizing: border-box;
+		margin-bottom: 5px;
+		padding: 5px 6px;
+		border-radius: 8px;
 		background: rgba(13, 17, 23, 0.5);
 		border: 1px solid rgba(31, 41, 55, 0.6);
 	}
 	.status {
-		font-size: 11px;
+		font-size: 10px;
 		font-weight: 700;
-		padding: 4px 10px;
+		padding: 3px 7px;
 		border-radius: 999px;
 		background: rgba(100, 116, 139, 0.16);
 		color: var(--text-secondary);
@@ -446,33 +459,33 @@
 	}
 
 	.filter {
-		flex: 1 1 200px;
+		flex: 1 1 140px;
 		min-width: 0;
-		padding: 6px 10px;
-		border-radius: 8px;
+		padding: 4px 7px;
+		border-radius: 7px;
 		background: rgba(13, 17, 23, 0.86);
 		border: 1px solid rgba(31, 41, 55, 0.9);
 		color: var(--text-primary);
 		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-		font-size: 12px;
+		font-size: 10.5px;
 	}
 
 	.chk {
 		display: inline-flex;
-		gap: 5px;
+		gap: 4px;
 		align-items: center;
-		font-size: 11px;
+		font-size: 10px;
 		color: var(--text-secondary);
 	}
 
 	.btn {
-		padding: 6px 10px;
-		border-radius: 8px;
+		padding: 4px 7px;
+		border-radius: 7px;
 		background: rgba(13, 17, 23, 0.86);
 		border: 1px solid rgba(31, 41, 55, 0.9);
 		color: var(--text-secondary);
 		font-family: inherit;
-		font-size: 11px;
+		font-size: 10px;
 		font-weight: 700;
 		cursor: pointer;
 	}
@@ -487,20 +500,26 @@
 
 	.count {
 		margin-left: auto;
-		font-size: 11px;
+		font-size: 10px;
 		color: var(--text-muted);
 	}
 
 	.logbox {
-		height: clamp(180px, 24vh, 380px);
+		flex: 1 1 0;
+		height: auto;
+		min-height: 0;
+		min-width: 0;
+		width: 100%;
+		max-width: 100%;
+		box-sizing: border-box;
 		overflow-y: auto;
-		padding: 12px;
-		border-radius: 10px;
+		padding: 7px;
+		border-radius: 8px;
 		background: rgba(2, 6, 12, 0.7);
 		border: 1px solid rgba(31, 41, 55, 0.7);
 		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-		font-size: 11px;
-		line-height: 1.5;
+		font-size: 10.5px;
+		line-height: 1.38;
 		color: #cbd5e1;
 	}
 
