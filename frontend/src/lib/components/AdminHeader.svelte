@@ -68,8 +68,9 @@
 	}
 
 	$effect(() => {
-		document.addEventListener('click', handleDocClick);
-		return () => document.removeEventListener('click', handleDocClick);
+		// capture 로 — 다른 dropdown 의 stopPropagation 에 막히지 않게.
+		document.addEventListener('click', handleDocClick, true);
+		return () => document.removeEventListener('click', handleDocClick, true);
 	});
 </script>
 
