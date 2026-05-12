@@ -16,13 +16,18 @@ However, I would not implement it exactly as written. The main corrections are:
 5. Use a short-lived signed workspace open ticket instead of putting the user's JWT access token in a `/workspace/...` URL.
 6. Configure Jupyter with a `base_url=/workspace/<container_id>/` or equivalent. Otherwise Jupyter's redirects, static files, and websocket paths are likely to break behind a path proxy.
 7. Run the feature in **airgapped mode by default**. No runtime component may pull from Hugging Face, GitHub, GHCR, Docker Hub, pip, apt, npm, S3, or any other external network. Models and datasets come only from user/admin uploads, and runtime images come only from offline image import or an internal registry.
+8. Do **not** fold model preparation into `create_container`. From PR 4 onward, model cache preparation is a separate `prepare_model_assets` command with `command_progress` updates.
+9. First implementation stores uploaded model assets on the HyperCube server local disk. Use a configured path such as `HC_MODEL_STORAGE_DIR`, not arbitrary scattered directories.
+10. Add a reservation timeout janitor with PR 2. A crashed or disconnected agent must not leave GPU slices locked forever.
+11. Do not persist the plaintext Jupyter workspace token in relational tables. Store only a token reference/hash in DB and keep the plaintext token in Redis or another in-memory secret store with a controlled TTL.
+12. Reuse the existing approved Agent token for agent-to-backend asset API authentication in the first implementation; scope and harden it in the new model catalog endpoints instead of adding a second service account system immediately.
 
 Recommended implementation order:
 
 1. GPU inventory and admin/API visibility.
 2. Full-GPU exclusive allocation and agent `create_container.gpus`.
 3. Workspace templates and Jupyter open flow.
-4. Model catalog, upload, agent cache, and read-only model mounts.
+4. Model catalog, upload, separate asset prepare command, agent cache, and read-only model mounts.
 5. MIG/shared GPU, quotas, scheduling, and stronger multi-agent asset distribution.
 
 ## Airgap Operating Constraint
@@ -47,7 +52,7 @@ Operational rule:
 
 - Container images are brought in as tar files with `docker load`, or pushed by an operator into an internal offline registry.
 - Models/datasets are uploaded through HyperCube UI/API or imported by an admin from an offline directory.
-- The backend distributes uploaded assets to agents only over the internal HyperCube control/data plane.
+- The backend stores uploaded assets under the configured HyperCube server model directory and exposes them only through an authenticated internal transfer endpoint. Agents must not fetch model data from public networks.
 - Workspaces may serve Jupyter through the backend proxy, but workspace containers should have external egress blocked by host firewall or Docker network policy.
 
 ## Benchmark Summary
@@ -102,14 +107,16 @@ Use these product terms consistently:
 4. User selects an ML template such as PyTorch + Jupyter, TensorFlow + Jupyter, vLLM serve, or code-server + CUDA.
 5. User selects an active agent. UI then loads that agent's GPU slices.
 6. User selects one full GPU or MIG slice.
-7. User optionally uploads/selects model assets already stored in HyperCube. If the selected agent does not have the model cached, the UI shows "준비 필요".
+7. User optionally uploads/selects model assets already stored in HyperCube. External URL import is not offered. If the selected agent does not have the model cached, the UI shows "준비 필요".
 8. User submits a normal `ContainerRequest`.
-9. Admin approves. Backend reserves GPU slices under `select_for_update`.
-10. Agent prepares missing model cache, creates the container with GPU device IDs and mounts, starts Jupyter, and returns host port plus runtime metadata.
-11. Backend marks allocation active, stores workspace metadata, and exposes the workspace on `/user/workspaces`.
-12. User clicks "Jupyter 열기". Frontend requests a short-lived open ticket and opens `/workspace/<container_id>/lab?ticket=<ticket>`.
-13. Backend validates ticket/session, proxies HTTP and websocket traffic to Jupyter, and never exposes the Jupyter token to the user.
-14. User monitors CPU/memory/GPU/network/disk/process/log/console from the existing container dashboard and controls start/stop/restart from HyperCube.
+9. Admin approves. Backend reserves GPU slices under `select_for_update` and sets a reservation timeout.
+10. If selected models are missing on the target agent, backend dispatches `prepare_model_assets` as its own command and streams progress through existing `command_progress`.
+11. After all selected models are ready in the agent cache, backend dispatches `create_container` with GPU device IDs and read-only model mounts.
+12. Agent starts Jupyter and returns host port plus runtime metadata.
+13. Backend marks allocation active, stores workspace metadata without a plaintext token, and exposes the workspace on `/user/workspaces`.
+14. User clicks "Jupyter 열기". Frontend requests a short-lived open ticket and opens `/workspace/<container_id>/lab?ticket=<ticket>`.
+15. Backend validates ticket/session, proxies HTTP and websocket traffic to Jupyter, and never exposes the Jupyter token to the user.
+16. User monitors CPU/memory/GPU/network/disk/process/log/console from the existing container dashboard and controls start/stop/restart from HyperCube.
 
 ## Data Model
 
@@ -177,7 +184,9 @@ class ContainerRequest(models.Model):
     gpu_share_ok = models.BooleanField(default=False)
     model_version_ids = models.JSONField(default=list, blank=True)
     is_workspace = models.BooleanField(default=False)
-    workspace_token = models.CharField(max_length=128, blank=True, default="")  # internal only
+    workspace_token_ref = models.CharField(max_length=64, blank=True, default="")
+    workspace_token_hash = models.CharField(max_length=128, blank=True, default="")
+    workspace_token_expires_at = models.DateTimeField(null=True, blank=True)
 ```
 
 Extend containers:
@@ -191,7 +200,9 @@ class Container(models.Model):
     workspace_internal_port = models.PositiveIntegerField(null=True, blank=True)
     workspace_host_port = models.PositiveIntegerField(null=True, blank=True)
     workspace_base_url = models.CharField(max_length=255, blank=True, default="")
-    workspace_token = models.CharField(max_length=128, blank=True, default="")  # never serialize to user
+    workspace_token_ref = models.CharField(max_length=64, blank=True, default="")
+    workspace_token_hash = models.CharField(max_length=128, blank=True, default="")
+    workspace_token_expires_at = models.DateTimeField(null=True, blank=True)
 ```
 
 Add allocation lifecycle:
@@ -204,8 +215,11 @@ class GpuAllocation(models.Model):
     status = models.CharField(max_length=16, default="reserved")  # reserved/active/released/failed
     share_mode = models.CharField(max_length=16, default="exclusive")  # exclusive/shared
     requested_at = models.DateTimeField(auto_now_add=True)
+    reserved_until = models.DateTimeField(null=True, blank=True)
     activated_at = models.DateTimeField(null=True, blank=True)
     released_at = models.DateTimeField(null=True, blank=True)
+    failed_at = models.DateTimeField(null=True, blank=True)
+    failure_reason = models.TextField(blank=True, default="")
 
     class Meta:
         indexes = [
@@ -216,6 +230,14 @@ class GpuAllocation(models.Model):
 ```
 
 The request JSON fields are snapshots for serializer/API convenience. `GpuAllocation` is the source of truth.
+
+Workspace token handling:
+
+- Generate the plaintext Jupyter token only at dispatch time.
+- Store plaintext in Redis as `workspace:token:<workspace_token_ref>` with an operator-configured TTL. Refresh the TTL while the workspace is active or on successful open-ticket use.
+- Store only `workspace_token_ref`, `workspace_token_hash`, and expiry metadata in Postgres.
+- If Redis loses the plaintext token, the running container may continue, but the proxy must refuse new Jupyter opens until the workspace is restarted or the token is rotated through a controlled backend action.
+- Redact token refs/hashes from `__str__`, admin list display, serializers, logs, and deployment log rendering.
 
 ### New `backend/apps/models_catalog/`
 
@@ -237,6 +259,7 @@ class ModelVersion(models.Model):
     asset = models.ForeignKey(ModelAsset, on_delete=models.CASCADE, related_name="versions")
     version = models.CharField(max_length=64)
     source_type = models.CharField(max_length=32, default="upload")  # upload/admin_import only
+    storage_backend = models.CharField(max_length=32, default="nas")  # local/nas/minio/admin_import
     storage_uri = models.CharField(max_length=512)
     size_bytes = models.BigIntegerField(default=0)
     checksum = models.CharField(max_length=128, blank=True, default="")
@@ -261,16 +284,23 @@ class ModelVersionCache(models.Model):
         unique_together = [("version", "agent")]
 ```
 
-MVP storage options:
+Storage options:
 
-- Single-host/dev: backend local storage plus agent-local cache under `HC_MODEL_CACHE_DIR`.
-- Production/on-prem airgap: backend-managed local/NAS storage inside the closed network; agent pulls from an authenticated backend API path, not from a public URL.
-- Admin import: operator places a tar/zip/model directory on the HyperCube server or agent host, then registers it through an admin-only import action.
+| Option | Use case | Decision |
+|---|---|---|
+| A. HyperCube server local storage | First implementation. User uploads or admin imports land under a backend-managed directory such as `/var/lib/hypercube/model-assets`. Agent downloads from an authenticated backend endpoint over the internal network during `prepare_model_assets`. | Default MVP. Simple, airgap-safe, and enough to build the workflow end to end. |
+| B. Shared NAS path | Later scale-out option for multi-agent sites or repeated 100GB+ model distribution. Backend and GPU agents see the same offline NFS/CIFS/local shared mount. | Optional later optimization, not required for the first build. |
+| C. Internal MinIO/S3-compatible storage | Larger sites that want object storage semantics inside the closed network. | Later option; adds an operational dependency. |
+| Admin import | Operator pre-places a tar/zip/model directory on the HyperCube server or an agent host, then registers it through an admin-only import action. | Supported for airgap ingestion. |
+
+For the first implementation, plan around option A. A 100GB+ model transfer can still take a long time, so it must run through separate `prepare_model_assets` progress and must not be hidden inside `create_container`. Add NAS or internal object storage later only if local backend storage becomes the bottleneck.
 
 Use internal URI schemes such as:
 
 - `hc-upload://models/<model_version_id>` for files uploaded through HyperCube.
 - `hc-import://models/<model_version_id>` for admin-imported offline files.
+- `hc-local://models/<asset_slug>/<version>/` for files stored under `HC_MODEL_STORAGE_DIR`.
+- `nas://models/<asset_slug>/<version>/` for a later backend-approved shared storage path.
 - `agent-cache://<agent_id>/<model_version_id>` for verified agent-local cache rows.
 
 Do not store external URLs in `storage_uri`.
@@ -349,21 +379,25 @@ Backend behavior:
 - If an active allocation disappears from inventory, keep allocation active but mark hardware offline/error for operator visibility.
 - Use `transaction.atomic()` and `select_for_update()` in inventory application so stale rows do not race with approval.
 
-### `prepare_model_assets` optional command
+### `prepare_model_assets` command
 
-This is recommended before full model catalog support:
+This command is mandatory from PR 4 onward. Do not fold model preparation into `create_container`.
+
+Reason: first-time preparation of a 100GB+ model can take tens of minutes. If it is hidden inside container creation, the user sees no meaningful progress, the operator cannot distinguish "copying model" from "container failed", and a reserved GPU slice can stay locked until the long operation times out.
+
+Use the same `ContainerRequest.id` as `requestId` so existing `command_progress` handling updates `ContainerRequest.progress_message` and `progress_percent`. Backend must also track the current deployment phase, because a successful `prepare_model_assets` response is not a deployed container. On prepare success, backend updates `ModelVersionCache` rows and then dispatches `create_container`; on prepare failure/timeout, backend fails the request and releases or fails reserved allocations.
 
 ```json
 {
   "command": "prepare_model_assets",
   "params": {
-    "transferMode": "backend_pull",
+    "transferMode": "nas_copy",
     "assets": [
       {
         "versionId": "uuid",
-        "backendPath": "/api/model-versions/uuid/content/",
+        "storageUri": "nas://models/llama/v1/",
         "checksum": "sha256:...",
-        "sizeBytes": 123456789,
+        "sizeBytes": 214748364800,
         "targetPath": "/var/lib/hypercube/models/asset-slug/v1"
       }
     ]
@@ -371,9 +405,33 @@ This is recommended before full model catalog support:
 }
 ```
 
-The agent should pull only from the HyperCube backend over the internal network, write atomically into a temp path, verify checksum, then move into the cache path. The backend endpoint must require agent authentication and must not redirect to an external object store.
+Transfer modes:
 
-For the first implementation, this command can be folded into `create_container`, but separate progress is better for large model files.
+- `nas_copy`: preferred production airgap mode. Backend resolves `nas://...` to an allowlisted shared path visible to the target agent. Agent copies into its cache path or performs an approved local bind/cache operation. No public network is used.
+- `backend_stream`: fallback for small assets. Agent calls a backend endpoint such as `GET /api/model-versions/<id>/content/` over the internal network. This path is not the default for 100GB+ assets.
+- `preseeded`: admin has already placed the model on the agent. Backend verifies the cache row and asks the agent to checksum the local path.
+
+Authentication for `backend_stream`:
+
+- Reuse the existing approved `Agent.token` in an HTTP header, for example `Authorization: Bearer agent_...`.
+- Do not put the agent token in a query string.
+- Add an agent-token DRF authentication class for model content endpoints. It should authenticate `Agent.status="approved"` and attach the agent identity to the request.
+- The content endpoint must verify that the requesting agent is the target agent for a pending `prepare_model_assets` operation or is otherwise explicitly allowed to cache that model version.
+- The endpoint must never redirect to an external object store.
+
+Progress:
+
+```json
+{
+  "type": "command_progress",
+  "requestId": "<container-request-id>",
+  "message": "Preparing model llama/v1: 37%",
+  "percent": 37,
+  "phase": "prepare_model_assets"
+}
+```
+
+The agent should write atomically into a temp path, verify checksum, then move into the cache path. Progress must be based on bytes copied or verified, not just coarse stage names.
 
 ### `create_container` extensions
 
@@ -415,6 +473,7 @@ Agent implementation notes:
 - For NVIDIA, include capabilities for GPU/compute/utility.
 - Add `NVIDIA_VISIBLE_DEVICES=<device ids>` as a compatibility fallback when needed.
 - Add read-only bind mounts for `modelMounts`.
+- Reject `create_container` if any requested `modelMounts.sourcePath` is not already in a verified `ready` agent cache. `create_container` must not start copying large models.
 - Apply the requested `network_policy`. MVP should support at least `internal_only`, where the workspace can be reached through HyperCube but cannot reach the public internet.
 - Inject Jupyter env:
   - `JUPYTER_TOKEN`
@@ -498,9 +557,15 @@ with transaction.atomic():
             return 400
 
     token = secrets.token_urlsafe(32) if req.is_workspace else ""
-    req.workspace_token = token
+    token_ref = secrets.token_urlsafe(24) if token else ""
+    req.workspace_token_ref = token_ref
+    req.workspace_token_hash = hash_workspace_token(token) if token else ""
+    req.workspace_token_expires_at = now() + WORKSPACE_TOKEN_TTL if token else None
     req.status = "approved"
     req.save(...)
+
+    if token:
+        redis.setex(f"workspace:token:{token_ref}", WORKSPACE_TOKEN_TTL_SECONDS, token)
 
     for s in slices:
         GpuAllocation.objects.create(
@@ -508,19 +573,50 @@ with transaction.atomic():
             container_request=req,
             status="reserved",
             share_mode="shared" if req.gpu_share_ok and s.allow_shared else "exclusive",
+            reserved_until=now() + GPU_RESERVE_TIMEOUT,
         )
 ```
+
+Recommended defaults:
+
+- `GPU_RESERVE_TIMEOUT = 10 minutes` for PR 2.
+- `WORKSPACE_TOKEN_TTL_SECONDS = 24 hours` for PR 3, refreshed on successful workspace open while the container is active.
+- Plaintext workspace token exists only in memory/Redis and in the agent command payload at dispatch time.
+
+Deployment sequence:
+
+1. Reserve GPU allocations.
+2. If `model_version_ids` is non-empty and any version is not `ready` in `ModelVersionCache` for the target agent, dispatch `prepare_model_assets`.
+3. While preparation is running, keep request status `deploying` and show `command_progress`.
+4. On prepare success, verify/update cache rows, then dispatch `create_container`.
+5. On prepare failure or timeout, mark the request failed and release/fail reserved allocations.
+6. If no model preparation is needed, dispatch `create_container` immediately.
+
+Response handling detail:
+
+- Extend the pending command context or `ContainerRequest` with a deployment phase such as `prepare_model_assets` or `create_container`.
+- `_update_request_from_response` must not mark the request `deployed` for a successful `prepare_model_assets` response.
+- A successful prepare response should update cache rows and enqueue/send `create_container`.
+- Only a successful `create_container` response should create/update the `Container` row and move GPU allocations to `active`.
 
 After agent success:
 
 - Create/update `Container`.
-- Copy `workspace_token`, workspace port/base URL, allocated slice IDs, model version IDs into `Container`.
+- Copy workspace token reference/hash, workspace port/base URL, allocated slice IDs, model version IDs into `Container`.
 - Change `GpuAllocation.status` from `reserved` to `active`, set `container` and `activated_at`.
 
 After agent failure/timeout:
 
 - Change `reserved` allocations to `failed` or `released`.
 - Keep failure detail in `ContainerRequest.deployment_log`.
+
+Reservation janitor:
+
+- Add a Celery beat task in PR 2, for example `cleanup_expired_gpu_reservations`, running every minute.
+- Find `GpuAllocation(status="reserved", reserved_until__lt=now())`.
+- Mark those allocations `failed`, set `failed_at`, and write `failure_reason="reservation timeout"`.
+- Mark the linked `ContainerRequest` failed if it has no active container and append a timeout entry to `deployment_log`.
+- The task must be idempotent so concurrent agent failure handling and janitor cleanup do not double-release the same allocation.
 
 On delete:
 
@@ -689,7 +785,9 @@ Airgap image handling:
 
 ## Security Requirements
 
-- Never serialize `workspace_token` through normal container serializers.
+- Never store or serialize plaintext `workspace_token` through normal container serializers, admin lists, deployment logs, or debug logs.
+- Store only `workspace_token_ref` and `workspace_token_hash` in Postgres. Keep the plaintext Jupyter token in Redis or an equivalent volatile secret store.
+- Redact token references and hashes from model `__str__`, admin list display, logs, and API responses unless a privileged operational endpoint explicitly needs the reference.
 - Use short-lived open tickets for `/workspace/...`.
 - Jupyter upstream port must be reachable only by backend or trusted network.
 - Model upload must enforce owner, visibility, quota, max file size, path traversal prevention, and checksum.
@@ -699,6 +797,7 @@ Airgap image handling:
 - Jupyter images should run as a non-root user unless the template explicitly requires root.
 - Disable external URL imports and external package/model downloads in the product UI.
 - Agent code must reject model preparation requests that contain `http://`, `https://`, `s3://`, `git://`, or other non-HyperCube source URIs.
+- Agent-to-backend model content requests must use the existing approved Agent token in an HTTP header, with endpoint-level authorization for the target model version and target agent.
 - Workspace templates should document that packages and model files must be pre-baked into the offline image or uploaded through HyperCube.
 
 ## Implementation PR Plan
@@ -729,6 +828,7 @@ Backend:
 - Add request/container fields and `GpuAllocation`.
 - Add serializer fields.
 - Add approval reservation logic.
+- Add `reserved_until`, `failed_at`, `failure_reason`, and `cleanup_expired_gpu_reservations` Celery beat task.
 - Extend `_dispatch_to_agent` with `gpus`.
 - Update `_update_request_from_response` for active/release lifecycle.
 
@@ -744,17 +844,19 @@ Frontend:
 Validation:
 
 - Race test: two approvals for same exclusive slice; only one succeeds.
+- Timeout test: stale `reserved` allocation becomes `failed`, request gets timeout detail, and the slice becomes allocatable again.
 - Agent payload test: selected slice produces correct `gpus` array.
 
 ### PR 3: Workspace and Jupyter
 
 Backend:
 
-- Add workspace fields.
+- Add workspace fields using token reference/hash, not plaintext token persistence.
 - Add workspace open endpoint with signed ticket.
 - Add HTTP/WS proxy.
 - Add nginx workspace route.
 - Add workspace network policy field enforcement plan.
+- Store plaintext Jupyter token only in Redis or equivalent volatile secret storage.
 
 Agent:
 
@@ -780,12 +882,14 @@ Backend:
 - Add `apps.models_catalog`.
 - Add model asset/version/cache models.
 - Add upload API with checksum and progress support.
-- Add authenticated internal content streaming API for agents. No external signed download URLs.
+- Add shared-storage metadata for `nas://...` and a small-asset authenticated backend streaming fallback. No external signed download URLs.
+- Add agent-token HTTP authentication for model content/cache endpoints.
+- Add deployment phase handling so `prepare_model_assets` success dispatches `create_container` instead of marking the request deployed.
 
 Agent:
 
-- Add `prepare_model_assets` or fold cache prepare into `create_container`.
-- Pull model content only from the HyperCube backend or use admin-preseeded local cache.
+- Add `prepare_model_assets` as a separate command. Do not fold cache preparation into `create_container`.
+- Prepare model content from shared NAS, admin-preseeded local cache, or small-asset backend stream only.
 - Verify checksum.
 - Mount cached paths read-only.
 
@@ -799,6 +903,7 @@ Validation:
 
 - Upload large file.
 - Verify no external URL import path exists in UI/API.
+- Verify 100GB+ model preparation exposes progress through `command_progress` and does not lock the UI in a silent create step.
 - Agent cache status transitions missing/preparing/ready/failed.
 - Container sees model at expected mount path.
 
@@ -830,14 +935,69 @@ Change:
 - Replace backend-written named volume assumption with model asset storage plus agent-local cache.
 - Remove Hugging Face/Git/S3/public registry runtime assumptions.
 - Allocation status should be `reserved` before container creation and `active` only after success.
-- Add explicit `ContainerRequest.workspace_token` or equivalent secure handoff field.
+- Add reservation timeout cleanup so reserved allocations cannot stay locked forever.
+- Replace plaintext `workspace_token` fields with Redis-held plaintext plus DB token reference/hash.
 - Add signed workspace open tickets. Do not put the normal JWT access token in the Jupyter URL.
 - Configure Jupyter base URL. A simple path-stripping proxy is fragile.
 - Make `GpuSlice.status` hardware state only; derive usage from `GpuAllocation`.
 - Add `ModelVersionCache` so UI can say whether a model is available on the selected agent.
+- Make `prepare_model_assets` a separate PR 4 command with progress, not a hidden part of `create_container`.
+- Prefer shared NAS paths for large airgapped models; keep Django streaming as a small-asset fallback.
 - Put Jupyter proxy reachability assumptions in operations docs before calling it production-safe.
 
 ## Agent Repo Handoff Prompt
+
+```text
+Add GPU ML Workspace support to HyperCube-agent. HyperCube core changes are handled in a separate PR.
+
+Compatibility requirement:
+- If the new optional params are absent, existing system_info, create_container, metrics, control, logs, and exec behavior must remain unchanged.
+
+1. system_info subCommand "gpu_inventory"
+- If nvidia-smi is missing, return success=false with error="nvidia-smi not available".
+- Return NVIDIA GPU devices and allocatable slices.
+- MIG enabled GPU: return only MIG slices, not a full slice.
+- MIG disabled GPU: return one full slice.
+- deviceId must be the GPU UUID or MIG UUID accepted by the NVIDIA container runtime.
+
+2. prepare_model_assets command
+- Required for model catalog support. Do not fold model preparation into create_container.
+- Emit command_progress using the same ContainerRequest.id requestId and phase="prepare_model_assets".
+- Supported transfer modes:
+  - nas_copy: preferred airgap mode. Copy from a backend-approved shared NAS path.
+  - backend_stream: small-asset fallback. Pull from HyperCube backend over the internal network only.
+  - preseeded: verify an admin-prepared local cache path.
+- For backend_stream, call backend with the existing approved Agent token in an HTTP header such as Authorization: Bearer agent_...
+- Do not put the token in a query string.
+- Reject http://, https://, s3://, git://, public registry pulls, git clone, Hugging Face downloads, package install downloads, or any external network source.
+- Write into a temp path, verify checksum, then atomically move into the cache path.
+- Progress must be based on bytes copied/verified when possible.
+
+3. create_container optional params
+- gpus?: [{ deviceId, kind }]
+  Add Dockerode NVIDIA DeviceRequests.
+- modelMounts?: [{ sourcePath, mountPath, readOnly }]
+  Bind mount verified agent-local cache paths read-only.
+- workspace?: { kind, token, port, baseUrl }
+  Inject template env for Jupyter/code-server and create port binding.
+  Return data.workspace.hostPort/internalPort/baseUrl.
+
+4. preflight
+- Fail create_container if GPU deviceId is missing on the host.
+- Fail create_container if any modelMounts.sourcePath is missing or not verified.
+- create_container must not copy large models. Model preparation happens only in prepare_model_assets.
+- Image must already be docker loaded on the agent host or pullable from an internal offline registry.
+- Return a clear error string so backend can fail/release the allocation.
+
+5. regression
+- Do not change existing metrics payload, container list payload, control, logs, or exec commands.
+- Requests without the new optional fields must behave exactly as before.
+```
+
+<!-- Legacy broken-encoding prompt block intentionally hidden. Do not use.
+### Legacy Prompt Block
+
+The block below is left only as historical context from an earlier draft with broken local encoding. Do not use it for implementation; use the canonical prompt above.
 
 ```text
 HyperCube-agent에 GPU ML Workspace 지원을 추가해주세요. HyperCube core는 별도 PR입니다.
@@ -872,12 +1032,23 @@ HyperCube-agent에 GPU ML Workspace 지원을 추가해주세요. HyperCube core
 - 신규 optional field가 없는 요청은 기존과 동일해야 합니다.
 ```
 
+Agent handoff amendments:
+
+- `prepare_model_assets` is required for model catalog support. It must be a separate command from `create_container`.
+- The agent must emit `command_progress` for model preparation using the same `ContainerRequest.id` requestId and `phase="prepare_model_assets"`.
+- `create_container` must only mount already prepared cache paths. It must fail fast if `modelMounts.sourcePath` is missing or not verified.
+- For large airgapped models, prefer `transferMode="nas_copy"` from a backend-approved shared path. `backend_stream` is a small-asset fallback, not the default for 100GB+ models.
+- For backend streaming fallback, call the backend with the existing approved Agent token in an HTTP header such as `Authorization: Bearer agent_...`. Do not pass the token in a query string.
+- The agent must reject external URL/source schemes for model preparation and must never run internet package/model download steps as part of a workspace request.
+
+-->
 ## Open Questions
 
 These do not block PR 1-2, but should be decided before model catalog/proxy production rollout:
 
 1. Backend and agents are always on the same routable LAN, or do we need an outbound websocket tunnel for Jupyter?
-2. Model storage target: backend local disk, offline NAS, or admin import directory?
-3. Per-user quota policy: max active workspaces, max GPU count, max runtime hours, max model storage.
-4. Admin approval policy: can ML workspaces auto-approve if a slice is free, or must every GPU request be reviewed?
-5. Do users need inference endpoint publishing in addition to Jupyter, or is that a later feature?
+2. Confirm the production shared-storage shape: NFS, CIFS, local bind mount, or another offline NAS mechanism. The recommended large-model default is `nas://...`, not Django streaming.
+3. Decide whether internal MinIO is needed later, or whether NAS plus admin import is enough.
+4. Per-user quota policy: max active workspaces, max GPU count, max runtime hours, max model storage.
+5. Admin approval policy: can ML workspaces auto-approve if a slice is free, or must every GPU request be reviewed?
+6. Do users need inference endpoint publishing in addition to Jupyter, or is that a later feature?
