@@ -186,6 +186,28 @@
 		return h > 0 ? `${d}일 ${h}시간` : `${d}일 가동`;
 	});
 	let containerPid = $derived<number | null>(inspectData?.state?.pid ?? null);
+	let runtimeRestartCount = $derived(Number(inspectData?.restartCount ?? 0));
+	let runtimeHealthText = $derived.by<string>(() => {
+		if (isOomKilled) return 'OOM Killed';
+		if (healthStatus === 'healthy') return 'Healthy';
+		if (healthStatus === 'unhealthy') return 'Unhealthy';
+		if (healthStatus === 'starting') return 'Starting';
+		if (inspectData?.state?.running) return '실행 중';
+		return inspectData?.state?.status || '정보 없음';
+	});
+	let runtimeHealthTone = $derived.by<string>(() => {
+		if (isOomKilled || healthStatus === 'unhealthy' || inspectData?.state?.dead) return 'danger';
+		if (healthStatus === 'starting' || inspectData?.state?.restarting || inspectData?.state?.paused) return 'warn';
+		if (healthStatus === 'healthy' || inspectData?.state?.running) return 'success';
+		return 'muted';
+	});
+	let runtimeExitText = $derived.by<string>(() => {
+		const code = inspectData?.state?.exitCode;
+		if (typeof code === 'number') return code === 0 ? '정상 종료' : `Exit ${code}`;
+		if (lastExit && typeof lastExit.exit_code === 'number') return `Exit ${lastExit.exit_code}`;
+		return '기록 없음';
+	});
+	let runtimeOomText = $derived(isOomKilled ? '발생' : '없음');
 	let hasInsight = $derived(
 		recentRestarts > 0 || isOomKilled || (healthStatus && healthStatus !== 'healthy'),
 	);
@@ -452,6 +474,11 @@
 	);
 	let rangeLabel = $derived(RANGE_OPTIONS.find((o) => o.key === selectedRange)?.label ?? '');
 	let chartGroup = $derived(`hc-container-${containerId}`);
+
+	function maskEnvValue(value: string): string {
+		if (!value) return '-';
+		return `•••• ${value.length}자`;
+	}
 
 	let cpuAvg = $derived(avgOf(history.map((r) => r.cpu_usage)));
 	let cpuPeak = $derived(peakOf(history.map((r) => r.cpu_usage)));
@@ -890,22 +917,47 @@
 						<p>이 컨테이너가 어느 요청에서 만들어졌고, 가장 최근에 언제 동기화됐는지를 보여줍니다.</p>
 					</div>
 				</div>
+				<div class="runtime-strip" aria-label="런타임 상태 요약">
+					<div class="runtime-card" data-tone={container.status === 'running' ? 'success' : 'warn'}>
+						<span>상태</span>
+						<strong>{statusLabel(container.status)}</strong>
+						<em>{uptimeText}</em>
+					</div>
+					<div class="runtime-card" data-tone={runtimeHealthTone}>
+						<span>Health</span>
+						<strong>{runtimeHealthText}</strong>
+						<em>{inspectData?.state?.health?.failingStreak ? `실패 ${inspectData.state.health.failingStreak}회` : 'streak 없음'}</em>
+					</div>
+					<div class="runtime-card" data-tone={runtimeRestartCount > 0 || recentRestarts > 0 ? 'warn' : 'muted'}>
+						<span>재시작</span>
+						<strong>{runtimeRestartCount}회</strong>
+						<em>최근 5분 {recentRestarts}회</em>
+					</div>
+					<div class="runtime-card" data-tone={isOomKilled ? 'danger' : 'muted'}>
+						<span>종료/OOM</span>
+						<strong>{runtimeOomText}</strong>
+						<em>{runtimeExitText}</em>
+					</div>
+				</div>
+				<div class="runtime-timeline" aria-label="런타임 타임라인">
+					<div>
+						<span>시작</span>
+						<strong>{formatDateTime(inspectData?.state?.startedAt)}</strong>
+					</div>
+					<div>
+						<span>최근 동기화</span>
+						<strong>{formatDateTime(container.last_seen)}</strong>
+					</div>
+				</div>
 				<div class="info-grid">
 					<div class="info-item">
 						<span class="info-label">컨테이너 ID</span>
-						<span class="info-value mono">{container.container_id}</span>
+						<span class="info-value mono" title={container.container_id}>{container.container_id}</span>
 					</div>
-					<div class="info-item">
-						<span class="info-label">요청 ID</span>
-						<span class="info-value mono">{container.request_id ?? '-'}</span>
-					</div>
-					<div class="info-item">
-						<span class="info-label">요청 상태</span>
+					<div class="info-item info-item-stacked">
+						<span class="info-label">요청</span>
 						<span class="info-value">{statusLabel(container.request_status)}</span>
-					</div>
-					<div class="info-item">
-						<span class="info-label">최근 동기화</span>
-						<span class="info-value">{formatDateTime(container.last_seen)}</span>
+						<span class="info-meta mono" title={container.request_id ?? '-'}>{container.request_id ?? '-'}</span>
 					</div>
 				</div>
 				{#if container.review_note}
@@ -946,9 +998,20 @@
 						{#if portMappings.length > 0}
 							<div class="config-card">
 								<span class="config-title">포트 매핑</span>
-								<div class="tag-list">
+								<div class="port-flow-list">
 									{#each portMappings as port}
-										<span class="tag">호스트 {port.host ?? '-'} → 컨테이너 {port.container ?? '-'} ({port.protocol ?? 'tcp'})</span>
+										<div class="port-flow">
+											<span class="flow-end">
+												<b>HOST</b>
+												<strong>{port.host ?? '-'}</strong>
+											</span>
+											<span class="flow-arrow">→</span>
+											<span class="flow-end">
+												<b>CONTAINER</b>
+												<strong>{port.container ?? '-'}</strong>
+											</span>
+											<em>{port.protocol ?? 'tcp'}</em>
+										</div>
 									{/each}
 								</div>
 							</div>
@@ -959,8 +1022,8 @@
 								<div class="env-list">
 									{#each envEntries as [key, value]}
 										<div class="env-row">
-											<span>{key}</span>
-											<span>{value}</span>
+											<span class="env-key">{key}</span>
+											<span class="env-mask" title="민감 값 보호를 위해 마스킹됩니다.">{maskEnvValue(value)}</span>
 										</div>
 									{/each}
 								</div>
@@ -1709,7 +1772,7 @@
 	.bento {
 		display: grid;
 		grid-template-columns: repeat(12, minmax(0, 1fr));
-		grid-template-rows: minmax(0, 0.86fr) minmax(0, 0.86fr) minmax(0, 0.76fr);
+		grid-template-rows: minmax(0, 1.05fr) minmax(0, 0.76fr) minmax(0, 0.67fr);
 		grid-template-areas:
 			"charts charts charts charts charts live live live live process process process"
 			"charts charts charts charts charts live live live live context context context"
@@ -2039,7 +2102,7 @@
 
 	.context-grid {
 		grid-template-columns: 1fr;
-		grid-template-rows: auto minmax(0, 1fr);
+		grid-template-rows: minmax(0, 1fr) minmax(0, 0.86fr);
 		height: 100%;
 		min-height: 0;
 		margin-top: 0;
@@ -2049,6 +2112,7 @@
 		flex-direction: column;
 		min-height: 0;
 		overflow: hidden;
+		padding: 8px;
 	}
 	.context-grid > .runtime-panel {
 		overflow: auto;
@@ -2057,8 +2121,8 @@
 		gap: 7px;
 	}
 	.context-grid .panel-header.slim {
-		margin-bottom: 6px;
-		padding-bottom: 6px;
+		margin-bottom: 4px;
+		padding-bottom: 4px;
 	}
 	.context-grid .panel-header.slim p {
 		display: none;
@@ -2067,18 +2131,52 @@
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 6px;
 	}
+	.context-grid .runtime-strip {
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: 5px;
+	}
+	.context-grid .runtime-card,
+	.context-grid .runtime-timeline > div {
+		padding: 5px 6px;
+		border-radius: 9px;
+	}
+	.context-grid .runtime-card {
+		gap: 2px;
+		min-height: 44px;
+	}
+	.context-grid .runtime-card span,
+	.context-grid .runtime-timeline span {
+		font-size: 9px;
+	}
+	.context-grid .runtime-card strong,
+	.context-grid .runtime-timeline strong {
+		font-size: 12px;
+	}
+	.context-grid .runtime-card em {
+		font-size: 9px;
+		line-height: 1.05;
+	}
+	.context-grid .runtime-timeline {
+		gap: 5px;
+	}
+	.context-grid .runtime-timeline > div {
+		gap: 2px;
+	}
 	.context-grid .runtime-panel .info-item {
 		display: flex;
 		flex-direction: column;
 		justify-content: center;
-		gap: 4px;
-		min-height: 46px;
+		gap: 3px;
+		min-height: 40px;
+		padding: 6px 8px;
 	}
 	.context-grid .runtime-panel .info-label {
 		margin-bottom: 0;
 	}
 	.context-grid .runtime-panel .info-value {
-		overflow-wrap: anywhere;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 		line-height: 1.25;
 	}
 	.context-grid .runtime-panel .info-value.mono {
@@ -2093,9 +2191,26 @@
 		border-radius: 9px;
 	}
 	.context-grid .note-box {
-		margin-top: 6px;
-		max-height: 64px;
-		overflow: auto;
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
+		align-items: center;
+		gap: 8px;
+		flex: 0 0 auto;
+		margin-top: 4px;
+		min-height: 28px;
+		max-height: none;
+		overflow: hidden;
+		padding: 4px 8px;
+	}
+	.context-grid .note-box .info-label {
+		margin-bottom: 0;
+		white-space: nowrap;
+	}
+	.context-grid .note-box p {
+		margin: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.context-grid .config-detail-grid {
 		gap: 7px;
@@ -2103,6 +2218,7 @@
 		overflow: auto;
 	}
 	.context-grid .tag-list,
+	.context-grid .port-flow-list,
 	.context-grid .env-list {
 		max-height: 86px;
 		overflow: auto;
@@ -2189,6 +2305,100 @@
 
 	.info-value.mono {
 		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+	}
+
+	.info-meta {
+		display: block;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: var(--text-muted);
+		font-size: 10px;
+		line-height: 1.2;
+	}
+
+	.info-meta.mono {
+		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+	}
+
+	.runtime-strip {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 8px;
+		flex: 0 0 auto;
+	}
+
+	.runtime-card,
+	.runtime-timeline > div {
+		background:
+			linear-gradient(180deg, rgba(13, 17, 23, 0.82), rgba(8, 12, 19, 0.72)),
+			rgba(13, 17, 23, 0.76);
+		border: 1px solid rgba(31, 41, 55, 0.86);
+		min-width: 0;
+	}
+
+	.runtime-card {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		gap: 3px;
+		min-height: 54px;
+		position: relative;
+		overflow: hidden;
+	}
+
+	.runtime-card::before {
+		content: '';
+		position: absolute;
+		inset: 0 auto 0 0;
+		width: 3px;
+		background: rgba(100, 116, 139, 0.6);
+	}
+
+	.runtime-card[data-tone='success']::before { background: #10b981; }
+	.runtime-card[data-tone='warn']::before { background: #fbbf24; }
+	.runtime-card[data-tone='danger']::before { background: #ef4444; }
+
+	.runtime-card span,
+	.runtime-timeline span {
+		color: var(--text-muted);
+		font-size: 10px;
+		font-weight: 800;
+	}
+
+	.runtime-card strong,
+	.runtime-timeline strong {
+		color: var(--text-primary);
+		font-size: 13px;
+		font-weight: 900;
+		line-height: 1.05;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.runtime-card em {
+		color: var(--text-secondary);
+		font-size: 10px;
+		font-style: normal;
+		font-weight: 650;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.runtime-timeline {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 6px;
+		flex: 0 0 auto;
+	}
+
+	.runtime-timeline > div {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
 	}
 
 	.note-box {
@@ -2291,6 +2501,63 @@
 		font-weight: 700;
 	}
 
+	.port-flow-list {
+		display: flex;
+		flex-direction: column;
+		gap: 7px;
+	}
+
+	.port-flow {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 6px;
+		padding: 7px;
+		border-radius: 8px;
+		background: rgba(2, 6, 12, 0.34);
+		border: 1px solid rgba(100, 116, 139, 0.14);
+	}
+
+	.flow-end {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 0;
+	}
+
+	.flow-end b {
+		color: var(--text-muted);
+		font-size: 8px;
+		font-weight: 900;
+		letter-spacing: 0.04em;
+	}
+
+	.flow-end strong {
+		color: var(--text-primary);
+		font-size: 12px;
+		font-weight: 900;
+		font-variant-numeric: tabular-nums;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.flow-arrow {
+		color: var(--accent);
+		font-size: 12px;
+		font-weight: 900;
+	}
+
+	.port-flow em {
+		padding: 2px 5px;
+		border-radius: 999px;
+		background: rgba(48, 213, 200, 0.1);
+		color: var(--accent);
+		font-size: 9px;
+		font-style: normal;
+		font-weight: 800;
+	}
+
 	.env-list {
 		display: flex;
 		flex-direction: column;
@@ -2307,6 +2574,25 @@
 		border-bottom: 1px solid rgba(31, 41, 55, 0.7);
 	}
 
+	.env-key,
+	.env-mask {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.env-key {
+		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+		color: var(--text-primary);
+	}
+
+	.env-mask {
+		color: var(--text-muted);
+		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+		font-size: 11px;
+	}
+
 	.env-row:last-child {
 		border-bottom: none;
 		padding-bottom: 0;
@@ -2320,7 +2606,7 @@
 	/* 1280~1439: 차트와 라이브 패널을 위에 두고 보조 패널은 한 줄로 압축. */
 	@media (max-width: 1439px) {
 		.bento {
-			grid-template-rows: minmax(0, 0.88fr) minmax(0, 0.84fr) minmax(0, 0.7fr);
+			grid-template-rows: minmax(0, 1.08fr) minmax(0, 0.73fr) minmax(0, 0.61fr);
 			grid-template-areas:
 				"charts charts charts charts charts live live live live process process process"
 				"charts charts charts charts charts live live live live context context context"
@@ -2412,8 +2698,35 @@
 		.chart-grid,
 		.details-grid,
 		.info-grid,
-		.config-summary {
+		.config-summary,
+		.runtime-strip,
+		.runtime-timeline {
 			grid-template-columns: 1fr;
+		}
+
+		.context-grid .runtime-strip,
+		.context-grid .runtime-timeline {
+			grid-template-columns: 1fr;
+		}
+
+		.context-grid .runtime-card span,
+		.context-grid .runtime-timeline span,
+		.context-grid .runtime-card em {
+			font-size: 10px;
+		}
+
+		.context-grid .runtime-card strong,
+		.context-grid .runtime-timeline strong {
+			font-size: 13px;
+		}
+
+		.port-flow {
+			grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+		}
+
+		.port-flow em {
+			grid-column: 1 / -1;
+			justify-self: start;
 		}
 
 		.live-stack {
