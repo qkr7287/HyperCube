@@ -966,6 +966,23 @@
 						<p>{container.review_note}</p>
 					</div>
 				{/if}
+				<div class="runtime-footprint" aria-label="런타임 운영 상태">
+					<div>
+						<span>호스트 PID</span>
+						<strong>{containerPid ?? '-'}</strong>
+						<em>{containerPid ? '프로세스 추적 가능' : 'inspect 대기'}</em>
+					</div>
+					<div data-tone={agentOnline ? 'success' : 'danger'}>
+						<span>Agent</span>
+						<strong>{agentOnline ? '온라인' : '오프라인'}</strong>
+						<em title={container.agent ?? '-'}>{container.agent ?? '-'}</em>
+					</div>
+					<div data-tone={paused ? 'warn' : 'success'}>
+						<span>갱신</span>
+						<strong>{paused ? '일시정지' : '자동'}</strong>
+						<em>{paused ? '사용자 확인 중' : '15초 주기'}</em>
+					</div>
+				</div>
 			</div>
 
 			<div class="panel config-panel">
@@ -1082,13 +1099,13 @@
 		align-items: center;
 		justify-content: center;
 		gap: 4px;
-		height: 24px;
-		padding: 0 8px;
+		height: 26px;
+		padding: 0 9px;
 		background: rgba(2, 6, 12, 0.54);
 		border: 1px solid rgba(48, 213, 200, 0.2);
 		border-radius: 999px;
 		color: var(--text-secondary);
-		font-size: 10px;
+		font-size: 11px;
 		font-weight: 800;
 		line-height: 1;
 		align-self: center;
@@ -1181,7 +1198,7 @@
 		position: absolute;
 		top: 3px;
 		left: 12px;
-		font-size: 8px;
+		font-size: 9px;
 		font-weight: 800;
 		letter-spacing: 0.12em;
 		color: var(--accent);
@@ -1205,7 +1222,7 @@
 	}
 
 	h1 {
-		font-size: clamp(16px, 1.15vw, 22px);
+		font-size: clamp(17px, 1.2vw, 23px);
 		line-height: 1.05;
 		font-weight: 800;
 		letter-spacing: -0.018em;
@@ -1220,7 +1237,7 @@
 		border-radius: 7px;
 		background: rgba(13, 17, 23, 0.6);
 		border: 1px solid rgba(48, 213, 200, 0.2);
-		font-size: 10.5px;
+		font-size: 11.5px;
 		color: rgba(48, 213, 200, 0.95);
 		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 		word-break: break-all;
@@ -1234,7 +1251,7 @@
 		border-radius: 999px;
 		background: rgba(13, 17, 23, 0.55);
 		border: 1px solid rgba(31, 41, 55, 0.85);
-		font-size: 10.5px;
+		font-size: 11.5px;
 		color: var(--text-secondary);
 		font-weight: 600;
 	}
@@ -1254,7 +1271,7 @@
 		border-radius: 999px;
 		background: rgba(13, 17, 23, 0.52);
 		border: 1px solid rgba(31, 41, 55, 0.8);
-		font-size: 10.5px;
+		font-size: 11.5px;
 		color: var(--text-secondary);
 	}
 
@@ -1265,7 +1282,7 @@
 		background: rgba(13, 17, 23, 0.52);
 		border: 1px solid rgba(31, 41, 55, 0.8);
 		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-		font-size: 10.5px;
+		font-size: 11.5px;
 		color: var(--text-muted);
 	}
 
@@ -1276,7 +1293,7 @@
 		gap: 4px;
 		padding: 2px 7px;
 		border-radius: 999px;
-		font-size: 10.5px;
+		font-size: 11.5px;
 		font-weight: 800;
 		letter-spacing: 0.02em;
 		cursor: help;
@@ -1353,7 +1370,7 @@
 		background: rgba(13, 17, 23, 0.58);
 		border: 1px solid rgba(31, 41, 55, 0.72);
 		color: var(--text-secondary);
-		font-size: 10.5px;
+		font-size: 11.5px;
 		font-weight: 700;
 		font-family: inherit;
 		cursor: pointer;
@@ -1451,7 +1468,7 @@
 		border-radius: 999px;
 		background: rgba(48, 213, 200, 0.1);
 		border: 1px solid rgba(48, 213, 200, 0.22);
-		font-size: 10px;
+		font-size: 11px;
 		font-weight: 900;
 		letter-spacing: 0.08em;
 		color: var(--accent);
@@ -1528,7 +1545,7 @@
 		line-height: 1.1;
 	}
 	.status-meta {
-		font-size: 11px;
+		font-size: 12px;
 		color: var(--text-muted);
 		font-weight: 700;
 		white-space: nowrap;
@@ -1564,7 +1581,7 @@
 	.ops-quick b {
 		display: block;
 		color: var(--text-muted);
-		font-size: 10px;
+		font-size: 11px;
 		font-weight: 900;
 		letter-spacing: 0;
 	}
@@ -1583,7 +1600,7 @@
 	}
 	.ops-quick em {
 		color: var(--text-muted);
-		font-size: 10px;
+		font-size: 11px;
 		font-style: normal;
 		font-weight: 700;
 	}
@@ -1675,7 +1692,7 @@
 		border: 1px solid rgba(31, 41, 55, 0.9);
 		color: var(--text-secondary);
 		font-family: inherit;
-		font-size: 10.5px;
+		font-size: 11.5px;
 		font-weight: 700;
 		cursor: pointer;
 		white-space: nowrap;
@@ -1699,7 +1716,7 @@
 		background: rgba(48, 213, 200, 0.08);
 		border: 1px solid rgba(48, 213, 200, 0.22);
 		color: var(--accent);
-		font-size: 9px;
+		font-size: 10px;
 		font-weight: 800;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
@@ -1924,7 +1941,7 @@
 
 	h2 + p,
 	.panel-header p {
-		font-size: 11px;
+		font-size: 12px;
 		color: var(--text-secondary);
 	}
 
@@ -1938,7 +1955,7 @@
 		background: rgba(48, 213, 200, 0.1);
 		border: 1px solid rgba(48, 213, 200, 0.28);
 		color: var(--accent);
-		font-size: 9.5px;
+		font-size: 10.5px;
 		font-weight: 800;
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
@@ -1946,7 +1963,7 @@
 		user-select: none;
 	}
 	.sync-icon {
-		font-size: 11px;
+		font-size: 12px;
 		line-height: 1;
 	}
 
@@ -1976,7 +1993,7 @@
 		border-radius: 5px;
 		background: transparent;
 		color: var(--text-secondary);
-		font-size: 10px;
+		font-size: 11px;
 		font-weight: 700;
 		transition: background-color var(--ease-fast), color var(--ease-fast);
 	}
@@ -2044,12 +2061,12 @@
 	}
 
 	.chart-head h3 {
-		font-size: clamp(11px, 0.75vw, 13px);
+		font-size: clamp(12px, 0.82vw, 14px);
 		font-weight: 700;
 	}
 
 	.chart-head span {
-		font-size: 12px;
+		font-size: 12.5px;
 		color: var(--text-secondary);
 	}
 
@@ -2073,7 +2090,7 @@
 		border: none;
 		color: var(--text-muted);
 		font-family: inherit;
-		font-size: 9.5px;
+		font-size: 10.5px;
 		font-weight: 700;
 		cursor: pointer;
 		transition: background-color var(--ease-fast), color var(--ease-fast);
@@ -2116,6 +2133,8 @@
 	}
 	.context-grid > .runtime-panel {
 		overflow: auto;
+		gap: 5px;
+		scrollbar-gutter: stable;
 	}
 	.context-grid > .config-panel {
 		gap: 7px;
@@ -2146,14 +2165,14 @@
 	}
 	.context-grid .runtime-card span,
 	.context-grid .runtime-timeline span {
-		font-size: 9px;
+		font-size: 10px;
 	}
 	.context-grid .runtime-card strong,
 	.context-grid .runtime-timeline strong {
-		font-size: 12px;
+		font-size: 13px;
 	}
 	.context-grid .runtime-card em {
-		font-size: 9px;
+		font-size: 10px;
 		line-height: 1.05;
 	}
 	.context-grid .runtime-timeline {
@@ -2180,7 +2199,7 @@
 		line-height: 1.25;
 	}
 	.context-grid .runtime-panel .info-value.mono {
-		font-size: 11px;
+		font-size: 12px;
 	}
 	.context-grid .info-item,
 	.context-grid .note-box,
@@ -2211,6 +2230,9 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+	.context-grid .runtime-footprint {
+		margin-top: auto;
 	}
 	.context-grid .config-detail-grid {
 		gap: 7px;
@@ -2254,7 +2276,7 @@
 		color: var(--text-primary);
 	}
 	.details-hint {
-		font-size: 10px;
+		font-size: 11px;
 		color: var(--text-muted);
 	}
 	.details-chevron {
@@ -2292,13 +2314,13 @@
 	.info-label,
 	.config-title {
 		display: block;
-		font-size: 11px;
+		font-size: 12px;
 		color: var(--text-muted);
 		margin-bottom: 4px;
 	}
 
 	.info-value {
-		font-size: 12px;
+		font-size: 13px;
 		color: var(--text-primary);
 		word-break: break-word;
 	}
@@ -2314,7 +2336,7 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		color: var(--text-muted);
-		font-size: 10px;
+		font-size: 11px;
 		line-height: 1.2;
 	}
 
@@ -2363,14 +2385,14 @@
 	.runtime-card span,
 	.runtime-timeline span {
 		color: var(--text-muted);
-		font-size: 10px;
+		font-size: 10.5px;
 		font-weight: 800;
 	}
 
 	.runtime-card strong,
 	.runtime-timeline strong {
 		color: var(--text-primary);
-		font-size: 13px;
+		font-size: 14px;
 		font-weight: 900;
 		line-height: 1.05;
 		overflow: hidden;
@@ -2380,7 +2402,7 @@
 
 	.runtime-card em {
 		color: var(--text-secondary);
-		font-size: 10px;
+		font-size: 10.5px;
 		font-style: normal;
 		font-weight: 650;
 		overflow: hidden;
@@ -2401,12 +2423,90 @@
 		gap: 4px;
 	}
 
+	.runtime-footprint {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 6px;
+		flex: 0 0 auto;
+		min-width: 0;
+	}
+
+	.runtime-footprint > div {
+		position: relative;
+		min-width: 0;
+		min-height: 46px;
+		padding: 5px 8px 5px 10px;
+		border-radius: 9px;
+		background:
+			linear-gradient(180deg, rgba(13, 17, 23, 0.76), rgba(8, 12, 19, 0.68)),
+			rgba(13, 17, 23, 0.72);
+		border: 1px solid rgba(100, 116, 139, 0.15);
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		align-content: center;
+		align-items: center;
+		gap: 2px;
+		overflow: hidden;
+	}
+
+	.runtime-footprint > div::before {
+		content: '';
+		position: absolute;
+		inset: 7px auto 7px 0;
+		width: 3px;
+		border-radius: 999px;
+		background: rgba(100, 116, 139, 0.62);
+	}
+
+	.runtime-footprint > div[data-tone='success']::before {
+		background: #10b981;
+	}
+
+	.runtime-footprint > div[data-tone='warn']::before {
+		background: #fbbf24;
+	}
+
+	.runtime-footprint > div[data-tone='danger']::before {
+		background: #ef4444;
+	}
+
+	.runtime-footprint span {
+		color: var(--text-muted);
+		font-size: 9.5px;
+		font-weight: 850;
+		line-height: 1;
+		white-space: nowrap;
+	}
+
+	.runtime-footprint strong {
+		color: var(--text-primary);
+		font-size: 12px;
+		font-weight: 900;
+		line-height: 1.05;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-variant-numeric: tabular-nums;
+		text-align: left;
+	}
+
+	.runtime-footprint em {
+		color: var(--text-secondary);
+		font-size: 9.5px;
+		font-style: normal;
+		font-weight: 650;
+		line-height: 1;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
 	.note-box {
 		margin-top: 12px;
 	}
 
 	.note-box p {
-		font-size: 12px;
+		font-size: 13px;
 		color: var(--text-secondary);
 	}
 
@@ -2431,18 +2531,18 @@
 		justify-content: center;
 		gap: 3px;
 		min-width: 0;
-		min-height: 58px;
+		min-height: 62px;
 	}
 
 	.config-summary-card span {
 		color: var(--text-muted);
-		font-size: 10px;
+		font-size: 11px;
 		font-weight: 800;
 	}
 
 	.config-summary-card strong {
 		color: var(--text-primary);
-		font-size: 14px;
+		font-size: 15px;
 		font-weight: 900;
 		line-height: 1.05;
 		font-variant-numeric: tabular-nums;
@@ -2450,7 +2550,7 @@
 
 	.config-summary-card em {
 		color: var(--text-secondary);
-		font-size: 10px;
+		font-size: 11px;
 		font-style: normal;
 		font-weight: 650;
 		overflow: hidden;
@@ -2477,12 +2577,12 @@
 
 	.config-empty-state strong {
 		color: var(--text-primary);
-		font-size: 12px;
+		font-size: 13px;
 		font-weight: 850;
 	}
 
 	.config-empty-state span {
-		font-size: 11px;
+		font-size: 12px;
 		line-height: 1.35;
 	}
 
@@ -2497,7 +2597,7 @@
 		border-radius: 999px;
 		background: rgba(48, 213, 200, 0.12);
 		color: var(--accent);
-		font-size: 11px;
+		font-size: 12px;
 		font-weight: 700;
 	}
 
@@ -2527,14 +2627,14 @@
 
 	.flow-end b {
 		color: var(--text-muted);
-		font-size: 8px;
+		font-size: 9px;
 		font-weight: 900;
 		letter-spacing: 0.04em;
 	}
 
 	.flow-end strong {
 		color: var(--text-primary);
-		font-size: 12px;
+		font-size: 13px;
 		font-weight: 900;
 		font-variant-numeric: tabular-nums;
 		overflow: hidden;
@@ -2544,7 +2644,7 @@
 
 	.flow-arrow {
 		color: var(--accent);
-		font-size: 12px;
+		font-size: 13px;
 		font-weight: 900;
 	}
 
@@ -2553,7 +2653,7 @@
 		border-radius: 999px;
 		background: rgba(48, 213, 200, 0.1);
 		color: var(--accent);
-		font-size: 9px;
+		font-size: 10px;
 		font-style: normal;
 		font-weight: 800;
 	}
@@ -2568,7 +2668,7 @@
 		display: flex;
 		justify-content: space-between;
 		gap: 12px;
-		font-size: 12px;
+		font-size: 13px;
 		color: var(--text-primary);
 		padding-bottom: 8px;
 		border-bottom: 1px solid rgba(31, 41, 55, 0.7);
@@ -2590,7 +2690,7 @@
 	.env-mask {
 		color: var(--text-muted);
 		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-		font-size: 11px;
+		font-size: 12px;
 	}
 
 	.env-row:last-child {
@@ -2599,7 +2699,7 @@
 	}
 
 	.config-empty {
-		font-size: 12px;
+		font-size: 13px;
 		color: var(--text-secondary);
 	}
 
@@ -2705,19 +2805,20 @@
 		}
 
 		.context-grid .runtime-strip,
-		.context-grid .runtime-timeline {
+		.context-grid .runtime-timeline,
+		.context-grid .runtime-footprint {
 			grid-template-columns: 1fr;
 		}
 
 		.context-grid .runtime-card span,
 		.context-grid .runtime-timeline span,
 		.context-grid .runtime-card em {
-			font-size: 10px;
+			font-size: 10.5px;
 		}
 
 		.context-grid .runtime-card strong,
 		.context-grid .runtime-timeline strong {
-			font-size: 13px;
+			font-size: 14px;
 		}
 
 		.port-flow {

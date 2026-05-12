@@ -481,7 +481,7 @@
 		align-items: center;
 		gap: 5px;
 		color: var(--text-muted);
-		font-size: clamp(9px, 0.55vw, 11px);
+		font-size: clamp(10px, 0.62vw, 12px);
 		font-weight: 850;
 		letter-spacing: 0;
 		white-space: nowrap;
@@ -495,7 +495,7 @@
 		background: rgba(2, 6, 12, 0.42);
 		border: 1px solid rgba(100, 116, 139, 0.18);
 		color: var(--text-muted);
-		font-size: 8.5px;
+		font-size: 9.5px;
 		font-weight: 850;
 		line-height: 1;
 		white-space: nowrap;
@@ -515,30 +515,31 @@
 
 	.metric-hero {
 		display: flex;
-		align-items: flex-end;
-		justify-content: space-between;
-		gap: 8px;
+		flex-direction: column;
+		align-items: stretch;
+		justify-content: flex-start;
+		gap: 3px;
 	}
 	.value {
 		color: var(--text-primary);
-		font-size: clamp(18px, 1.1vw, 22px);
+		font-size: clamp(19px, 1.16vw, 23px);
 		font-weight: 850;
-		line-height: 1;
+		line-height: 1.08;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		font-variant-numeric: tabular-nums;
 	}
 	.value.net {
-		font-size: clamp(14px, 0.84vw, 17px);
+		font-size: clamp(15px, 0.9vw, 18px);
 	}
 	.hero-note {
-		max-width: 58%;
+		max-width: 100%;
 		color: var(--text-muted);
-		font-size: clamp(8.5px, 0.52vw, 10px);
+		font-size: clamp(9.5px, 0.58vw, 11px);
 		font-weight: 700;
-		line-height: 1.15;
-		text-align: right;
+		line-height: 1.2;
+		text-align: left;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -671,7 +672,7 @@
 		display: block;
 		margin-bottom: 6px;
 		color: var(--accent);
-		font-size: 10.5px;
+		font-size: 11.5px;
 		font-weight: 900;
 		line-height: 1;
 	}
@@ -683,7 +684,7 @@
 		gap: 12px;
 		padding: 3px 0;
 		border-top: 1px solid rgba(100, 116, 139, 0.12);
-		font-size: 10.5px;
+		font-size: 11.5px;
 		line-height: 1.15;
 	}
 
@@ -728,7 +729,7 @@
 		background: rgba(2, 6, 12, 0.32);
 		border: 1px solid rgba(100, 116, 139, 0.12);
 		color: var(--text-secondary);
-		font-size: clamp(9px, 0.55vw, 10px);
+		font-size: clamp(10px, 0.6vw, 11px);
 		font-weight: 750;
 		font-variant-numeric: tabular-nums;
 	}
@@ -737,7 +738,7 @@
 		display: block;
 		margin-bottom: 3px;
 		color: var(--text-muted);
-		font-size: 7.5px;
+		font-size: 9.5px;
 		font-weight: 900;
 		letter-spacing: 0;
 		text-transform: uppercase;
@@ -753,7 +754,7 @@
 	.flow-grid em {
 		margin-top: 2px;
 		color: var(--text-muted);
-		font-size: 8.5px;
+		font-size: 9.5px;
 		font-style: normal;
 		font-weight: 700;
 	}
