@@ -283,15 +283,9 @@
 	.grid {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: clamp(6px, 0.5vw, 10px);
-		/* parent panel 이 area-inspect 셀 안에서 flex column 으로 동작. grid 가
-		   panel 의 남은 공간 자동 fill — 4 cards 가 panel 안에 균등 stretch.
-		   max-height 제거 — Inspect cards 가 잘리지 않게. cell 자체 overflow
-		   는 grid item (.card) 안에서 처리 (긴 mounts 등은 word-break). */
-		flex: 1 1 0;
-		min-height: 0;
-		grid-auto-rows: minmax(0, 1fr);
-		overflow-y: auto;
+		gap: clamp(10px, 0.7vw, 14px);
+		/* 자연 height — auto rows. 카드 콘텐츠 만큼 늘어남 (긴 mounts 도 잘리지 X).
+		   page 자체가 스크롤 되므로 panel 안에서 스크롤 없음. */
 	}
 
 	.card {

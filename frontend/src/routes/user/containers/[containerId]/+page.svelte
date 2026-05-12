@@ -170,6 +170,23 @@
 			healthStatus === 'starting' ||
 			(inspectData?.state?.health?.failingStreak ?? 0) > 0,
 	);
+	// ops-status: uptime (since startedAt), PID
+	let uptimeText = $derived.by<string>(() => {
+		const startedAt = inspectData?.state?.startedAt;
+		if (!startedAt || !inspectData?.state?.running) return '-';
+		const sec = Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000));
+		if (sec < 60) return `${sec}초 가동`;
+		if (sec < 3600) return `${Math.floor(sec / 60)}분 가동`;
+		if (sec < 86400) {
+			const h = Math.floor(sec / 3600);
+			const m = Math.floor((sec % 3600) / 60);
+			return m > 0 ? `${h}시간 ${m}분` : `${h}시간 가동`;
+		}
+		const d = Math.floor(sec / 86400);
+		const h = Math.floor((sec % 86400) / 3600);
+		return h > 0 ? `${d}일 ${h}시간` : `${d}일 가동`;
+	});
+	let containerPid = $derived<number | null>(inspectData?.state?.pid ?? null);
 	let hasInsight = $derived(
 		recentRestarts > 0 || isOomKilled || (healthStatus && healthStatus !== 'healthy'),
 	);
@@ -570,14 +587,16 @@
 		</div>
 	{:else if container}
 		<div class="topbar-sticky">
+			<div class="unified-bar">
 			<section class="hero">
+				<span class="hero-caption">CONTAINER</span>
 				<div class="hero-main">
 					<div class="hero-titlebar">
 						<h1>{container.name}</h1>
 						<span class="status-pill" style="background: {statusTone(container.status)};">
 							{statusLabel(container.status)}
 						</span>
-						<span class="hero-image">{container.selected_image || container.image}</span>
+						<span class="hero-image" title="이미지">{container.selected_image || container.image}</span>
 					</div>
 					<div class="hero-meta">
 						<AgentStatusIndicator
@@ -585,11 +604,12 @@
 							hostname={container.agent_hostname}
 							lastSeen={currentMetrics?.timestamp || container.last_seen}
 						/>
-						<span class="mono-chip" title="클릭하면 컨테이너 ID 전체 복사">
-							ID: {container.container_id.slice(0, 12)}
+						<span class="mono-chip" title="컨테이너 ID">
+							ID {container.container_id.slice(0, 12)}
 						</span>
-						<span>템플릿 {container.template_name ?? '-'}</span>
-						<span>요청 {formatDateTime(container.requested_at)}</span>
+						{#if container.template_name}
+							<span class="meta-chip" title="요청 템플릿">📦 {container.template_name}</span>
+						{/if}
 
 						<!-- 운영 인사이트 chip — 이상 신호 있을 때만 표시 -->
 						{#if recentRestarts >= 2}
@@ -635,24 +655,12 @@
 						{paused ? '▶ 재개' : '❚❚ 일시정지'}
 					</button>
 					<button class="refresh-btn" onclick={() => loadDashboard({ withDetail: true })} disabled={refreshing}>
-						{refreshing ? '새로고침 중...' : '지금 새로고침'}
+						{refreshing ? '새로고침 중...' : '↻ 새로고침'}
 					</button>
 				</div>
 			</section>
-		</div>
 
-		{#if !agentOnline}
-			<div class="banner banner-error">
-				<strong>Agent 오프라인</strong> — 이 컨테이너를 보고 있는 agent 가 응답하지 않습니다. 실시간 메트릭·로그·콘솔이 모두 멈춰 있을 수 있습니다.
-			</div>
-		{:else if container.status !== 'running'}
-			<div class="banner banner-warn">
-				컨테이너가 현재 <strong>{statusLabel(container.status)}</strong> 상태입니다. 다시 실행되기 전까지 실시간 메트릭이 비어 있거나 오래된 값일 수 있습니다.
-			</div>
-		{/if}
-
-		<section class="kpi-row">
-			<div class="kpi-wrap">
+			<section class="kpi-row">
 				<ContainerKpiBar
 					{currentMetrics}
 					{history}
@@ -674,11 +682,24 @@
 					{networkHelp}
 					{diskHelp}
 				/>
-			</div>
+			</section>
 
 			<section class="ops-bar">
-				<div class="ops-left">
-					<span class="ops-label">컨트롤</span>
+				<span class="ops-caption">CONTROL</span>
+				<div class="ops-status" data-status={container.status}>
+					<div class="status-orb">
+						<span class="orb-core"></span>
+						<span class="orb-pulse" aria-hidden="true"></span>
+					</div>
+					<div class="status-text">
+						<span class="status-name">{statusLabel(container.status)}</span>
+						<span class="status-meta">
+							{uptimeText}{#if containerPid} · PID {containerPid}{/if}
+						</span>
+					</div>
+				</div>
+				<div class="ops-divider" aria-hidden="true"></div>
+				<div class="ops-actions">
 					<ContainerActions
 						containerId={container.container_id}
 						currentStatus={container.status}
@@ -687,13 +708,12 @@
 						onError={handleControlError}
 					/>
 					<button
-						class="limit-btn"
+						class="limit-icon-btn"
 						onclick={() => (limitModalOpen = true)}
 						disabled={!agentOnline}
 						title={agentOnline ? '메모리 / CPU / 재시작 정책 수정' : 'Agent 오프라인 — 수정 불가'}
-					>
-						⚙ 한도 수정
-					</button>
+						aria-label="자원 한도 수정"
+					>⚙</button>
 				</div>
 				{#if actionMsg}
 					<div class="ops-msg" data-kind={actionMsgKind} role="status">
@@ -705,7 +725,18 @@
 					</div>
 				{/if}
 			</section>
-		</section>
+			</div>
+		</div>
+
+		{#if !agentOnline}
+			<div class="banner banner-error">
+				<strong>Agent 오프라인</strong> — 이 컨테이너를 보고 있는 agent 가 응답하지 않습니다. 실시간 메트릭·로그·콘솔이 모두 멈춰 있을 수 있습니다.
+			</div>
+		{:else if container.status !== 'running'}
+			<div class="banner banner-warn">
+				컨테이너가 현재 <strong>{statusLabel(container.status)}</strong> 상태입니다. 다시 실행되기 전까지 실시간 메트릭이 비어 있거나 오래된 값일 수 있습니다.
+			</div>
+		{/if}
 
 		<div class="bento">
 		<section class="panel bento-area area-charts">
@@ -788,7 +819,7 @@
 		</div>
 
 		<div class="bento-area area-console">
-			<ConsolePanel agentId={container.agent ?? ''} {containerId} />
+			<ConsolePanel agentId={container.agent ?? ''} {containerId} startOpen={true} />
 		</div>
 		</div>
 
@@ -888,18 +919,14 @@
 
 <style>
 	.page {
-		/* 관리자 admin-shell 과 동일하게 max-width 없음 (full width).
-		   padding 은 clamp 로 viewport 에 따라 압축 — 1920 에서 ~28px 좌우, 1280 에서 ~16px.
-		   user-body 가 overflow:hidden 이라 .page 자체가 100% height + flex column 으로
-		   topbar/kpi-row 자연 height, bento 가 남은 공간 fill. */
+		/* full width, 자연 스크롤. user-body 가 스크롤 컨테이너 (overflow-y:auto) 라
+		   .page 는 height 강제 없이 콘텐츠 만큼 늘어남. padding 은 시원하게. */
 		max-width: none;
 		margin: 0;
-		padding: clamp(0px, 0.1vw, 4px) clamp(6px, 0.7vw, 18px) clamp(0px, 0.1vw, 4px);
-		height: 100%;
+		padding: clamp(14px, 1.2vw, 24px) clamp(14px, 1.4vw, 28px) clamp(20px, 2vw, 32px);
 		display: flex;
 		flex-direction: column;
-		min-height: 0;
-		overflow: hidden;
+		gap: clamp(10px, 0.9vw, 16px);
 	}
 
 	.back-link,
@@ -916,7 +943,9 @@
 		color: var(--text-secondary);
 		font-size: 12px;
 		font-weight: 700;
-		margin-bottom: clamp(2px, 0.2vw, 6px);
+		margin-bottom: clamp(4px, 0.3vw, 8px);
+		align-self: flex-start;
+		text-align: left;
 	}
 
 	.back-link:hover {
@@ -938,60 +967,122 @@
 		padding: clamp(40px, 6vh, 80px) clamp(16px, 2vw, 32px);
 	}
 
-	/* topbar-sticky — hero + ops 를 묶어 스크롤 시에도 상단 고정.
-	   z-index 10 으로 차트 hover tooltip(보통 z 5~9) 위. 배경 var(--bg-base) 로
-	   아래 콘텐츠가 비치지 않도록. */
+	/* topbar-sticky — unified-bar (hero + KPI + ops 한 row) 를 묶어 스크롤 시에도 상단 고정.
+	   z-index 10 으로 차트 hover tooltip(보통 z 5~9) 위. 배경 var(--bg-base). */
 	.topbar-sticky {
 		position: sticky;
 		top: 0;
 		z-index: 10;
 		background: var(--bg-base);
-		padding-top: 0;
+		padding: 4px 0 8px;
+		margin: -4px 0 0;
 		display: flex;
 		flex-direction: column;
-		gap: clamp(2px, 0.2vw, 6px);
+		gap: clamp(8px, 0.7vw, 14px);
+	}
+
+	/* 한 row 안에 [hero | KPI | ops]. 좁아지면 wrap.
+	   각 영역 자기 자연 height (align-items: stretch — KPI 가 가장 키 큰 cell 기준
+	   stretch — KPI 가 4 pill 풀폭 fit 하도록 우선). */
+	.unified-bar {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: stretch;
+		gap: clamp(8px, 0.7vw, 14px);
 	}
 
 	.hero {
 		display: flex;
 		justify-content: space-between;
-		gap: clamp(6px, 0.6vw, 12px);
-		padding: clamp(4px, 0.4vw, 10px) clamp(10px, 0.9vw, 16px);
-		border-radius: 12px;
+		gap: clamp(12px, 0.9vw, 18px);
+		padding: clamp(14px, 1vw, 18px) clamp(16px, 1.1vw, 20px);
+		padding-top: clamp(18px, 1.3vw, 22px);
+		border-radius: 14px;
 		background:
-			linear-gradient(140deg, rgba(48, 213, 200, 0.12), rgba(9, 75, 102, 0.14)),
+			radial-gradient(ellipse at top left, rgba(48, 213, 200, 0.18), transparent 65%),
+			linear-gradient(135deg, rgba(48, 213, 200, 0.08), rgba(9, 75, 102, 0.12)),
 			rgba(18, 23, 32, 0.98);
-		border: 1px solid rgba(48, 213, 200, 0.18);
+		border: 1px solid rgba(48, 213, 200, 0.22);
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 		align-items: center;
-		flex-wrap: wrap;
+		flex: 1.5 1 525px;
+		min-width: 420px;
+		max-width: 680px;
+		position: relative;
+		overflow: hidden;
+	}
+	.hero::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		top: 0;
+		bottom: 0;
+		width: 3px;
+		background: linear-gradient(180deg, var(--accent), rgba(48, 213, 200, 0.2));
+		opacity: 0.7;
+	}
+
+	/* CONTAINER caption — ops-bar 의 CONTROL 캡션과 미러링 */
+	.hero-caption {
+		position: absolute;
+		top: 5px;
+		left: 14px;
+		font-size: 9px;
+		font-weight: 800;
+		letter-spacing: 0.12em;
+		color: var(--accent);
+		opacity: 0.7;
+		pointer-events: none;
 	}
 
 	.hero-main {
 		display: flex;
 		flex-direction: column;
-		gap: 3px;
+		gap: 8px;
 		min-width: 0;
 		flex: 1 1 auto;
 	}
 
 	.hero-titlebar {
 		display: inline-flex;
-		align-items: baseline;
-		gap: clamp(6px, 0.6vw, 10px);
+		align-items: center;
+		gap: clamp(10px, 0.8vw, 14px);
 		flex-wrap: wrap;
 	}
 
 	h1 {
-		font-size: clamp(15px, 1.1vw, 21px);
-		line-height: 1.1;
+		font-size: clamp(20px, 1.5vw, 28px);
+		line-height: 1.05;
 		font-weight: 800;
+		letter-spacing: -0.018em;
+		color: var(--text-primary);
+		text-shadow: 0 0 28px rgba(48, 213, 200, 0.22);
 	}
 
 	.hero-image {
+		display: inline-flex;
+		align-items: center;
+		padding: 3px 10px;
+		border-radius: 7px;
+		background: rgba(13, 17, 23, 0.6);
+		border: 1px solid rgba(48, 213, 200, 0.2);
 		font-size: 12px;
-		color: var(--text-secondary);
+		color: rgba(48, 213, 200, 0.95);
 		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 		word-break: break-all;
+	}
+
+	.meta-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 3px 9px;
+		border-radius: 999px;
+		background: rgba(13, 17, 23, 0.55);
+		border: 1px solid rgba(31, 41, 55, 0.85);
+		font-size: 11px;
+		color: var(--text-secondary);
+		font-weight: 600;
 	}
 
 	.hero-meta {
@@ -1060,41 +1151,75 @@
 	}
 
 	.status-pill {
-		padding: 3px 10px;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 4px 12px 4px 10px;
 		border-radius: 999px;
-		font-size: 11px;
-		font-weight: 700;
+		font-size: 12px;
+		font-weight: 800;
+		letter-spacing: 0.02em;
 		color: white;
+		box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+	}
+	.status-pill::before {
+		content: '';
+		display: inline-block;
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: currentColor;
+		box-shadow: 0 0 8px currentColor;
 	}
 
 	.hero-actions {
 		display: flex;
-		align-items: center;
+		flex-direction: column;
+		align-items: stretch;
 		gap: 6px;
-		flex-wrap: wrap;
 		flex-shrink: 0;
+		padding-left: clamp(12px, 0.9vw, 16px);
+		border-left: 1px solid rgba(48, 213, 200, 0.2);
+		align-self: stretch;
+		justify-content: center;
 	}
 
 	.refresh-btn,
 	.pause-btn {
-		padding: 7px 12px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 5px;
+		padding: 7px 14px;
+		min-width: 110px;
 		border-radius: 8px;
-		background: rgba(13, 17, 23, 0.86);
+		background: rgba(13, 17, 23, 0.7);
 		border: 1px solid rgba(31, 41, 55, 0.9);
-		color: var(--text-primary);
-		font-size: 12px;
+		color: var(--text-secondary);
+		font-size: 11.5px;
 		font-weight: 700;
-	}
-
-	.pause-btn {
 		font-family: inherit;
 		cursor: pointer;
+		white-space: nowrap;
+		transition: background-color var(--ease-fast), border-color var(--ease-fast), color var(--ease-fast);
+	}
+
+	.refresh-btn:hover:not(:disabled),
+	.pause-btn:hover:not(.active) {
+		background: rgba(48, 213, 200, 0.1);
+		border-color: rgba(48, 213, 200, 0.35);
+		color: var(--accent);
 	}
 
 	.pause-btn.active {
-		background: rgba(239, 68, 68, 0.16);
+		background: rgba(239, 68, 68, 0.14);
 		border-color: rgba(239, 68, 68, 0.4);
 		color: #fca5a5;
+	}
+
+	.refresh-btn:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
 	}
 
 	.banner {
@@ -1111,59 +1236,206 @@
 		color: #fca5a5;
 	}
 
-	/* KPI 4 pill (좌, flex:1) + ops 컨트롤 (우, auto width) 한 row.
-	   1920+ 에서 KPI 가 너무 풀폭 stretch 되며 우측이 비어 보이던 문제 해결. */
+	/* unified-bar 안에서 KPI 는 중간 1fr — 가능한 wide. KPI bar 컴포넌트가 자체적으로
+	   auto-fit grid 라 4 pill 자동 분배. */
 	.kpi-row {
+		flex: 1 1 0;
+		min-width: 320px;
 		display: flex;
 		align-items: stretch;
-		gap: clamp(3px, 0.3vw, 8px);
-		margin-top: clamp(2px, 0.2vw, 6px);
-		flex-wrap: wrap;
 	}
-	.kpi-wrap {
-		flex: 1 1 0;
-		min-width: 0;
-	}
-	.kpi-wrap :global(.kpi-bar) {
+	.kpi-row :global(.kpi-bar) {
 		margin-top: 0;
+		width: 100%;
 	}
 
+	/* ops-bar — unified-bar 우측. lifecycle 컨트롤 + 설정(한도수정) 두 그룹.
+	   caption 라벨이 좌측 상단, 메인 영역은 단순 row. */
 	.ops-bar {
-		/* kpi-row 우측에 배치 — auto width, KPI 와 같은 row. */
 		margin-top: 0;
-		padding: clamp(3px, 0.3vw, 8px) clamp(8px, 0.7vw, 12px);
-		border-radius: 12px;
-		background: rgba(18, 23, 32, 0.96);
+		padding: clamp(10px, 0.8vw, 14px) clamp(12px, 0.9vw, 16px);
+		padding-top: clamp(14px, 1vw, 18px);
+		border-radius: 14px;
+		background:
+			linear-gradient(180deg, rgba(13, 17, 23, 0.55), rgba(18, 23, 32, 0.98)),
+			rgba(18, 23, 32, 0.98);
 		border: 1px solid var(--border);
 		display: flex;
-		flex-wrap: wrap;
-		justify-content: space-between;
+		flex-wrap: nowrap;
+		align-items: center;
+		gap: clamp(10px, 0.8vw, 14px);
+		flex: 1 1 380px;
+		min-width: 320px;
+		max-width: 580px;
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+		position: relative;
+		overflow: hidden;
+	}
+
+	/* CONTROL caption — ops-bar 상단 좌측 작은 라벨 (overlay) */
+	.ops-caption {
+		position: absolute;
+		top: 5px;
+		left: 12px;
+		font-size: 9px;
+		font-weight: 800;
+		letter-spacing: 0.12em;
+		color: var(--accent);
+		opacity: 0.7;
+		pointer-events: none;
+	}
+
+	/* 좌측 상태 시각화 — orb (status color + pulse) + 텍스트 (상태명 + uptime/PID) */
+	.ops-status {
+		display: flex;
 		align-items: center;
 		gap: 10px;
+		flex-shrink: 0;
+	}
+	.status-orb {
+		position: relative;
+		width: 38px;
+		height: 38px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+	}
+	.orb-core {
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		background: var(--orb-color, #6b7280);
+		box-shadow:
+			0 0 0 4px rgba(255, 255, 255, 0.03),
+			0 0 16px var(--orb-glow, rgba(107, 114, 128, 0.5));
+		z-index: 1;
+	}
+	.orb-pulse {
+		position: absolute;
+		inset: 0;
+		border-radius: 50%;
+		background: var(--orb-color, transparent);
+		opacity: 0.18;
+		animation: orb-ping 2.2s ease-out infinite;
+	}
+	@keyframes orb-ping {
+		0%   { transform: scale(0.6); opacity: 0.32; }
+		70%  { transform: scale(1.2); opacity: 0;    }
+		100% { transform: scale(1.2); opacity: 0;    }
+	}
+	/* status 별 색상 — orb 와 pulse 컬러 */
+	.ops-status[data-status='running']    { --orb-color: #10b981; --orb-glow: rgba(16, 185, 129, 0.55); }
+	.ops-status[data-status='paused']     { --orb-color: #fbbf24; --orb-glow: rgba(251, 191, 36, 0.55); }
+	.ops-status[data-status='restarting'] { --orb-color: #60a5fa; --orb-glow: rgba(96, 165, 250, 0.55); }
+	.ops-status[data-status='stopped'],
+	.ops-status[data-status='exited'],
+	.ops-status[data-status='dead']       { --orb-color: #ef4444; --orb-glow: rgba(239, 68, 68, 0.5); }
+	.ops-status[data-status='created']    { --orb-color: #9ca3af; --orb-glow: rgba(156, 163, 175, 0.4); }
+	/* paused 는 pulse 꺼서 시각적 정지감 */
+	.ops-status[data-status='paused'] .orb-pulse,
+	.ops-status[data-status='stopped'] .orb-pulse,
+	.ops-status[data-status='exited'] .orb-pulse,
+	.ops-status[data-status='dead'] .orb-pulse,
+	.ops-status[data-status='created'] .orb-pulse { animation: none; opacity: 0; }
+
+	.status-text {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		min-width: 0;
+	}
+	.status-name {
+		font-size: 13px;
+		font-weight: 800;
+		color: var(--text-primary);
+		letter-spacing: -0.005em;
+		line-height: 1.1;
+	}
+	.status-meta {
+		font-size: 10.5px;
+		color: var(--text-muted);
+		font-weight: 600;
+		white-space: nowrap;
+		line-height: 1.2;
+	}
+
+	.ops-divider {
+		width: 1px;
+		align-self: stretch;
+		background: linear-gradient(180deg, transparent, rgba(48, 213, 200, 0.2), transparent);
+		flex-shrink: 0;
+		margin: 4px 0;
+	}
+
+	/* 우측 액션 영역 — ContainerActions + limit icon btn */
+	.ops-actions {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex: 1 1 auto;
+		min-width: 0;
+		justify-content: flex-end;
+	}
+
+	/* 한도수정 icon-only — secondary action 으로 visual weight 줄임 */
+	.limit-icon-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		padding: 0;
+		border-radius: 8px;
+		background: rgba(13, 17, 23, 0.6);
+		border: 1px solid rgba(31, 41, 55, 0.9);
+		color: var(--text-muted);
+		font-family: inherit;
+		font-size: 15px;
+		cursor: pointer;
+		flex-shrink: 0;
+		transition: background-color var(--ease-fast), border-color var(--ease-fast), color var(--ease-fast);
+	}
+	.limit-icon-btn:hover:not(:disabled) {
+		background: rgba(48, 213, 200, 0.14);
+		border-color: rgba(48, 213, 200, 0.42);
+		color: var(--accent);
+	}
+	.limit-icon-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
 	}
 
 	.ops-left {
 		display: flex;
-		align-items: center;
-		gap: 14px;
-		flex-wrap: wrap;
+		align-items: stretch;
+		gap: clamp(4px, 0.35vw, 8px);
+		flex-wrap: nowrap;
+		flex: 1 1 auto;
+		min-width: 0;
 	}
 
+	/* limit-btn — 설정 변경. lifecycle 그룹 박스와 동일 높이 유지. */
 	.limit-btn {
-		padding: 6px 12px;
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 4px 9px;
+		min-height: 54px;
 		border-radius: 8px;
-		background: rgba(13, 17, 23, 0.86);
+		background: rgba(13, 17, 23, 0.7);
 		border: 1px solid rgba(31, 41, 55, 0.9);
-		color: var(--text-primary);
+		color: var(--text-secondary);
 		font-family: inherit;
-		font-size: 12px;
+		font-size: 10.5px;
 		font-weight: 700;
 		cursor: pointer;
+		white-space: nowrap;
 		transition: background-color var(--ease-fast), border-color var(--ease-fast), color var(--ease-fast);
 	}
 	.limit-btn:hover:not(:disabled) {
-		background: rgba(48, 213, 200, 0.14);
-		border-color: rgba(48, 213, 200, 0.4);
+		background: rgba(48, 213, 200, 0.12);
+		border-color: rgba(48, 213, 200, 0.42);
 		color: var(--accent);
 	}
 	.limit-btn:disabled {
@@ -1172,11 +1444,18 @@
 	}
 
 	.ops-label {
-		font-size: 11px;
+		display: inline-flex;
+		align-items: center;
+		padding: 3px 7px;
+		border-radius: 5px;
+		background: rgba(48, 213, 200, 0.08);
+		border: 1px solid rgba(48, 213, 200, 0.22);
+		color: var(--accent);
+		font-size: 9px;
 		font-weight: 800;
-		letter-spacing: 0.04em;
+		letter-spacing: 0.08em;
 		text-transform: uppercase;
-		color: var(--text-muted);
+		flex-shrink: 0;
 	}
 
 	.ops-msg {
@@ -1237,28 +1516,22 @@
 	}
 
 	/* 12-col bento grid — 1440+: row1 charts(8) + logs(4), row2 process(5) + events(3) + inspect(4),
-	   row3 console(12, full-width — 사용 빈도 낮지만 작업 시엔 가로폭 필요).
+	   row3 console(12, full-width).
 	   1280~1439: 차트/로그/하단 3분할/console 각각 1행씩 stack.
 	   ≤980: 1열 stack (모바일 fallback).
 
-	   viewport fit: .page flex column 안에서 bento 가 flex:1 로 남은 공간 차지.
-	   row1/row2 는 fr 비율로 stretch, row3 (console closed) 는 auto (header 만). */
+	   row 는 자연 height (auto) — 각 cell 콘텐츠에 맞춰 늘어나고, grid 가 같은 row 내
+	   cell 들을 가장 큰 cell 에 맞춰 stretch 시킨다. viewport-fit 강제 X. */
 	.bento {
 		display: grid;
 		grid-template-columns: repeat(12, minmax(0, 1fr));
-		/* row 3 (console) 가 closed 상태에선 panel-header 한 줄 만 차지하도록 auto.
-		   open 시 panel 의 termbox flex:1 로 row 늘어남. */
-		grid-template-rows: minmax(0, 1.6fr) minmax(0, 1fr) auto;
-		/* col 비율: process 4 + events 3 + inspect 5 — events 좁게, inspect 가장 넓게.
-		   console row 3 풀폭. */
+		grid-template-rows: auto auto auto;
 		grid-template-areas:
 			"charts charts charts charts charts charts charts charts logs logs logs logs"
-			"process process process process events events events inspect inspect inspect inspect inspect"
-			"console console console console console console console console console console console console";
-		gap: clamp(2px, 0.2vw, 6px);
+			"process process process process events events events console console console console console"
+			"inspect inspect inspect inspect inspect inspect inspect inspect inspect inspect inspect inspect";
+		gap: clamp(10px, 0.9vw, 16px);
 		margin-top: 0;
-		flex: 1 1 0;
-		min-height: 0;
 	}
 	.bento-area {
 		min-width: 0;
@@ -1292,26 +1565,23 @@
 		margin-top: 0;
 	}
 
-	/* 각 bento area 의 inner panel 을 grid cell 높이만큼 stretch.
-	   LogTailPanel 닫힌 상태(짧은 헤더만)에서도 cell 높이를 채워 row 1
-	   우측이 빈 공간이 되지 않도록. */
+	/* 각 bento area 의 inner panel 은 자기 자연 height. grid row 가 가장 큰 cell
+	   기준으로 stretch 되므로 panel 자체 stretch 는 height:100% 로 단순 처리.
+	   (예전 flex:1 1 0 + min-height:0 패턴은 viewport-fit 강제 시 사용 — 자연
+	   스크롤 환경에서는 panel 을 0 으로 collapse 시켜서 제거.) */
 	.bento-area {
 		display: flex;
 		flex-direction: column;
 	}
-	/* area-logs / area-process / area-events / area-inspect / area-console 은
-	   bento-area wrapper 가 따로 있고 그 안에 panel 컴포넌트 1개 — panel 이 cell
-	   height 100% 차지하도록 flex:1.
-	   area-charts 는 .bento-area 와 .panel 이 같은 element 라 wrapper 가 없음 —
-	   이 selector 매칭 안 됨, panel-header/chart-grid 는 별도 룰로 처리. */
 	.bento-area > :global(.panel) {
-		flex: 1 1 0;
-		min-height: 0;
+		width: 100%;
+		height: 100%;
+		margin-top: 0;
 	}
 
 	.panel {
-		border-radius: 14px;
-		padding: clamp(12px, 1vw, 18px);
+		border-radius: var(--radius-panel, 14px);
+		padding: clamp(16px, 1.2vw, 22px);
 		margin-top: 14px;
 	}
 
@@ -1319,8 +1589,8 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: flex-end;
-		gap: clamp(6px, 0.6vw, 14px);
-		margin-bottom: clamp(4px, 0.4vw, 10px);
+		gap: clamp(8px, 0.7vw, 14px);
+		margin-bottom: clamp(8px, 0.6vw, 14px);
 	}
 
 	.panel-header.slim {
@@ -1335,9 +1605,10 @@
 	}
 
 	h2 {
-		font-size: clamp(14px, 1.1vw, 18px);
+		font-size: clamp(15px, 1.15vw, 19px);
 		margin-bottom: 4px;
 		font-weight: 700;
+		letter-spacing: -0.005em;
 	}
 
 	.panel-header.compact h2 {
@@ -1422,28 +1693,25 @@
 	.chart-grid {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
-		grid-template-rows: repeat(2, minmax(0, 1fr));
-		gap: clamp(4px, 0.45vw, 10px);
-		flex: 1 1 0;
+		grid-template-rows: repeat(2, minmax(300px, 1fr));
+		gap: clamp(10px, 0.8vw, 16px);
+		flex: 1 1 auto;
 		min-height: 0;
 	}
 
-	/* area-charts panel 자체가 flex column → chart-grid 가 남은 공간 fill */
+	/* area-charts panel 자체가 flex column → chart-grid 가 자연 height 채움 */
 	.area-charts {
 		display: flex;
 		flex-direction: column;
 	}
-	.area-charts.panel {
-		min-height: 0;
-	}
 
 	.chart-card {
 		border-radius: var(--radius-panel);
-		padding: clamp(6px, 0.6vw, 12px) clamp(8px, 0.7vw, 14px);
+		padding: clamp(10px, 0.8vw, 14px) clamp(12px, 0.9vw, 16px);
 		transition: border-color var(--ease-fast);
 		display: flex;
 		flex-direction: column;
-		min-height: 0;
+		min-height: 300px;
 	}
 	.chart-card:hover {
 		border-color: rgba(48, 213, 200, 0.22);
@@ -1453,14 +1721,15 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		gap: clamp(4px, 0.45vw, 10px);
-		margin-bottom: clamp(3px, 0.35vw, 8px);
-		padding-bottom: clamp(2px, 0.25vw, 6px);
-		border-bottom: 1px solid rgba(100, 116, 139, 0.12);
+		gap: clamp(6px, 0.6vw, 12px);
+		margin-bottom: clamp(6px, 0.5vw, 10px);
+		padding-bottom: clamp(5px, 0.4vw, 8px);
+		border-bottom: 1px solid rgba(100, 116, 139, 0.14);
 	}
 
 	.chart-head h3 {
-		font-size: clamp(13px, 0.9vw, 16px);
+		font-size: clamp(13px, 0.95vw, 16px);
+		font-weight: 700;
 	}
 
 	.chart-head span {
@@ -1515,21 +1784,14 @@
 		margin-top: clamp(8px, 0.6vw, 14px);
 	}
 
-	/* 런타임/요청 설정 accordion — 기본 닫힘. 한 화면 fit 위해 desktop 에선 hide
-	   (정보 손실은 미미 — hero 의 last_seen + container ID 우측 등 핵심은 이미 표시).
-	   ≤980 모바일에서는 스크롤 허용하므로 보이게. */
+	/* 런타임/요청 설정 accordion — 기본 닫힘 (사용자가 펼쳐서 본다).
+	   자연 스크롤 환경이라 모든 viewport 에서 표시. */
 	.details-accordion {
-		display: none;
 		margin-top: clamp(8px, 0.6vw, 14px);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-panel);
 		background: rgba(18, 23, 32, 0.96);
 		overflow: hidden;
-	}
-	@media (max-width: 980px) {
-		.details-accordion {
-			display: block;
-		}
 	}
 	.details-accordion > summary {
 		list-style: none;
@@ -1660,14 +1922,14 @@
 		color: var(--text-secondary);
 	}
 
-	/* 1280~1439: 차트 풀폭 → 로그 풀폭 → 하단 process/events/inspect 가로 3분할 → console 풀폭 */
+	/* 1280~1439: 차트 풀폭 → 로그 풀폭 → 하단 process/events/console 가로 3분할 → inspect 풀폭 */
 	@media (max-width: 1439px) {
 		.bento {
 			grid-template-areas:
 				"charts charts charts charts charts charts charts charts charts charts charts charts"
 				"logs logs logs logs logs logs logs logs logs logs logs logs"
-				"process process process process events events events inspect inspect inspect inspect inspect"
-				"console console console console console console console console console console console console";
+				"process process process process events events events console console console console console"
+				"inspect inspect inspect inspect inspect inspect inspect inspect inspect inspect inspect inspect";
 		}
 	}
 
@@ -1692,8 +1954,8 @@
 				'logs'
 				'process'
 				'events'
-				'inspect'
-				'console';
+				'console'
+				'inspect';
 		}
 
 		.chart-grid,

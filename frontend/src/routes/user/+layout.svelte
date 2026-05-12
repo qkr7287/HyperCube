@@ -196,14 +196,8 @@
 	.user-body {
 		flex: 1;
 		min-height: 0;
-		/* desktop 에선 컨테이너 상세가 viewport 안에 fit → 세로 스크롤 제거.
-		   ≤980 모바일은 1열 stack 이라 스크롤 필요 → @media 로 풀어줌. */
-		overflow-y: hidden;
-	}
-
-	@media (max-width: 980px) {
-		.user-body {
-			overflow-y: auto;
-		}
+		/* 자연 스크롤. viewport-fit 강제는 정보 밀도만 높이고 짤림을 유발해서 포기.
+		   페이지 자체가 height 를 자연스럽게 차지하고 user-body 가 스크롤 컨테이너. */
+		overflow-y: auto;
 	}
 </style>

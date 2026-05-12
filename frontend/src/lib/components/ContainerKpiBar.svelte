@@ -176,10 +176,10 @@
 		--font-lg: clamp(16px, 1.1vw, 22px);
 
 		display: grid;
-		/* CPU/메모리/네트워크/디스크 (+GPU) → 4~5개 KPI. 1920 한 줄 보장.
-		   minmax 하한을 작게 둬서 좁아지면 자동 wrap. */
-		grid-template-columns: repeat(auto-fit, minmax(clamp(160px, 11vw, 220px), 1fr));
-		gap: clamp(3px, 0.3vw, 8px);
+		/* CPU/메모리/네트워크/디스크 (+GPU) → 4~5개 KPI. unified-bar 안에서 한 row
+		   유지를 위해 minmax 하한을 더 낮춰 4 pill 압축 가능하도록. */
+		grid-template-columns: repeat(auto-fit, minmax(clamp(140px, 9vw, 180px), 1fr));
+		gap: clamp(4px, 0.35vw, 8px);
 		margin-top: 0;
 	}
 	.kpi {
