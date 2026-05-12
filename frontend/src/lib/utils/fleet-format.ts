@@ -83,12 +83,13 @@ export function freshnessLabel(ageSeconds?: number | null): string {
 	return '만료';
 }
 
-export type RangeKey = '1m' | '5m' | '1h' | '24h' | '7d';
+export type RangeKey = '10s' | '1m' | '5m' | '1h' | '24h' | '7d';
 
 // Range는 "bucket(샘플링) 간격"을 의미. rangeLabel은 차트가 보여주는 전체 시간 창
 // (bucket × 표시 point 수)을 한국어로 압축.
 export function rangeLabel(range: RangeKey): string {
 	return ({
+		'10s': '최근 100초',
 		'1m': '최근 30분',
 		'5m': '최근 2시간',
 		'1h': '최근 24시간',
@@ -99,6 +100,7 @@ export function rangeLabel(range: RangeKey): string {
 
 export function rangeBucketLabel(range: RangeKey): string {
 	return ({
+		'10s': '10초 간격',
 		'1m': '1분 간격',
 		'5m': '5분 간격',
 		'1h': '1시간 간격',
@@ -157,6 +159,7 @@ export function shortReason(reason: string): string {
 // ex) range=1h (1시간 bucket) → poll 주기 1m = 1분마다 최신값 pull.
 export function rangePollLabel(range: RangeKey): string {
 	return ({
+		'10s': '10s 주기 갱신',
 		'1m': '10s 주기 갱신',
 		'5m': '30s 주기 갱신',
 		'1h': '1m 주기 갱신',

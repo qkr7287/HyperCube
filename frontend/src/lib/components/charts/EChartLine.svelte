@@ -17,6 +17,7 @@
 
 	let {
 		labels = [],
+		tooltipLabels = [],
 		series = [],
 		yFormat = 'percent' as ValueFormat,
 		height = '100%',
@@ -27,6 +28,7 @@
 		markLines = [],
 	}: {
 		labels?: string[];
+		tooltipLabels?: string[];
 		series?: LineSeries[];
 		yFormat?: ValueFormat;
 		height?: string | number;
@@ -40,7 +42,9 @@
 		markLines?: MarkLineEntry[];
 	} = $props();
 
-	let option = $derived<EChartsOption>(buildOption(labels, series, yFormat, showLegend, enableZoom, markLines));
+	let option = $derived<EChartsOption>(
+		buildOption(labels, tooltipLabels, series, yFormat, showLegend, enableZoom, markLines),
+	);
 
 	function percentDecimals(seriesList: LineSeries[]): number {
 		// 모두 0 이거나 작은 값이면 axis 가 "0%" 로 뭉개지지 않게 소수점 조정.
@@ -87,6 +91,7 @@
 
 	function buildOption(
 		lbls: string[],
+		tipLbls: string[],
 		seriesList: LineSeries[],
 		fmt: ValueFormat,
 		legend: boolean | undefined,
@@ -95,6 +100,7 @@
 	): EChartsOption {
 		const decimals = percentDecimals(seriesList);
 		const showLegendResolved = legend ?? seriesList.length > 1;
+		const hasDateLabels = lbls.some((label) => /\d{1,2}\/\d{1,2}/.test(label));
 
 		return {
 			animationDuration: 250,
@@ -104,7 +110,7 @@
 				top: showLegendResolved ? 28 : 6,
 				left: 4,
 				right: 6,
-				bottom: 18,
+				bottom: hasDateLabels ? 24 : 18,
 				containLabel: true,
 			},
 			// 같은 group 의 차트 간 axisPointer/tooltip 동기화는 EChartBase
@@ -126,7 +132,11 @@
 				formatter: (params: any) => {
 					const arr = Array.isArray(params) ? params : [params];
 					if (arr.length === 0) return '';
-					const title = arr[0].axisValueLabel ?? '';
+					const dataIndex = Number(arr[0]?.dataIndex);
+					const title =
+						(Number.isInteger(dataIndex) ? tipLbls[dataIndex] : undefined) ??
+						arr[0].axisValueLabel ??
+						'';
 					const lines = arr.map((p: any) => {
 						const sIdx = p.seriesIndex ?? 0;
 						const ds = seriesList[sIdx];
@@ -134,7 +144,7 @@
 						const val = formatValue(Number(p.value ?? 0), f, decimals);
 						return `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color};margin-right:6px"></span>${p.seriesName}: <strong>${val}</strong>`;
 					});
-					return `<div style="color:#e2e8f0;font-weight:700;margin-bottom:4px">${title}</div>${lines.join('<br/>')}`;
+					return `<div style="color:#e2e8f0;font-weight:700;margin-bottom:4px;white-space:nowrap">${title}</div>${lines.join('<br/>')}`;
 				},
 			},
 			legend: showLegendResolved
@@ -158,7 +168,8 @@
 				axisLabel: {
 					color: '#64748b',
 					hideOverlap: true,
-					fontSize: 9,
+					fontSize: hasDateLabels ? 8 : 9,
+					margin: hasDateLabels ? 9 : 6,
 				},
 				splitLine: { show: false },
 			},

@@ -174,8 +174,10 @@
 
 <style>
 	.panel {
-		background: rgba(18, 23, 32, 0.96);
-		border: 1px solid var(--border);
+		background:
+			linear-gradient(180deg, rgba(21, 27, 38, 0.98), rgba(15, 20, 29, 0.98)),
+			rgba(18, 23, 32, 0.96);
+		border: 1px solid rgba(100, 116, 139, 0.2);
 		border-radius: var(--radius-panel);
 		padding: clamp(5px, 0.45vw, 8px);
 		margin-top: 0;
@@ -189,6 +191,18 @@
 		max-width: 100%;
 		box-sizing: border-box;
 		overflow: hidden;
+		position: relative;
+		box-shadow:
+			0 8px 24px rgba(0, 0, 0, 0.16),
+			inset 0 1px 0 rgba(255, 255, 255, 0.025);
+	}
+	.panel::before {
+		content: '';
+		position: absolute;
+		inset: 0 0 auto;
+		height: 2px;
+		background: linear-gradient(90deg, rgba(48, 213, 200, 0.66), rgba(96, 165, 250, 0.12));
+		opacity: 0.7;
 	}
 	.panel:hover {
 		border-color: rgba(48, 213, 200, 0.22);
@@ -200,6 +214,8 @@
 		gap: 8px;
 		margin-bottom: 5px;
 		flex-wrap: wrap;
+		padding-bottom: 5px;
+		border-bottom: 1px solid rgba(100, 116, 139, 0.12);
 	}
 	h2 {
 		font-size: 14px;
@@ -297,11 +313,13 @@
 		max-height: none;
 		overflow: auto;
 		border-radius: 8px;
-		border: 1px solid rgba(31, 41, 55, 0.7);
+		border: 1px solid rgba(100, 116, 139, 0.16);
 	}
 
 	table {
 		width: 100%;
+		min-width: 0;
+		table-layout: fixed;
 		border-collapse: collapse;
 		font-size: 10.5px;
 	}
@@ -323,6 +341,25 @@
 		letter-spacing: 0.04em;
 		border-bottom: 1px solid rgba(31, 41, 55, 0.7);
 	}
+	th,
+	td {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	th:nth-child(1),
+	td:nth-child(1) { width: 46px; }
+	th:nth-child(2),
+	td:nth-child(2) { width: 46px; }
+	th:nth-child(3),
+	td:nth-child(3) { width: 38px; }
+	th:nth-child(4),
+	td:nth-child(4) { width: 52px; }
+	th:nth-child(5),
+	td:nth-child(5) { width: 44px; }
+	th:nth-child(6),
+	td:nth-child(6) { width: 32px; }
 	th.num,
 	td.num {
 		text-align: right;
@@ -347,17 +384,11 @@
 	}
 
 	.name {
-		max-width: 180px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		max-width: none;
 	}
 
 	.cmd {
-		max-width: 360px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		max-width: none;
 		color: var(--text-secondary);
 		font-size: 10px;
 	}

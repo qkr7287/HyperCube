@@ -144,6 +144,9 @@
 	let actionMsgKind = $state<'info' | 'success' | 'error'>('info');
 	let actionMsgTimer: ReturnType<typeof setTimeout> | null = null;
 	let limitModalOpen = $state(false);
+	type WorkbenchMode = 'monitor' | 'diagnose';
+	const WORKBENCH_MODE_KEY = 'hc_container_detail_workbench_mode';
+	let workbenchMode = $state<WorkbenchMode>('monitor');
 
 	// === 운영 인사이트 derived (hero meta 옆 chip) ===
 	// 최근 5분 안의 die/restart 횟수 — "재시작 반복" 자동 탐지
@@ -383,6 +386,11 @@
 		loadDashboard();
 	}
 
+	function setWorkbenchMode(mode: WorkbenchMode) {
+		workbenchMode = mode;
+		if (browser) localStorage.setItem(WORKBENCH_MODE_KEY, mode);
+	}
+
 	function avgOf(values: number[]): number {
 		const valid = values.filter((v) => Number.isFinite(v));
 		if (valid.length === 0) return 0;
@@ -418,6 +426,32 @@
 		return out;
 	}
 
+	function pad2(value: number): string {
+		return String(value).padStart(2, '0');
+	}
+
+	function localDateKey(date: Date): string {
+		return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+	}
+
+	function formatHistoryTime(value: string, includeDate: boolean): string {
+		const date = new Date(value);
+		if (Number.isNaN(date.getTime())) return '';
+		const time = `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+		if (!includeDate) return time;
+		return `${pad2(date.getMonth() + 1)}/${pad2(date.getDate())} ${time}`;
+	}
+
+	function shouldShowDateOnAxis(rows: MetricsHistoryRow[]): boolean {
+		if (rows.length === 0) return false;
+		if (selectedRange === '24h' || selectedRange === '7d') return true;
+
+		const first = new Date(rows[0].recorded_at);
+		const last = new Date(rows[rows.length - 1].recorded_at);
+		if (Number.isNaN(first.getTime()) || Number.isNaN(last.getTime())) return false;
+		return localDateKey(first) !== localDateKey(last);
+	}
+
 	let envEntries = $derived(Object.entries(container?.custom_env ?? {}));
 	let portMappings = $derived(container?.custom_ports ?? []);
 	let rangeLabel = $derived(RANGE_OPTIONS.find((o) => o.key === selectedRange)?.label ?? '');
@@ -438,10 +472,12 @@
 	);
 	let gpuAvg = $derived(avgOf(gpuValid));
 	let gpuPeak = $derived(peakOf(gpuValid));
+	let historyShowsDateOnAxis = $derived(shouldShowDateOnAxis(history));
 	let historyLabels = $derived(
-		history.map((row) =>
-			new Date(row.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-		),
+		history.map((row) => formatHistoryTime(row.recorded_at, historyShowsDateOnAxis)),
+	);
+	let historyTooltipLabels = $derived(
+		history.map((row) => formatHistoryTime(row.recorded_at, true)),
 	);
 
 	let cpuDatasets = $derived([
@@ -556,6 +592,10 @@
 	let currentGpuUsage = $derived(snapshotGpu(currentMetrics));
 
 	onMount(() => {
+		if (browser) {
+			const savedMode = localStorage.getItem(WORKBENCH_MODE_KEY);
+			if (savedMode === 'monitor' || savedMode === 'diagnose') workbenchMode = savedMode;
+		}
 		loadDashboard({ withDetail: true });
 		refreshTimer = setInterval(() => {
 			if (!paused) loadDashboard();
@@ -572,8 +612,6 @@
 </script>
 
 <div class="page">
-	<button class="back-link" onclick={() => goto(`${base}/user/containers`)}>← 내 컨테이너 목록으로</button>
-
 	{#if loading}
 		<div class="state-wrap"><StateBox kind="loading" message="대시보드 불러오는 중..." /></div>
 	{:else if errorMsg}
@@ -592,6 +630,16 @@
 				<span class="hero-caption">CONTAINER</span>
 				<div class="hero-main">
 					<div class="hero-titlebar">
+						<button
+							type="button"
+							class="back-link"
+							onclick={() => goto(`${base}/user/containers`)}
+							aria-label="내 컨테이너 목록으로"
+							title="내 컨테이너 목록으로"
+						>
+							<span aria-hidden="true">←</span>
+							<span>목록</span>
+						</button>
 						<h1>{container.name}</h1>
 						<span class="status-pill" style="background: {statusTone(container.status)};">
 							{statusLabel(container.status)}
@@ -685,18 +733,35 @@
 			</section>
 
 			<section class="ops-bar">
-				<span class="ops-caption">CONTROL</span>
-				<div class="ops-status" data-status={container.status}>
-					<div class="status-orb">
-						<span class="orb-core"></span>
-						<span class="orb-pulse" aria-hidden="true"></span>
+				<div class="ops-head">
+					<span class="ops-caption">CONTROL</span>
+					<div class="ops-status" data-status={container.status}>
+						<div class="status-orb">
+							<span class="orb-core"></span>
+							<span class="orb-pulse" aria-hidden="true"></span>
+						</div>
+						<div class="status-text">
+							<span class="status-name">{statusLabel(container.status)}</span>
+							<span class="status-meta">{uptimeText}</span>
+						</div>
 					</div>
-					<div class="status-text">
-						<span class="status-name">{statusLabel(container.status)}</span>
-						<span class="status-meta">
-							{uptimeText}{#if containerPid} · PID {containerPid}{/if}
-						</span>
-					</div>
+				</div>
+				<div class="ops-quick" aria-label="컨트롤 상태 요약">
+					<span class:ok={agentOnline} class:bad={!agentOnline}>
+						<b>명령 상태</b>
+						<strong>{agentOnline ? '발송 가능' : '대기 중'}</strong>
+						<em>{agentOnline ? '에이전트 온라인' : '에이전트 오프라인'}</em>
+					</span>
+					<span class:paused>
+						<b>갱신 상태</b>
+						<strong>{paused ? '일시정지' : '자동'}</strong>
+						<em>{paused ? '수동 확인 모드' : '주기 폴링 중'}</em>
+					</span>
+					<span>
+						<b>프로세스</b>
+						<strong>{containerPid ?? '-'}</strong>
+						<em>{containerPid ? '호스트 PID' : '미확인'}</em>
+					</span>
 				</div>
 				<div class="ops-divider" aria-hidden="true"></div>
 				<div class="ops-actions">
@@ -713,7 +778,10 @@
 						disabled={!agentOnline}
 						title={agentOnline ? '메모리 / CPU / 재시작 정책 수정' : 'Agent 오프라인 — 수정 불가'}
 						aria-label="자원 한도 수정"
-					>⚙</button>
+					>
+						<span aria-hidden="true">⚙</span>
+						<span>설정</span>
+					</button>
 				</div>
 				{#if actionMsg}
 					<div class="ops-msg" data-kind={actionMsgKind} role="status">
@@ -738,7 +806,30 @@
 			</div>
 		{/if}
 
-		<div class="bento">
+		<div class="workbench-tabs" role="tablist" aria-label="상세 화면 모드">
+			<button
+				type="button"
+				role="tab"
+				class:active={workbenchMode === 'monitor'}
+				aria-selected={workbenchMode === 'monitor'}
+				onclick={() => setWorkbenchMode('monitor')}
+			>
+				<span class="mode-title">모니터링</span>
+				<span class="mode-sub">차트와 상태 중심</span>
+			</button>
+			<button
+				type="button"
+				role="tab"
+				class:active={workbenchMode === 'diagnose'}
+				aria-selected={workbenchMode === 'diagnose'}
+				onclick={() => setWorkbenchMode('diagnose')}
+			>
+				<span class="mode-title">진단</span>
+				<span class="mode-sub">로그와 콘솔 확장</span>
+			</button>
+		</div>
+
+		<div class="bento" class:diagnose={workbenchMode === 'diagnose'}>
 		<section class="panel bento-area area-charts">
 			<div class="panel-header compact">
 				<h2>성능 지표 추이<InfoTooltip text={timeSeriesHelp + '\n\n차트 위에 마우스를 올리면 모든 차트의 같은 시각이 함께 표시됩니다. 휠/드래그로 줌.'} placement="bottom-start" /></h2>
@@ -763,13 +854,13 @@
 					<div class="chart-head">
 						<h3>CPU 사용률</h3>
 					</div>
-					<UserMetricChart labels={historyLabels} datasets={cpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
+					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} datasets={cpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
 						<h3>메모리 사용률</h3>
 					</div>
-					<UserMetricChart labels={historyLabels} datasets={memoryDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
+					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} datasets={memoryDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
@@ -779,7 +870,7 @@
 							<button class:active={networkMode === 'rate'} onclick={() => (networkMode = 'rate')}>속도</button>
 						</div>
 					</div>
-					<UserMetricChart labels={historyLabels} datasets={networkDatasets} yFormat={networkFormat} group={chartGroup} enableZoom markLines={chartMarkLines} />
+					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} datasets={networkDatasets} yFormat={networkFormat} group={chartGroup} enableZoom markLines={chartMarkLines} />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
@@ -789,14 +880,14 @@
 							<button class:active={diskMode === 'rate'} onclick={() => (diskMode = 'rate')}>속도</button>
 						</div>
 					</div>
-					<UserMetricChart labels={historyLabels} datasets={diskDatasets} yFormat={diskFormat} group={chartGroup} enableZoom markLines={chartMarkLines} />
+					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} datasets={diskDatasets} yFormat={diskFormat} group={chartGroup} enableZoom markLines={chartMarkLines} />
 				</div>
 				{#if hasGpuHistory || (currentGpuUsage !== null && currentGpuUsage !== undefined)}
 					<div class="chart-card">
 						<div class="chart-head">
 							<h3>GPU 사용률</h3>
 						</div>
-						<UserMetricChart labels={historyLabels} datasets={gpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
+						<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} datasets={gpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
 					</div>
 				{/if}
 			</div>
@@ -821,15 +912,8 @@
 			<InspectPanel data={inspectData} loading={inspectLoading} errorMsg={inspectError} />
 		</div>
 
-		</div>
-
-		<details class="details-accordion">
-			<summary>
-				<span class="details-title">런타임 정보 · 요청 시 설정</span>
-				<span class="details-hint">컨테이너 ID / 요청 출처 / 포트·환경 변수</span>
-				<span class="details-chevron" aria-hidden="true">▾</span>
-			</summary>
-			<section class="details-grid">
+		<div class="bento-area area-context">
+			<section class="details-grid context-grid" aria-label="런타임 정보 및 요청 시 설정">
 			<div class="panel">
 				<div class="panel-header slim">
 					<div>
@@ -901,7 +985,9 @@
 				</div>
 			</div>
 			</section>
-		</details>
+		</div>
+
+		</div>
 
 		<ContainerLimitModal
 			open={limitModalOpen}
@@ -939,17 +1025,28 @@
 	}
 
 	.back-link {
-		padding: 0;
-		background: transparent;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 4px;
+		height: 24px;
+		padding: 0 8px;
+		background: rgba(2, 6, 12, 0.54);
+		border: 1px solid rgba(48, 213, 200, 0.2);
+		border-radius: 999px;
 		color: var(--text-secondary);
-		font-size: 11px;
-		font-weight: 700;
-		margin-bottom: 0;
-		align-self: flex-start;
-		text-align: left;
+		font-size: 10px;
+		font-weight: 800;
+		line-height: 1;
+		align-self: center;
+		white-space: nowrap;
+		flex: 0 0 auto;
+		transition: background-color var(--ease-fast), border-color var(--ease-fast), color var(--ease-fast);
 	}
 
 	.back-link:hover {
+		background: rgba(48, 213, 200, 0.08);
+		border-color: rgba(48, 213, 200, 0.34);
 		color: var(--accent);
 	}
 
@@ -1000,15 +1097,18 @@
 		padding-top: clamp(10px, 0.75vw, 13px);
 		border-radius: 10px;
 		background:
+			linear-gradient(90deg, rgba(48, 213, 200, 0.12), transparent 36%),
 			radial-gradient(ellipse at top left, rgba(48, 213, 200, 0.18), transparent 65%),
 			linear-gradient(135deg, rgba(48, 213, 200, 0.08), rgba(9, 75, 102, 0.12)),
 			rgba(18, 23, 32, 0.98);
 		border: 1px solid rgba(48, 213, 200, 0.22);
-		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+		box-shadow:
+			0 10px 32px rgba(0, 0, 0, 0.18),
+			inset 0 1px 0 rgba(255, 255, 255, 0.04);
 		align-items: center;
-		flex: 1.1 1 380px;
-		min-width: 340px;
-		max-width: 520px;
+		flex: 0.9 1 360px;
+		min-width: 320px;
+		max-width: 480px;
 		position: relative;
 		overflow: hidden;
 	}
@@ -1176,12 +1276,14 @@
 	.hero-actions {
 		display: flex;
 		flex-direction: row;
-		align-items: stretch;
-		gap: 5px;
+		align-items: center;
+		gap: 4px;
 		flex-shrink: 0;
-		padding-left: clamp(7px, 0.55vw, 10px);
-		border-left: 1px solid rgba(48, 213, 200, 0.2);
-		align-self: stretch;
+		align-self: flex-start;
+		padding: 4px;
+		border-radius: 10px;
+		background: rgba(2, 6, 12, 0.34);
+		border: 1px solid rgba(48, 213, 200, 0.16);
 		justify-content: center;
 	}
 
@@ -1191,11 +1293,12 @@
 		align-items: center;
 		justify-content: center;
 		gap: 5px;
-		padding: 5px 9px;
-		min-width: 78px;
-		border-radius: 8px;
-		background: rgba(13, 17, 23, 0.7);
-		border: 1px solid rgba(31, 41, 55, 0.9);
+		padding: 0 9px;
+		min-width: 0;
+		min-height: 28px;
+		border-radius: 7px;
+		background: rgba(13, 17, 23, 0.58);
+		border: 1px solid rgba(31, 41, 55, 0.72);
 		color: var(--text-secondary);
 		font-size: 10.5px;
 		font-weight: 700;
@@ -1243,8 +1346,8 @@
 	/* unified-bar 안에서 KPI 는 중간 1fr — 가능한 wide. KPI bar 컴포넌트가 자체적으로
 	   auto-fit grid 라 4 pill 자동 분배. */
 	.kpi-row {
-		flex: 1 1 0;
-		min-width: 300px;
+		flex: 1.35 1 500px;
+		min-width: 500px;
 		display: flex;
 		align-items: stretch;
 	}
@@ -1257,49 +1360,63 @@
 	   caption 라벨이 좌측 상단, 메인 영역은 단순 row. */
 	.ops-bar {
 		margin-top: 0;
-		padding: clamp(7px, 0.55vw, 10px) clamp(9px, 0.7vw, 12px);
-		padding-top: clamp(11px, 0.8vw, 14px);
+		padding: clamp(10px, 0.75vw, 13px);
 		border-radius: 10px;
 		background:
+			linear-gradient(135deg, rgba(48, 213, 200, 0.09), transparent 38%),
 			linear-gradient(180deg, rgba(13, 17, 23, 0.55), rgba(18, 23, 32, 0.98)),
 			rgba(18, 23, 32, 0.98);
 		border: 1px solid var(--border);
-		display: flex;
-		flex-wrap: nowrap;
-		align-items: center;
-		gap: clamp(6px, 0.5vw, 10px);
-		flex: 0.95 1 330px;
-		min-width: 300px;
-		max-width: 500px;
-		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+		display: grid;
+		grid-template-rows: auto auto auto;
+		align-content: stretch;
+		gap: 9px;
+		flex: 0.78 1 340px;
+		min-width: 320px;
+		max-width: 430px;
+		box-shadow:
+			0 10px 30px rgba(0, 0, 0, 0.16),
+			inset 0 1px 0 rgba(255, 255, 255, 0.03);
 		position: relative;
 		overflow: hidden;
 	}
 
-	/* CONTROL caption — ops-bar 상단 좌측 작은 라벨 (overlay) */
-	.ops-caption {
-		position: absolute;
-		top: 3px;
-		left: 10px;
-		font-size: 8px;
-		font-weight: 800;
-		letter-spacing: 0.12em;
-		color: var(--accent);
-		opacity: 0.7;
-		pointer-events: none;
+	.ops-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		min-width: 0;
+		padding-bottom: 8px;
+		border-bottom: 1px solid rgba(100, 116, 139, 0.14);
 	}
 
-	/* 좌측 상태 시각화 — orb (status color + pulse) + 텍스트 (상태명 + uptime/PID) */
+	.ops-caption {
+		display: inline-flex;
+		align-items: center;
+		padding: 4px 8px;
+		border-radius: 999px;
+		background: rgba(48, 213, 200, 0.1);
+		border: 1px solid rgba(48, 213, 200, 0.22);
+		font-size: 10px;
+		font-weight: 900;
+		letter-spacing: 0.08em;
+		color: var(--accent);
+		flex: 0 0 auto;
+	}
+
 	.ops-status {
 		display: flex;
 		align-items: center;
-		gap: 7px;
-		flex-shrink: 0;
+		justify-content: flex-end;
+		gap: 8px;
+		flex: 0 0 auto;
+		min-width: 0;
 	}
 	.status-orb {
 		position: relative;
-		width: 28px;
-		height: 28px;
+		width: 32px;
+		height: 32px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -1346,58 +1463,132 @@
 	.status-text {
 		display: flex;
 		flex-direction: column;
-		gap: 1px;
+		gap: 2px;
 		min-width: 0;
+		text-align: right;
 	}
 	.status-name {
-		font-size: 11.5px;
-		font-weight: 800;
+		font-size: 15px;
+		font-weight: 900;
 		color: var(--text-primary);
 		letter-spacing: -0.005em;
 		line-height: 1.1;
 	}
 	.status-meta {
-		font-size: 9.5px;
+		font-size: 11px;
 		color: var(--text-muted);
-		font-weight: 600;
+		font-weight: 700;
 		white-space: nowrap;
 		line-height: 1.2;
 	}
 
+	.ops-quick {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 6px;
+		width: 100%;
+	}
+	.ops-quick span {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		gap: 4px;
+		min-width: 0;
+		min-height: 58px;
+		padding: 8px 9px;
+		border-radius: 8px;
+		background: rgba(2, 6, 12, 0.3);
+		border: 1px solid rgba(100, 116, 139, 0.14);
+		color: var(--text-secondary);
+		font-size: 12px;
+		font-weight: 800;
+		line-height: 1.1;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		font-variant-numeric: tabular-nums;
+	}
+	.ops-quick b {
+		display: block;
+		color: var(--text-muted);
+		font-size: 10px;
+		font-weight: 900;
+		letter-spacing: 0;
+	}
+	.ops-quick strong,
+	.ops-quick em {
+		display: block;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.ops-quick strong {
+		color: var(--text-primary);
+		font-size: 14px;
+		font-weight: 900;
+	}
+	.ops-quick em {
+		color: var(--text-muted);
+		font-size: 10px;
+		font-style: normal;
+		font-weight: 700;
+	}
+	.ops-quick span.ok {
+		border-color: rgba(16, 185, 129, 0.3);
+		background: rgba(16, 185, 129, 0.08);
+	}
+	.ops-quick span.ok strong { color: #6ee7b7; }
+	.ops-quick span.bad {
+		border-color: rgba(239, 68, 68, 0.34);
+		background: rgba(239, 68, 68, 0.09);
+	}
+	.ops-quick span.bad strong { color: #fca5a5; }
+	.ops-quick span.paused {
+		border-color: rgba(251, 191, 36, 0.34);
+		background: rgba(251, 191, 36, 0.08);
+	}
+	.ops-quick span.paused strong { color: #fde68a; }
+
 	.ops-divider {
-		width: 1px;
-		align-self: stretch;
-		background: linear-gradient(180deg, transparent, rgba(48, 213, 200, 0.2), transparent);
-		flex-shrink: 0;
-		margin: 4px 0;
+		display: none;
 	}
 
 	/* 우측 액션 영역 — ContainerActions + limit icon btn */
 	.ops-actions {
 		display: flex;
-		align-items: center;
+		align-items: stretch;
 		gap: 5px;
-		flex: 1 1 auto;
+		flex: 0 0 auto;
 		min-width: 0;
-		justify-content: flex-end;
+		width: 100%;
+		justify-content: stretch;
+	}
+	.ops-actions :global(.actions) {
+		flex: 1 1 auto;
+		width: 100%;
+		min-width: 0;
 	}
 
-	/* 한도수정 icon-only — secondary action 으로 visual weight 줄임 */
+	/* 한도수정 — lifecycle 버튼 옆에서 같은 밀도로 보이게 맞춤 */
 	.limit-icon-btn {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 28px;
-		height: 28px;
-		padding: 0;
+		gap: 4px;
+		min-width: 68px;
+		height: 40px;
+		padding: 0 11px;
 		border-radius: 8px;
 		background: rgba(13, 17, 23, 0.6);
 		border: 1px solid rgba(31, 41, 55, 0.9);
 		color: var(--text-muted);
 		font-family: inherit;
-		font-size: 13px;
+		font-size: 12px;
+		font-weight: 800;
 		cursor: pointer;
 		flex-shrink: 0;
+		white-space: nowrap;
 		transition: background-color var(--ease-fast), border-color var(--ease-fast), color var(--ease-fast);
 	}
 	.limit-icon-btn:hover:not(:disabled) {
@@ -1515,24 +1706,78 @@
 	.panel,
 	.chart-card,
 	.config-card {
-		background: rgba(18, 23, 32, 0.96);
-		border: 1px solid var(--border);
+		background:
+			linear-gradient(180deg, rgba(21, 27, 38, 0.98), rgba(15, 20, 29, 0.98)),
+			rgba(18, 23, 32, 0.96);
+		border: 1px solid rgba(100, 116, 139, 0.18);
+		box-shadow:
+			0 8px 24px rgba(0, 0, 0, 0.16),
+			inset 0 1px 0 rgba(255, 255, 255, 0.025);
 	}
 
-	/* Desktop workbench: charts left, logs+console live lane center, support panels right. */
+	.workbench-tabs {
+		display: inline-flex;
+		align-self: flex-end;
+		gap: 3px;
+		padding: 3px;
+		border-radius: 999px;
+		background: rgba(13, 17, 23, 0.58);
+		border: 1px solid rgba(100, 116, 139, 0.18);
+		flex: 0 0 auto;
+	}
+	.workbench-tabs button {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 6px;
+		border: 0;
+		border-radius: 999px;
+		padding: 4px 10px;
+		background: transparent;
+		color: var(--text-muted);
+		font-family: inherit;
+		cursor: pointer;
+		transition: background-color var(--ease-fast), color var(--ease-fast);
+	}
+	.workbench-tabs button:hover:not(.active) {
+		background: rgba(48, 213, 200, 0.08);
+		color: var(--text-secondary);
+	}
+	.workbench-tabs button.active {
+		background: rgba(48, 213, 200, 0.18);
+		color: var(--accent);
+		box-shadow: inset 0 0 0 1px rgba(48, 213, 200, 0.28);
+	}
+	.mode-title {
+		font-size: 10.5px;
+		font-weight: 850;
+	}
+	.mode-sub {
+		font-size: 9.5px;
+		font-weight: 650;
+		color: currentColor;
+		opacity: 0.72;
+	}
+
+	/* Desktop workbench: charts stay compact, events/status sit directly below them. */
 	.bento {
 		display: grid;
 		grid-template-columns: repeat(12, minmax(0, 1fr));
-		grid-template-rows: minmax(0, 1fr) minmax(0, 0.86fr) minmax(0, 0.9fr);
+		grid-template-rows: minmax(0, 0.86fr) minmax(0, 0.86fr) minmax(0, 0.76fr);
 		grid-template-areas:
 			"charts charts charts charts charts live live live live process process process"
-			"charts charts charts charts charts live live live live events events events"
-			"charts charts charts charts charts live live live live inspect inspect inspect";
+			"charts charts charts charts charts live live live live context context context"
+			"events events inspect inspect inspect live live live live context context context";
 		gap: clamp(5px, 0.45vw, 9px);
 		margin-top: 0;
 		flex: 1 1 0;
 		min-height: 0;
 		overflow: hidden;
+	}
+	.bento.diagnose {
+		grid-template-areas:
+			"charts charts charts charts live live live live live process process process"
+			"charts charts charts charts live live live live live context context context"
+			"events events inspect inspect live live live live live context context context";
 	}
 	.bento-area {
 		min-width: 0;
@@ -1552,6 +1797,13 @@
 	}
 	.area-inspect {
 		grid-area: inspect;
+	}
+	.area-context {
+		grid-area: context;
+	}
+	.area-context > .context-grid {
+		flex: 1 1 0;
+		width: 100%;
 	}
 
 	.live-stack {
@@ -1645,7 +1897,9 @@
 	   h2 + 우측 range tabs 한 줄로. */
 	.panel-header.compact {
 		align-items: center;
-		margin-bottom: 10px;
+		margin-bottom: 8px;
+		padding-bottom: 6px;
+		border-bottom: 1px solid rgba(100, 116, 139, 0.14);
 	}
 
 	h2 {
@@ -1758,6 +2012,18 @@
 		display: flex;
 		flex-direction: column;
 		min-height: 0;
+		position: relative;
+	}
+	.chart-card::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 10px;
+		right: 10px;
+		height: 2px;
+		border-radius: 999px;
+		background: linear-gradient(90deg, rgba(48, 213, 200, 0.65), rgba(96, 165, 250, 0.16));
+		opacity: 0.45;
 	}
 	.chart-card:hover {
 		border-color: rgba(48, 213, 200, 0.22);
@@ -1828,6 +2094,50 @@
 		grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
 		gap: clamp(6px, 0.5vw, 10px);
 		margin-top: clamp(5px, 0.4vw, 8px);
+	}
+
+	.context-grid {
+		grid-template-columns: 1fr;
+		grid-template-rows: minmax(0, 0.88fr) minmax(0, 1fr);
+		height: 100%;
+		min-height: 0;
+		margin-top: 0;
+	}
+	.context-grid > .panel {
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+		overflow: hidden;
+	}
+	.context-grid .panel-header.slim {
+		margin-bottom: 6px;
+		padding-bottom: 6px;
+	}
+	.context-grid .panel-header.slim p {
+		display: none;
+	}
+	.context-grid .info-grid {
+		grid-template-columns: 1fr;
+		gap: 6px;
+	}
+	.context-grid .info-item,
+	.context-grid .note-box,
+	.context-grid .config-card {
+		padding: 8px;
+		border-radius: 9px;
+	}
+	.context-grid .note-box {
+		margin-top: 6px;
+	}
+	.context-grid .config-split {
+		gap: 7px;
+		min-height: 0;
+		overflow: auto;
+	}
+	.context-grid .tag-list,
+	.context-grid .env-list {
+		max-height: 86px;
+		overflow: auto;
 	}
 
 	/* 런타임/요청 설정 accordion — 기본 닫힘 (사용자가 펼쳐서 본다).
@@ -1972,10 +2282,17 @@
 	/* 1280~1439: 차트와 라이브 패널을 위에 두고 보조 패널은 한 줄로 압축. */
 	@media (max-width: 1439px) {
 		.bento {
-			grid-template-rows: minmax(0, 1.15fr) minmax(0, 0.85fr);
+			grid-template-rows: minmax(0, 0.88fr) minmax(0, 0.84fr) minmax(0, 0.7fr);
 			grid-template-areas:
-				"charts charts charts charts charts charts charts charts live live live live"
-				"process process process events events events inspect inspect live live live live";
+				"charts charts charts charts charts live live live live process process process"
+				"charts charts charts charts charts live live live live context context context"
+				"events events inspect inspect inspect live live live live context context context";
+		}
+		.bento.diagnose {
+			grid-template-areas:
+				"charts charts charts charts live live live live live process process process"
+				"charts charts charts charts live live live live live context context context"
+				"events events inspect inspect live live live live live context context context";
 		}
 	}
 
@@ -1988,6 +2305,27 @@
 			overflow: visible;
 		}
 
+		.unified-bar {
+			display: grid;
+			grid-template-columns: 1fr;
+		}
+
+		.hero,
+		.kpi-row,
+		.ops-bar {
+			width: 100%;
+			min-width: 0;
+			max-width: none;
+		}
+
+		.kpi-row {
+			flex-basis: auto;
+		}
+
+		.kpi-row :global(.kpi-bar) {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+
 		.hero,
 		.panel-header,
 		.chart-head,
@@ -1998,14 +2336,52 @@
 
 		.bento {
 			grid-template-columns: 1fr;
+			grid-template-rows: none;
+			grid-auto-rows: auto;
 			grid-template-areas:
 				'charts'
+				'events'
+				'inspect'
 				'live'
 				'process'
-				'events'
-				'inspect';
+				'context';
 			overflow: visible;
 			flex: 0 0 auto;
+		}
+		.bento-area > :global(.panel) {
+			height: auto;
+		}
+		.chart-grid {
+			grid-template-columns: 1fr;
+			grid-template-rows: none;
+			grid-auto-rows: minmax(180px, auto);
+			flex: 0 0 auto;
+		}
+		.chart-card {
+			min-height: 180px;
+		}
+		.context-grid {
+			grid-template-rows: none;
+			height: auto;
+		}
+		.area-context > .context-grid {
+			flex: 0 0 auto;
+		}
+		.context-grid > .panel {
+			overflow: visible;
+		}
+		.workbench-tabs {
+			align-self: stretch;
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			border-radius: 12px;
+		}
+		.workbench-tabs button {
+			justify-content: center;
+			border-radius: 9px;
+			flex-direction: column;
+			align-items: center;
+			gap: 1px;
 		}
 
 		.chart-grid,

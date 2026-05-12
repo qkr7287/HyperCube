@@ -75,7 +75,7 @@ export function transformSystemMetrics(msg: any): SystemInfo {
 	const docker = d.docker ?? {};
 	const logins = d.logins ?? {};
 	const procs = d.processes ?? {};
-	const gpu = Array.isArray(d.gpu) ? d.gpu : [];
+	const gpu: any[] = Array.isArray(d.gpu) ? d.gpu : [];
 
 	const memTotal = typeof mem.total === 'number' ? mem.total : 0;
 	const memUsed = typeof mem.used === 'number' ? mem.used : 0;

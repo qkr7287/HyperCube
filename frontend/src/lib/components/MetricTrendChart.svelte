@@ -16,7 +16,7 @@
 	import EChartBase from '$lib/components/charts/EChartBase.svelte';
 	import type { EChartsOption } from '$lib/components/charts/echart-registry';
 
-	type RangeKey = '1m' | '10m' | '1h' | '6h' | '24h' | '7d';
+	type RangeKey = '1m' | '5m' | '10m' | '1h' | '6h' | '24h' | '7d';
 	type Unit = 'percent' | 'count' | 'bytes' | 'rate';
 
 	let {
@@ -59,6 +59,7 @@
 
 	const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
 		{ key: '1m', label: '1분' },
+		{ key: '5m', label: '5분' },
 		{ key: '10m', label: '10분' },
 		{ key: '1h', label: '1시간' },
 		{ key: '6h', label: '6시간' },

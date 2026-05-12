@@ -10,6 +10,7 @@
 
 	let {
 		labels = [],
+		tooltipLabels = [],
 		datasets = [],
 		yFormat = 'percent' as ValueFormat,
 		group,
@@ -18,6 +19,7 @@
 		height = 200,
 	}: {
 		labels?: string[];
+		tooltipLabels?: string[];
 		datasets?: Series[];
 		yFormat?: ValueFormat;
 		group?: string;
@@ -28,7 +30,7 @@
 </script>
 
 <div class="chart-shell" style="--chart-h: {height}px">
-	<EChartLine {labels} series={datasets} {yFormat} height="100%" {group} {enableZoom} {markLines} />
+	<EChartLine {labels} {tooltipLabels} series={datasets} {yFormat} height="100%" {group} {enableZoom} {markLines} />
 </div>
 
 <style>

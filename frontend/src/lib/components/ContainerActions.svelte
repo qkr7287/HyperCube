@@ -48,6 +48,7 @@
 	let allowed = $derived(validActions(currentStatus));
 	let busyAction = $state<Action | null>(null);
 	let pendingAction = $state<Action | null>(null);
+	let dangerExpanded = $state(false);
 
 	function token(): string | null {
 		if (!browser) return null;
@@ -87,6 +88,7 @@
 	function handleClick(action: Action) {
 		if (disabled || busyAction || !allowed.has(action)) return;
 		const meta = ACTION_META[action];
+		if (meta.destructive) dangerExpanded = false;
 		if (meta.needsConfirm) {
 			pendingAction = action;
 			return;
@@ -114,18 +116,26 @@
 	const RUN_ACTIONS: Action[] = ['start', 'unpause', 'pause'];
 	const RESTART_ACTIONS: Action[] = ['restart'];
 	const KILL_ACTIONS: Action[] = ['stop', 'kill'];
+	let visibleRunActions = $derived(RUN_ACTIONS.filter((action) => allowed.has(action)));
+	let visibleRestartActions = $derived(RESTART_ACTIONS.filter((action) => allowed.has(action)));
+	let visibleKillActions = $derived(KILL_ACTIONS.filter((action) => allowed.has(action)));
+	let hasDangerAction = $derived(KILL_ACTIONS.some((action) => allowed.has(action)));
+
+	$effect(() => {
+		if (!hasDangerAction) dangerExpanded = false;
+	});
 </script>
 
 <div class="actions" role="group" aria-label="컨테이너 컨트롤">
+	{#if visibleRunActions.length > 0}
 	<div class="group run">
-		{#each RUN_ACTIONS as action}
+		{#each visibleRunActions as action}
 			{@const meta = ACTION_META[action]}
-			{@const isAllowed = allowed.has(action)}
 			{@const isBusy = busyAction === action}
 			<button
 				type="button"
 				class="btn run"
-				disabled={disabled || !isAllowed || busyAction !== null || !agentOnline}
+				disabled={disabled || busyAction !== null || !agentOnline}
 				onclick={() => handleClick(action)}
 				title={!agentOnline ? 'Agent 오프라인 — 명령 발송 불가' : (meta.help || meta.label)}
 			>
@@ -134,15 +144,16 @@
 			</button>
 		{/each}
 	</div>
+	{/if}
+	{#if visibleRestartActions.length > 0}
 	<div class="group restart">
-		{#each RESTART_ACTIONS as action}
+		{#each visibleRestartActions as action}
 			{@const meta = ACTION_META[action]}
-			{@const isAllowed = allowed.has(action)}
 			{@const isBusy = busyAction === action}
 			<button
 				type="button"
 				class="btn warn"
-				disabled={disabled || !isAllowed || busyAction !== null || !agentOnline}
+				disabled={disabled || busyAction !== null || !agentOnline}
 				onclick={() => handleClick(action)}
 				title={!agentOnline ? 'Agent 오프라인 — 명령 발송 불가' : (meta.help || meta.label)}
 			>
@@ -151,15 +162,29 @@
 			</button>
 		{/each}
 	</div>
-	<div class="group kill">
-		{#each KILL_ACTIONS as action}
+	{/if}
+	{#if hasDangerAction}
+	<div class="group kill" class:expanded={dangerExpanded}>
+		<button
+			type="button"
+			class="btn danger-toggle"
+			class:open={dangerExpanded}
+			aria-expanded={dangerExpanded}
+			disabled={disabled || busyAction !== null || !agentOnline || !hasDangerAction}
+			onclick={() => (dangerExpanded = !dangerExpanded)}
+			title={!agentOnline ? 'Agent 오프라인 - 명령을 보낼 수 없습니다' : '중지와 강제종료 옵션을 펼칩니다'}
+		>
+			<span class="icon">{dangerExpanded ? '▴' : '▾'}</span>
+			<span>종료 옵션</span>
+		</button>
+		{#if dangerExpanded}
+		{#each visibleKillActions as action}
 			{@const meta = ACTION_META[action]}
-			{@const isAllowed = allowed.has(action)}
 			{@const isBusy = busyAction === action}
 			<button
 				type="button"
 				class="btn danger"
-				disabled={disabled || !isAllowed || busyAction !== null || !agentOnline}
+				disabled={disabled || busyAction !== null || !agentOnline}
 				onclick={() => handleClick(action)}
 				title={!agentOnline ? 'Agent 오프라인 — 명령 발송 불가' : (meta.help || meta.label)}
 			>
@@ -167,7 +192,9 @@
 				<span>{isBusy ? '처리 중...' : meta.label}</span>
 			</button>
 		{/each}
+		{/if}
 	</div>
+	{/if}
 </div>
 
 <ConfirmDialog
@@ -187,18 +214,22 @@
 	   row 2 (destructive): kill group (중지/강제종료)
 	   각 그룹 색 stripe 로 위험도 시각적 분리 + ops-bar 가 stat orb 와 비례 잡힘. */
 	.actions {
-		display: flex;
-		flex-wrap: wrap;
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
 		align-items: stretch;
-		gap: 5px;
+		gap: 4px;
+		width: 100%;
+		min-width: 0;
 	}
 	.group {
 		display: inline-flex;
 		align-items: center;
 		gap: 2px;
-		padding: 4px 4px 4px 9px;
+		padding: 3px 3px 3px 7px;
 		border-radius: 8px;
 		position: relative;
+		width: 100%;
+		min-width: 0;
 	}
 	.group::before {
 		content: '';
@@ -211,25 +242,31 @@
 	}
 	/* kill 그룹은 row 2 풀폭. wrap break 강제. */
 	.group.kill {
+		flex-basis: auto;
+		max-width: 100%;
+	}
+	.group.kill.expanded {
+		grid-column: 1 / -1;
 		flex-basis: 100%;
+		flex-wrap: wrap;
 	}
 	.group.run {
-		background: rgba(13, 17, 23, 0.4);
-		border: 1px solid rgba(31, 41, 55, 0.6);
+		background: rgba(13, 17, 23, 0.46);
+		border: 1px solid rgba(100, 116, 139, 0.18);
 	}
 	.group.run::before {
 		background: rgba(156, 163, 175, 0.5);
 	}
 	.group.restart {
-		background: rgba(251, 191, 36, 0.06);
-		border: 1px solid rgba(251, 191, 36, 0.25);
+		background: rgba(251, 191, 36, 0.08);
+		border: 1px solid rgba(251, 191, 36, 0.3);
 	}
 	.group.restart::before {
 		background: rgba(251, 191, 36, 0.6);
 	}
 	.group.kill {
-		background: rgba(239, 68, 68, 0.06);
-		border: 1px solid rgba(239, 68, 68, 0.25);
+		background: rgba(239, 68, 68, 0.08);
+		border: 1px solid rgba(239, 68, 68, 0.3);
 	}
 	.group.kill::before {
 		background: rgba(239, 68, 68, 0.65);
@@ -238,15 +275,18 @@
 	.btn {
 		display: inline-flex;
 		align-items: center;
-		gap: 3px;
-		padding: 5px 7px;
-		border-radius: 6px;
-		background: transparent;
-		border: 1px solid transparent;
+		justify-content: center;
+		gap: 4px;
+		width: 100%;
+		min-height: 40px;
+		padding: 0 10px;
+		border-radius: 8px;
+		background: rgba(2, 6, 12, 0.22);
+		border: 1px solid rgba(100, 116, 139, 0.1);
 		color: var(--text-secondary);
 		font-family: inherit;
-		font-size: 10.5px;
-		font-weight: 700;
+		font-size: 12px;
+		font-weight: 800;
 		cursor: pointer;
 		white-space: nowrap;
 		transition: background 0.15s, border-color 0.15s, color 0.15s;
@@ -270,14 +310,25 @@
 		border-color: rgba(239, 68, 68, 0.5);
 		color: #fca5a5;
 	}
+	.btn.danger-toggle {
+		color: #fca5a5;
+		border-color: rgba(239, 68, 68, 0.22);
+	}
+	.btn.danger-toggle.open {
+		background: rgba(239, 68, 68, 0.16);
+		border-color: rgba(239, 68, 68, 0.42);
+	}
 
 	.btn:disabled {
-		opacity: 0.35;
+		opacity: 0.32;
 		cursor: not-allowed;
+		background: transparent;
+		border-color: transparent;
 	}
 
 	.icon {
-		font-size: 11px;
+		font-size: 12px;
 		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+		opacity: 0.9;
 	}
 </style>

@@ -121,10 +121,12 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		gap: 12px;
 		padding: 0 20px;
 		background: rgba(18, 23, 32, 0.92);
 		border-bottom: 1px solid var(--border);
 		backdrop-filter: blur(14px);
+		min-width: 0;
 	}
 
 	.brand {
@@ -132,17 +134,23 @@
 		user-select: none;
 		display: inline-flex;
 		align-items: center;
+		flex: 0 1 auto;
+		min-width: 0;
 	}
 
 	.brand-logo {
 		display: block;
 		height: 22px;
 		width: auto;
+		max-width: 100%;
 	}
 
 	.nav {
 		display: flex;
 		gap: 6px;
+		flex: 0 1 auto;
+		justify-content: center;
+		min-width: 0;
 	}
 
 	.nav-link {
@@ -153,6 +161,7 @@
 		text-decoration: none;
 		border-radius: var(--radius-md);
 		transition: color 0.12s, background 0.12s, box-shadow 0.12s;
+		white-space: nowrap;
 	}
 
 	.nav-link:hover {
@@ -170,6 +179,8 @@
 		display: flex;
 		align-items: center;
 		gap: 12px;
+		flex: 0 0 auto;
+		min-width: 0;
 	}
 
 	.user-name {
@@ -199,5 +210,74 @@
 		/* 자연 스크롤. viewport-fit 강제는 정보 밀도만 높이고 짤림을 유발해서 포기.
 		   페이지 자체가 height 를 자연스럽게 차지하고 user-body 가 스크롤 컨테이너. */
 		overflow-y: auto;
+	}
+	@media (max-width: 640px) {
+		.user-shell {
+			height: 100dvh;
+		}
+		.user-header {
+			height: auto;
+			min-height: 72px;
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) auto;
+			grid-template-areas:
+				"brand right"
+				"nav nav";
+			align-items: center;
+			gap: 8px 10px;
+			padding: 8px 12px;
+		}
+		.brand {
+			grid-area: brand;
+		}
+		.brand-logo {
+			height: 20px;
+			max-width: 170px;
+		}
+		.nav {
+			grid-area: nav;
+			width: 100%;
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 4px;
+			padding: 3px;
+			border-radius: 12px;
+			background: rgba(13, 17, 23, 0.62);
+			border: 1px solid rgba(100, 116, 139, 0.18);
+		}
+		.nav-link {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			min-height: 32px;
+			padding: 0 8px;
+			border-radius: 9px;
+			font-size: 12px;
+			font-weight: 800;
+		}
+		.right {
+			grid-area: right;
+			justify-self: end;
+			gap: 6px;
+		}
+		.user-name {
+			max-width: 72px;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+		.logout-btn {
+			padding: 5px 9px;
+			font-size: 10.5px;
+		}
+	}
+
+	@media (max-width: 420px) {
+		.brand-logo {
+			max-width: 150px;
+		}
+		.user-name {
+			display: none;
+		}
 	}
 </style>

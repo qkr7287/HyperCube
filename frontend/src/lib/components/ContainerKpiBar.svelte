@@ -83,222 +83,552 @@
 		return 'normal';
 	}
 
+	function asNumber(value: number | null | undefined): number {
+		const n = Number(value ?? 0);
+		return Number.isFinite(n) ? n : 0;
+	}
+
+	function clampPercent(value: number): number {
+		return Math.max(0, Math.min(100, value));
+	}
+
+	function shareOf(value: number, total: number): number {
+		if (total <= 0) return 0;
+		return clampPercent((value / total) * 100);
+	}
+
+	function levelLabel(level: 'normal' | 'warn' | 'danger'): string {
+		if (level === 'danger') return '위험';
+		if (level === 'warn') return '주의';
+		return '정상';
+	}
+
 	let cpuTrend = $derived(history.map((r) => r.cpu_usage));
 	let memTrend = $derived(history.map((r) => r.memory_percent));
 	let netTrend = $derived(history.map((r) => (r.network_rx ?? 0) + (r.network_tx ?? 0)));
 	let diskTrend = $derived(history.map((r) => (r.disk_read ?? 0) + (r.disk_write ?? 0)));
 	let gpuTrend = $derived(history.map((r) => r.gpu_usage ?? 0));
 
-	let cpuLevel = $derived(severity(currentMetrics?.cpu?.usage ?? 0, 70, 90));
-	let memLevel = $derived(severity(currentMetrics?.memory?.percent ?? 0, 75, 90));
+	let cpuNow = $derived(asNumber(currentMetrics?.cpu?.usage));
+	let memNow = $derived(asNumber(currentMetrics?.memory?.percent));
+	let memUsed = $derived(asNumber(currentMetrics?.memory?.usage));
+	let memLimit = $derived(asNumber(currentMetrics?.memory?.limit));
+	let memFree = $derived(Math.max(0, memLimit - memUsed));
+	let netRx = $derived(asNumber(currentMetrics?.network?.rx));
+	let netTx = $derived(asNumber(currentMetrics?.network?.tx));
+	let netTotal = $derived(netRx + netTx);
+	let netDeltaTotal = $derived(netRxDelta + netTxDelta);
+	let diskRead = $derived(asNumber(currentMetrics?.disk?.read));
+	let diskWrite = $derived(asNumber(currentMetrics?.disk?.write));
+	let diskTotal = $derived(diskRead + diskWrite);
+	let diskDeltaTotal = $derived(diskReadDelta + diskWriteDelta);
+
+	let netRxShare = $derived(shareOf(netRx, netTotal));
+	let netTxShare = $derived(shareOf(netTx, netTotal));
+	let diskReadShare = $derived(shareOf(diskRead, diskTotal));
+	let diskWriteShare = $derived(shareOf(diskWrite, diskTotal));
+
+	let cpuLevel = $derived(severity(cpuNow, 70, 90));
+	let memLevel = $derived(severity(memNow, 75, 90));
 	let gpuLevel = $derived(severity(currentGpuUsage ?? 0, 80, 95));
 </script>
 
 <section class="kpi-bar" class:with-gpu={hasGpu} aria-label="컨테이너 메트릭 요약">
 	<div class="kpi" data-level={cpuLevel}>
-		<span class="label">
-			CPU
-			{#if cpuHelp}<InfoTooltip text={cpuHelp} placement="bottom-start" />{/if}
-		</span>
-		<div class="value-line">
-			<strong class="value">{formatPercent(currentMetrics?.cpu?.usage, 2)}</strong>
-			<span class="trend" title="{rangeLabel} 평균 {formatPercent(cpuAvg, 1)} · 피크 {formatPercent(cpuPeak, 1)}">
-				avg {formatPercent(cpuAvg, 1)} · pk {formatPercent(cpuPeak, 1)}
+		<div class="kpi-top">
+			<span class="label">
+				CPU
+				{#if cpuHelp}<InfoTooltip text={cpuHelp} placement="bottom-start" />{/if}
+			</span>
+			<span class="scope" data-level={cpuLevel}>{levelLabel(cpuLevel)}</span>
+		</div>
+		<div class="metric-hero">
+			<strong class="value">{formatPercent(cpuNow, 2)}</strong>
+			<span class="hero-note">{rangeLabel} 기준</span>
+		</div>
+		<div class="meter" style={`--value:${clampPercent(cpuNow)}%;--avg:${clampPercent(cpuAvg)}%;--peak:${clampPercent(cpuPeak)}%;`}>
+			<span class="meter-fill"></span>
+			<span class="meter-marker avg" title="{rangeLabel} 평균 {formatPercent(cpuAvg, 1)}"></span>
+			<span class="meter-marker peak" title="{rangeLabel} 피크 {formatPercent(cpuPeak, 1)}"></span>
+		</div>
+		<div class="insight-row">
+			<span>
+				<b>평균</b>
+				<span>{formatPercent(cpuAvg, 1)}</span>
+			</span>
+			<span>
+				<b>피크</b>
+				<span>{formatPercent(cpuPeak, 1)}</span>
 			</span>
 		</div>
-		<div class="spark"><MetricSparkline values={cpuTrend} color="#30d5c8" label="CPU 추이" /></div>
+		<div class="trend-strip">
+			<span>추이</span>
+			<MetricSparkline values={cpuTrend} color="#30d5c8" label="CPU 추이" />
+		</div>
 	</div>
 
 	<div class="kpi" data-level={memLevel}>
-		<span class="label">
-			메모리
-			{#if memoryHelp}<InfoTooltip text={memoryHelp} placement="bottom-start" />{/if}
-		</span>
-		<div class="value-line">
-			<strong class="value">{formatPercent(currentMetrics?.memory?.percent, 2)}</strong>
-			<span class="trend" title="{formatMemoryUsage(currentMetrics?.memory?.usage, currentMetrics?.memory?.limit)} · {rangeLabel} 평균 {formatPercent(memAvgPct, 1)} · 피크 {formatPercent(memPeakPct, 1)}">
-				{formatMemoryUsage(currentMetrics?.memory?.usage, currentMetrics?.memory?.limit)}
+		<div class="kpi-top">
+			<span class="label">
+				메모리
+				{#if memoryHelp}<InfoTooltip text={memoryHelp} placement="bottom-start" />{/if}
+			</span>
+			<span class="scope" data-level={memLevel}>{levelLabel(memLevel)}</span>
+		</div>
+		<div class="metric-hero">
+			<strong class="value">{formatPercent(memNow, 2)}</strong>
+			<span class="hero-note">{formatMemoryUsage(memUsed, memLimit)}</span>
+		</div>
+		<div class="meter memory" style={`--value:${clampPercent(memNow)}%;--avg:${clampPercent(memAvgPct)}%;--peak:${clampPercent(memPeakPct)}%;`}>
+			<span class="meter-fill"></span>
+			<span class="meter-marker avg" title="{rangeLabel} 평균 {formatPercent(memAvgPct, 1)}"></span>
+			<span class="meter-marker peak" title="{rangeLabel} 피크 {formatPercent(memPeakPct, 1)}"></span>
+		</div>
+		<div class="insight-row triple">
+			<span title={formatMemoryUsage(memUsed, memLimit)}>
+				<b>사용</b>
+				<span>{formatBytesValue(memUsed)}</span>
+			</span>
+			<span>
+				<b>여유</b>
+				<span>{formatBytesValue(memFree)}</span>
+			</span>
+			<span>
+				<b>피크</b>
+				<span>{formatPercent(memPeakPct, 1)}</span>
 			</span>
 		</div>
-		<div class="spark"><MetricSparkline values={memTrend} color="#60a5fa" label="메모리 추이" /></div>
+		<div class="trend-strip">
+			<span>추이</span>
+			<MetricSparkline values={memTrend} color="#60a5fa" label="메모리 추이" />
+		</div>
 	</div>
 
 	<div class="kpi">
-		<span class="label">
-			네트워크
-			{#if networkHelp}<InfoTooltip text={networkHelp} placement="bottom-start" />{/if}
-		</span>
-		<div class="value-line">
-			<strong class="value net">↓ {formatBytesValue(currentMetrics?.network?.rx)} · ↑ {formatBytesValue(currentMetrics?.network?.tx)}</strong>
+		<div class="kpi-top">
+			<span class="label">
+				네트워크
+				{#if networkHelp}<InfoTooltip text={networkHelp} placement="bottom-start" />{/if}
+			</span>
+			<span class="scope">누적</span>
 		</div>
-		<span class="trend" title="{rangeLabel} 증가 ↓ {formatBytesValue(netRxDelta)} · ↑ {formatBytesValue(netTxDelta)}">
-			Δ ↓ {formatBytesValue(netRxDelta)} · ↑ {formatBytesValue(netTxDelta)}
-		</span>
-		<div class="spark"><MetricSparkline values={netTrend} color="#fbbf24" label="네트워크 추이" /></div>
+		<div class="metric-hero">
+			<strong class="value net">{formatBytesValue(netTotal)}</strong>
+			<span class="hero-note">{rangeLabel} 증가 {formatBytesValue(netDeltaTotal)}</span>
+		</div>
+		<div class="split-meter" style={`--a:${netRxShare}%;--b:${netTxShare}%;`}>
+			<span class="split-a"></span>
+			<span class="split-b"></span>
+		</div>
+		<div class="flow-grid">
+			<span>
+				<b>RX 누적</b>
+				<span>{formatBytesValue(netRx)}</span>
+				<em>Δ {formatBytesValue(netRxDelta)}</em>
+			</span>
+			<span>
+				<b>TX 누적</b>
+				<span>{formatBytesValue(netTx)}</span>
+				<em>Δ {formatBytesValue(netTxDelta)}</em>
+			</span>
+		</div>
+		<div class="trend-strip">
+			<span>합계</span>
+			<MetricSparkline values={netTrend} color="#fbbf24" label="네트워크 추이" />
+		</div>
 	</div>
 
 	<div class="kpi">
-		<span class="label">
-			디스크
-			{#if diskHelp}<InfoTooltip text={diskHelp} placement="bottom-start" />{/if}
-		</span>
-		<div class="value-line">
-			<strong class="value net">R {formatBytesValue(currentMetrics?.disk?.read)} · W {formatBytesValue(currentMetrics?.disk?.write)}</strong>
+		<div class="kpi-top">
+			<span class="label">
+				디스크
+				{#if diskHelp}<InfoTooltip text={diskHelp} placement="bottom-start" />{/if}
+			</span>
+			<span class="scope">누적</span>
 		</div>
-		<span class="trend" title="{rangeLabel} 증가 R {formatBytesValue(diskReadDelta)} · W {formatBytesValue(diskWriteDelta)}">
-			Δ R {formatBytesValue(diskReadDelta)} · W {formatBytesValue(diskWriteDelta)}
-		</span>
-		<div class="spark"><MetricSparkline values={diskTrend} color="#a78bfa" label="디스크 추이" /></div>
+		<div class="metric-hero">
+			<strong class="value net">{formatBytesValue(diskTotal)}</strong>
+			<span class="hero-note">{rangeLabel} 증가 {formatBytesValue(diskDeltaTotal)}</span>
+		</div>
+		<div class="split-meter disk" style={`--a:${diskReadShare}%;--b:${diskWriteShare}%;`}>
+			<span class="split-a"></span>
+			<span class="split-b"></span>
+		</div>
+		<div class="flow-grid">
+			<span>
+				<b>Read</b>
+				<span>{formatBytesValue(diskRead)}</span>
+				<em>Δ {formatBytesValue(diskReadDelta)}</em>
+			</span>
+			<span>
+				<b>Write</b>
+				<span>{formatBytesValue(diskWrite)}</span>
+				<em>Δ {formatBytesValue(diskWriteDelta)}</em>
+			</span>
+		</div>
+		<div class="trend-strip">
+			<span>합계</span>
+			<MetricSparkline values={diskTrend} color="#a78bfa" label="디스크 추이" />
+		</div>
 	</div>
 
 	{#if hasGpu}
 		<div class="kpi" data-level={gpuLevel}>
-			<span class="label">GPU</span>
-			<div class="value-line">
+			<div class="kpi-top">
+				<span class="label">GPU</span>
+				<span class="scope" data-level={gpuLevel}>{levelLabel(gpuLevel)}</span>
+			</div>
+			<div class="metric-hero">
 				<strong class="value">{currentGpuUsage !== null ? formatPercent(currentGpuUsage, 2) : '-'}</strong>
-				<span class="trend" title="{rangeLabel} 평균 {formatPercent(gpuAvg, 1)} · 피크 {formatPercent(gpuPeak, 1)}">
-					avg {formatPercent(gpuAvg, 1)} · pk {formatPercent(gpuPeak, 1)}
+				<span class="hero-note">{rangeLabel} 기준</span>
+			</div>
+			<div class="meter gpu" style={`--value:${clampPercent(currentGpuUsage ?? 0)}%;--avg:${clampPercent(gpuAvg)}%;--peak:${clampPercent(gpuPeak)}%;`}>
+				<span class="meter-fill"></span>
+				<span class="meter-marker avg" title="{rangeLabel} 평균 {formatPercent(gpuAvg, 1)}"></span>
+				<span class="meter-marker peak" title="{rangeLabel} 피크 {formatPercent(gpuPeak, 1)}"></span>
+			</div>
+			<div class="insight-row">
+				<span>
+					<b>평균</b>
+					<span>{formatPercent(gpuAvg, 1)}</span>
+				</span>
+				<span>
+					<b>피크</b>
+					<span>{formatPercent(gpuPeak, 1)}</span>
 				</span>
 			</div>
-			<div class="spark"><MetricSparkline values={gpuTrend} color="#f472b6" label="GPU 추이" /></div>
+			<div class="trend-strip">
+				<span>추이</span>
+				<MetricSparkline values={gpuTrend} color="#f472b6" label="GPU 추이" />
+			</div>
 		</div>
 	{/if}
 </section>
 
 <style>
 	.kpi-bar {
-		/* 정보는 그대로, 여백만 한 번 더 압축. min-height / padding / gap 추가 축소. */
-		--kpi-pad: clamp(5px, 0.4vw, 9px);
-		--kpi-radius: clamp(6px, 0.4vw, 10px);
-		--font-xs: clamp(9px, 0.55vw, 12px);
-		--font-sm: clamp(10px, 0.65vw, 13px);
-		--font-md: clamp(12px, 0.8vw, 15px);
-		--font-lg: clamp(16px, 1.1vw, 22px);
-
+		--kpi-pad: clamp(7px, 0.55vw, 10px);
+		--kpi-radius: 10px;
 		display: grid;
-		/* CPU/메모리/네트워크/디스크 (+GPU) → 4~5개 KPI. unified-bar 안에서 한 row
-		   유지를 위해 minmax 하한을 더 낮춰 4 pill 압축 가능하도록. */
-		grid-template-columns: repeat(auto-fit, minmax(clamp(140px, 9vw, 180px), 1fr));
-		gap: clamp(4px, 0.35vw, 8px);
+		grid-template-columns: repeat(auto-fit, minmax(clamp(136px, 8vw, 178px), 1fr));
+		gap: clamp(5px, 0.4vw, 8px);
 		margin-top: 0;
+		align-items: stretch;
 	}
+
 	.kpi {
 		min-width: 0;
-		min-height: clamp(52px, 4.5vh, 78px);
-		padding: var(--kpi-pad) calc(var(--kpi-pad) + 2px);
-		background: var(--bg-card);
-		border: 1px solid var(--border);
+		min-height: clamp(136px, 12vh, 156px);
+		padding: var(--kpi-pad);
+		background:
+			linear-gradient(180deg, rgba(23, 30, 42, 0.98), rgba(13, 18, 27, 0.98)),
+			var(--bg-card);
+		border: 1px solid rgba(100, 116, 139, 0.2);
 		border-radius: var(--kpi-radius);
 		display: flex;
 		flex-direction: column;
-		gap: 1px;
+		gap: 7px;
 		position: relative;
 		overflow: hidden;
+		box-shadow:
+			0 8px 22px rgba(0, 0, 0, 0.14),
+			inset 0 1px 0 rgba(255, 255, 255, 0.03);
+		transition: border-color 0.15s ease, transform 0.15s ease;
 	}
+
+	.kpi:hover {
+		border-color: rgba(48, 213, 200, 0.32);
+		transform: translateY(-1px);
+	}
+
 	.kpi::before {
 		content: '';
 		position: absolute;
-		left: 0;
-		top: 0;
-		bottom: 0;
+		inset: 0 auto 0 0;
 		width: 3px;
-		background: transparent;
+		background: rgba(48, 213, 200, 0.5);
 	}
-	/* warn: 노란 stripe + 살짝 노란 background */
+
 	.kpi[data-level='warn'] {
-		background: linear-gradient(90deg, rgba(251, 191, 36, 0.08), var(--bg-card) 60%);
-		border-color: rgba(251, 191, 36, 0.32);
+		border-color: rgba(251, 191, 36, 0.34);
+		background:
+			linear-gradient(90deg, rgba(251, 191, 36, 0.09), transparent 42%),
+			linear-gradient(180deg, rgba(23, 30, 42, 0.98), rgba(13, 18, 27, 0.98));
 	}
 	.kpi[data-level='warn']::before {
 		background: #fbbf24;
-		width: 4px;
 	}
-	.kpi[data-level='warn'] .value {
-		color: #fbbf24;
-	}
-	/* danger: 빨간 stripe (두꺼움) + 빨간 background + value pulse */
 	.kpi[data-level='danger'] {
-		background: linear-gradient(90deg, rgba(239, 68, 68, 0.14), var(--bg-card) 60%);
-		border-color: rgba(239, 68, 68, 0.4);
-		box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.15);
+		border-color: rgba(239, 68, 68, 0.42);
+		background:
+			linear-gradient(90deg, rgba(239, 68, 68, 0.12), transparent 45%),
+			linear-gradient(180deg, rgba(23, 30, 42, 0.98), rgba(13, 18, 27, 0.98));
 	}
 	.kpi[data-level='danger']::before {
 		background: #f87171;
-		width: 5px;
-		box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+		box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
 	}
-	.kpi[data-level='danger'] .value {
-		color: #f87171;
-		animation: danger-pulse 1.6s ease-in-out infinite;
+
+	.kpi-top,
+	.metric-hero,
+	.insight-row,
+	.flow-grid,
+	.trend-strip {
+		min-width: 0;
 	}
-	@keyframes danger-pulse {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.65; }
+
+	.kpi-top {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 6px;
 	}
 	.label {
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
 		color: var(--text-muted);
-		font-size: var(--font-xs);
-		font-weight: 800;
-		letter-spacing: 0.3px;
+		font-size: clamp(9px, 0.55vw, 11px);
+		font-weight: 850;
+		letter-spacing: 0;
 		white-space: nowrap;
+	}
+	.scope {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 2px 6px;
+		border-radius: 999px;
+		background: rgba(2, 6, 12, 0.42);
+		border: 1px solid rgba(100, 116, 139, 0.18);
+		color: var(--text-muted);
+		font-size: 8.5px;
+		font-weight: 850;
+		line-height: 1;
+		white-space: nowrap;
+	}
+	.scope[data-level='normal'] {
+		color: #6ee7b7;
+		border-color: rgba(16, 185, 129, 0.28);
+	}
+	.scope[data-level='warn'] {
+		color: #fde68a;
+		border-color: rgba(251, 191, 36, 0.32);
+	}
+	.scope[data-level='danger'] {
+		color: #fca5a5;
+		border-color: rgba(239, 68, 68, 0.36);
+	}
+
+	.metric-hero {
+		display: flex;
+		align-items: flex-end;
+		justify-content: space-between;
+		gap: 8px;
 	}
 	.value {
 		color: var(--text-primary);
-		font-size: var(--font-lg);
-		font-weight: 700;
-		line-height: 1.1;
+		font-size: clamp(18px, 1.1vw, 22px);
+		font-weight: 850;
+		line-height: 1;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		font-variant-numeric: tabular-nums;
 	}
 	.value.net {
-		font-size: var(--font-md);
+		font-size: clamp(14px, 0.84vw, 17px);
 	}
-	.sub {
+	.hero-note {
+		max-width: 58%;
 		color: var(--text-muted);
-		font-size: var(--font-xs);
-		font-weight: 600;
-		white-space: nowrap;
+		font-size: clamp(8.5px, 0.52vw, 10px);
+		font-weight: 700;
+		line-height: 1.15;
+		text-align: right;
 		overflow: hidden;
 		text-overflow: ellipsis;
-	}
-	.spark {
-		margin-top: auto;
-		height: clamp(14px, 1.5vh, 26px);
-		overflow: hidden;
+		white-space: nowrap;
 	}
 
-	/* value-line: value (큰 글씨) 와 trend (작은 인라인 텍스트) 가 같은 row.
-	   평균/피크 정보를 별도 줄로 두지 않고 value 옆 baseline 정렬해 정보 손실 X +
-	   세로 공간 절약. trend hover tooltip 에 정식 텍스트 fallback. */
-	.value-line {
-		display: flex;
-		align-items: baseline;
-		gap: clamp(4px, 0.4vw, 8px);
-		flex-wrap: wrap;
-		min-width: 0;
+	.meter,
+	.split-meter {
+		position: relative;
+		height: 12px;
+		border-radius: 999px;
+		background: rgba(2, 6, 12, 0.58);
+		border: 1px solid rgba(100, 116, 139, 0.18);
+		overflow: hidden;
 	}
-	.trend {
-		color: var(--text-muted);
-		font-size: clamp(9px, 0.55vw, 11px);
-		font-weight: 600;
+	.meter {
+		overflow: visible;
+	}
+	.meter::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		border-radius: inherit;
+		background: linear-gradient(90deg, transparent 69%, rgba(251, 191, 36, 0.24) 70%, rgba(251, 191, 36, 0.24) 89%, rgba(239, 68, 68, 0.22) 90%);
+		pointer-events: none;
+	}
+	.meter-fill {
+		position: absolute;
+		inset: 0 auto 0 0;
+		width: var(--value, 0%);
+		border-radius: inherit;
+		background: linear-gradient(90deg, rgba(48, 213, 200, 0.86), rgba(96, 165, 250, 0.82));
+	}
+	.meter.memory .meter-fill {
+		background: linear-gradient(90deg, rgba(96, 165, 250, 0.9), rgba(129, 140, 248, 0.82));
+	}
+	.meter.gpu .meter-fill {
+		background: linear-gradient(90deg, rgba(244, 114, 182, 0.88), rgba(168, 85, 247, 0.78));
+	}
+	.meter-marker {
+		position: absolute;
+		top: -4px;
+		width: 2px;
+		height: 20px;
+		border-radius: 999px;
+		background: rgba(255, 255, 255, 0.72);
+		box-shadow: 0 0 0 1px rgba(2, 6, 12, 0.7);
+	}
+	.meter-marker.avg {
+		left: var(--avg, 0%);
+		opacity: 0.62;
+	}
+	.meter-marker.peak {
+		left: var(--peak, 0%);
+		background: rgba(251, 191, 36, 0.94);
+	}
+
+	.split-meter {
+		display: flex;
+		gap: 2px;
+		padding: 2px;
+	}
+	.split-a,
+	.split-b {
+		min-width: 4px;
+		border-radius: 999px;
+	}
+	.split-a {
+		width: var(--a, 0%);
+		background: rgba(48, 213, 200, 0.86);
+	}
+	.split-b {
+		width: var(--b, 0%);
+		background: rgba(251, 191, 36, 0.82);
+	}
+	.split-meter.disk .split-a {
+		background: rgba(167, 139, 250, 0.86);
+	}
+	.split-meter.disk .split-b {
+		background: rgba(96, 165, 250, 0.82);
+	}
+
+	.insight-row,
+	.flow-grid {
+		display: grid;
+		gap: 4px;
+	}
+	.insight-row {
+		grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
+	}
+	.insight-row.triple {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+	.flow-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+	.insight-row > span,
+	.flow-grid > span {
+		min-width: 0;
+		padding: 5px 6px;
+		border-radius: 7px;
+		background: rgba(2, 6, 12, 0.32);
+		border: 1px solid rgba(100, 116, 139, 0.12);
+		color: var(--text-secondary);
+		font-size: clamp(9px, 0.55vw, 10px);
+		font-weight: 750;
 		font-variant-numeric: tabular-nums;
-		white-space: nowrap;
+	}
+	.insight-row b,
+	.flow-grid b {
+		display: block;
+		margin-bottom: 3px;
+		color: var(--text-muted);
+		font-size: 7.5px;
+		font-weight: 900;
+		letter-spacing: 0;
+		text-transform: uppercase;
+	}
+	.insight-row span span,
+	.flow-grid span span,
+	.flow-grid em {
+		display: block;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		cursor: help;
+		white-space: nowrap;
 	}
-	/* sub 는 deprecated — 혹시 남아있는 markup safe-guard */
-	.sub {
-		display: none;
+	.flow-grid em {
+		margin-top: 2px;
+		color: var(--text-muted);
+		font-size: 8.5px;
+		font-style: normal;
+		font-weight: 700;
 	}
-	.spark :global(svg) {
+
+	.trend-strip {
+		position: relative;
+		display: block;
+		margin-top: auto;
+		height: 38px;
+		min-height: 38px;
+		padding: 1px 0 2px;
+		border-radius: 8px;
+		background:
+			linear-gradient(180deg, rgba(2, 6, 12, 0.34), rgba(2, 6, 12, 0.2)),
+			rgba(2, 6, 12, 0.26);
+		border: 1px solid rgba(100, 116, 139, 0.14);
+		overflow: hidden;
+	}
+	.trend-strip > span {
+		position: absolute;
+		left: 6px;
+		top: 5px;
+		z-index: 1;
+		padding: 2px 5px;
+		border-radius: 999px;
+		background: rgba(2, 6, 12, 0.64);
+		border: 1px solid rgba(100, 116, 139, 0.16);
+		color: var(--text-muted);
+		font-size: 8px;
+		font-weight: 900;
+		letter-spacing: 0;
+		line-height: 1;
+		pointer-events: none;
+	}
+	.trend-strip :global(.spark-wrap) {
+		position: absolute;
+		inset: 1px 0 2px;
+		width: 100%;
+		height: auto;
+		align-items: stretch;
+	}
+	.trend-strip :global(svg) {
+		display: block;
 		width: 100%;
 		height: 100%;
 		max-width: none;
+		min-height: 0;
+		overflow: visible;
+	}
+	.trend-strip :global(line) {
+		transform: translateY(-2px);
+	}
+	.trend-strip :global(polyline) {
+		stroke-width: 2.5;
+		vector-effect: non-scaling-stroke;
 	}
 </style>

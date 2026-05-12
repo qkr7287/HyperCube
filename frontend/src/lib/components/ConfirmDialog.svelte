@@ -8,6 +8,15 @@
 		busy = false,
 		onconfirm = () => {},
 		oncancel = () => {},
+	}: {
+		open?: boolean;
+		title?: string;
+		message?: string;
+		confirmLabel?: string;
+		confirmVariant?: 'primary' | 'danger';
+		busy?: boolean;
+		onconfirm?: () => void;
+		oncancel?: () => void;
 	} = $props();
 </script>
 

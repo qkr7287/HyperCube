@@ -154,7 +154,7 @@
 						}
 					: { show: false },
 			};
-		});
+		}) as NonNullable<EChartsOption['series']>;
 
 		return {
 			animationDuration: 200,

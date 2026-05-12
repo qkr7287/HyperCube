@@ -113,10 +113,10 @@ export function seedStatusEvents(
 ) {
 	const synth: AgentStatusEvent[] = agents
 		.filter((a) => !a.is_active && a.last_seen_at)
-		.map((a) => {
+		.map((a): AgentStatusEvent => {
 			const ts = new Date(a.last_seen_at as string).getTime();
 			return {
-				type: 'agent_status_change',
+				type: 'agent_status_change' as const,
 				status: 'offline' as const,
 				server_id: a.id,
 				hostname: a.hostname,

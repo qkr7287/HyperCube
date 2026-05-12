@@ -9,6 +9,8 @@ export type HubType = 'stack' | 'network' | 'volume';
 export abstract class Hub extends Entity {
 	readonly kind = 'hub' as const;
 	abstract readonly hubType: HubType;
+	abstract name: string;
+	abstract color: number;
 	readonly memberIds: Set<string> = new Set();
 
 	addMember(id: string): void {

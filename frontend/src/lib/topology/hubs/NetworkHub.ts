@@ -85,9 +85,9 @@ export class NetworkHub extends Hub {
 	private visibleTrafficLevel = 0;
 	private pulseTime = 0;
 	private readonly baseScale = new THREE.Vector3(1, 1, 1);
-	private readonly anchorBox = new THREE.Box3();
-	private readonly anchorCenter = new THREE.Vector3();
-	private readonly anchorSize = new THREE.Vector3();
+	private readonly coreAnchorBox = new THREE.Box3();
+	private readonly coreAnchorCenter = new THREE.Vector3();
+	private readonly coreAnchorSize = new THREE.Vector3();
 	private readonly baseOpacity = 0.9;
 	private readonly baseEmissiveIntensity = 0.45;
 
@@ -261,17 +261,17 @@ export class NetworkHub extends Hub {
 
 	override getWorldAnchor(): THREE.Vector3 {
 		this.coreObject.updateMatrixWorld(true);
-		this.anchorBox.setFromObject(this.coreObject);
-		if (!this.anchorBox.isEmpty()) {
-			this.anchorBox.getSize(this.anchorSize);
-			this.anchorCenter.set(
-				(this.anchorBox.min.x + this.anchorBox.max.x) * 0.5,
-				this.anchorBox.min.y + this.anchorSize.y * NetworkHub.ANCHOR_HEIGHT_RATIO,
-				(this.anchorBox.min.z + this.anchorBox.max.z) * 0.5
+		this.coreAnchorBox.setFromObject(this.coreObject);
+		if (!this.coreAnchorBox.isEmpty()) {
+			this.coreAnchorBox.getSize(this.coreAnchorSize);
+			this.coreAnchorCenter.set(
+				(this.coreAnchorBox.min.x + this.coreAnchorBox.max.x) * 0.5,
+				this.coreAnchorBox.min.y + this.coreAnchorSize.y * NetworkHub.ANCHOR_HEIGHT_RATIO,
+				(this.coreAnchorBox.min.z + this.coreAnchorBox.max.z) * 0.5
 			);
-			return this.anchorCenter;
+			return this.coreAnchorCenter;
 		}
-		return this.coreObject.getWorldPosition(this.anchorCenter);
+		return this.coreObject.getWorldPosition(this.coreAnchorCenter);
 	}
 
 	setFxMode(mode: NetworkHubFxMode): void {

@@ -237,8 +237,10 @@
 
 <style>
 	.panel {
-		background: rgba(18, 23, 32, 0.96);
-		border: 1px solid var(--border);
+		background:
+			linear-gradient(180deg, rgba(21, 27, 38, 0.98), rgba(15, 20, 29, 0.98)),
+			rgba(18, 23, 32, 0.96);
+		border: 1px solid rgba(100, 116, 139, 0.2);
 		border-radius: var(--radius-panel);
 		padding: clamp(5px, 0.45vw, 8px);
 		margin-top: 0;
@@ -252,6 +254,18 @@
 		max-width: 100%;
 		box-sizing: border-box;
 		overflow: hidden;
+		position: relative;
+		box-shadow:
+			0 8px 24px rgba(0, 0, 0, 0.16),
+			inset 0 1px 0 rgba(255, 255, 255, 0.025);
+	}
+	.panel::before {
+		content: '';
+		position: absolute;
+		inset: 0 0 auto;
+		height: 2px;
+		background: linear-gradient(90deg, rgba(167, 139, 250, 0.58), rgba(48, 213, 200, 0.12));
+		opacity: 0.68;
 	}
 	.panel:hover {
 		border-color: rgba(48, 213, 200, 0.22);
@@ -262,6 +276,8 @@
 		align-items: center;
 		gap: 8px;
 		margin-bottom: 5px;
+		padding-bottom: 5px;
+		border-bottom: 1px solid rgba(100, 116, 139, 0.12);
 	}
 	h2 {
 		font-size: 14px;
@@ -276,8 +292,8 @@
 	.state-row {
 		padding: 10px;
 		border-radius: 8px;
-		background: rgba(13, 17, 23, 0.76);
-		border: 1px solid rgba(31, 41, 55, 0.86);
+		background: rgba(13, 17, 23, 0.7);
+		border: 1px solid rgba(100, 116, 139, 0.16);
 		font-size: 11px;
 		color: var(--text-secondary);
 	}
