@@ -168,20 +168,27 @@
 				<div class="request-card">
 					<div class="card-main">
 						<div class="card-heading">
-							<div>
-								<div class="name-row">
-									<div class="card-name">{request.custom_name || request.target_container_name || '이름 없는 컨테이너'}</div>
-									<InfoTooltip
-										text={requestCardHelp}
-										label="요청 카드 도움말"
-										placement="bottom-start"
-										maxWidth={360}
-									/>
-								</div>
-								<div class="card-meta">
-									<span>{request.action === 'create' ? '생성 요청' : '삭제 요청'}</span>
-									<span>{request.template_name ?? '템플릿 없음'}</span>
-									<span>{request.target_agent_hostname ?? '배치 서버 없음'}</span>
+							<div class="request-identity">
+								<span class="request-mark" aria-hidden="true">
+									{(request.custom_name || request.target_container_name || '?').slice(0, 1).toUpperCase()}
+								</span>
+								<div class="request-copy">
+									<div class="name-row">
+										<div class="card-name" title={request.custom_name || request.target_container_name || '이름 없는 컨테이너'}>
+											{request.custom_name || request.target_container_name || '이름 없는 컨테이너'}
+										</div>
+										<InfoTooltip
+											text={requestCardHelp}
+											label="요청 카드 도움말"
+											placement="bottom-start"
+											maxWidth={360}
+										/>
+									</div>
+									<div class="card-meta">
+										<span><b>작업</b>{request.action === 'create' ? '생성 요청' : '삭제 요청'}</span>
+										<span><b>템플릿</b>{request.template_name ?? '템플릿 없음'}</span>
+										<span><b>서버</b>{request.target_agent_hostname ?? '배치 서버 없음'}</span>
+									</div>
 								</div>
 							</div>
 							<div class="card-status">
@@ -378,13 +385,15 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
 		gap: clamp(8px, 0.6vw, 14px);
+		align-items: start;
 	}
 
 	.request-card {
-		display: flex;
-		justify-content: space-between;
-		gap: 14px;
-		padding: 14px 16px;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		align-items: start;
+		gap: 10px;
+		padding: 12px 14px;
 		background: var(--bg-card);
 		border: 1px solid var(--border);
 		border-radius: 12px;
@@ -394,35 +403,94 @@
 		flex: 1;
 		display: flex;
 		flex-direction: column;
-		gap: 14px;
+		gap: 10px;
 	}
 
 	.card-heading {
 		display: flex;
 		justify-content: space-between;
 		gap: 12px;
+		min-width: 0;
+	}
+
+	.request-identity {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 0;
+		min-width: 0;
+		flex: 1 1 auto;
+		align-items: start;
+	}
+
+	.request-mark {
+		display: none;
+		align-items: center;
+		justify-content: center;
+		width: 38px;
+		height: 38px;
+		border-radius: 10px;
+		background:
+			linear-gradient(135deg, rgba(48, 213, 200, 0.2), rgba(96, 165, 250, 0.08)),
+			rgba(13, 17, 23, 0.72);
+		border: 1px solid rgba(48, 213, 200, 0.24);
+		color: var(--accent);
+		font-size: 16px;
+		font-weight: 950;
+	}
+
+	.request-copy {
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+		min-width: 0;
+	}
+
+	.name-row {
+		min-width: 0;
+		max-width: 100%;
 	}
 
 	.card-name {
+		min-width: 0;
 		font-size: 16px;
-		font-weight: 700;
+		line-height: 1.15;
+		font-weight: 900;
+		letter-spacing: 0;
 		color: var(--text-primary);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.card-meta {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 8px;
-		margin-top: 4px;
-		font-size: 11px;
+		gap: 6px;
+		margin-top: 0;
+		font-size: 11.5px;
 		color: var(--text-secondary);
+		min-width: 0;
 	}
 
 	.card-meta span {
-		padding: 4px 8px;
-		background: rgba(21, 28, 39, 0.95);
-		border: 1px solid rgba(31, 41, 55, 0.9);
-		border-radius: 999px;
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		max-width: 100%;
+		padding: 3px 7px;
+		background: rgba(13, 17, 23, 0.42);
+		border: 1px solid rgba(100, 116, 139, 0.12);
+		border-radius: 7px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.card-meta b {
+		color: var(--text-muted);
+		font-size: 9.5px;
+		font-weight: 900;
+		letter-spacing: 0.08em;
 	}
 
 	.card-status {
@@ -433,11 +501,17 @@
 	}
 
 	.status-pill {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-height: 24px;
 		padding: 4px 10px;
 		border-radius: 999px;
-		font-size: 11px;
-		font-weight: 700;
+		font-size: 11.5px;
+		font-weight: 850;
 		color: white;
+		white-space: nowrap;
+		box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
 	}
 
 	.card-time {
@@ -446,10 +520,10 @@
 	}
 
 	.progress-block {
-		padding: 12px;
+		padding: 10px;
 		background: rgba(13, 17, 23, 0.88);
 		border: 1px solid rgba(31, 41, 55, 0.92);
-		border-radius: 12px;
+		border-radius: 9px;
 	}
 
 	.progress-track {
@@ -475,9 +549,9 @@
 	}
 
 	.review-note {
-		padding: 12px;
+		padding: 10px;
 		background: rgba(21, 28, 39, 0.92);
-		border-radius: 12px;
+		border-radius: 9px;
 	}
 
 	.review-label {
@@ -493,18 +567,21 @@
 	}
 
 	.card-actions {
-		min-width: 168px;
+		min-width: 0;
+		width: 100%;
 		display: flex;
-		flex-direction: column;
-		align-items: flex-end;
+		flex-direction: row;
+		align-items: center;
 		justify-content: space-between;
-		gap: 12px;
+		gap: 10px;
+		padding-top: 6px;
+		border-top: 1px solid rgba(100, 116, 139, 0.12);
 	}
 
 	.requested-at {
 		font-size: 11px;
 		color: var(--text-muted);
-		text-align: right;
+		text-align: left;
 	}
 
 	.pending-link {
@@ -525,6 +602,10 @@
 		}
 
 		.summary-grid {
+			grid-template-columns: 1fr;
+		}
+
+		.cards {
 			grid-template-columns: 1fr;
 		}
 

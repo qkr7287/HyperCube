@@ -14,8 +14,17 @@ def create_user(role="user", **kwargs):
 
 
 def create_agent(**kwargs):
+    hostname = kwargs.pop("hostname", None)
+    if hostname is None:
+        hostname = "test-host"
+        if Agent.objects.filter(hostname=hostname).exists():
+            suffix = 1
+            while Agent.objects.filter(hostname=f"test-host-{suffix}").exists():
+                suffix += 1
+            hostname = f"test-host-{suffix}"
+
     defaults = {
-        "hostname": "test-host",
+        "hostname": hostname,
         "ip_address": "192.168.1.1",
         "status": Agent.Status.APPROVED,
     }

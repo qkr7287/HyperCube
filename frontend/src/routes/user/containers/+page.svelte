@@ -157,22 +157,30 @@
 			{#each filteredContainers as container (container.container_id)}
 				<button class="container-card" onclick={() => openContainer(container.container_id)}>
 					<div class="card-top">
-						<div>
-							<div class="name-row">
-								<h2>{container.name}</h2>
-								<InfoTooltip
-									text={cardStatusHelp}
-									label="컨테이너 카드 도움말"
-									placement="bottom-start"
-									maxWidth={360}
-								/>
-								<span class="status-pill" style="background: {statusTone(container.status)};">
-									{statusLabel(container.status)}
-								</span>
+						<div class="container-identity">
+							<span class="container-mark" aria-hidden="true">{(container.name || '?').slice(0, 1).toUpperCase()}</span>
+							<div class="container-title-stack">
+								<div class="container-title-line">
+									<h2 title={container.name}>{container.name}</h2>
+									<InfoTooltip
+										text={cardStatusHelp}
+										label="컨테이너 카드 도움말"
+										placement="bottom-start"
+										maxWidth={360}
+									/>
+								</div>
+								<p class="image" title={container.image}>
+									<span>이미지</span>
+									<strong>{container.image}</strong>
+								</p>
 							</div>
-							<p class="image">{container.image}</p>
 						</div>
-						<span class="last-seen">{formatRelativeTime(container.last_seen)}</span>
+						<div class="status-stack">
+							<span class="status-pill" style="background: {statusTone(container.status)};">
+								{statusLabel(container.status)}
+							</span>
+							<span class="last-seen">{formatRelativeTime(container.last_seen)}</span>
+						</div>
 					</div>
 
 					<div class="meta-grid">
@@ -195,7 +203,10 @@
 					</div>
 
 					<div class="card-footer">
-						<span class="request-status">요청 상태: {statusLabel(container.request_status)}</span>
+						<span class="request-status">
+							<b>요청</b>
+							<strong>{statusLabel(container.request_status)}</strong>
+						</span>
 						<span class="open-link">대시보드 열기</span>
 					</div>
 				</button>
@@ -345,7 +356,7 @@
 	}
 
 	.container-card {
-		padding: clamp(12px, 0.8vw, 16px);
+		padding: 10px 12px;
 		text-align: left;
 		background:
 			linear-gradient(180deg, rgba(48, 213, 200, 0.06), transparent 28%),
@@ -355,7 +366,7 @@
 		cursor: pointer;
 		display: flex;
 		flex-direction: column;
-		gap: 12px;
+		gap: 8px;
 		transition: transform 0.14s ease, border-color 0.14s ease;
 	}
 
@@ -367,35 +378,116 @@
 	.card-top {
 		display: flex;
 		justify-content: space-between;
-		gap: 12px;
+		gap: 14px;
+		align-items: flex-start;
+		min-width: 0;
 	}
 
-	.name-row {
+	.container-identity {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 0;
+		min-width: 0;
+		flex: 1 1 auto;
+		align-items: start;
+	}
+
+	.container-mark {
+		display: none;
+		align-items: center;
+		justify-content: center;
+		width: 38px;
+		height: 38px;
+		border-radius: 10px;
+		background:
+			linear-gradient(135deg, rgba(48, 213, 200, 0.2), rgba(96, 165, 250, 0.08)),
+			rgba(13, 17, 23, 0.72);
+		border: 1px solid rgba(48, 213, 200, 0.24);
+		color: var(--accent);
+		font-size: 16px;
+		font-weight: 950;
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+	}
+
+	.container-title-stack {
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.container-title-line {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		flex-wrap: wrap;
+		gap: 6px;
+		min-width: 0;
 	}
 
 	h2 {
-		font-size: 15px;
+		min-width: 0;
+		font-size: 16px;
+		line-height: 1.15;
 		color: var(--text-primary);
-		font-weight: 700;
+		font-weight: 900;
+		letter-spacing: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.status-pill {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-height: 24px;
 		padding: 4px 10px;
 		border-radius: 999px;
-		font-size: 11px;
-		font-weight: 700;
+		font-size: 11.5px;
+		font-weight: 850;
 		color: white;
+		white-space: nowrap;
+		box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
 	}
 
 	.image {
-		margin-top: 6px;
-		font-size: 12px;
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
+		align-items: center;
+		gap: 6px;
+		margin: 0;
+		padding: 0;
+		border-radius: 0;
+		background: transparent;
+		border: 0;
+		font-size: 11px;
 		color: var(--text-secondary);
-		word-break: break-all;
+		min-width: 0;
+	}
+
+	.image span {
+		color: var(--text-muted);
+		font-size: 9.5px;
+		font-weight: 900;
+		letter-spacing: 0.08em;
+	}
+
+	.image strong {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+		color: var(--text-secondary);
+		font-size: 11.5px;
+		font-weight: 750;
+	}
+
+	.status-stack {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 3px;
+		flex: 0 0 auto;
 	}
 
 	.last-seen {
@@ -406,39 +498,69 @@
 
 	.meta-grid {
 		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 12px;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: 6px;
 	}
 
 	.meta-item {
-		padding: 12px;
-		background: rgba(13, 17, 23, 0.8);
-		border: 1px solid rgba(31, 41, 55, 0.86);
-		border-radius: 12px;
+		min-width: 0;
+		padding: 7px 8px;
+		background: rgba(2, 6, 12, 0.34);
+		border: 1px solid rgba(100, 116, 139, 0.14);
+		border-radius: 8px;
 	}
 
 	.meta-label {
 		display: block;
-		font-size: 11px;
+		font-size: 10px;
 		color: var(--text-muted);
-		margin-bottom: 4px;
+		margin-bottom: 2px;
 	}
 
 	.meta-value {
-		font-size: 12px;
+		display: block;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-size: 11.5px;
 		color: var(--text-primary);
+		font-weight: 750;
 	}
 
 	.card-footer {
 		display: flex;
 		justify-content: space-between;
-		gap: 12px;
+		gap: 8px;
 		align-items: center;
 		font-size: 12px;
+		padding-top: 5px;
+		border-top: 1px solid rgba(100, 116, 139, 0.12);
 	}
 
 	.request-status {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+		padding: 3px 7px;
+		border-radius: 7px;
+		background: rgba(13, 17, 23, 0.38);
+		border: 1px solid rgba(100, 116, 139, 0.12);
 		color: var(--text-secondary);
+	}
+
+	.request-status b {
+		color: var(--text-muted);
+		font-size: 10px;
+		font-weight: 900;
+		letter-spacing: 0.08em;
+	}
+
+	.request-status strong {
+		color: var(--text-primary);
+		font-size: 12px;
+		font-weight: 850;
 	}
 
 	.open-link {
@@ -462,6 +584,10 @@
 		.grid,
 		.meta-grid {
 			grid-template-columns: 1fr;
+		}
+
+		.status-stack {
+			align-items: flex-start;
 		}
 
 		.last-seen {

@@ -27,6 +27,11 @@ export default defineConfig(({ mode }) => {
 					target: apiTarget,
 					changeOrigin: true,
 					ws: true,
+				},
+				'/workspace': {
+					target: apiTarget,
+					changeOrigin: true,
+					ws: true,
 				}
 			}
 		}

@@ -375,6 +375,126 @@ re-investigate before rolling forward.
 
 ## Known quirks / limitations
 
+### ML workspace template seed
+
+Migration `containers.0007_seed_ml_workspace_templates` seeds four air-gapped
+ML templates when normal migrations run outside Django test mode:
+
+- `PyTorch Jupyter GPU Workspace`
+- `TensorFlow Jupyter GPU Workspace`
+- `vLLM OpenAI API Workspace`
+- `CUDA code-server Workspace`
+
+After deployment on server 63, verify:
+
+```bash
+python manage.py shell -c "from apps.containers.models import ContainerTemplate; print(list(ContainerTemplate.objects.filter(category='ml').values_list('name', 'requires_gpu', 'workspace_enabled')))"
+```
+
+The request modal depends on at least one `category='ml'`,
+`requires_gpu=True`, `workspace_enabled=True` template before a real GPU
+workspace request can be submitted.
+
+### GPU workspace proxy reachability gate
+
+For normal workspaces, the backend proxy can use the agent-reported host port:
+
+```bash
+agent.ip_address:workspace_host_port
+```
+
+For `networkPolicy=internal_only` ML workspaces, the agent must not publish the
+workspace port on the host. The backend container must join the same external
+Docker internal network as the workspace container and use Docker DNS:
+
+```bash
+hc-ml-internal
+<workspace-container-name>:<workspace_internal_port>
+```
+
+Before calling Jupyter workspace access production-ready on server 63 or any
+GPU agent, run a smoke test from the backend container:
+
+```bash
+docker network inspect hc-ml-internal --format 'internal={{.Internal}}'
+docker exec hc-backend python -c "import socket; socket.create_connection(('<workspace-container-name>', 8888), 5).close(); print('BACKEND_TO_WORKSPACE_OK')"
+```
+
+`docker-compose.dev.yml`, `docker-compose.prod.yml`, and
+`deploy/docker-compose.yml` attach `hc-backend` to the external
+`hc-ml-internal` network. That network must already exist before backend
+recreate/startup.
+
+Plaintext Jupyter tokens are stored only in Redis with
+`WORKSPACE_TOKEN_TTL_SECONDS`; Postgres stores only `workspace_token_ref` and
+expiry metadata.
+
+### Model asset local storage
+
+Track 4a stores uploaded model files on the HyperCube backend host under
+`HC_MODEL_STORAGE_DIR` and imports operator-provided offline files only from
+`HC_MODEL_IMPORT_DIR`.
+
+Runtime model downloads are not allowed. Do not point model import at
+`http://`, `https://`, S3, Git, Hugging Face, or any other external source.
+Incomplete uploads use a `_tmp` directory below `HC_MODEL_STORAGE_DIR` and are
+removed on failure.
+
+### Model prepare and agent cache
+
+Track 4b adds backend-owned prepare state:
+
+- `ModelVersionCache` records per-agent cache status.
+- `ModelPrepareJob` records one active transfer for an `(agent, model version)`
+  and fans progress out to all waiting container requests.
+- Celery beat runs `cleanup_stale_model_prepare_jobs_task` every 60 seconds.
+
+The backend content endpoint is internal only:
+
+```text
+GET /api/model-versions/<version-id>/content/
+Authorization: Bearer agent_...
+```
+
+The agent token is checked against an active prepare job. Operators should keep
+this path reachable only on the HyperCube internal network. Runtime workspaces
+still must not download models, packages, images, or source code from the public
+internet.
+
+### Workspace policy and shared GPU guardrail
+
+Track 5 adds backend policy settings:
+
+```dotenv
+HC_GPU_SHARED_MODE_ENABLED=false
+HC_MAX_ACTIVE_WORKSPACES_PER_USER=2
+HC_MAX_ACTIVE_GPU_SLICES_PER_USER=1
+HC_MAX_WORKSPACE_RUNTIME_HOURS=72
+```
+
+`HC_GPU_SHARED_MODE_ENABLED=false` is the required default. A GPU slice may
+report `allow_shared=true`, and the request modal can explicitly submit
+`gpu_share_ok=true`, but the backend still rejects shared GPU requests unless
+the global setting is enabled. Do not enable shared mode in production until GPU
+memory accounting and enforcement behavior are verified.
+
+Workspace runtime policy is enforced when a request is created and when runtime
+is extended. Active workspace and GPU slice quotas are enforced at approval time
+before GPU reservation.
+
+### WebSocket token log hygiene
+
+Browser WebSocket clients pass JWTs through the `hypercube.jwt` subprotocol
+instead of the URL query string. The backend still accepts `?token=` as a
+backward-compatible fallback for older clients and agent builds.
+
+Backend uvicorn is started with `--no-access-log`, and nginx disables access
+logs for `/ws/` and `/workspace/`, so fallback query tokens and workspace
+tickets do not land in routine access logs.
+
+Longer term, move agent WebSocket authentication off query strings too and
+rotate existing agent tokens after that migration.
+
 | Area | Quirk | Impact |
 |---|---|---|
 | `/user/containers` time series | `7d` range actually returns the **last ~2 h** because `limit=240` is hard-capped. No downsampling yet. | Graphs for long ranges look truncated — visual only, no data loss. |

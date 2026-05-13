@@ -44,4 +44,4 @@ USER app
 
 EXPOSE 8000
 
-CMD ["uvicorn", "config.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+CMD ["uvicorn", "config.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--no-access-log", "--log-level", "warning"]

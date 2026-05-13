@@ -31,6 +31,7 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
     """
 
     async def connect(self):
+        self._disconnected = False
         self.server_id = self.scope["url_route"]["kwargs"]["server_id"]
         self.group_name = f"server_{self.server_id}"
         self.is_agent = self.scope.get("is_agent", False)
@@ -41,7 +42,7 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
             return
 
         await self.channel_layer.group_add(self.group_name, self.channel_name)
-        await self.accept()
+        await self.accept(subprotocol=self.scope.get("ws_accept_subprotocol"))
 
         if self.is_agent:
             try:
@@ -70,6 +71,7 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
             await self._replay_from_redis()
 
     async def disconnect(self, close_code):
+        self._disconnected = True
         if hasattr(self, "_heartbeat_task"):
             self._heartbeat_task.cancel()
         if hasattr(self, "group_name"):
@@ -147,8 +149,9 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
         await self._touch_presence()
 
         if msg_type == "command_response":
-            await self._route_command_response(data)
-            await self._update_request_from_response(data)
+            handled = await self._route_command_response(data)
+            if not handled:
+                await self._update_request_from_response(data)
             return
 
         if msg_type == "command_progress":
@@ -192,7 +195,12 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
 
     async def server_message(self, event):
         """그룹 메시지를 WebSocket으로 전달."""
-        await self.send(text_data=json.dumps(event["data"]))
+        if getattr(self, "_disconnected", False):
+            return
+        try:
+            await self.send(text_data=json.dumps(event["data"]))
+        except RuntimeError:
+            logger.debug("[ws] dropped group message after websocket close")
 
     # ------------------------------------------------------------------
     # Presence (last_seen_at + global agent_status_change events)
@@ -299,7 +307,12 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
 
     async def ws_send(self, event):
         """임의의 payload를 현재 WS로 그대로 전달 (직접 라우팅용)."""
-        await self.send(text_data=json.dumps(event["payload"]))
+        if getattr(self, "_disconnected", False):
+            return
+        try:
+            await self.send(text_data=json.dumps(event["payload"]))
+        except RuntimeError:
+            logger.debug("[ws] dropped direct message after websocket close")
 
     # ------------------------------------------------------------------
     # Command routing
@@ -457,7 +470,7 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
         sess.close_reason = reason[:32]
         sess.save(update_fields=["closed_at", "duration_seconds", "exit_code", "close_reason"])
 
-    async def _route_command_response(self, data: dict):
+    async def _route_command_response(self, data: dict) -> bool:
         """Agent가 보낸 command_response를 요청 Browser로 라우팅.
 
         browser_channel 이 REST sentinel(`__rest__`) 이면 forward 대신 Redis
@@ -467,24 +480,28 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
         request_id = data.get("requestId")
         if not request_id:
             logger.warning("[ws] command_response missing requestId")
-            return
+            return False
 
         pending = command_router.pop_pending(request_id)
         if not pending:
-            # 타임아웃/중복 응답 — 조용히 폐기
-            return
+            return False
 
         browser_channel = pending.get("browser")
         if not browser_channel:
-            return
+            return False
 
         if browser_channel == command_router.REST_SENTINEL:
             command_router.store_response(request_id, data)
-            return
+            return True
+
+        from apps.agents.services.gpu_inventory import GPU_INVENTORY_SENTINEL
+
+        if browser_channel == GPU_INVENTORY_SENTINEL:
+            await self._apply_gpu_inventory_response(data, pending)
+            return True
 
         if browser_channel.startswith("__"):
-            # 다른 sentinel (예: __api__) — DB 갱신만 (`_update_request_from_response` 가 처리)
-            return
+            return False
 
         await self.channel_layer.send(browser_channel, {
             "type": "ws.send",
@@ -503,6 +520,18 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
                 )
                 command_router.remove_stream(request_id)
 
+        return False
+
+    @database_sync_to_async
+    def _apply_gpu_inventory_response(self, data: dict, pending: dict):
+        from apps.agents.services.gpu_inventory import apply_gpu_inventory
+
+        agent_id = pending.get("server_id") or self.server_id
+        try:
+            apply_gpu_inventory(agent_id, data)
+        except Exception:
+            logger.exception("[gpu-inventory] Failed to apply response for agent %s", agent_id)
+
     async def _route_command_progress(self, data: dict):
         """Agent의 command_progress를 요청 Browser로 포워딩 + DB 갱신 + global broadcast."""
         request_id = data.get("requestId")
@@ -515,7 +544,7 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
             # 다시 저장 (pop했으므로)
             command_router.record_pending(request_id, pending["browser"], pending["server_id"])
             browser_channel = pending.get("browser")
-            if browser_channel:
+            if browser_channel and not str(browser_channel).startswith("__"):
                 await self.channel_layer.send(browser_channel, {
                     "type": "ws.send",
                     "payload": data,
@@ -534,9 +563,12 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
     def _update_request_progress(self, data: dict):
         """command_progress → ContainerRequest DB 갱신."""
         from apps.containers.models import ContainerRequest
+        from apps.models_catalog.prepare import handle_prepare_progress
 
         request_id = data.get("requestId")
         if not request_id:
+            return
+        if handle_prepare_progress(data):
             return
         try:
             req = ContainerRequest.objects.get(id=request_id)
@@ -557,9 +589,22 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
     def _update_request_from_response(self, data: dict):
         """command_response (최종 결과) → ContainerRequest + Container DB 갱신."""
         from apps.containers.models import Container, ContainerRequest
+        from apps.containers.services.gpu_allocation import (
+            activate_gpu_allocations_for_request,
+            fail_reserved_gpu_allocations_for_request,
+            release_gpu_allocations_for_container,
+        )
+        from apps.containers.services.workspace import (
+            apply_workspace_metadata_from_response,
+            delete_workspace_token_for_container,
+            delete_workspace_token_for_request,
+        )
+        from apps.models_catalog.prepare import handle_prepare_response
 
         request_id = data.get("requestId")
         if not request_id:
+            return
+        if handle_prepare_response(data):
             return
         try:
             req = ContainerRequest.objects.get(id=request_id)
@@ -613,15 +658,29 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
                             first_obj = obj
                 if first_obj is not None and not req.target_container:
                     req.target_container = first_obj
+                if req.target_container:
+                    apply_workspace_metadata_from_response(
+                        req,
+                        req.target_container,
+                        resp_data.get("workspace"),
+                    )
+                    if req.model_version_ids:
+                        req.target_container.mounted_model_version_ids = list(req.model_version_ids)
+                        req.target_container.save(update_fields=["mounted_model_version_ids", "last_seen"])
+                    activate_gpu_allocations_for_request(req, req.target_container)
 
             # delete 요청: Container row 삭제
             elif req.action == "delete" and req.target_container:
+                release_gpu_allocations_for_container(req.target_container)
+                delete_workspace_token_for_container(req.target_container)
                 req.target_container.delete()
                 req.target_container = None
 
         else:
             req.status = "failed"
             req.progress_message = data.get("error", "unknown error")
+            fail_reserved_gpu_allocations_for_request(req, req.progress_message)
+            delete_workspace_token_for_request(req)
 
         req.deployment_log += f"\n--- command_response ---\n{json.dumps(data, ensure_ascii=False, indent=2)}"
         req.save(update_fields=[
@@ -859,6 +918,7 @@ class GlobalEventsConsumer(AsyncWebsocketConsumer):
     """
 
     async def connect(self):
+        self._disconnected = False
         user = self.scope.get("user", AnonymousUser())
         if isinstance(user, AnonymousUser) or not user.is_authenticated:
             await self.close(code=4001)
@@ -868,7 +928,7 @@ class GlobalEventsConsumer(AsyncWebsocketConsumer):
             return
 
         await self.channel_layer.group_add(GLOBAL_GROUP, self.channel_name)
-        await self.accept()
+        await self.accept(subprotocol=self.scope.get("ws_accept_subprotocol"))
         await self.send(text_data=json.dumps({
             "type": "connection",
             "channel": "global",
@@ -876,6 +936,7 @@ class GlobalEventsConsumer(AsyncWebsocketConsumer):
         }))
 
     async def disconnect(self, close_code):
+        self._disconnected = True
         await self.channel_layer.group_discard(GLOBAL_GROUP, self.channel_name)
 
     async def receive(self, text_data=None, bytes_data=None):
@@ -883,4 +944,9 @@ class GlobalEventsConsumer(AsyncWebsocketConsumer):
         return
 
     async def global_event(self, event):
-        await self.send(text_data=json.dumps(event["payload"]))
+        if getattr(self, "_disconnected", False):
+            return
+        try:
+            await self.send(text_data=json.dumps(event["payload"]))
+        except RuntimeError:
+            logger.debug("[ws] dropped global event after websocket close")

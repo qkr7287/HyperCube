@@ -30,6 +30,9 @@ services:
       DJANGO_ENV: prod
       DJANGO_SETTINGS_MODULE: config.settings.prod
       DEBUG: "false"
+    networks:
+      - hc-network
+      - hc-ml-internal
 
   celery-worker:
     build:
@@ -50,3 +53,8 @@ services:
     environment:
       DJANGO_ENV: prod
       DJANGO_SETTINGS_MODULE: config.settings.prod
+
+networks:
+  hc-ml-internal:
+    external: true
+    name: hc-ml-internal

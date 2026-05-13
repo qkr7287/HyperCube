@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -187,7 +189,8 @@ class ContainerRequestAPITest(APITestCase):
         res = self.client.post(f"/api/requests/{r.id}/approve/", {}, format="json")
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_admin_approves_pending(self):
+    @patch("apps.containers.viewsets.ContainerRequestViewSet._dispatch_to_agent")
+    def test_admin_approves_pending(self, mocked_dispatch):
         r = create_request(
             requester=self.user, template=self.template, target_agent=self.agent
         )
@@ -202,6 +205,7 @@ class ContainerRequestAPITest(APITestCase):
         self.assertEqual(r.status, ContainerRequest.Status.APPROVED)
         self.assertEqual(r.reviewer_id, self.admin.id)
         self.assertEqual(r.review_note, "ok")
+        mocked_dispatch.assert_called_once()
 
     def test_admin_rejects_pending(self):
         r = create_request(

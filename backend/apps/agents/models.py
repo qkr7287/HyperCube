@@ -83,3 +83,74 @@ class Agent(models.Model):
         return f"{self.hostname} ({self.ip_address}) - {self.get_status_display()}"
 
 
+class GpuDevice(models.Model):
+    class HardwareStatus(models.TextChoices):
+        AVAILABLE = "available", "Available"
+        OFFLINE = "offline", "Offline"
+        ERROR = "error", "Error"
+
+    agent = models.ForeignKey(
+        "agents.Agent",
+        on_delete=models.CASCADE,
+        related_name="gpu_devices",
+    )
+    index = models.PositiveSmallIntegerField()
+    vendor = models.CharField(max_length=32, default="NVIDIA")
+    name = models.CharField(max_length=160)
+    uuid = models.CharField(max_length=96, unique=True)
+    pci_bus_id = models.CharField(max_length=64, blank=True, default="")
+    total_memory_mb = models.PositiveIntegerField()
+    driver_version = models.CharField(max_length=64, blank=True, default="")
+    cuda_version = models.CharField(max_length=64, blank=True, default="")
+    mig_capable = models.BooleanField(default=False)
+    mig_enabled = models.BooleanField(default=False)
+    status = models.CharField(
+        max_length=16,
+        choices=HardwareStatus.choices,
+        default=HardwareStatus.AVAILABLE,
+    )
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["agent_id", "index"]
+        unique_together = [("agent", "index")]
+
+    def __str__(self):
+        return f"{self.agent.hostname} GPU {self.index}: {self.name}"
+
+
+class GpuSlice(models.Model):
+    class Kind(models.TextChoices):
+        FULL = "full", "Full GPU"
+        MIG = "mig", "MIG"
+
+    class HardwareStatus(models.TextChoices):
+        AVAILABLE = "available", "Available"
+        OFFLINE = "offline", "Offline"
+        ERROR = "error", "Error"
+
+    gpu = models.ForeignKey(
+        GpuDevice,
+        on_delete=models.CASCADE,
+        related_name="slices",
+    )
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    device_id = models.CharField(max_length=128, unique=True)
+    label = models.CharField(max_length=128, blank=True, default="")
+    mig_profile = models.CharField(max_length=64, blank=True, default="")
+    memory_mb = models.PositiveIntegerField()
+    allow_shared = models.BooleanField(default=False)
+    status = models.CharField(
+        max_length=16,
+        choices=HardwareStatus.choices,
+        default=HardwareStatus.AVAILABLE,
+    )
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["gpu_id", "kind", "device_id"]
+
+    def __str__(self):
+        return f"{self.gpu} slice {self.device_id}"
+
+

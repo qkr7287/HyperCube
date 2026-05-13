@@ -14,6 +14,7 @@
 	import StateBox from './StateBox.svelte';
 
 	type LineRow = { id: number; stream: 'stdout' | 'stderr' | 'mixed'; text: string };
+	type PendingChunk = { lines: string[]; stream: LineRow['stream'] };
 
 	let {
 		agentId,
@@ -42,11 +43,26 @@
 	let paused = $state(false);
 	let filter = $state('');
 	let logBox: HTMLDivElement | undefined = $state(undefined);
+	let actionMsg = $state('');
+	let actionMsgTimer: ReturnType<typeof setTimeout> | null = null;
+	let clearedByUser = $state(false);
+	let pendingChunks = $state<PendingChunk[]>([]);
+	let pausedLineCount = $state(0);
 
 	let initialTail = $state(100);
 	let timestamps = $state(true);
 
 	let displayed = $derived(filterLines(lines, filter));
+	let toolbarMsg = $derived(actionMsg || (pausedLineCount > 0 ? `${pausedLineCount}줄 대기 중` : ''));
+
+	$effect(() => {
+		if (!paused && pendingChunks.length > 0) {
+			const chunks = pendingChunks;
+			pendingChunks = [];
+			pausedLineCount = 0;
+			void appendChunks(chunks);
+		}
+	});
 
 	function filterLines(rows: LineRow[], q: string): LineRow[] {
 		const t = q.trim();
@@ -74,11 +90,41 @@
 		return `${hex(8)}-${hex(4)}-4${hex(3)}-${(8 + r(4)).toString(16)}${hex(3)}-${hex(12)}`;
 	}
 
+	function showActionMsg(message: string) {
+		actionMsg = message;
+		if (actionMsgTimer) clearTimeout(actionMsgTimer);
+		actionMsgTimer = setTimeout(() => {
+			actionMsg = '';
+			actionMsgTimer = null;
+		}, 1800);
+	}
+
+	function copyWithTextarea(text: string): boolean {
+		if (!browser) return false;
+		const textarea = document.createElement('textarea');
+		textarea.value = text;
+		textarea.setAttribute('readonly', '');
+		textarea.style.position = 'fixed';
+		textarea.style.left = '-9999px';
+		textarea.style.top = '0';
+		document.body.appendChild(textarea);
+		textarea.focus();
+		textarea.select();
+		let ok = false;
+		try {
+			ok = document.execCommand('copy');
+		} catch {
+			ok = false;
+		} finally {
+			document.body.removeChild(textarea);
+		}
+		return ok;
+	}
+
 	function wsUrl(): string {
-		const t = token();
 		const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
 		const host = window.location.host;
-		return `${proto}://${host}${base}/ws/server/${agentId}/?token=${encodeURIComponent(t || '')}`;
+		return `${proto}://${host}${base}/ws/server/${agentId}/`;
 	}
 
 	async function startTail() {
@@ -86,12 +132,20 @@
 		errorMsg = '';
 		endedReason = null;
 		subscribed = false;
-		ws = new WebSocket(wsUrl());
-		ws.onopen = () => {
+		const t = token();
+		if (!t) {
+			errorMsg = '로그인이 필요합니다.';
+			return;
+		}
+		const socket = new WebSocket(wsUrl(), ['hypercube.jwt', t]);
+		ws = socket;
+		socket.onopen = () => {
+			if (ws !== socket) return;
 			connected = true;
 			sendSubscribe();
 		};
-		ws.onmessage = (ev) => {
+		socket.onmessage = (ev) => {
+			if (ws !== socket) return;
 			let msg: any;
 			try {
 				msg = JSON.parse(ev.data);
@@ -100,10 +154,12 @@
 			}
 			handleMessage(msg);
 		};
-		ws.onerror = () => {
+		socket.onerror = () => {
+			if (ws !== socket) return;
 			errorMsg = 'WebSocket 에러';
 		};
-		ws.onclose = () => {
+		socket.onclose = () => {
+			if (ws !== socket) return;
 			connected = false;
 			subscribed = false;
 			ws = null;
@@ -141,16 +197,18 @@
 	}
 
 	function stopTail() {
+		const socket = ws;
 		sendUnsubscribe();
 		try {
-			ws?.close();
+			socket?.close();
 		} catch {
 			/* ignore */
 		}
-		ws = null;
+		if (ws === socket) ws = null;
 		streamId = null;
 		connected = false;
 		subscribed = false;
+		clearPendingChunks();
 	}
 
 	function handleMessage(msg: any) {
@@ -164,8 +222,14 @@
 			}
 			return;
 		}
-		if (t === 'log_chunk' && msg.streamId === streamId && !paused) {
-			appendChunk(msg.lines || [], msg.stream || 'mixed');
+		if (t === 'log_chunk' && msg.streamId === streamId) {
+			const chunkLines = Array.isArray(msg.lines) ? msg.lines : [];
+			const stream = normalizeStream(msg.stream);
+			if (paused) {
+				queuePendingChunk(chunkLines, stream);
+			} else {
+				void appendChunk(chunkLines, stream);
+			}
 			return;
 		}
 		if (t === 'log_stream_end' && msg.streamId === streamId) {
@@ -176,12 +240,47 @@
 		// 다른 server group broadcast (system_metrics 등) 은 무시.
 	}
 
-	async function appendChunk(newLines: string[], stream: 'stdout' | 'stderr' | 'mixed') {
+	function normalizeStream(stream: unknown): LineRow['stream'] {
+		return stream === 'stdout' || stream === 'stderr' || stream === 'mixed' ? stream : 'mixed';
+	}
+
+	function queuePendingChunk(newLines: string[], stream: LineRow['stream']) {
 		if (newLines.length === 0) return;
-		const next = lines.slice();
-		for (const ln of newLines) {
-			next.push({ id: ++lineSeq, stream, text: ln });
+		let next = [...pendingChunks, { lines: newLines, stream }];
+		let total = pausedLineCount + newLines.length;
+
+		while (total > MAX_LINES && next.length > 0) {
+			const overflow = total - MAX_LINES;
+			const first = next[0];
+			if (first.lines.length <= overflow) {
+				total -= first.lines.length;
+				next = next.slice(1);
+			} else {
+				next[0] = { ...first, lines: first.lines.slice(overflow) };
+				total -= overflow;
+			}
 		}
+
+		pendingChunks = next;
+		pausedLineCount = total;
+	}
+
+	async function appendChunk(newLines: string[], stream: 'stdout' | 'stderr' | 'mixed') {
+		await appendChunks([{ lines: newLines, stream }]);
+	}
+
+	async function appendChunks(chunks: PendingChunk[]) {
+		if (chunks.length === 0) return;
+		const next = lines.slice();
+		let appended = false;
+		for (const chunk of chunks) {
+			for (const ln of chunk.lines) {
+				next.push({ id: ++lineSeq, stream: chunk.stream, text: ln });
+				appended = true;
+			}
+		}
+		if (!appended) return;
+		clearedByUser = false;
 		// cap — 가장 오래된 부분 drop. 데이터 손실 의식적 (메모리 보호).
 		if (next.length > MAX_LINES) next.splice(0, next.length - MAX_LINES);
 		lines = next;
@@ -195,17 +294,44 @@
 		if (logBox) logBox.scrollTop = logBox.scrollHeight;
 	}
 
+	function clearPendingChunks() {
+		pendingChunks = [];
+		pausedLineCount = 0;
+	}
+
 	function clearLines() {
 		lines = [];
+		clearedByUser = true;
+		clearPendingChunks();
+		showActionMsg('로그를 지웠습니다');
+	}
+
+	function emptyStateKind() {
+		if (clearedByUser || filter.trim() || endedReason) return 'empty';
+		return subscribed ? 'loading' : 'loading';
+	}
+
+	function emptyStateMessage() {
+		if (clearedByUser) return '표시된 로그를 지웠습니다. 새 로그가 들어오면 다시 표시됩니다.';
+		if (filter.trim()) return '필터에 맞는 로그가 없습니다.';
+		if (endedReason) return '로그가 없습니다.';
+		return subscribed ? '새 로그를 기다리는 중...' : '구독 중...';
 	}
 
 	async function copyAll() {
 		const text = displayed.map((l) => l.text).join('\n');
+		if (!text) return;
+		let ok = false;
 		try {
-			await navigator.clipboard.writeText(text);
+			if (navigator.clipboard?.writeText && window.isSecureContext) {
+				await navigator.clipboard.writeText(text);
+				ok = true;
+			}
 		} catch {
 			/* clipboard 권한 없음 */
 		}
+		if (!ok) ok = copyWithTextarea(text);
+		showActionMsg(ok ? '복사 완료' : '복사 실패');
 	}
 
 	function downloadAll() {
@@ -219,16 +345,21 @@
 		a.click();
 		document.body.removeChild(a);
 		URL.revokeObjectURL(url);
+		showActionMsg('다운로드 시작');
 	}
 
 	function togglePanel() {
 		open = !open;
 		if (open) {
+			clearedByUser = false;
+			clearPendingChunks();
 			startTail();
 		} else {
 			stopTail();
 			lines = [];
 			lineSeq = 0;
+			clearedByUser = false;
+			clearPendingChunks();
 		}
 	}
 
@@ -236,6 +367,9 @@
 		stopTail();
 		lines = [];
 		lineSeq = 0;
+		clearedByUser = false;
+		clearPendingChunks();
+		showActionMsg('스트림 재시작 중');
 		setTimeout(() => startTail(), 100);
 	}
 
@@ -245,6 +379,7 @@
 
 	onDestroy(() => {
 		stopTail();
+		if (actionMsgTimer) clearTimeout(actionMsgTimer);
 	});
 </script>
 
@@ -268,11 +403,18 @@
 		</button>
 	{:else}
 		<div class="toolbar">
-			<span class="status" class:ok={subscribed} class:err={!!errorMsg || endedReason}>
+			<span
+				class="status"
+				class:ok={subscribed && !paused}
+				class:paused={subscribed && paused}
+				class:err={!!errorMsg || endedReason}
+			>
 				{#if errorMsg}
 					에러: {errorMsg}
 				{:else if endedReason}
 					종료됨 ({endedReason})
+				{:else if subscribed && paused}
+					일시정지
 				{:else if subscribed}
 					● 수신 중
 				{:else if connected}
@@ -287,25 +429,28 @@
 				placeholder="필터 (regex / substring)"
 				bind:value={filter}
 			/>
-			<label class="chk">
+			<label class="chk log-auto-scroll">
 				<input type="checkbox" bind:checked={autoScroll} /> 자동 스크롤
 			</label>
-			<label class="chk">
+			<label class="chk log-pause">
 				<input type="checkbox" bind:checked={paused} /> 일시정지
 			</label>
-			<button class="btn" onclick={clearLines} disabled={lines.length === 0}>지우기</button>
-			<button class="btn" onclick={copyAll} disabled={displayed.length === 0}>복사</button>
-			<button class="btn" onclick={downloadAll} disabled={displayed.length === 0}>다운로드</button>
-			<button class="btn" onclick={restart}>재시작</button>
+			<div class="log-actions" aria-label="로그 작업">
+				<button class="btn clear-btn" onclick={clearLines} disabled={lines.length === 0}>지우기</button>
+				<button class="btn copy-btn" onclick={copyAll} disabled={displayed.length === 0}>복사</button>
+				<button class="btn download-btn" onclick={downloadAll} disabled={displayed.length === 0}>다운로드</button>
+				<button class="btn restart-btn" onclick={restart}>재시작</button>
+			</div>
+			<span class="action-msg" class:visible={!!toolbarMsg} aria-live="polite">{toolbarMsg || '\u00a0'}</span>
 			<span class="count">{displayed.length}{filter ? ` / ${lines.length}` : ''}줄{lines.length >= MAX_LINES ? ' (cap)' : ''}</span>
 		</div>
 
 		<div class="logbox" bind:this={logBox}>
 			{#if displayed.length === 0}
 				<StateBox
-					kind={subscribed ? 'loading' : endedReason ? 'empty' : 'loading'}
+					kind={emptyStateKind()}
 					compact
-					message={subscribed ? '로그를 기다리는 중...' : endedReason ? '로그가 없습니다.' : '구독 중...'}
+					message={emptyStateMessage()}
 				/>
 			{:else}
 				{#each displayed as line (line.id)}
@@ -442,12 +587,18 @@
 	}
 
 	.toolbar {
-		display: flex;
-		flex-wrap: wrap;
+		display: grid;
+		grid-template-columns: auto minmax(120px, 1fr) auto auto;
+		grid-template-rows: 24px 26px 18px;
+		grid-template-areas:
+			"status filter auto pause"
+			"actions actions actions actions"
+			"msg msg msg count";
 		gap: 5px;
 		align-items: center;
 		min-width: 0;
 		max-width: 100%;
+		min-height: 82px;
 		box-sizing: border-box;
 		margin-bottom: 5px;
 		padding: 5px 6px;
@@ -456,6 +607,10 @@
 		border: 1px solid rgba(100, 116, 139, 0.16);
 	}
 	.status {
+		grid-area: status;
+		justify-self: start;
+		min-width: 54px;
+		text-align: center;
 		font-size: 10px;
 		font-weight: 700;
 		padding: 3px 7px;
@@ -463,11 +618,17 @@
 		background: rgba(100, 116, 139, 0.16);
 		color: var(--text-secondary);
 		border: 1px solid rgba(100, 116, 139, 0.32);
+		white-space: nowrap;
 	}
 	.status.ok {
 		background: rgba(16, 185, 129, 0.18);
 		color: #34d399;
 		border-color: rgba(16, 185, 129, 0.35);
+	}
+	.status.paused {
+		background: rgba(245, 158, 11, 0.16);
+		color: #fbbf24;
+		border-color: rgba(245, 158, 11, 0.35);
 	}
 	.status.err {
 		background: rgba(239, 68, 68, 0.18);
@@ -476,8 +637,11 @@
 	}
 
 	.filter {
-		flex: 1 1 140px;
+		grid-area: filter;
+		width: 100%;
+		height: 23px;
 		min-width: 0;
+		box-sizing: border-box;
 		padding: 4px 7px;
 		border-radius: 7px;
 		background: rgba(13, 17, 23, 0.86);
@@ -491,34 +655,131 @@
 		display: inline-flex;
 		gap: 4px;
 		align-items: center;
+		min-height: 22px;
 		font-size: 10px;
 		color: var(--text-secondary);
+		font-weight: 750;
+		white-space: nowrap;
+	}
+
+	.chk input {
+		appearance: none;
+		position: relative;
+		width: 26px;
+		height: 14px;
+		margin: 0;
+		border-radius: 999px;
+		background: rgba(100, 116, 139, 0.22);
+		border: 1px solid rgba(100, 116, 139, 0.35);
+		cursor: pointer;
+		transition: background-color var(--ease-fast), border-color var(--ease-fast);
+	}
+
+	.chk input::before {
+		content: '';
+		position: absolute;
+		left: 2px;
+		top: 2px;
+		width: 8px;
+		height: 8px;
+		border-radius: 999px;
+		background: rgba(203, 213, 225, 0.9);
+		transition: transform var(--ease-fast), background-color var(--ease-fast);
+	}
+
+	.chk input:checked {
+		background: rgba(48, 213, 200, 0.2);
+		border-color: rgba(48, 213, 200, 0.52);
+	}
+
+	.chk input:checked::before {
+		transform: translateX(12px);
+		background: var(--accent);
+	}
+
+	.log-auto-scroll {
+		grid-area: auto;
+	}
+
+	.log-pause {
+		grid-area: pause;
+	}
+
+	.log-actions {
+		grid-area: actions;
+		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: 5px;
+		min-width: 0;
 	}
 
 	.btn {
+		width: 100%;
+		min-width: 0;
+		height: 25px;
 		padding: 4px 7px;
 		border-radius: 7px;
-		background: rgba(13, 17, 23, 0.86);
-		border: 1px solid rgba(31, 41, 55, 0.9);
+		background:
+			linear-gradient(180deg, rgba(21, 27, 38, 0.78), rgba(8, 12, 19, 0.7)),
+			rgba(13, 17, 23, 0.84);
+		border: 1px solid rgba(100, 116, 139, 0.18);
 		color: var(--text-secondary);
 		font-family: inherit;
 		font-size: 10px;
 		font-weight: 700;
 		cursor: pointer;
+		white-space: nowrap;
 	}
 	.btn:hover:not(:disabled) {
 		color: var(--accent);
 		border-color: rgba(48, 213, 200, 0.4);
+		background: rgba(48, 213, 200, 0.08);
 	}
 	.btn:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
 	}
 
+	.restart-btn {
+		color: var(--accent);
+		border-color: rgba(48, 213, 200, 0.3);
+		background: rgba(48, 213, 200, 0.08);
+	}
+
+	.action-msg {
+		grid-area: msg;
+		align-self: center;
+		min-height: 18px;
+		max-width: 100%;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		padding: 2px 7px;
+		border-radius: 999px;
+		background: rgba(48, 213, 200, 0.12);
+		border: 1px solid rgba(48, 213, 200, 0.28);
+		color: var(--accent);
+		font-size: 10px;
+		font-weight: 800;
+		white-space: nowrap;
+		visibility: hidden;
+		opacity: 0;
+		transition: opacity var(--ease-fast), visibility var(--ease-fast);
+	}
+
+	.action-msg.visible {
+		visibility: visible;
+		opacity: 1;
+	}
+
 	.count {
-		margin-left: auto;
+		grid-area: count;
+		justify-self: end;
+		min-width: 64px;
+		margin-left: 0;
 		font-size: 10px;
 		color: var(--text-muted);
+		text-align: right;
+		white-space: nowrap;
 	}
 
 	.logbox {

@@ -134,10 +134,12 @@ Agent   → Backend → Browser: {"type": "command_progress", "requestId": "<uui
 **params**
 | field      | type   | required | notes                                                    |
 |------------|--------|----------|----------------------------------------------------------|
-| subCommand | string | yes      | `cpu_detail` \| `processes` \| `network_detail` \| `users` |
+| subCommand | string | yes      | `cpu_detail` \| `processes` \| `network_detail` \| `users` \| `gpu_inventory` |
 | sortBy     | string | no       | `processes`만 — `cpu` (default) 또는 `mem`                 |
 
 Invalid `subCommand` → `"Invalid subCommand: <x>. Valid: cpu_detail, processes, network_detail, users"`.
+
+Current valid set also includes `gpu_inventory`.
 
 #### 4.1 `cpu_detail`
 
@@ -231,6 +233,58 @@ Invalid `subCommand` → `"Invalid subCommand: <x>. Valid: cpu_detail, processes
 - compose에 `/var/run/utmp` mount 필요. mount 안 됐으면 빈 배열.
 
 ---
+
+#### 4.5 `gpu_inventory`
+
+Backend dispatches this subCommand from Celery beat with a request id prefixed
+by `gpu-inventory:`. The response is consumed by HyperCube core inventory
+upsert logic and is not interpreted as a `ContainerRequest` response.
+
+**request**
+
+```json
+{
+  "type": "command",
+  "requestId": "gpu-inventory:<agent_id>:<uuid>",
+  "command": "system_info",
+  "params": { "subCommand": "gpu_inventory" }
+}
+```
+
+**success.data**
+
+```json
+{
+  "gpus": [
+    {
+      "index": 0,
+      "vendor": "NVIDIA",
+      "name": "NVIDIA GeForce RTX 4090",
+      "uuid": "GPU-...",
+      "pciBusId": "00000000:82:00.0",
+      "totalMemoryMb": 24564,
+      "driverVersion": "550.54.15",
+      "cudaVersion": "12.4",
+      "migCapable": false,
+      "migEnabled": false,
+      "slices": [
+        {
+          "kind": "full",
+          "deviceId": "GPU-...",
+          "profile": "",
+          "memoryMb": 24564
+        }
+      ]
+    }
+  ]
+}
+```
+
+If `nvidia-smi` or NVIDIA runtime discovery is unavailable, return
+`command_response { success:false, error:"nvidia-smi not available" }`.
+HyperCube core marks existing inventory for that agent offline and keeps other
+agent metrics working. If a host has no GPU, return `success:true` with
+`data.gpus=[]`.
 
 ### 5. `logs_subscribe` / `logs_unsubscribe`
 
@@ -420,6 +474,22 @@ Docker Compose 프로젝트 배포. `ContainerTemplate.kind == "compose"`인 템
 | ports    | array   | no       | `[{"HostPort": "8080", "ContainerPort": "80"}, ...]` (dict 형식만) |
 | volumes  | array   | no       | template의 default_volumes            |
 
+Additional optional GPU parameter for ML Workspace Track 2:
+
+```json
+{
+  "gpus": [
+    { "deviceId": "GPU-...", "kind": "full" }
+  ]
+}
+```
+
+Empty or missing `gpus` means no GPU. When `gpus` is present, HyperCube core has
+already reserved the selected `GpuSlice` rows. Agent must fail clearly if a
+requested `deviceId` is not present or NVIDIA runtime setup is missing. Core
+moves the allocation from `reserved` to `active` only after this command
+succeeds; failure marks reserved allocations failed.
+
 **success.data**
 ```json
 {
@@ -506,3 +576,146 @@ agent 구현: `Memory = memory_mb * 1024 * 1024`, `CpuPeriod = 100000`,
 - 2026-05-11: `exec_open` / `exec_input` / `exec_resize` / `exec_close` (B4 Console exec) 추가. `execId == streamId` 라우팅 패턴 (`logs_subscribe` 재사용).
 - 2026-04-29 (`7f82ff8`): `compose_up`, `create_container`, `delete_container` 추가 (Backend dispatch). routing 동작 표 추가.
 - 2026-03-31: 초안 (Browser-issued 4개 command).
+## Workspace/Jupyter extension
+
+`create_container.params.workspace` is optional. Existing agents must preserve
+the old behavior when it is absent.
+
+```json
+{
+  "workspace": {
+    "kind": "jupyter",
+    "token": "<plaintext token, do not log>",
+    "port": 8888,
+    "baseUrl": "/workspace/<container-request-id>/",
+    "workdir": "/workspace"
+  },
+  "networkPolicy": "internal_only"
+}
+```
+
+The agent should inject the token/base URL/port into the image runtime and
+return workspace reachability metadata. For normal workspaces, bind the
+workspace port to a host port reachable from HyperCube backend and return:
+
+```json
+{
+  "workspace": {
+    "kind": "jupyter",
+    "hostPort": 39021,
+    "internalPort": 8888,
+    "baseUrl": "/workspace/<container-request-id>/",
+    "health": {}
+  }
+}
+```
+
+For `networkPolicy=internal_only`, the agent must not publish the workspace
+port on the host. The workspace container should be attached to the shared
+Docker internal network used by the backend, and the backend will reach it via
+Docker DNS:
+
+```json
+{
+  "workspace": {
+    "kind": "jupyter",
+    "hostPort": null,
+    "internalPort": 8888,
+    "baseUrl": "/workspace/<container-request-id>/",
+    "health": {
+      "networkPolicy": "internal_only",
+      "networkName": "hc-ml-internal"
+    }
+  }
+}
+```
+
+The backend falls back to `<container name>:<internalPort>` for internal-only
+workspace upstreams. `hc-backend` must be joined to `hc-ml-internal` for this
+path to work.
+
+The backend stores only `workspace_token_ref` and expiry metadata in Postgres.
+The plaintext token exists in Redis and in the agent command payload only.
+
+## Model Prepare Extension
+
+`prepare_model_assets` is a separate command. It is never folded into
+`create_container`. HyperCube core uses `ModelPrepareJob.id` as the
+`requestId`, so every `command_progress` and final `command_response` for a
+prepare operation must echo that job id.
+
+Example command:
+
+```json
+{
+  "type": "command",
+  "requestId": "<model-prepare-job-id>",
+  "command": "prepare_model_assets",
+  "params": {
+    "jobId": "<model-prepare-job-id>",
+    "transferMode": "backend_stream",
+    "assets": [
+      {
+        "versionId": "<model-version-id>",
+        "assetSlug": "tiny-local-model",
+        "version": "v1",
+        "sizeBytes": 1234,
+        "sha256": "<sha256>",
+        "checksum": "<sha256>",
+        "source": {
+          "type": "backend_stream",
+          "contentUrl": "/api/model-versions/<model-version-id>/content/",
+          "auth": "agent_bearer",
+          "sha256": "<sha256>",
+          "checksum": "<sha256>",
+          "sizeBytes": 1234
+        },
+        "mountPath": "/workspace/models/tiny-local-model@v1"
+      }
+    ]
+  }
+}
+```
+
+The agent must call the content URL with its approved agent token in an
+Authorization bearer header. The token must not be placed in a query string.
+The agent writes to a temp path, verifies SHA256, then atomically moves into its
+local cache.
+
+`assets[].sha256` is the canonical checksum. `assets[].checksum`,
+`assets[].source.sha256`, and `assets[].source.checksum` are sent as
+compatibility aliases for agent builds that validate the checksum near the
+stream source object.
+
+Successful response:
+
+```json
+{
+  "type": "command_response",
+  "requestId": "<model-prepare-job-id>",
+  "success": true,
+  "data": {
+    "cachePath": "/var/lib/hypercube-agent/model-cache/tiny-local-model/v1",
+    "sha256": "<sha256>"
+  }
+}
+```
+
+After all prepare jobs for a `ContainerRequest` are ready, the backend dispatches
+`create_container` with:
+
+```json
+{
+  "modelMounts": [
+    {
+      "versionId": "<model-version-id>",
+      "assetSlug": "tiny-local-model",
+      "sourcePath": "/var/lib/hypercube-agent/model-cache/tiny-local-model/v1",
+      "mountPath": "/workspace/models/tiny-local-model@v1",
+      "readOnly": true,
+      "sha256": "<sha256>",
+      "sizeBytes": 1234
+    }
+  ]
+}
+```

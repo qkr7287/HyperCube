@@ -53,10 +53,9 @@
 	}
 
 	function wsUrl(): string {
-		const t = token();
 		const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
 		const host = window.location.host;
-		return `${proto}://${host}${base}/ws/server/${agentId}/?token=${encodeURIComponent(t || '')}`;
+		return `${proto}://${host}${base}/ws/server/${agentId}/`;
 	}
 
 	function bytesToB64(bytes: Uint8Array): string {
@@ -145,7 +144,12 @@
 
 		await ensureTerm();
 
-		ws = new WebSocket(wsUrl());
+		const t = token();
+		if (!t) {
+			errorMsg = '로그인이 필요합니다.';
+			return;
+		}
+		ws = new WebSocket(wsUrl(), ['hypercube.jwt', t]);
 		ws.onopen = () => {
 			connected = true;
 			sendOpen();

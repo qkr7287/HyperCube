@@ -6,6 +6,8 @@ from datetime import timedelta
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from django.db import transaction
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import status
@@ -19,6 +21,29 @@ from apps.common.permissions import IsAdmin
 from apps.common.redis_client import get_redis_client
 from apps.metrics.models import ContainerMetricsHistory
 from apps.metrics.serializers import ContainerMetricsHistorySerializer
+from apps.models_catalog.prepare import (
+    create_or_attach_prepare_jobs_for_request,
+    dispatch_prepare_jobs,
+)
+
+from .services.gpu_allocation import (
+    GpuReservationError,
+    fail_reserved_gpu_allocations_for_request,
+    gpu_payload_for_request,
+    reserve_gpu_slices_for_request,
+)
+from .services.deployment import dispatch_request_to_agent
+from .services.policy import enforce_approval_policy
+from .services.workspace import (
+    apply_workspace_metadata_from_response,
+    build_workspace_open_url,
+    delete_workspace_token_for_request,
+    extend_workspace_runtime,
+    issue_workspace_open_ticket,
+    prepare_workspace_secret_for_request,
+    workspace_payload_for_request,
+    workspace_ticket_ttl_seconds,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +51,7 @@ from .models import (
     ConsoleSession,
     Container,
     ContainerEvent,
+    GpuAllocation,
     ContainerRequest,
     ContainerTemplate,
 )
@@ -37,6 +63,7 @@ from .serializers import (
     ContainerTemplateSerializer,
     MyContainerSerializer,
     ReviewActionSerializer,
+    WorkspaceSerializer,
 )
 
 
@@ -446,6 +473,55 @@ class MyContainerViewSet(ReadOnlyModelViewSet):
         return Response(ConsoleSessionSerializer(qs, many=True).data)
 
 
+@extend_schema_view(
+    list=extend_schema(summary="ML workspace list"),
+    retrieve=extend_schema(summary="ML workspace detail"),
+)
+class WorkspaceViewSet(ReadOnlyModelViewSet):
+    queryset = Container.objects.select_related(
+        "agent",
+        "requester",
+        "created_via_request",
+        "created_via_request__template",
+    ).filter(workspace_enabled=True)
+    serializer_class = WorkspaceSerializer
+    permission_classes = [IsAuthenticated]
+    lookup_field = "container_id"
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if getattr(user, "role", None) != "admin":
+            qs = qs.filter(requester=user)
+        return qs
+
+    @action(detail=True, methods=["post"], url_path="open")
+    def open(self, request, container_id=None):
+        container = self.get_object()
+        try:
+            ticket = issue_workspace_open_ticket(container, request.user)
+        except PermissionDenied:
+            return Response({"detail": "Workspace is not owned by this user"}, status=status.HTTP_403_FORBIDDEN)
+        except ValidationError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            "url": build_workspace_open_url(container, ticket),
+            "expiresInSeconds": workspace_ticket_ttl_seconds(),
+        })
+
+    @action(detail=True, methods=["post"], url_path="extend-runtime")
+    def extend_runtime(self, request, container_id=None):
+        container = self.get_object()
+        try:
+            additional_hours = int(request.data.get("additional_hours", 1))
+            extend_workspace_runtime(container, additional_hours)
+        except (TypeError, ValueError):
+            return Response({"detail": "additional_hours must be an integer"}, status=status.HTTP_400_BAD_REQUEST)
+        except ValidationError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(container).data)
+
+
 # ---------- Templates ----------
 
 @extend_schema_view(
@@ -557,31 +633,66 @@ class ContainerRequestViewSet(ModelViewSet):
         serializer = ReviewActionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        req_obj.status = ContainerRequest.Status.APPROVED
-        req_obj.reviewer = request.user
-        req_obj.reviewed_at = timezone.now()
-        req_obj.review_note = serializer.validated_data.get("note", "")
-        req_obj.save(update_fields=["status", "reviewer", "reviewed_at", "review_note", "updated_at"])
+        prepare_jobs = []
+        workspace_secret = None
+        with transaction.atomic():
+            req_obj = (
+                ContainerRequest.objects.select_for_update()
+                .get(pk=req_obj.pk)
+            )
+            if req_obj.status != ContainerRequest.Status.PENDING:
+                return Response(
+                    {"detail": f"pending request required (current: {req_obj.status})."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                enforce_approval_policy(req_obj)
+                reserve_gpu_slices_for_request(req_obj)
+                prepare_jobs = create_or_attach_prepare_jobs_for_request(req_obj)
+                if not prepare_jobs:
+                    workspace_secret = prepare_workspace_secret_for_request(req_obj)
+            except GpuReservationError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            except ValidationError as exc:
+                fail_reserved_gpu_allocations_for_request(req_obj, str(exc))
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as exc:
+                fail_reserved_gpu_allocations_for_request(req_obj, "workspace/model preparation setup failed")
+                return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+            req_obj.status = ContainerRequest.Status.APPROVED
+            req_obj.reviewer = request.user
+            req_obj.reviewed_at = timezone.now()
+            req_obj.review_note = serializer.validated_data.get("note", "")
+            req_obj.save(update_fields=["status", "reviewer", "reviewed_at", "review_note", "updated_at"])
 
         # Agent에 명령 발송 (비동기 — sendCommand는 WS 기반이므로 여기서는
         # channel_layer를 통해 Agent에 직접 전송한다. requestId = ContainerRequest.id
         # 이므로 command_response/progress가 오면 Consumer가 DB를 갱신한다.)
-        self._dispatch_to_agent(req_obj)
+        if prepare_jobs:
+            dispatch_prepare_jobs(prepare_jobs)
+        else:
+            self._dispatch_to_agent(req_obj, workspace_secret=workspace_secret)
+        req_obj.refresh_from_db()
 
         return Response(self.get_serializer(req_obj).data)
 
-    def _dispatch_to_agent(self, req_obj):
+    def _dispatch_to_agent(self, req_obj, workspace_secret=None):
         """승인된 요청을 Agent WS 채널로 발송.
 
         requestId = ContainerRequest.id 를 사용하므로,
         Agent의 command_response/command_progress가 돌아오면
         MonitoringConsumer가 같은 requestId로 DB를 갱신한다.
         """
+        dispatch_request_to_agent(req_obj, workspace_secret=workspace_secret)
+        return
         agent_channel = command_router.get_agent_channel(str(req_obj.target_agent_id))
         if not agent_channel:
             req_obj.status = ContainerRequest.Status.FAILED
             req_obj.progress_message = "Agent 오프라인 — 명령 발송 불가"
             req_obj.save(update_fields=["status", "progress_message", "updated_at"])
+            fail_reserved_gpu_allocations_for_request(req_obj, "agent offline before dispatch")
+            delete_workspace_token_for_request(req_obj)
             return
 
         # pending map에 기록 (Consumer가 응답 라우팅할 때 사용)
@@ -606,17 +717,24 @@ class ContainerRequestViewSet(ModelViewSet):
                 for p in (req_obj.custom_ports or []):
                     if isinstance(p, dict):
                         ports.append(p)
+                gpus = gpu_payload_for_request(req_obj)
+                workspace_payload = workspace_payload_for_request(req_obj, workspace_secret)
+                params = {
+                    "image": req_obj.selected_image or (tpl.image if tpl else ""),
+                    "name": req_obj.custom_name or f"hc-{str(req_obj.id)[:8]}",
+                    "env": req_obj.custom_env or {},
+                    "ports": ports,
+                    "volumes": list(tpl.default_volumes) if tpl else [],
+                    "gpus": gpus,
+                }
+                if workspace_payload:
+                    params["workspace"] = workspace_payload
+                    params["networkPolicy"] = tpl.network_policy if tpl else "none"
                 payload = {
                     "type": "command",
                     "requestId": str(req_obj.id),
                     "command": "create_container",
-                    "params": {
-                        "image": req_obj.selected_image or (tpl.image if tpl else ""),
-                        "name": req_obj.custom_name or f"hc-{str(req_obj.id)[:8]}",
-                        "env": req_obj.custom_env or {},
-                        "ports": ports,
-                        "volumes": list(tpl.default_volumes) if tpl else [],
-                    },
+                    "params": params,
                 }
         elif req_obj.action == "delete":
             cid = req_obj.target_container_id or ""
@@ -642,6 +760,8 @@ class ContainerRequestViewSet(ModelViewSet):
             req_obj.status = ContainerRequest.Status.FAILED
             req_obj.progress_message = "Agent 명령 발송 실패"
             req_obj.save(update_fields=["status", "progress_message", "updated_at"])
+            fail_reserved_gpu_allocations_for_request(req_obj, "agent dispatch failed")
+            delete_workspace_token_for_request(req_obj)
 
     @extend_schema(
         summary="요청 반려 (admin only)",

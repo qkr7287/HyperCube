@@ -72,6 +72,7 @@ services:
              uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --workers 4"
     networks:
       - hc-network
+      - hc-ml-internal
 
   celery-worker:
     image: ghcr.io/qkr7287/hypercube-backend:${IMAGE_TAG:-latest}
@@ -140,3 +141,6 @@ volumes:
 networks:
   hc-network:
     driver: bridge
+  hc-ml-internal:
+    external: true
+    name: hc-ml-internal

@@ -24,6 +24,7 @@
 		formatDateTime,
 		formatMemoryUsage,
 		formatPercent,
+		formatRelativeTime,
 		statusLabel,
 		statusTone,
 	} from '$lib/utils/container-dashboard';
@@ -32,7 +33,7 @@
 
 여러 코어 환경이라도 0~100% 범위로 정규화돼 표시되므로, 100%에 가까울수록 컨테이너가 받은 CPU를 모두 쓰고 있다는 뜻입니다.
 
-값은 약 10초마다 자동 갱신됩니다.`;
+값은 선택한 자동 새로고침 주기에 맞춰 갱신됩니다.`;
 
 	const memoryHelp = `현재 메모리 사용량 / 컨테이너에 허용된 최대치입니다.
 
@@ -128,6 +129,13 @@
 		'7d': { window: '7d', bucket: '1d' },
 	};
 
+	const REFRESH_INTERVAL_OPTIONS = [
+		{ value: 15_000, label: '15초' },
+		{ value: 30_000, label: '30초' },
+		{ value: 60_000, label: '1분' },
+		{ value: 300_000, label: '5분' },
+	] as const;
+
 	let container = $state<ContainerDetail | null>(null);
 	let currentMetrics = $state<MetricsSnapshot | null>(null);
 	let history = $state<MetricsHistoryRow[]>([]);
@@ -135,6 +143,7 @@
 	let refreshing = $state(false);
 	let errorMsg = $state('');
 	let selectedRange = $state<(typeof RANGE_OPTIONS)[number]['key']>('1h');
+	let refreshIntervalMs = $state(60_000);
 	let refreshTimer: ReturnType<typeof setInterval> | null = null;
 	let paused = $state(false);
 	let inspectData = $state<any>(null);
@@ -225,7 +234,6 @@
 	});
 	let events = $state<EventRow[]>([]);
 	let eventsError = $state('');
-	let eventsTimer: ReturnType<typeof setInterval> | null = null;
 	// 누적 metric (network/disk) 차트 모드. cumulative = 원본, rate = bucket 간 delta/sec.
 	let networkMode = $state<'cumulative' | 'rate'>('cumulative');
 	let diskMode = $state<'cumulative' | 'rate'>('cumulative');
@@ -397,6 +405,24 @@
 			loading = false;
 			refreshing = false;
 		}
+	}
+
+	function refreshIntervalLabel(ms = refreshIntervalMs): string {
+		return REFRESH_INTERVAL_OPTIONS.find((option) => option.value === ms)?.label ?? `${Math.round(ms / 1000)}초`;
+	}
+
+	function startRefreshTimer() {
+		if (refreshTimer) clearInterval(refreshTimer);
+		refreshTimer = setInterval(() => {
+			if (!paused) loadDashboard();
+		}, refreshIntervalMs);
+	}
+
+	function handleRefreshIntervalChange(event: Event) {
+		const next = Number((event.currentTarget as HTMLSelectElement).value);
+		if (!Number.isFinite(next) || next <= 0) return;
+		refreshIntervalMs = next;
+		startRefreshTimer();
 	}
 
 	function handleRangeChange(rangeKey: (typeof RANGE_OPTIONS)[number]['key']) {
@@ -616,16 +642,9 @@
 
 	onMount(() => {
 		loadDashboard({ withDetail: true });
-		refreshTimer = setInterval(() => {
-			if (!paused) loadDashboard();
-		}, 15000);
-		// 이벤트는 metric 보다 짧은 주기로 폴링 — 발생이 드물어 부하 작음.
-		eventsTimer = setInterval(() => {
-			if (!paused) loadEvents();
-		}, 10000);
+		startRefreshTimer();
 		return () => {
 			if (refreshTimer) clearInterval(refreshTimer);
-			if (eventsTimer) clearInterval(eventsTimer);
 		};
 	});
 </script>
@@ -646,24 +665,32 @@
 		<div class="topbar-sticky">
 			<div class="unified-bar">
 			<section class="hero">
-				<span class="hero-caption">CONTAINER</span>
 				<div class="hero-main">
 					<div class="hero-titlebar">
 						<button
 							type="button"
 							class="back-link"
 							onclick={() => goto(`${base}/user/containers`)}
-							aria-label="내 컨테이너 목록으로"
-							title="내 컨테이너 목록으로"
+							aria-label="컨테이너 목록으로 돌아가기"
+							title="컨테이너 목록으로 돌아가기"
 						>
 							<span aria-hidden="true">←</span>
-							<span>목록</span>
 						</button>
-						<h1>{container.name}</h1>
-						<span class="status-pill" style="background: {statusTone(container.status)};">
-							{statusLabel(container.status)}
-						</span>
-						<span class="hero-image" title="이미지">{container.selected_image || container.image}</span>
+						<div class="container-heading">
+							<div class="container-name-line">
+								<h1 title={container.name}>{container.name}</h1>
+								<span class="status-pill" style="background: {statusTone(container.status)};">
+									{statusLabel(container.status)}
+								</span>
+							</div>
+							<div class="hero-subline">
+								<span class="hero-image-text" title={container.selected_image || container.image}>
+									{container.selected_image || container.image}
+								</span>
+								<span class="hero-divider" aria-hidden="true">•</span>
+								<code class="hero-id" title="컨테이너 ID">{container.container_id.slice(0, 12)}</code>
+							</div>
+						</div>
 					</div>
 					<div class="hero-meta">
 						<AgentStatusIndicator
@@ -671,46 +698,56 @@
 							hostname={container.agent_hostname}
 							lastSeen={currentMetrics?.timestamp || container.last_seen}
 						/>
-						<span class="mono-chip" title="컨테이너 ID">
-							ID {container.container_id.slice(0, 12)}
-						</span>
 						{#if container.template_name}
-							<span class="meta-chip" title="요청 템플릿">📦 {container.template_name}</span>
-						{/if}
-
-						<!-- 운영 인사이트 chip — 이상 신호 있을 때만 표시 -->
-						{#if recentRestarts >= 2}
-							<span class="insight-chip danger" title="최근 5분 안에 컨테이너가 {recentRestarts}회 die/restart/oom — 재시작 루프 의심">
-								🔄 재시작 {recentRestarts}회 (5분)
-							</span>
-						{:else if recentRestarts === 1}
-							<span class="insight-chip warn" title="최근 5분 안에 컨테이너가 1회 재시작 또는 종료됨">
-								🔄 재시작 1회 (5분)
+							<span class="meta-chip" title="요청 템플릿">
+								<b>템플릿</b>
+								<strong>{container.template_name}</strong>
 							</span>
 						{/if}
-						{#if isOomKilled}
-							<span class="insight-chip danger" title="컨테이너가 OOM (Out of Memory) 으로 강제 종료된 적 있음">
-								⚠ OOM Kill
-							</span>
-						{:else if lastExit && typeof lastExit.exit_code === 'number' && lastExit.exit_code !== 0}
-							<span class="insight-chip warn" title="가장 최근 종료 exit code {lastExit.exit_code}">
-								⚠ 최근 exit {lastExit.exit_code}
-							</span>
-						{/if}
-						{#if healthStatus === 'unhealthy'}
-							<span class="insight-chip danger" title="Docker healthcheck 결과 unhealthy">
-								❤ Health: unhealthy
-							</span>
-						{:else if healthStatus === 'starting'}
-							<span class="insight-chip warn" title="healthcheck 가 아직 starting 단계">
-								❤ Health: starting
-							</span>
-						{:else if healthStatus === 'healthy'}
-							<span class="insight-chip ok" title="healthcheck 통과">
-								❤ Health: healthy
-							</span>
-						{/if}
+						<span class="meta-chip" title="요청 처리 상태">
+							<b>요청</b>
+							<strong>{statusLabel(container.request_status)}</strong>
+						</span>
+						<span class="meta-chip" title="마지막 동기화">
+							<b>동기화</b>
+							<strong>{formatRelativeTime(currentMetrics?.timestamp || container.last_seen)}</strong>
+						</span>
 					</div>
+					{#if recentRestarts >= 1 || isOomKilled || (lastExit && typeof lastExit?.exit_code === 'number' && lastExit.exit_code !== 0) || healthStatus}
+						<div class="hero-insights">
+							{#if recentRestarts >= 2}
+								<span class="insight-chip danger" title="최근 5분 안에 컨테이너가 {recentRestarts}회 die/restart/oom — 재시작 루프 의심">
+									🔄 재시작 {recentRestarts}회 (5분)
+								</span>
+							{:else if recentRestarts === 1}
+								<span class="insight-chip warn" title="최근 5분 안에 컨테이너가 1회 재시작 또는 종료됨">
+									🔄 재시작 1회 (5분)
+								</span>
+							{/if}
+							{#if isOomKilled}
+								<span class="insight-chip danger" title="컨테이너가 OOM (Out of Memory) 으로 강제 종료된 적 있음">
+									⚠ OOM Kill
+								</span>
+							{:else if lastExit && typeof lastExit.exit_code === 'number' && lastExit.exit_code !== 0}
+								<span class="insight-chip warn" title="가장 최근 종료 exit code {lastExit.exit_code}">
+									⚠ 최근 exit {lastExit.exit_code}
+								</span>
+							{/if}
+							{#if healthStatus === 'unhealthy'}
+								<span class="insight-chip danger" title="Docker healthcheck 결과 unhealthy">
+									❤ Health: unhealthy
+								</span>
+							{:else if healthStatus === 'starting'}
+								<span class="insight-chip warn" title="healthcheck 가 아직 starting 단계">
+									❤ Health: starting
+								</span>
+							{:else if healthStatus === 'healthy'}
+								<span class="insight-chip ok" title="healthcheck 통과">
+									❤ Health: healthy
+								</span>
+							{/if}
+						</div>
+					{/if}
 				</div>
 				<div class="hero-actions">
 					<button
@@ -724,6 +761,14 @@
 					<button class="refresh-btn" onclick={() => loadDashboard({ withDetail: true })} disabled={refreshing}>
 						{refreshing ? '새로고침 중...' : '↻ 새로고침'}
 					</button>
+					<label class="refresh-interval" title="자동 새로고침 주기">
+						<span>주기</span>
+						<select bind:value={refreshIntervalMs} onchange={handleRefreshIntervalChange} aria-label="자동 새로고침 주기">
+							{#each REFRESH_INTERVAL_OPTIONS as option}
+								<option value={option.value}>{option.label}</option>
+							{/each}
+						</select>
+					</label>
 				</div>
 			</section>
 
@@ -980,7 +1025,7 @@
 					<div data-tone={paused ? 'warn' : 'success'}>
 						<span>갱신</span>
 						<strong>{paused ? '일시정지' : '자동'}</strong>
-						<em>{paused ? '사용자 확인 중' : '15초 주기'}</em>
+						<em>{paused ? '사용자 확인 중' : `${refreshIntervalLabel()} 주기`}</em>
 					</div>
 				</div>
 			</div>
@@ -1098,26 +1143,29 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		gap: 4px;
-		height: 26px;
-		padding: 0 9px;
-		background: rgba(2, 6, 12, 0.54);
-		border: 1px solid rgba(48, 213, 200, 0.2);
-		border-radius: 999px;
-		color: var(--text-secondary);
-		font-size: 11px;
-		font-weight: 800;
+		width: 30px;
+		height: 30px;
+		padding: 0;
+		background: rgba(13, 17, 23, 0.55);
+		border: 1px solid rgba(48, 213, 200, 0.26);
+		border-radius: 8px;
+		color: var(--accent);
+		font-size: 16px;
+		font-weight: 900;
 		line-height: 1;
 		align-self: center;
 		white-space: nowrap;
 		flex: 0 0 auto;
-		transition: background-color var(--ease-fast), border-color var(--ease-fast), color var(--ease-fast);
+		transition:
+			background-color var(--ease-fast),
+			border-color var(--ease-fast),
+			color var(--ease-fast);
 	}
 
 	.back-link:hover {
-		background: rgba(48, 213, 200, 0.08);
-		border-color: rgba(48, 213, 200, 0.34);
-		color: var(--accent);
+		background: rgba(48, 213, 200, 0.14);
+		border-color: rgba(48, 213, 200, 0.45);
+		color: #6ee7e0;
 	}
 
 	.banner {
@@ -1155,135 +1203,159 @@
 	.unified-bar {
 		display: flex;
 		flex-wrap: wrap;
-		align-items: stretch;
+		align-items: flex-start;
 		gap: clamp(5px, 0.45vw, 9px);
 	}
 
 	.hero {
 		display: flex;
-		justify-content: space-between;
-		gap: clamp(7px, 0.6vw, 12px);
-		padding: clamp(7px, 0.55vw, 10px) clamp(10px, 0.8vw, 14px);
-		padding-top: clamp(10px, 0.75vw, 13px);
-		border-radius: 10px;
+		flex-direction: column;
+		justify-content: flex-start;
+		gap: 10px;
+		padding: 12px 14px;
+		border-radius: 12px;
 		background:
-			linear-gradient(90deg, rgba(48, 213, 200, 0.12), transparent 36%),
-			radial-gradient(ellipse at top left, rgba(48, 213, 200, 0.18), transparent 65%),
-			linear-gradient(135deg, rgba(48, 213, 200, 0.08), rgba(9, 75, 102, 0.12)),
+			radial-gradient(ellipse at top left, rgba(48, 213, 200, 0.10), transparent 60%),
 			rgba(18, 23, 32, 0.98);
-		border: 1px solid rgba(48, 213, 200, 0.22);
+		border: 1px solid rgba(48, 213, 200, 0.18);
 		box-shadow:
 			0 10px 32px rgba(0, 0, 0, 0.18),
-			inset 0 1px 0 rgba(255, 255, 255, 0.04);
-		align-items: center;
+			inset 0 1px 0 rgba(255, 255, 255, 0.03);
+		align-items: stretch;
 		flex: 0.9 1 360px;
 		min-width: 320px;
-		max-width: 480px;
+		max-width: 450px;
+		align-self: flex-start;
 		position: relative;
 		overflow: hidden;
-	}
-	.hero::before {
-		content: '';
-		position: absolute;
-		left: 0;
-		top: 0;
-		bottom: 0;
-		width: 3px;
-		background: linear-gradient(180deg, var(--accent), rgba(48, 213, 200, 0.2));
-		opacity: 0.7;
-	}
-
-	/* CONTAINER caption — ops-bar 의 CONTROL 캡션과 미러링 */
-	.hero-caption {
-		position: absolute;
-		top: 3px;
-		left: 12px;
-		font-size: 9px;
-		font-weight: 800;
-		letter-spacing: 0.12em;
-		color: var(--accent);
-		opacity: 0.7;
-		pointer-events: none;
 	}
 
 	.hero-main {
 		display: flex;
 		flex-direction: column;
-		gap: 4px;
+		gap: 10px;
 		min-width: 0;
 		flex: 1 1 auto;
 	}
 
 	.hero-titlebar {
-		display: inline-flex;
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
 		align-items: center;
-		gap: clamp(6px, 0.5vw, 10px);
-		flex-wrap: wrap;
+		gap: 10px;
+		min-width: 0;
+		width: 100%;
+	}
+
+	.container-heading {
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.container-name-line {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		min-width: 0;
 	}
 
 	h1 {
-		font-size: clamp(17px, 1.2vw, 23px);
-		line-height: 1.05;
-		font-weight: 800;
-		letter-spacing: -0.018em;
+		min-width: 0;
+		font-size: clamp(18px, 1.3vw, 22px);
+		line-height: 1.1;
+		font-weight: 900;
+		letter-spacing: -0.01em;
 		color: var(--text-primary);
-		text-shadow: 0 0 28px rgba(48, 213, 200, 0.22);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
-	.hero-image {
-		display: inline-flex;
+	.hero-subline {
+		display: flex;
 		align-items: center;
-		padding: 2px 7px;
-		border-radius: 7px;
-		background: rgba(13, 17, 23, 0.6);
-		border: 1px solid rgba(48, 213, 200, 0.2);
+		gap: 6px;
+		min-width: 0;
+		max-width: 100%;
 		font-size: 11.5px;
-		color: rgba(48, 213, 200, 0.95);
+		color: var(--text-muted);
+	}
+
+	.hero-image-text {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: rgba(48, 213, 200, 0.88);
 		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-		word-break: break-all;
+		font-weight: 700;
+		flex: 0 1 auto;
+	}
+
+	.hero-divider {
+		color: var(--text-muted);
+		opacity: 0.5;
+		flex: 0 0 auto;
+	}
+
+	.hero-id {
+		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+		font-size: 11px;
+		color: var(--text-muted);
+		flex: 0 0 auto;
 	}
 
 	.meta-chip {
 		display: inline-flex;
 		align-items: center;
-		gap: 4px;
-		padding: 2px 7px;
-		border-radius: 999px;
-		background: rgba(13, 17, 23, 0.55);
-		border: 1px solid rgba(31, 41, 55, 0.85);
+		gap: 6px;
+		max-width: 100%;
+		min-height: 24px;
+		padding: 3px 9px;
+		border-radius: 7px;
+		background: rgba(13, 17, 23, 0.48);
+		border: 1px solid rgba(100, 116, 139, 0.16);
 		font-size: 11.5px;
 		color: var(--text-secondary);
-		font-weight: 600;
+		font-weight: 700;
+		min-width: 0;
+	}
+
+	.meta-chip b {
+		color: var(--text-muted);
+		font-size: 9.5px;
+		font-weight: 900;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		flex: 0 0 auto;
+	}
+
+	.meta-chip strong {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: var(--text-primary);
+		font-size: 11.5px;
+		font-weight: 800;
 	}
 
 	.hero-meta {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 4px;
+		gap: 5px;
 		align-items: center;
+		min-width: 0;
 	}
 
-	/* AgentStatusIndicator (자체 .agent-indicator 클래스) 는 본인 스타일 유지하고
-	   기존 chip 형태의 메타 span 만 잡는다 (:not 으로 격리). insight-chip / mono-chip
-	   도 자체 스타일 가지므로 제외. */
-	.hero-meta > span:not(.agent-indicator):not(.agent-indicator *):not(.insight-chip):not(.mono-chip) {
-		padding: 2px 7px;
-		border-radius: 999px;
-		background: rgba(13, 17, 23, 0.52);
-		border: 1px solid rgba(31, 41, 55, 0.8);
-		font-size: 11.5px;
-		color: var(--text-secondary);
-	}
-
-	/* mono-chip — container ID 같은 hash 정보를 monospace 로. */
-	.mono-chip {
-		padding: 2px 7px;
-		border-radius: 999px;
-		background: rgba(13, 17, 23, 0.52);
-		border: 1px solid rgba(31, 41, 55, 0.8);
-		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-		font-size: 11.5px;
-		color: var(--text-muted);
+	.hero-insights {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 5px;
+		align-items: center;
+		min-width: 0;
 	}
 
 	/* 운영 인사이트 chip — 이상 신호만 시각 강조. severity 색 한눈에. */
@@ -1347,25 +1419,25 @@
 		display: flex;
 		flex-direction: row;
 		align-items: center;
-		gap: 4px;
+		gap: 5px;
+		flex-wrap: wrap;
 		flex-shrink: 0;
-		align-self: flex-start;
-		padding: 4px;
-		border-radius: 10px;
-		background: rgba(2, 6, 12, 0.34);
-		border: 1px solid rgba(48, 213, 200, 0.16);
-		justify-content: center;
+		align-self: stretch;
+		padding: 0;
+		border: 0;
+		justify-content: flex-start;
 	}
 
 	.refresh-btn,
-	.pause-btn {
+	.pause-btn,
+	.refresh-interval {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		gap: 5px;
 		padding: 0 9px;
 		min-width: 0;
-		min-height: 28px;
+		min-height: 26px;
 		border-radius: 7px;
 		background: rgba(13, 17, 23, 0.58);
 		border: 1px solid rgba(31, 41, 55, 0.72);
@@ -1376,6 +1448,29 @@
 		cursor: pointer;
 		white-space: nowrap;
 		transition: background-color var(--ease-fast), border-color var(--ease-fast), color var(--ease-fast);
+	}
+
+	.refresh-interval {
+		gap: 4px;
+		cursor: default;
+	}
+
+	.refresh-interval span {
+		color: var(--text-muted);
+		font-size: 10px;
+		font-weight: 850;
+	}
+
+	.refresh-interval select {
+		min-width: 52px;
+		border: 0;
+		outline: none;
+		background: transparent;
+		color: var(--text-primary);
+		font-family: inherit;
+		font-size: 11.5px;
+		font-weight: 800;
+		cursor: pointer;
 	}
 
 	.refresh-btn:hover:not(:disabled),

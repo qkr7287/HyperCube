@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.utils import timezone
 from rest_framework import serializers
 
-from .models import Agent, AgentStatusEvent
+from .models import Agent, AgentStatusEvent, GpuDevice, GpuSlice
 
 # 메인 UI active 판정 grace (Backend tasks.py와 일치 시켜야 함)
 _ACTIVE_GRACE_SECONDS = 5 * 60
@@ -70,6 +70,45 @@ class AgentStatusEventSerializer(serializers.ModelSerializer):
             "status",
             "occurred_at",
             "previous_offline_seconds",
+        ]
+
+
+class GpuSliceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GpuSlice
+        fields = [
+            "id",
+            "kind",
+            "device_id",
+            "label",
+            "mig_profile",
+            "memory_mb",
+            "allow_shared",
+            "status",
+            "last_seen_at",
+        ]
+
+
+class GpuDeviceSerializer(serializers.ModelSerializer):
+    slices = GpuSliceSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = GpuDevice
+        fields = [
+            "id",
+            "index",
+            "vendor",
+            "name",
+            "uuid",
+            "pci_bus_id",
+            "total_memory_mb",
+            "driver_version",
+            "cuda_version",
+            "mig_capable",
+            "mig_enabled",
+            "status",
+            "last_seen_at",
+            "slices",
         ]
 
 

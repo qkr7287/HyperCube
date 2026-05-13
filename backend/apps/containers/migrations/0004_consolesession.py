@@ -44,8 +44,8 @@ class Migration(migrations.Migration):
                 "db_table": "console_sessions",
                 "ordering": ["-opened_at"],
                 "indexes": [
-                    models.Index(fields=["user", "-opened_at"], name="console_ses_user_id_opened_at_idx"),
-                    models.Index(fields=["container", "-opened_at"], name="console_ses_cont_id_opened_at_idx"),
+                    models.Index(fields=["user", "-opened_at"], name="console_ses_user_idx"),
+                    models.Index(fields=["container", "-opened_at"], name="console_ses_cont_idx"),
                 ],
             },
         ),

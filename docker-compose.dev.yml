@@ -31,7 +31,7 @@ services:
       - ./backend:/app
     command: >
       sh -c "python manage.py migrate --noinput &&
-             uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --reload"
+             uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --reload --no-access-log --log-level warning"
     ports:
       - "${BE_PORT:-8000}:8000"
     environment:
@@ -46,6 +46,7 @@ services:
       start_period: 20s
     networks:
       - hc-network
+      - hc-ml-internal
 
   # Auto-applies new migrations when `apps/**/migrations/*.py` change on disk.
   # Closes the dev-only gap where `uvicorn --reload` picks up code instantly
@@ -128,3 +129,6 @@ services:
 networks:
   hc-network:
     driver: bridge
+  hc-ml-internal:
+    external: true
+    name: hc-ml-internal

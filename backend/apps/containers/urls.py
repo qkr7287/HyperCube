@@ -5,11 +5,13 @@ from .viewsets import (
     ContainerTemplateViewSet,
     ContainerViewSet,
     MyContainerViewSet,
+    WorkspaceViewSet,
 )
 
 router = DefaultRouter()
 router.register("containers", ContainerViewSet)
 router.register("my-containers", MyContainerViewSet, basename="mycontainer")
+router.register("workspaces", WorkspaceViewSet, basename="workspace")
 router.register("templates", ContainerTemplateViewSet, basename="containertemplate")
 router.register("requests", ContainerRequestViewSet, basename="containerrequest")
 

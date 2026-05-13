@@ -113,10 +113,10 @@ function rejectAllPending(reason: string) {
 
 // ----- Connection -----
 
-function getWsUrl(serverId: string, token: string): string {
+function getWsUrl(serverId: string): string {
 	if (!browser) return '';
 	const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-	return `${protocol}//${location.host}${base}/ws/server/${serverId}/?token=${token}`;
+	return `${protocol}//${location.host}${base}/ws/server/${serverId}/`;
 }
 
 export function connect(serverId: string, token: string) {
@@ -132,9 +132,9 @@ export function connect(serverId: string, token: string) {
 	currentServerId = serverId;
 	currentToken = token;
 
-	const url = getWsUrl(serverId, token);
+	const url = getWsUrl(serverId);
 	console.log(`[WS] Connecting to server ${serverId.substring(0, 8)}...`);
-	ws = new WebSocket(url);
+	ws = new WebSocket(url, ['hypercube.jwt', token]);
 
 	ws.onopen = () => {
 		reconnectAttempts = 0;

@@ -37,10 +37,10 @@ let attempts = 0;
 const RECONNECT_BASE = 3000;
 const RECONNECT_MAX = 30000;
 
-function url(token: string): string {
+function url(): string {
 	if (!browser) return '';
 	const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-	return `${protocol}//${location.host}${base}/ws/global/?token=${token}`;
+	return `${protocol}//${location.host}${base}/ws/global/`;
 }
 
 export function connectGlobal(token: string) {
@@ -50,7 +50,7 @@ export function connectGlobal(token: string) {
 		disconnectGlobal();
 	}
 	currentToken = token;
-	ws = new WebSocket(url(token));
+	ws = new WebSocket(url(), ['hypercube.jwt', token]);
 	ws.onopen = () => {
 		attempts = 0;
 		globalConnected.set(true);

@@ -20,6 +20,18 @@ class ContainerSerializerTest(TestCase):
             "requester",
             "requester_username",
             "created_via_request",
+            "allocated_gpu_slice_ids",
+            "mounted_model_version_ids",
+            "mounted_model_versions",
+            "workspace_enabled",
+            "workspace_kind",
+            "workspace_internal_port",
+            "workspace_host_port",
+            "workspace_base_url",
+            "workspace_health",
+            "workspace_max_runtime_hours",
+            "workspace_runtime_expires_at",
+            "workspace_token_expires_at",
         }
         self.assertEqual(set(serializer.data.keys()), expected)
 

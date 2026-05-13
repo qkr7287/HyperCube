@@ -21,6 +21,7 @@ from .serializers import (
     AgentSerializer,
     AgentStatusEventSerializer,
     AgentStatusSerializer,
+    GpuDeviceSerializer,
 )
 
 
@@ -110,7 +111,7 @@ class AgentViewSet(ModelViewSet):
     def get_permissions(self):
         if self.action in ("create", "check_status"):
             return [AllowAny()]
-        if self.action in ("list", "retrieve", "latest_metrics"):
+        if self.action in ("list", "retrieve", "latest_metrics", "gpus"):
             # 사용자도 서버 목록 조회 가능 (요청 폼에서 대상 서버 선택 필요)
             from rest_framework.permissions import IsAuthenticated
             return [IsAuthenticated()]
@@ -233,3 +234,17 @@ class AgentViewSet(ModelViewSet):
         body["timestamp"] = payload.get("timestamp")
         return Response(body)
 
+    @extend_schema(
+        summary="Agent GPU inventory",
+        description="Return the latest GPU devices and allocatable slices reported by this Agent.",
+        responses=GpuDeviceSerializer(many=True),
+    )
+    @action(detail=True, methods=["get"], url_path="gpus")
+    def gpus(self, request, pk=None):
+        agent = self.get_object()
+        devices = agent.gpu_devices.prefetch_related("slices").order_by("index")
+        return Response({
+            "agent": str(agent.id),
+            "hostname": agent.hostname,
+            "devices": GpuDeviceSerializer(devices, many=True).data,
+        })

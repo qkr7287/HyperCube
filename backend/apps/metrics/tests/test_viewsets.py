@@ -3,7 +3,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.metrics.models import ContainerMetricsHistory
-from apps.containers.tests.factories import create_container, create_user
+from apps.containers.tests.factories import create_agent, create_container, create_user
 
 
 class ContainerMetricsViewSetTest(APITestCase):
@@ -11,12 +11,15 @@ class ContainerMetricsViewSetTest(APITestCase):
         self.user = create_user(role="user", username="owner")
         self.other_user = create_user(role="user", username="other")
         self.admin = create_user(role="admin", username="admin")
+        self.agent = create_agent(hostname="metrics-agent")
 
         self.owned_container = create_container(
+            agent=self.agent,
             container_id="owned12345678",
             requester=self.user,
         )
         self.other_container = create_container(
+            agent=self.agent,
             container_id="other12345678",
             requester=self.other_user,
             name="other-container",
@@ -53,17 +56,17 @@ class ContainerMetricsViewSetTest(APITestCase):
 
     def test_user_only_sees_owned_container_metrics(self):
         self.client.force_authenticate(user=self.user)
-        response = self.client.get("/api/metrics/containers/?page_size=100")
+        response = self.client.get(f"/api/metrics/containers/?agent={self.agent.id}")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         payload = response.json()["data"]
-        self.assertEqual(payload["count"], 1)
-        self.assertEqual(payload["results"][0]["container_id"], self.owned_container.container_id)
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]["container_id"], self.owned_container.container_id)
 
     def test_admin_sees_all_container_metrics(self):
         self.client.force_authenticate(user=self.admin)
-        response = self.client.get("/api/metrics/containers/?page_size=100")
+        response = self.client.get(f"/api/metrics/containers/?agent={self.agent.id}")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         payload = response.json()["data"]
-        self.assertEqual(payload["count"], 2)
+        self.assertEqual(len(payload), 2)

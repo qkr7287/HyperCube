@@ -31,12 +31,40 @@ Each image build must produce:
 - CUDA/runtime notes.
 - Smoke-test command.
 
+## PyTorch Jupyter Image Build
+
+HyperCube provides the image wrapper under
+`packaging/ml-images/pytorch-jupyter/`. The wrapper expects an operator-approved
+PyTorch CUDA 12.4 runtime base image and adds JupyterLab plus the HyperCube
+workspace entrypoint.
+
+On a networked build machine:
+
+```bash
+cd /path/to/HyperCube
+
+TAG=hypercube/ml-pytorch-jupyter:cuda12.4-airgap \
+OUT=hypercube-ml-pytorch-jupyter-cuda12.4-airgap.tar \
+  bash packaging/ml-images/build-pytorch-jupyter.sh
+```
+
+By default the build script uses
+`pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime`. Override it with
+`BASE_IMAGE=<approved-pytorch-cuda12.4-runtime-image>` if the deployment has a
+separately approved base. The base image must already include Python, PyTorch,
+CUDA runtime, and cuDNN compatible with the target host driver. Do not use
+`nvidia/cuda:*base*` alone: that image family does not include PyTorch or
+Jupyter.
+
+Record the selected base image tag/digest and the generated image id in the
+deployment report.
+
 ## Import
 
 On each GPU agent host:
 
 ```bash
-docker load -i hypercube-ml-pytorch-jupyter-cuda12.4-airgap.tar
+docker load -i /path/to/hypercube-ml-pytorch-jupyter-cuda12.4-airgap.tar
 docker image inspect hypercube/ml-pytorch-jupyter:cuda12.4-airgap
 ```
 
@@ -44,10 +72,18 @@ If an internal offline registry exists, push the loaded image there and pin temp
 
 ## Smoke Test
 
-Run a GPU smoke test on the target agent host:
+Run GPU smoke tests on the target agent host. The image entrypoint starts
+Jupyter, so diagnostics must override the entrypoint:
 
 ```bash
-docker run --rm --gpus all hypercube/ml-pytorch-jupyter:cuda12.4-airgap nvidia-smi
+docker run --rm --gpus all \
+  --entrypoint nvidia-smi \
+  hypercube/ml-pytorch-jupyter:cuda12.4-airgap
+
+docker run --rm --gpus all \
+  --entrypoint python \
+  hypercube/ml-pytorch-jupyter:cuda12.4-airgap \
+  -c "import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'no cuda')"
 ```
 
 Run a Jupyter startup smoke test:
@@ -56,6 +92,7 @@ Run a Jupyter startup smoke test:
 docker run --rm -p 8888:8888 \
   -e JUPYTER_TOKEN=test-token \
   -e JUPYTER_BASE_URL=/workspace/test/ \
+  -e JUPYTER_WORKDIR=/workspace \
   hypercube/ml-pytorch-jupyter:cuda12.4-airgap
 ```
 
@@ -68,4 +105,8 @@ PR 3 is not complete until:
 - At least one Jupyter image is present on the selected GPU agent.
 - `image_inspect` or `docker image inspect` confirms the image.
 - The image starts Jupyter with the configured base URL and token.
+- The mounted model directory rejects writes, for example
+  `touch /workspace/models/<model-dir>/write-test` fails with a read-only file
+  system error. Do not use `/workspace/models/write-test` for this check; the
+  parent directory can be writable while the model bind mount is read-only.
 - External egress from the workspace is blocked or explicitly marked `not_enforced`.

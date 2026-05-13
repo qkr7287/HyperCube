@@ -81,3 +81,4 @@ Issue 만들기 어려운 즉시성이 필요할 때만 self-contained prompt를
 | [#11](https://github.com/qkr7287/HyperCube-agent/issues/11) | Retire mailbox docs in favor of GitHub Issues (cross-repo channel) | 첫 dogfooding 사례. HyperCube 측 commit `5d1065b` |
 | [#12](https://github.com/qkr7287/HyperCube-agent/issues/12) | Console exec commands (B4) — exec_open/input/resize/close + exec_chunk/end | 발행 2026-05-11. HyperCube 측 commit `5330794` (backend + frontend + docs). agent dev branch 머지 완료. |
 | [#13](https://github.com/qkr7287/HyperCube-agent/issues/13) | update_container — memory/cpu/restart policy patch | 발행 2026-05-11. P0 Portainer parity. HyperCube backend + frontend 구현 완료. agent 작업 대기. |
+| [#14](https://github.com/qkr7287/HyperCube-agent/issues/14) | prepare_model_assets — backend_stream payload sha256 read fix | 발행 2026-05-13. GPU/ML Workspace v1 차단 마지막 한 칸. handler가 `params.assets[].sha256` 을 못 읽어 1ms 내 거부. core test/seed/UI 모두 완성, agent 측 1건 fix 만 남음. |

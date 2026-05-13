@@ -8,6 +8,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.views import TokenRefreshView
 
+from apps.containers.workspace_proxy import workspace_proxy
 from apps.users.token_views import CustomTokenObtainPairView, LogoutView
 
 
@@ -26,9 +27,12 @@ urlpatterns = [
     path("api/auth/token/", CustomTokenObtainPairView.as_view(), name="token-obtain"),
     path("api/auth/token/refresh/", TokenRefreshView.as_view(), name="token-refresh"),
     path("api/auth/logout/", LogoutView.as_view(), name="auth-logout"),
+    path("workspace/<str:workspace_key>/", workspace_proxy, name="workspace-proxy-root"),
+    path("workspace/<str:workspace_key>/<path:upstream_path>", workspace_proxy, name="workspace-proxy"),
     # App APIs
     path("api/", include("apps.agents.urls")),
     path("api/", include("apps.containers.urls")),
+    path("api/", include("apps.models_catalog.urls")),
     path("api/", include("apps.users.urls")),
     path("api/", include("apps.metrics.urls")),
 ]

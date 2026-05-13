@@ -6,6 +6,25 @@ verify: cd backend && python -c "from config.urls import urlpatterns; print('\n'
 
 # REST API
 
+## GPU Inventory Endpoint
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/api/agents/{id}/gpus/` | GET | Authenticated | Latest GPU devices and allocatable slices reported by the Agent. |
+
+## GPU Allocation Request Fields
+
+```json
+{
+  "gpu_slice_ids": [1],
+  "gpu_share_ok": false
+}
+```
+
+`gpu_slice_ids` writes `ContainerRequestGpuSlice` rows and
+`gpu_slice_ids_snapshot`; approval reserves those rows as `GpuAllocation`
+records before dispatching `create_container.gpus`.
+
 전체 REST 엔드포인트 카탈로그. Swagger UI는 `/api/docs/`, OpenAPI schema는 `/api/schema/`.
 
 ## Entry Points
@@ -84,6 +103,35 @@ POST /api/auth/token/
 | `/api/my-containers/{id}/processes/?sortBy=cpu&limit=20` | GET | 컨테이너 내부 process top-N. agent `container_processes` 명령 dispatch + 동기 대기 (15s). sortBy: `cpu` \| `mem`, limit 1~100. minimal image 도 동작 (호스트 관찰). |
 | `/api/my-containers/{id}/console-sessions/?limit=50` | GET | B4 Console exec audit 조회. 세션 레벨만 (user / cmd / opened_at / closed_at / duration_seconds / exit_code / close_reason). 키스트로크 미기록. limit max 200. |
 | `/api/my-containers/{id}/update-limits/` | POST | P0 자원 한도 / 재시작 정책 수정. body `{memory_mb?, cpu_percent?, restart_policy?, restart_max_retry?}`. agent `update_container` 명령 dispatch + 동기 대기. 한 필드만 보내도 그것만 갱신. |
+
+## Workspaces — `/api/workspaces/`
+
+ML/Jupyter workspace containers. Plaintext Jupyter tokens are kept in Redis and
+are not serialized through this API.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/workspaces/` | GET | admin은 전체, user는 자기 workspace만 |
+| `/api/workspaces/{container_id}/` | GET | workspace 상세 |
+| `/api/workspaces/{container_id}/open/` | POST | one-time open ticket URL 발급. 응답: `{url, expiresInSeconds}` |
+| `/api/workspaces/{container_id}/extend-runtime/` | POST | body `{additional_hours}`. runtime expiry와 Redis token TTL 연장 |
+
+Open URL은 `/workspace/<workspace_key>/lab?ticket=...` 형태다.
+MVP의 `workspace_key`는 `ContainerRequest.id`다. Docker container ID는
+생성 후에만 알 수 있으므로, agent `create_container` 시점에 주입해야 하는
+Jupyter `baseUrl`은 request ID 기반 path를 사용한다.
+
+## Model Catalog — `/api/model-assets/`
+
+Airgap model storage. No external URL import path is exposed.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/model-assets/` | GET / POST | 모델 asset 목록/생성. user는 자기 asset + shared asset 조회 |
+| `/api/model-assets/{id}/` | GET / PATCH / DELETE | owner/admin만 수정/삭제 |
+| `/api/model-assets/{id}/versions/upload/` | POST multipart | body `version`, `file`, optional `metadata`. `HC_MODEL_STORAGE_DIR`에 저장하고 sha256 계산 |
+| `/api/model-assets/{id}/versions/import/` | POST | admin only. `HC_MODEL_IMPORT_DIR` 내부 파일만 import |
+| `/api/model-versions/` | GET | 접근 가능한 모델 version 목록 |
 
 `current-metrics` 응답:
 ```json

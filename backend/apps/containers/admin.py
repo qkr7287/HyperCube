@@ -2,13 +2,19 @@ from django.contrib import admin
 from django.utils.html import format_html
 from unfold.admin import ModelAdmin
 
-from .models import Container, ContainerRequest, ContainerTemplate
+from .models import (
+    Container,
+    ContainerRequest,
+    ContainerRequestGpuSlice,
+    ContainerTemplate,
+    GpuAllocation,
+)
 
 
 @admin.register(Container)
 class ContainerAdmin(ModelAdmin):
-    list_display = ("name", "short_id", "image", "agent", "colored_status", "last_seen")
-    list_filter = ("status", "agent")
+    list_display = ("name", "short_id", "image", "agent", "colored_status", "workspace_enabled", "last_seen")
+    list_filter = ("status", "agent", "workspace_enabled", "workspace_kind")
     search_fields = ("name", "container_id", "image")
 
     @admin.display(description="ID")
@@ -36,16 +42,16 @@ class ContainerAdmin(ModelAdmin):
 
 @admin.register(ContainerTemplate)
 class ContainerTemplateAdmin(ModelAdmin):
-    list_display = ("name", "kind", "image", "created_by", "updated_at")
-    list_filter = ("kind",)
+    list_display = ("name", "kind", "category", "requires_gpu", "workspace_enabled", "image", "created_by", "updated_at")
+    list_filter = ("kind", "category", "requires_gpu", "workspace_enabled", "workspace_kind")
     search_fields = ("name", "description", "image")
     readonly_fields = ("id", "created_at", "updated_at")
 
 
 @admin.register(ContainerRequest)
 class ContainerRequestAdmin(ModelAdmin):
-    list_display = ("short_id", "requester", "action", "colored_status", "template", "target_agent", "created_at")
-    list_filter = ("action", "status", "target_agent")
+    list_display = ("short_id", "requester", "action", "colored_status", "template", "target_agent", "workspace_enabled_snapshot", "created_at")
+    list_filter = ("action", "status", "target_agent", "workspace_enabled_snapshot", "workspace_kind_snapshot")
     search_fields = ("custom_name", "requester__username")
     readonly_fields = (
         "id",
@@ -78,3 +84,28 @@ class ContainerRequestAdmin(ModelAdmin):
             color,
             obj.get_status_display(),
         )
+
+
+@admin.register(ContainerRequestGpuSlice)
+class ContainerRequestGpuSliceAdmin(ModelAdmin):
+    list_display = ("request", "slice", "created_at")
+    search_fields = ("request__id", "slice__device_id")
+    readonly_fields = ("created_at",)
+
+
+@admin.register(GpuAllocation)
+class GpuAllocationAdmin(ModelAdmin):
+    list_display = (
+        "slice",
+        "container_request",
+        "container",
+        "status",
+        "share_mode",
+        "reserved_until",
+        "activated_at",
+        "released_at",
+        "failed_at",
+    )
+    list_filter = ("status", "share_mode")
+    search_fields = ("slice__device_id", "container_request__id", "container__container_id")
+    readonly_fields = ("requested_at",)

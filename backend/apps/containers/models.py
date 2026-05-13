@@ -3,7 +3,7 @@ import uuid
 from django.conf import settings
 from django.db import models
 
-from apps.agents.models import Agent
+from apps.agents.models import Agent, GpuSlice
 
 
 class ContainerTemplate(models.Model):
@@ -18,10 +18,45 @@ class ContainerTemplate(models.Model):
         SIMPLE = "simple", "Simple (single container)"
         COMPOSE = "compose", "Docker Compose"
 
+    class Category(models.TextChoices):
+        GENERAL = "general", "General"
+        ML = "ml", "ML"
+
+    class WorkspaceKind(models.TextChoices):
+        JUPYTER = "jupyter", "Jupyter"
+        CODE_SERVER = "code-server", "code-server"
+        API = "api", "API"
+
+    class NetworkPolicy(models.TextChoices):
+        INTERNAL_ONLY = "internal_only", "Internal only"
+        NONE = "none", "None"
+        CUSTOM = "custom", "Custom"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
     kind = models.CharField(max_length=10, choices=Kind.choices)
+    category = models.CharField(
+        max_length=24,
+        choices=Category.choices,
+        default=Category.GENERAL,
+    )
+    requires_gpu = models.BooleanField(default=False)
+    workspace_enabled = models.BooleanField(default=False)
+    workspace_kind = models.CharField(
+        max_length=32,
+        choices=WorkspaceKind.choices,
+        blank=True,
+        default="",
+    )
+    workspace_port = models.PositiveIntegerField(null=True, blank=True, default=8888)
+    default_workdir = models.CharField(max_length=255, blank=True, default="/workspace")
+    network_policy = models.CharField(
+        max_length=32,
+        choices=NetworkPolicy.choices,
+        default=NetworkPolicy.INTERNAL_ONLY,
+    )
+    default_max_runtime_hours = models.PositiveIntegerField(null=True, blank=True)
 
     # simple 전용
     image = models.CharField(max_length=255, blank=True, default="")
@@ -93,6 +128,18 @@ class Container(models.Model):
         blank=True,
         related_name="created_containers",
     )
+    allocated_gpu_slice_ids = models.JSONField(default=list, blank=True)
+    mounted_model_version_ids = models.JSONField(default=list, blank=True)
+    workspace_enabled = models.BooleanField(default=False)
+    workspace_kind = models.CharField(max_length=32, blank=True, default="")
+    workspace_internal_port = models.PositiveIntegerField(null=True, blank=True)
+    workspace_host_port = models.PositiveIntegerField(null=True, blank=True)
+    workspace_base_url = models.CharField(max_length=255, blank=True, default="")
+    workspace_health = models.JSONField(default=dict, blank=True)
+    workspace_max_runtime_hours = models.PositiveIntegerField(null=True, blank=True)
+    workspace_runtime_expires_at = models.DateTimeField(null=True, blank=True)
+    workspace_token_ref = models.CharField(max_length=64, blank=True, default="")
+    workspace_token_expires_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "containers"
@@ -207,6 +254,16 @@ class ContainerRequest(models.Model):
     selected_image = models.CharField(max_length=255, blank=True, default="")
     custom_env = models.JSONField(default=dict, blank=True)
     custom_ports = models.JSONField(default=list, blank=True)
+    gpu_slice_ids_snapshot = models.JSONField(default=list, blank=True)
+    gpu_share_ok = models.BooleanField(default=False)
+    model_version_ids = models.JSONField(default=list, blank=True)
+    workspace_enabled_snapshot = models.BooleanField(default=False)
+    workspace_kind_snapshot = models.CharField(max_length=32, blank=True, default="")
+    requested_max_runtime_hours = models.PositiveIntegerField(null=True, blank=True)
+    prepare_job_ids = models.JSONField(default=list, blank=True)
+    deployment_phase = models.CharField(max_length=32, blank=True, default="")
+    workspace_token_ref = models.CharField(max_length=64, blank=True, default="")
+    workspace_token_expires_at = models.DateTimeField(null=True, blank=True)
 
     # delete 전용 ---
     target_container = models.ForeignKey(
@@ -248,6 +305,85 @@ class ContainerRequest(models.Model):
         return f"{self.action} [{self.status}] by {self.requester.username} @ {self.created_at:%Y-%m-%d %H:%M}"
 
 
+class ContainerRequestGpuSlice(models.Model):
+    request = models.ForeignKey(
+        ContainerRequest,
+        on_delete=models.CASCADE,
+        related_name="gpu_slice_selections",
+    )
+    slice = models.ForeignKey(
+        GpuSlice,
+        on_delete=models.PROTECT,
+        related_name="request_selections",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("request", "slice")]
+        indexes = [models.Index(fields=["request", "slice"])]
+
+    def __str__(self):
+        return f"{self.request_id} -> {self.slice_id}"
+
+
+class GpuAllocation(models.Model):
+    class Status(models.TextChoices):
+        RESERVED = "reserved", "Reserved"
+        ACTIVE = "active", "Active"
+        RELEASED = "released", "Released"
+        FAILED = "failed", "Failed"
+
+    class ShareMode(models.TextChoices):
+        EXCLUSIVE = "exclusive", "Exclusive"
+        SHARED = "shared", "Shared"
+
+    slice = models.ForeignKey(
+        GpuSlice,
+        on_delete=models.PROTECT,
+        related_name="allocations",
+    )
+    container_request = models.ForeignKey(
+        ContainerRequest,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="gpu_allocations",
+    )
+    container = models.ForeignKey(
+        Container,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="gpu_allocations",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.RESERVED,
+    )
+    share_mode = models.CharField(
+        max_length=16,
+        choices=ShareMode.choices,
+        default=ShareMode.EXCLUSIVE,
+    )
+    requested_at = models.DateTimeField(auto_now_add=True)
+    reserved_until = models.DateTimeField(null=True, blank=True)
+    activated_at = models.DateTimeField(null=True, blank=True)
+    released_at = models.DateTimeField(null=True, blank=True)
+    failed_at = models.DateTimeField(null=True, blank=True)
+    failure_reason = models.TextField(blank=True, default="")
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["slice", "status"]),
+            models.Index(fields=["container_request", "status"]),
+            models.Index(fields=["container", "status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.slice_id} {self.status} for {self.container_request_id}"
+
+
 class ConsoleSession(models.Model):
     """B4 — Console exec 감사 로그 (세션 레벨만, 키스트로크 미기록).
 
@@ -284,8 +420,8 @@ class ConsoleSession(models.Model):
         db_table = "console_sessions"
         ordering = ["-opened_at"]
         indexes = [
-            models.Index(fields=["user", "-opened_at"]),
-            models.Index(fields=["container", "-opened_at"]),
+            models.Index(fields=["user", "-opened_at"], name="console_ses_user_idx"),
+            models.Index(fields=["container", "-opened_at"], name="console_ses_cont_idx"),
         ]
 
     def __str__(self):

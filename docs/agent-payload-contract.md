@@ -6,6 +6,17 @@ verify: grep -nE "msg_type ==|\"type\":" backend/apps/common/consumers.py
 
 # Agent Payload Contract
 
+## GPU Inventory Response
+
+`system_info { subCommand: "gpu_inventory" }` responses use request ids prefixed
+with `gpu-inventory:` and pending browser sentinel `__gpu_inventory__`. Backend
+applies the payload to `GpuDevice` / `GpuSlice` inventory and does not route it
+through `ContainerRequest` deployment-state handling.
+
+If the agent lacks `nvidia-smi` or GPU discovery support, it should return
+`command_response { success:false, error:"nvidia-smi not available" }`; the core
+repo marks existing inventory for that agent offline.
+
 HyperCube WebSocket payload 스펙. Agent / Backend / Frontend 세 layer 가 같은 metric 을 다르게 해석하지 않도록 한 곳에서 정의한다.
 
 ## 원칙
@@ -474,3 +485,71 @@ Agent online ↔ offline 전환 시 `GlobalEventsConsumer` group으로 broadcast
 - 2026-04-29 (`7f82ff8`): `containers` / `command_progress` / `heartbeat` / `connection` /
   `agent_status_change` 메시지 카탈로그에 추가. 기존 system/container metrics 변경 없음.
 - 2026-04-27: 초안. memory.available + gpu 배열 표준화 명시.
+## Optional workspace payload
+
+When a template enables ML workspace access, backend `create_container` includes
+`params.workspace`:
+
+```json
+{
+  "kind": "jupyter",
+  "token": "<plaintext token, do not log>",
+  "port": 8888,
+  "baseUrl": "/workspace/<container-request-id>/",
+  "workdir": "/workspace"
+}
+```
+
+Agent success response should include `data.workspace.internalPort`,
+`baseUrl`, `kind`, and optional `health`. For normal workspace networking,
+include `hostPort`. For `networkPolicy=internal_only`, do not publish the
+workspace port on the host; return `hostPort: null` or omit it, keep the
+workspace container on the shared internal Docker network, and include
+`health.networkPolicy="internal_only"` plus the network name when available.
+The backend then reaches `<container name>:<internalPort>` over Docker DNS. If
+the `workspace` field is absent, existing non-workspace container creation
+behavior is unchanged.
+
+## Optional model preparation payload
+
+`prepare_model_assets` uses `ModelPrepareJob.id` as `requestId`. Progress
+messages should include:
+
+```json
+{
+  "type": "command_progress",
+  "requestId": "<model-prepare-job-id>",
+  "message": "copying model bytes",
+  "percent": 42,
+  "data": {
+    "bytesDone": 4200,
+    "percent": 42
+  }
+}
+```
+
+Final success must include an agent-local cache path that can later be mounted
+read-only by `create_container.params.modelMounts[]`:
+
+```json
+{
+  "type": "command_response",
+  "requestId": "<model-prepare-job-id>",
+  "success": true,
+  "data": {
+    "cachePath": "/var/lib/hypercube-agent/model-cache/<asset>/<version>",
+    "sha256": "<sha256>"
+  }
+}
+```
+
+The backend stream endpoint is `/api/model-versions/{id}/content/`. It accepts
+only `Authorization: Bearer agent_...` for an approved agent with an active
+prepare job for the same model version. External URLs, public registries,
+Hugging Face, Git, S3, package installs, and arbitrary user URLs are not valid
+model sources.
+
+For `prepare_model_assets`, `assets[].sha256` is canonical. The backend also
+sends `assets[].checksum`, `assets[].source.sha256`, and
+`assets[].source.checksum` as compatibility aliases. Agent implementations
+should accept the canonical field and may use the aliases only as fallback.
