@@ -152,6 +152,31 @@ class ContainerRequestAPITest(APITestCase):
             format="json",
         )
         self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.json())
+        data = res.json()["data"]
+        self.assertEqual(data["target_agent"], str(self.agent.id))
+        request = ContainerRequest.objects.get(id=data["id"])
+        self.assertEqual(request.target_agent_id, self.agent.id)
+
+    def test_delete_request_rejects_mismatched_target_agent(self):
+        other_agent = create_agent(hostname="server-b", ip_address="10.0.0.2")
+        container = create_container(
+            agent=self.agent,
+            container_id="abc0002abc00",
+            name="target-mismatch",
+            requester=self.user,
+        )
+        self.client.force_authenticate(user=self.user)
+        res = self.client.post(
+            "/api/requests/",
+            {
+                "action": "delete",
+                "target_container": container.container_id,
+                "target_agent": str(other_agent.id),
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("target_agent", res.json()["errors"])
 
     # ---- 조회 격리 ----
     def test_user_sees_only_own_requests(self):

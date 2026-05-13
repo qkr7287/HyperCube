@@ -394,13 +394,21 @@ class ContainerRequestSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"model_version_ids": "delete requests cannot select model versions."}
                 )
-            if not (
-                attrs.get("target_container")
-                or (self.instance and self.instance.target_container)
-            ):
+            target_container = attrs.get("target_container") or (
+                self.instance and self.instance.target_container
+            )
+            if not target_container:
                 raise serializers.ValidationError(
                     {"target_container": "delete 요청은 target_container를 지정해야 합니다."}
                 )
+            target_agent = attrs.get("target_agent") or (
+                self.instance and self.instance.target_agent
+            )
+            if target_agent and target_agent.id != target_container.agent_id:
+                raise serializers.ValidationError(
+                    {"target_agent": "target_agent must match target_container.agent."}
+                )
+            attrs["target_agent"] = target_container.agent
         return attrs
 
     def create(self, validated_data):
