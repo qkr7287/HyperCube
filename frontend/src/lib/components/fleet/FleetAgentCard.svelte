@@ -26,6 +26,25 @@
 		return 'normal';
 	}
 
+	// GPU 온도: 실측 (gpu_temperature_max from agent). nvidia-smi 보고 안 들어오면 null.
+	// 전력: 실측 없음 → GPU 사용률 기반 선형 추정. idle 30W + (TDP−idle)·usage/100,
+	// TDP 기본값 300W (일반적 데이터센터 GPU 대표값). 모델 다양해서 실측과 ±100W 오차 가능.
+	const POWER_TDP_W = 300;
+	const POWER_IDLE_W = 30;
+	let gpuTemp = $derived<number | null>(agent.latest?.gpu_temperature ?? null);
+	let estimatedPowerW = $derived(
+		hasGpu
+			? POWER_IDLE_W + (POWER_TDP_W - POWER_IDLE_W) * (Math.max(0, Math.min(100, agent.latest?.gpu_usage ?? 0)) / 100)
+			: 0,
+	);
+	function tempLevel(t: number | null): 'normal' | 'warn' | 'danger' {
+		if (t == null) return 'normal';
+		if (t >= 85) return 'danger';
+		if (t >= 75) return 'warn';
+		return 'normal';
+	}
+	let gpuTempLevel = $derived(tempLevel(gpuTemp));
+
 	let cpuLevel = $derived(severity(agent.latest?.cpu_usage ?? 0, 70, 90));
 	let memLevel = $derived(severity(agent.latest?.memory_usage ?? 0, 75, 90));
 	let gpuLevel = $derived(severity(agent.latest?.gpu_usage ?? 0, 80, 95));
@@ -202,6 +221,14 @@
 			<span class="ct-chip problem" class:active={(agent.containers.problem ?? 0) > 0} title="재시작·비정상(dead) 상태의 컨테이너">
 				<b>{agent.containers.problem ?? 0}</b> 이상
 			</span>
+			{#if hasGpu}
+				<span class="ct-chip thermal" data-level={gpuTempLevel} title={gpuTemp != null ? `GPU 최고 온도 (nvidia-smi 실측, 임계 75/85°C)` : 'nvidia-smi 가 온도값을 보내지 않음'}>
+					<b>{gpuTemp != null ? `${Math.round(gpuTemp)}°C` : '—'}</b> 온도
+				</span>
+				<span class="ct-chip power" title={`GPU 사용률 기반 추정치 · TDP ${POWER_TDP_W}W 가정 (실제 모델에 따라 ±100W 오차)`}>
+					<b>~{Math.round(estimatedPowerW)}W</b> 전력
+				</span>
+			{/if}
 			{#if agent.health_reasons.length > 0}
 				<span class="reason-chip" title={agent.health_reasons.map(humanizeReason).join(' · ')}>
 					{shortReason(agent.health_reasons[0])}
@@ -517,6 +544,18 @@
 	.ct-chip.problem.active b {
 		color: #f87171;
 	}
+
+	/* GPU thermal chips — 온도(실측, severity) / 전력(추정, neutral). */
+	.ct-chip.thermal b { color: #fda4af; }
+	.ct-chip.thermal[data-level='warn'] {
+		background: rgba(251, 191, 36, 0.12);
+	}
+	.ct-chip.thermal[data-level='warn'] b { color: #fde68a; }
+	.ct-chip.thermal[data-level='danger'] {
+		background: rgba(239, 68, 68, 0.14);
+	}
+	.ct-chip.thermal[data-level='danger'] b { color: #fca5a5; }
+	.ct-chip.power b { color: #c4b5fd; }
 	.age-small {
 		margin-left: auto;
 		font-size: calc(var(--font-xs) - 1px);
