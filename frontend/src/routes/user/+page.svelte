@@ -196,7 +196,7 @@
 	const CONTAINER_COLS_DEFAULT = [110, 240, 200, 290, 105, 105, 105, 90, 110, 220];
 	// idx:  0    1    2    3            4    5    6        7    8
 	//       유형 이름 상태 템플릿(1fr)  서버 메모 검토자  시각 액션
-	const HISTORY_COLS_DEFAULT = [60, 260, 100, 240, 140, 75, 110, 170, 115];
+	const HISTORY_COLS_DEFAULT = [60, 260, 100, 240, 140, 75, 110, 170, 200];
 	let containerCols = $state<number[]>([...CONTAINER_COLS_DEFAULT]);
 	let historyCols = $state<number[]>([...HISTORY_COLS_DEFAULT]);
 	// 자원(idx 3) 컬럼이 남는 가로 공간을 흡수 (1fr). 나머지는 px 고정.
@@ -1487,23 +1487,30 @@ KPI — 컨테이너·요청·자원 합계
 								<span class="h-time-rel">{formatRelativeTime(r.created_at)}</span>
 							</time>
 							<div class="h-actions">
-								{#if r.status === 'deployed' && r.target_container}
-									<button class="row-btn" onclick={() => openContainer(r.target_container!)} title="컨테이너 모니터링 열기">
-										<svg class="row-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-											<path d="M7 17L17 7" />
-											<path d="M9 7h8v8" />
-										</svg>
-										<span>열기</span>
-									</button>
-								{/if}
-								{#if r.action === 'create' && r.template}
-									<button class="row-btn row-btn-icon" onclick={() => reRequest(r)} title="이 요청과 같은 설정으로 새 요청 만들기" aria-label="다시 요청">
-										<svg class="row-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-											<path d="M21 12a9 9 0 1 1-3-6.7" />
-											<path d="M21 4v5h-5" />
-										</svg>
-									</button>
-								{/if}
+								<button
+									class="row-btn"
+									onclick={() => r.status === 'deployed' && r.target_container && openContainer(r.target_container)}
+									disabled={!(r.status === 'deployed' && r.target_container)}
+									title={r.status === 'deployed' && r.target_container ? '컨테이너 모니터링 열기' : '배포 완료된 요청만 열 수 있습니다'}
+								>
+									<svg class="row-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+										<path d="M7 17L17 7" />
+										<path d="M9 7h8v8" />
+									</svg>
+									<span>열기</span>
+								</button>
+								<button
+									class="row-btn"
+									onclick={() => r.action === 'create' && r.template && reRequest(r)}
+									disabled={!(r.action === 'create' && r.template)}
+									title={r.action === 'create' && r.template ? '이 요청과 같은 설정으로 새 요청 만들기' : '생성 요청만 다시 요청할 수 있습니다'}
+								>
+									<svg class="row-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+										<path d="M21 12a9 9 0 1 1-3-6.7" />
+										<path d="M21 4v5h-5" />
+									</svg>
+									<span>재요청</span>
+								</button>
 							</div>
 						</li>
 					{/each}
@@ -2897,7 +2904,7 @@ KPI — 컨테이너·요청·자원 합계
 	.history-head,
 	.history-row {
 		display: grid;
-		grid-template-columns: var(--hist-cols, 60px 260px 100px minmax(220px, 1fr) 140px 75px 110px 170px 115px);
+		grid-template-columns: var(--hist-cols, 60px 260px 100px minmax(220px, 1fr) 140px 75px 110px 170px 200px);
 		gap: 10px;
 		align-items: center;
 	}
