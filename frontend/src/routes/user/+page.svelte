@@ -172,7 +172,7 @@
 	const CONTAINER_COLS_DEFAULT = [110, 240, 200, 290, 105, 105, 105, 90, 110, 220];
 	// idx:  0    1    2    3            4    5    6        7    8
 	//       유형 이름 상태 템플릿(1fr)  서버 메모 검토자  시각 액션
-	const HISTORY_COLS_DEFAULT = [60, 260, 100, 240, 140, 75, 110, 170, 220];
+	const HISTORY_COLS_DEFAULT = [60, 260, 100, 240, 140, 75, 110, 170, 150];
 	let containerCols = $state<number[]>([...CONTAINER_COLS_DEFAULT]);
 	let historyCols = $state<number[]>([...HISTORY_COLS_DEFAULT]);
 	// 자원(idx 3) 컬럼이 남는 가로 공간을 흡수 (1fr). 나머지는 px 고정.
@@ -757,7 +757,12 @@ KPI — 컨테이너·요청·자원 합계
 			const slice = ports.slice(0, 3) as Array<{ host?: number | string; container?: number | string }>;
 			if (!slice.length) return '';
 			return slice
-				.map((p) => String(p?.host ?? p?.container ?? '').trim())
+				.map((p) => {
+					const host = String(p?.host ?? '').trim();
+					const container = String(p?.container ?? '').trim();
+					if (host && container && host !== container) return `${host} → ${container}`;
+					return host || container;
+				})
 				.filter((s) => s && s !== '0')
 				.join(', ');
 		}
@@ -2842,7 +2847,7 @@ KPI — 컨테이너·요청·자원 합계
 	.history-head,
 	.history-row {
 		display: grid;
-		grid-template-columns: var(--hist-cols, 60px 260px 100px minmax(220px, 1fr) 140px 75px 110px 170px 220px);
+		grid-template-columns: var(--hist-cols, 60px 260px 100px minmax(220px, 1fr) 140px 75px 110px 170px 150px);
 		gap: 10px;
 		align-items: center;
 	}
