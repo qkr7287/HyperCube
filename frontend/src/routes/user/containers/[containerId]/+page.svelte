@@ -1332,13 +1332,15 @@
 	}
 
 	/* 한 row 안에 [hero | KPI | ops]. 좁아지면 wrap.
-	   각 영역 자기 자연 height (align-items: stretch — KPI 가 가장 키 큰 cell 기준
-	   stretch — KPI 가 4 pill 풀폭 fit 하도록 우선). */
+	   stretch — 같은 row 안 세 영역 높이 통일 (가장 키 큰 영역 기준).
+	   min-height — hero-insights chip(재시작/OOM/health) 이 polling 마다 나타났다
+	   사라지며 hero 자연 높이가 변동하는 걸 흡수. 하한을 잠가 화면이 출렁이지 않게. */
 	.unified-bar {
 		display: flex;
 		flex-wrap: wrap;
-		align-items: flex-start;
+		align-items: stretch;
 		gap: clamp(5px, 0.45vw, 9px);
+		min-height: clamp(190px, 18vh, 220px);
 	}
 
 	.hero {
@@ -1359,7 +1361,6 @@
 		flex: 0.9 1 360px;
 		min-width: 320px;
 		max-width: 450px;
-		align-self: flex-start;
 		position: relative;
 		overflow: hidden;
 	}

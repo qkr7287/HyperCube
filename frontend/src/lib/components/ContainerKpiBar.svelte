@@ -11,7 +11,6 @@
 -->
 <script lang="ts">
 	import InfoTooltip from './InfoTooltip.svelte';
-	import MetricSparkline from './fleet/MetricSparkline.svelte';
 	import {
 		formatBytesValue,
 		formatMemoryUsage,
@@ -116,21 +115,6 @@
 		return '정상';
 	}
 
-	// trend sparkline 은 bucket max 시리즈 — 짧은 spike 도 시각적으로 잡힘.
-	// (KPI 큰 % / 평균 값은 별도 props 로 부모가 정확한 계산 결과를 넘긴다)
-	let cpuTrend = $derived(history.map((r) => r.cpu_usage_max ?? r.cpu_usage));
-	let memTrend = $derived(history.map((r) => r.memory_percent_max ?? r.memory_percent));
-	let netTrend = $derived(history.map((r) => (r.network_rx ?? 0) + (r.network_tx ?? 0)));
-	let diskTrend = $derived(history.map((r) => (r.disk_read ?? 0) + (r.disk_write ?? 0)));
-	let gpuTrend = $derived(history.map((r) => r.gpu_usage_max ?? r.gpu_usage ?? 0));
-	let gpuMemTrend = $derived(
-		history.map((r) => {
-			const u = Number(r.gpu_memory_used ?? 0);
-			const t = Number(r.gpu_memory_total ?? 0);
-			return t > 0 ? (u / t) * 100 : 0;
-		}),
-	);
-
 	let cpuNow = $derived(asNumber(currentMetrics?.cpu?.usage));
 	let memNow = $derived(asNumber(currentMetrics?.memory?.percent));
 	let memUsed = $derived(asNumber(currentMetrics?.memory?.usage));
@@ -210,9 +194,6 @@
 				<span>{formatPercent(cpuPeak, 1)}</span>
 			</span>
 		</div>
-		<div class="trend-strip">
-			<MetricSparkline values={cpuTrend} color="#30d5c8" label="CPU 추이" stretch />
-		</div>
 	</div>
 
 	<div class="kpi" data-level={memLevel}>
@@ -264,9 +245,6 @@
 				<span>{formatPercent(memPeakPct, 1)}</span>
 			</span>
 		</div>
-		<div class="trend-strip">
-			<MetricSparkline values={memTrend} color="#60a5fa" label="메모리 추이" stretch />
-		</div>
 	</div>
 
 	<div class="kpi">
@@ -314,9 +292,6 @@
 				<span>{formatBytesValue(netTx)}</span>
 				<em>Δ {formatBytesValue(netTxDelta)}</em>
 			</span>
-		</div>
-		<div class="trend-strip">
-			<MetricSparkline values={netTrend} color="#fbbf24" label="네트워크 추이" stretch />
 		</div>
 	</div>
 
@@ -366,9 +341,6 @@
 				<em>Δ {formatBytesValue(diskWriteDelta)}</em>
 			</span>
 		</div>
-		<div class="trend-strip">
-			<MetricSparkline values={diskTrend} color="#a78bfa" label="디스크 추이" stretch />
-		</div>
 	</div>
 
 	{#if hasGpu}
@@ -412,9 +384,6 @@
 					<b>피크</b>
 					<span>{formatPercent(gpuPeak, 1)}</span>
 				</span>
-			</div>
-			<div class="trend-strip">
-				<MetricSparkline values={gpuTrend} color="#f472b6" label="GPU 코어 추이" stretch />
 			</div>
 		</div>
 	{/if}
@@ -461,36 +430,38 @@
 					<span>{formatPercent(gpuMemPeak, 1)}</span>
 				</span>
 			</div>
-			<div class="trend-strip">
-				<MetricSparkline values={gpuMemTrend} color="#a087d9" label="GPU VRAM 추이" stretch />
-			</div>
 		</div>
 	{/if}
 </section>
 
 <style>
+	/* 4-row 서브그리드 — 6 카드 모두 같은 row 트랙(kpi-top / metric-hero / meter / insight)
+	   을 공유해 행 위치가 카드별로 같은 y에 정렬된다. align-content: space-between 으로
+	   카드 stretch 시 남는 세로 공간이 행 사이로 균등 분산. */
 	.kpi-bar {
 		--kpi-pad: clamp(7px, 0.55vw, 10px);
 		--kpi-radius: 10px;
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(clamp(136px, 8vw, 178px), 1fr));
-		gap: clamp(5px, 0.4vw, 8px);
+		grid-template-rows: auto auto auto auto;
+		column-gap: clamp(5px, 0.4vw, 8px);
+		row-gap: 7px;
 		margin-top: 0;
-		align-items: stretch;
+		align-content: space-between;
 	}
 
 	.kpi {
 		min-width: 0;
-		min-height: clamp(136px, 12vh, 156px);
+		min-height: clamp(98px, 9vh, 118px);
 		padding: var(--kpi-pad);
 		background:
 			linear-gradient(180deg, rgba(23, 30, 42, 0.98), rgba(13, 18, 27, 0.98)),
 			var(--bg-card);
 		border: 1px solid rgba(100, 116, 139, 0.2);
 		border-radius: var(--kpi-radius);
-		display: flex;
-		flex-direction: column;
-		gap: 7px;
+		display: grid;
+		grid-template-rows: subgrid;
+		grid-row: span 4;
 		position: relative;
 		overflow: visible;
 		box-shadow:
@@ -536,8 +507,7 @@
 	.kpi-top,
 	.metric-hero,
 	.insight-row,
-	.flow-grid,
-	.trend-strip {
+	.flow-grid {
 		min-width: 0;
 	}
 
@@ -830,40 +800,4 @@
 		font-weight: 700;
 	}
 
-	.trend-strip {
-		position: relative;
-		display: block;
-		margin-top: 4px;
-		height: 38px;
-		min-height: 38px;
-		padding: 0;
-		border-radius: 8px;
-		background:
-			linear-gradient(180deg, rgba(2, 6, 12, 0.34), rgba(2, 6, 12, 0.2)),
-			rgba(2, 6, 12, 0.26);
-		border: 1px solid rgba(100, 116, 139, 0.14);
-		overflow: hidden;
-	}
-	.trend-strip :global(.spark-wrap) {
-		position: absolute;
-		inset: 0;
-		width: 100%;
-		height: 100%;
-		align-items: stretch;
-	}
-	.trend-strip :global(svg) {
-		display: block;
-		width: 100%;
-		height: 100%;
-		max-width: none;
-		min-height: 0;
-		overflow: visible;
-	}
-	.trend-strip :global(line) {
-		transform: translateY(-2px);
-	}
-	.trend-strip :global(polyline) {
-		stroke-width: 2.5;
-		vector-effect: non-scaling-stroke;
-	}
 </style>
