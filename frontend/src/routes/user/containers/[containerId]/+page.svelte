@@ -1334,21 +1334,22 @@
 	/* 한 row 안에 [hero | KPI | ops]. 좁아지면 wrap.
 	   stretch — 같은 row 안 세 영역 높이 통일 (가장 키 큰 영역 기준).
 	   min-height — hero-insights chip(재시작/OOM/health) 이 polling 마다 나타났다
-	   사라지며 hero 자연 높이가 변동하는 걸 흡수. 하한을 잠가 화면이 출렁이지 않게. */
+	   사라지며 hero 자연 높이가 변동하는 걸 흡수. 하한을 잠가 화면이 출렁이지 않게.
+	   ops-bar 가 자연 가장 키 크므로 그 컴팩트 높이(~170) 기준으로 잠금. */
 	.unified-bar {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: stretch;
 		gap: clamp(5px, 0.45vw, 9px);
-		min-height: clamp(190px, 18vh, 220px);
+		min-height: clamp(160px, 15vh, 180px);
 	}
 
 	.hero {
 		display: flex;
 		flex-direction: column;
-		justify-content: flex-start;
-		gap: 10px;
-		padding: 12px 14px;
+		justify-content: space-between;
+		gap: 8px;
+		padding: 9px 12px;
 		border-radius: 12px;
 		background:
 			radial-gradient(ellipse at top left, rgba(48, 213, 200, 0.10), transparent 60%),
@@ -1368,7 +1369,7 @@
 	.hero-main {
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
+		gap: 6px;
 		min-width: 0;
 		flex: 1 1 auto;
 	}
@@ -1447,8 +1448,8 @@
 		align-items: center;
 		gap: 6px;
 		max-width: 100%;
-		min-height: 24px;
-		padding: 3px 9px;
+		min-height: 22px;
+		padding: 2px 8px;
 		border-radius: 7px;
 		background: rgba(13, 17, 23, 0.48);
 		border: 1px solid rgba(100, 116, 139, 0.16);
@@ -1480,7 +1481,7 @@
 	.hero-meta {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 5px;
+		gap: 4px;
 		align-items: center;
 		min-width: 0;
 	}
@@ -1660,7 +1661,7 @@
 	   caption 라벨이 좌측 상단, 메인 영역은 단순 row. */
 	.ops-bar {
 		margin-top: 0;
-		padding: clamp(10px, 0.75vw, 13px);
+		padding: clamp(7px, 0.5vw, 9px) clamp(8px, 0.6vw, 11px);
 		border-radius: 10px;
 		background:
 			linear-gradient(135deg, rgba(48, 213, 200, 0.09), transparent 38%),
@@ -1669,8 +1670,8 @@
 		border: 1px solid var(--border);
 		display: grid;
 		grid-template-rows: auto auto auto;
-		align-content: stretch;
-		gap: 9px;
+		align-content: space-between;
+		gap: 6px;
 		flex: 0.78 1 340px;
 		min-width: 320px;
 		max-width: 430px;
@@ -1687,7 +1688,7 @@
 		justify-content: space-between;
 		gap: 8px;
 		min-width: 0;
-		padding-bottom: 8px;
+		padding-bottom: 5px;
 		border-bottom: 1px solid rgba(100, 116, 139, 0.14);
 	}
 
@@ -1792,10 +1793,10 @@
 		display: flex;
 		flex-direction: column;
 		justify-content: center;
-		gap: 4px;
+		gap: 3px;
 		min-width: 0;
-		min-height: 58px;
-		padding: 8px 9px;
+		min-height: 46px;
+		padding: 5px 8px;
 		border-radius: 8px;
 		background: rgba(2, 6, 12, 0.3);
 		border: 1px solid rgba(100, 116, 139, 0.14);
