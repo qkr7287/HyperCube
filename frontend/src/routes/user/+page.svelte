@@ -129,7 +129,7 @@
 	let ctxMenu = $state<{ x: number; y: number; container: MyContainer } | null>(null);
 	let ctxBusy = $state(false);
 
-	const CONTAINER_COLS_DEFAULT = [110, 240, 200, 220, 105, 105, 90, 180];
+	const CONTAINER_COLS_DEFAULT = [110, 240, 200, 290, 105, 105, 90, 180];
 	const HISTORY_COLS_DEFAULT = [60, 240, 100, 220, 130, 130, 170, 80];
 	let containerCols = $state<number[]>([...CONTAINER_COLS_DEFAULT]);
 	let historyCols = $state<number[]>([...HISTORY_COLS_DEFAULT]);
@@ -950,7 +950,7 @@ KPI — 컨테이너·요청·자원 합계
 								{#if cpuHistory[c.container_id]}
 									{@const series = cpuHistory[c.container_id]}
 									{@const sMax = Math.max(...series)}
-									{#if series.length >= 3 && sMax > 1}
+									{#if series.length >= 2 && sMax >= 0.5}
 										{@const sp = sparklinePoints(series, 60, 16)}
 										<svg viewBox="0 0 60 16" preserveAspectRatio="none" class="spark-svg">
 											<line x1="0" y1="15" x2="60" y2="15" stroke="rgba(100,116,139,0.32)" stroke-width="0.6" stroke-dasharray="2 2" />
@@ -969,7 +969,7 @@ KPI — 컨테이너·요청·자원 합계
 								{#if memHistory[c.container_id]}
 									{@const series = memHistory[c.container_id]}
 									{@const sMax = Math.max(...series)}
-									{#if series.length >= 3 && sMax > 1}
+									{#if series.length >= 2 && sMax >= 0.5}
 										{@const sp = sparklinePoints(series, 60, 16)}
 										<svg viewBox="0 0 60 16" preserveAspectRatio="none" class="spark-svg">
 											<line x1="0" y1="15" x2="60" y2="15" stroke="rgba(100,116,139,0.32)" stroke-width="0.6" stroke-dasharray="2 2" />
@@ -1402,16 +1402,16 @@ KPI — 컨테이너·요청·자원 합계
 
 	.side-toggle {
 		position: absolute;
-		top: 14px;
-		right: -8px;
+		top: 12px;
+		right: 2px;
 		z-index: 5;
-		width: 18px;
-		height: 36px;
+		width: 16px;
+		height: 34px;
 		border-radius: 4px;
 		border: 1px solid var(--border);
 		background: rgba(13, 17, 23, 0.92);
 		color: var(--text-secondary);
-		font-size: 14px;
+		font-size: 13px;
 		line-height: 1;
 		display: inline-flex;
 		align-items: center;
@@ -1428,7 +1428,7 @@ KPI — 컨테이너·요청·자원 합계
 	}
 
 	.main-grid:not(.no-side) .side-toggle {
-		right: calc(clamp(260px, 22vw, 340px) - 9px);
+		right: calc(clamp(260px, 22vw, 340px) + 1px);
 	}
 
 	.main-content {
@@ -1924,16 +1924,16 @@ KPI — 컨테이너·요청·자원 합계
 	.container-head,
 	.container-row {
 		display: grid;
-		grid-template-columns: var(--ct-cols, 110px 240px 200px 220px 105px 105px 90px 180px);
+		grid-template-columns: var(--ct-cols, 110px 240px 200px 290px 105px 105px 90px 180px);
 		gap: 10px;
 		align-items: center;
 	}
 
 	.container-head {
 		padding: 11px 14px;
-		background: rgba(13, 17, 23, 0.82);
-		color: var(--text-secondary);
-		font-size: 13.5px;
+		background: linear-gradient(180deg, rgba(21, 28, 39, 0.95), rgba(13, 17, 23, 0.92));
+		color: var(--text-primary);
+		font-size: 13px;
 		font-weight: 900;
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
@@ -1941,7 +1941,8 @@ KPI — 컨테이너·요청·자원 합계
 		position: sticky;
 		top: 0;
 		z-index: 2;
-		border-bottom: 1px solid rgba(100, 116, 139, 0.32);
+		border-bottom: 1px solid rgba(100, 116, 139, 0.42);
+		box-shadow: 0 1px 0 rgba(100, 116, 139, 0.14);
 	}
 
 	.container-row {
@@ -2034,6 +2035,8 @@ KPI — 컨테이너·요청·자원 합계
 	}
 
 	.row-name strong {
+		display: block;
+		max-width: 100%;
 		color: var(--text-primary);
 		font-size: 15px;
 		font-weight: 800;
@@ -2043,6 +2046,8 @@ KPI — 컨테이너·요청·자원 합계
 	}
 
 	.row-image {
+		display: block;
+		max-width: 100%;
 		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 		font-size: 12.5px;
 		color: var(--text-muted);
@@ -2062,6 +2067,8 @@ KPI — 컨테이너·요청·자원 합계
 	}
 
 	.row-host > span {
+		display: block;
+		max-width: 100%;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -2076,8 +2083,9 @@ KPI — 컨테이너·요청·자원 합계
 		display: flex;
 		align-items: center;
 		gap: 5px;
-		flex-wrap: wrap;
+		flex-wrap: nowrap;
 		min-width: 0;
+		overflow: hidden;
 	}
 
 	.row-time {
@@ -2243,9 +2251,9 @@ KPI — 컨테이너·요청·자원 합계
 
 	.history-head {
 		padding: 11px 14px;
-		background: rgba(13, 17, 23, 0.82);
-		color: var(--text-secondary);
-		font-size: 13.5px;
+		background: linear-gradient(180deg, rgba(21, 28, 39, 0.95), rgba(13, 17, 23, 0.92));
+		color: var(--text-primary);
+		font-size: 13px;
 		font-weight: 900;
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
@@ -2253,7 +2261,8 @@ KPI — 컨테이너·요청·자원 합계
 		position: sticky;
 		top: 0;
 		z-index: 2;
-		border-bottom: 1px solid rgba(100, 116, 139, 0.32);
+		border-bottom: 1px solid rgba(100, 116, 139, 0.42);
+		box-shadow: 0 1px 0 rgba(100, 116, 139, 0.14);
 	}
 
 	.history-row {
