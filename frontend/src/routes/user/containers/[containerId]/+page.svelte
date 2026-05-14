@@ -384,6 +384,8 @@
 			disk_read: Number(r.disk_read_max ?? 0),
 			disk_write: Number(r.disk_write_max ?? 0),
 			gpu_usage: r.gpu_usage_avg !== undefined && r.gpu_usage_avg !== null ? Number(r.gpu_usage_avg) : null,
+			gpu_memory_used: r.gpu_memory_used_max !== undefined && r.gpu_memory_used_max !== null ? Number(r.gpu_memory_used_max) : null,
+			gpu_memory_total: r.gpu_memory_total_max !== undefined && r.gpu_memory_total_max !== null ? Number(r.gpu_memory_total_max) : null,
 		}));
 	}
 
