@@ -16,6 +16,17 @@
 		formatMemoryUsage,
 		formatPercent,
 	} from '$lib/utils/container-dashboard';
+	import {
+		asNumber,
+		clampPercent,
+		compactBytes,
+		deltaTone,
+		formatDelta,
+		levelLabel,
+		pctRangeStatus,
+		severity,
+		shareOf,
+	} from '$lib/utils/container-kpi';
 
 	type MetricsSnapshot = {
 		cpu?: { usage?: number };
@@ -89,47 +100,6 @@
 		diskHelp?: string;
 	} = $props();
 
-	function severity(value: number, warn: number, crit: number): 'normal' | 'warn' | 'danger' {
-		if (value >= crit) return 'danger';
-		if (value >= warn) return 'warn';
-		return 'normal';
-	}
-
-	function asNumber(value: number | null | undefined): number {
-		const n = Number(value ?? 0);
-		return Number.isFinite(n) ? n : 0;
-	}
-
-	function clampPercent(value: number): number {
-		return Math.max(0, Math.min(100, value));
-	}
-
-	function shareOf(value: number, total: number): number {
-		if (total <= 0) return 0;
-		return clampPercent((value / total) * 100);
-	}
-
-	// 좁은 KPI 인사이트 pill(≈30~50px 내부 폭)에 들어가도록 단위를 한 글자로 압축.
-	// 본문 차트와 hover tooltip에서는 formatBytesValue 가 유지돼 정밀 단위 보임.
-	const COMPACT_UNITS = ['B', 'K', 'M', 'G', 'T'];
-	function compactBytes(value: number | null | undefined): string {
-		if (value == null || !Number.isFinite(value) || value === 0) return '0';
-		const abs = Math.abs(value);
-		const i = Math.floor(Math.log(abs) / Math.log(1024));
-		const idx = Math.max(0, Math.min(i, COMPACT_UNITS.length - 1));
-		const v = value / Math.pow(1024, idx);
-		const sign = v < 0 ? '−' : '';
-		const av = Math.abs(v);
-		const num = av >= 100 ? `${Math.round(av)}` : `${av.toFixed(1)}`;
-		return `${sign}${num}${COMPACT_UNITS[idx]}`;
-	}
-
-	function levelLabel(level: 'normal' | 'warn' | 'danger'): string {
-		if (level === 'danger') return '위험';
-		if (level === 'warn') return '주의';
-		return '정상';
-	}
-
 	let cpuNow = $derived(asNumber(currentMetrics?.cpu?.usage));
 	let memNow = $derived(asNumber(currentMetrics?.memory?.percent));
 	let memUsed = $derived(asNumber(currentMetrics?.memory?.usage));
@@ -161,35 +131,12 @@
 	let gpuDelta = $derived((currentGpuUsage ?? 0) - gpuAvg);
 	let gpuMemDelta = $derived((currentGpuMemPct ?? 0) - gpuMemAvg);
 
-	// status-line 자연어 — severity 임계 정보 + 현재 위치를 한 줄로 요약.
-	// 본문 차트의 markLine 과 의미 일치. 좁은 KPI 카드(135~150px)에 들어가도록
-	// 단어 압축 — 정상에선 raw 임계값만, 경보 시엔 등급 라벨 + 임계.
-	function pctRangeStatus(level: 'normal' | 'warn' | 'danger', warn: number, crit: number): string {
-		if (level === 'danger') return `위험 · ≥ ${crit}%`;
-		if (level === 'warn') return `주의 · ≥ ${warn}%`;
-		return `정상 · 임계 ${warn}/${crit}%`;
-	}
 	let cpuStatus = $derived(pctRangeStatus(cpuLevel, 70, 90));
 	let memStatus = $derived(pctRangeStatus(memLevel, 75, 90));
 	let gpuStatus = $derived(pctRangeStatus(gpuLevel, 80, 95));
 	let gpuMemStatus = $derived(pctRangeStatus(gpuMemLevel, 80, 95));
 
 	let activeBarTooltip = $state<string | null>(null);
-
-	function formatDelta(value: number, digits = 1): string {
-		// 표시 자리수보다 작은 편차는 평균과 동일하게 취급 — "−0.0%" 같은 헷갈리는 부호 방지.
-		const epsilon = Math.pow(10, -digits) / 2;
-		if (Math.abs(value) < epsilon) return `±0.${'0'.repeat(digits)}%`;
-		const sign = value > 0 ? '+' : '−';
-		return `${sign}${Math.abs(value).toFixed(digits)}%`;
-	}
-	function deltaTone(value: number, warnAt = 5): 'flat' | 'up' | 'up-warn' | 'down' {
-		if (Math.abs(value) < 0.5) return 'flat';
-		if (value <= -warnAt) return 'down';
-		if (value >= warnAt * 2) return 'up-warn';
-		if (value >= warnAt) return 'up';
-		return 'flat';
-	}
 
 	function showBarTooltip(key: string) {
 		activeBarTooltip = key;
