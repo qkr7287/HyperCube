@@ -1,21 +1,24 @@
+import { sveltekit } from '@sveltejs/kit/vite';
+import { svelteTesting } from '@testing-library/svelte/vite';
 import { defineConfig } from 'vitest/config';
 
 /**
- * Vitest 단위 테스트 전용 설정 — vite.config.ts 의 sveltekit() 플러그인은
- * dev 서버용이라 분리. 현재 테스트 범위: $lib/utils/* 의 pure helper.
+ * Vitest 설정 — 두 종류 테스트가 같은 러너 안에서 돈다.
  *
- * 컴포넌트(.svelte) 테스트가 필요해지면 @testing-library/svelte +
- * jsdom 환경 추가하면 됨.
+ * - *.test.ts (node 환경) — pure helper 단위 테스트. 빠르고 외부 의존 없음.
+ * - *.svelte.test.ts (jsdom 환경) — Svelte 컴포넌트 렌더 테스트.
+ *
+ * 환경 분기는 `test.environmentMatchGlobs` 로 파일명 패턴별로 자동 적용.
  */
 export default defineConfig({
+	plugins: [sveltekit(), svelteTesting()],
 	test: {
 		include: ['src/**/*.{test,spec}.ts'],
-		environment: 'node',
+		environmentMatchGlobs: [
+			['src/**/*.svelte.test.ts', 'jsdom'],
+			['src/**/*.test.ts', 'node'],
+		],
 		globals: false,
-	},
-	resolve: {
-		alias: {
-			$lib: new URL('./src/lib', import.meta.url).pathname,
-		},
+		setupFiles: ['./src/lib/test/setup.ts'],
 	},
 });
