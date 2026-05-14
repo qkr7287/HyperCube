@@ -207,7 +207,7 @@
 				CPU
 				{#if cpuHelp}<InfoTooltip text={cpuHelp} placement="bottom-start" />{/if}
 			</span>
-			<span class="scope" data-level={cpuLevel}>{levelLabel(cpuLevel)}</span>
+			<span class="scope dot" data-level={cpuLevel} title={levelLabel(cpuLevel)} aria-label="상태 {levelLabel(cpuLevel)}"></span>
 		</div>
 		<div class="metric-hero">
 			<strong class="value">{formatPercent(cpuNow, 2)}</strong>
@@ -258,7 +258,7 @@
 				메모리
 				{#if memoryHelp}<InfoTooltip text={memoryHelp} placement="bottom-start" />{/if}
 			</span>
-			<span class="scope" data-level={memLevel}>{levelLabel(memLevel)}</span>
+			<span class="scope dot" data-level={memLevel} title={levelLabel(memLevel)} aria-label="상태 {levelLabel(memLevel)}"></span>
 		</div>
 		<div class="metric-hero">
 			<strong class="value">{formatPercent(memNow, 2)}</strong>
@@ -410,7 +410,7 @@
 		<div class="kpi" data-level={gpuLevel}>
 			<div class="kpi-top">
 				<span class="label">GPU (코어)</span>
-				<span class="scope" data-level={gpuLevel}>{levelLabel(gpuLevel)}</span>
+				<span class="scope dot" data-level={gpuLevel} title={levelLabel(gpuLevel)} aria-label="상태 {levelLabel(gpuLevel)}"></span>
 			</div>
 			<div class="metric-hero">
 				<strong class="value">{currentGpuUsage !== null ? formatPercent(currentGpuUsage, 2) : '-'}</strong>
@@ -460,7 +460,7 @@
 		<div class="kpi" data-level={gpuMemLevel}>
 			<div class="kpi-top">
 				<span class="label">GPU (VRAM)</span>
-				<span class="scope" data-level={gpuMemLevel}>{levelLabel(gpuMemLevel)}</span>
+				<span class="scope dot" data-level={gpuMemLevel} title={levelLabel(gpuMemLevel)} aria-label="상태 {levelLabel(gpuMemLevel)}"></span>
 			</div>
 			<div class="metric-hero">
 				<strong class="value">{currentGpuMemPct !== null ? formatPercent(currentGpuMemPct, 2) : '-'}</strong>
@@ -625,6 +625,22 @@
 		background: currentColor;
 		box-shadow: 0 0 6px currentColor;
 		opacity: 0.85;
+	}
+	/* .scope.dot — severity 정보가 status-line 으로 옮겨간 뒤 우상단 chip 은
+	   "지금 위치" 시각 cue 만 남긴 형태. dot 만 보이도록 padding/text 제거.
+	   라벨은 title/aria-label 로만 접근. */
+	.scope.dot {
+		padding: 0;
+		min-width: 14px;
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		justify-content: center;
+		font-size: 0;
+	}
+	.scope.dot::before {
+		width: 8px;
+		height: 8px;
 	}
 	.scope[data-level='normal'] {
 		color: #6ee7b7;

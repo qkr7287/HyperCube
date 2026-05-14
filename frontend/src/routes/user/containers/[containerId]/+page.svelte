@@ -1120,29 +1120,7 @@
 				<div class="panel-header slim">
 					<div>
 						<h2>런타임 정보<InfoTooltip text={runtimeHelp} placement="bottom-start" /></h2>
-						<p>이 컨테이너가 어느 요청에서 만들어졌고, 가장 최근에 언제 동기화됐는지를 보여줍니다.</p>
-					</div>
-				</div>
-				<div class="runtime-strip" aria-label="런타임 상태 요약">
-					<div class="runtime-card" data-tone={container.status === 'running' ? 'success' : 'warn'}>
-						<span>상태</span>
-						<strong>{statusLabel(container.status)}</strong>
-						<em>{uptimeText}</em>
-					</div>
-					<div class="runtime-card" data-tone={runtimeHealthTone}>
-						<span>Health</span>
-						<strong>{runtimeHealthText}</strong>
-						<em>{inspectData?.state?.health?.failingStreak ? `실패 ${inspectData.state.health.failingStreak}회` : 'streak 없음'}</em>
-					</div>
-					<div class="runtime-card" data-tone={runtimeRestartCount > 0 || recentRestarts > 0 ? 'warn' : 'muted'}>
-						<span>재시작</span>
-						<strong>{runtimeRestartCount}회</strong>
-						<em>최근 5분 {recentRestarts}회</em>
-					</div>
-					<div class="runtime-card" data-tone={isOomKilled ? 'danger' : 'muted'}>
-						<span>종료/OOM</span>
-						<strong>{runtimeOomText}</strong>
-						<em>{runtimeExitText}</em>
+						<p>이 컨테이너가 어느 요청에서 만들어졌고, 가장 최근에 언제 동기화됐는지를 보여줍니다. (상태·Health·재시작은 상단 hero 영역 참조)</p>
 					</div>
 				</div>
 				<div class="runtime-timeline" aria-label="런타임 타임라인">
@@ -1692,16 +1670,20 @@
 		box-shadow: 0 0 8px currentColor;
 	}
 
+	/* hero 운영 utility 묶음 — 일시정지·새로고침·주기. 외곽 pill 로 그룹감을 주고
+	   내부 버튼은 teal hint border + subtle gradient 로 hero 본체 색조와 맞춤. */
 	.hero-actions {
 		display: flex;
 		flex-direction: row;
 		align-items: center;
-		gap: 5px;
+		gap: 4px;
 		flex-wrap: wrap;
 		flex-shrink: 0;
 		align-self: stretch;
-		padding: 0;
-		border: 0;
+		padding: 3px 5px;
+		border-radius: 10px;
+		background: rgba(2, 6, 12, 0.34);
+		border: 1px solid rgba(48, 213, 200, 0.1);
 		justify-content: flex-start;
 	}
 
@@ -1714,13 +1696,14 @@
 		gap: 5px;
 		padding: 0 9px;
 		min-width: 0;
-		min-height: 26px;
-		border-radius: 7px;
-		background: rgba(13, 17, 23, 0.58);
-		border: 1px solid rgba(31, 41, 55, 0.72);
-		color: var(--text-secondary);
+		min-height: 24px;
+		border-radius: 6px;
+		background:
+			linear-gradient(180deg, rgba(20, 27, 38, 0.85), rgba(11, 16, 24, 0.92));
+		border: 1px solid rgba(48, 213, 200, 0.16);
+		color: var(--text-primary);
 		font-size: 11.5px;
-		font-weight: 700;
+		font-weight: 750;
 		font-family: inherit;
 		cursor: pointer;
 		white-space: nowrap;
@@ -2543,30 +2526,15 @@
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 6px;
 	}
-	.context-grid .runtime-strip {
-		grid-template-columns: repeat(4, minmax(0, 1fr));
-		gap: 5px;
-	}
-	.context-grid .runtime-card,
 	.context-grid .runtime-timeline > div {
 		padding: 5px 6px;
 		border-radius: 9px;
 	}
-	.context-grid .runtime-card {
-		gap: 2px;
-		min-height: 44px;
-	}
-	.context-grid .runtime-card span,
 	.context-grid .runtime-timeline span {
 		font-size: 10px;
 	}
-	.context-grid .runtime-card strong,
 	.context-grid .runtime-timeline strong {
 		font-size: 13px;
-	}
-	.context-grid .runtime-card em {
-		font-size: 10px;
-		line-height: 1.05;
 	}
 	.context-grid .runtime-timeline {
 		gap: 5px;
@@ -2737,14 +2705,6 @@
 		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 	}
 
-	.runtime-strip {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 8px;
-		flex: 0 0 auto;
-	}
-
-	.runtime-card,
 	.runtime-timeline > div {
 		background:
 			linear-gradient(180deg, rgba(13, 17, 23, 0.82), rgba(8, 12, 19, 0.72)),
@@ -2753,51 +2713,17 @@
 		min-width: 0;
 	}
 
-	.runtime-card {
-		display: flex;
-		flex-direction: column;
-		justify-content: center;
-		gap: 3px;
-		min-height: 54px;
-		position: relative;
-		overflow: hidden;
-	}
-
-	.runtime-card::before {
-		content: '';
-		position: absolute;
-		inset: 0 auto 0 0;
-		width: 3px;
-		background: rgba(100, 116, 139, 0.6);
-	}
-
-	.runtime-card[data-tone='success']::before { background: #10b981; }
-	.runtime-card[data-tone='warn']::before { background: #fbbf24; }
-	.runtime-card[data-tone='danger']::before { background: #ef4444; }
-
-	.runtime-card span,
 	.runtime-timeline span {
 		color: var(--text-muted);
 		font-size: 10.5px;
 		font-weight: 800;
 	}
 
-	.runtime-card strong,
 	.runtime-timeline strong {
 		color: var(--text-primary);
 		font-size: 14px;
 		font-weight: 900;
 		line-height: 1.05;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.runtime-card em {
-		color: var(--text-secondary);
-		font-size: 10.5px;
-		font-style: normal;
-		font-weight: 650;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -3192,24 +3118,19 @@
 		.details-grid,
 		.info-grid,
 		.config-summary,
-		.runtime-strip,
 		.runtime-timeline {
 			grid-template-columns: 1fr;
 		}
 
-		.context-grid .runtime-strip,
 		.context-grid .runtime-timeline,
 		.context-grid .runtime-footprint {
 			grid-template-columns: 1fr;
 		}
 
-		.context-grid .runtime-card span,
-		.context-grid .runtime-timeline span,
-		.context-grid .runtime-card em {
+		.context-grid .runtime-timeline span {
 			font-size: 10.5px;
 		}
 
-		.context-grid .runtime-card strong,
 		.context-grid .runtime-timeline strong {
 			font-size: 14px;
 		}
