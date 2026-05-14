@@ -31,6 +31,7 @@
 		progress_percent?: number | null;
 		review_note?: string;
 		reviewer_username?: string | null;
+		reviewed_at?: string | null;
 		created_at: string;
 	};
 
@@ -166,6 +167,29 @@
 	let requestTotal = $state(0);
 	let ctxMenu = $state<{ x: number; y: number; container: MyContainer } | null>(null);
 	let ctxBusy = $state(false);
+	let memoPopover = $state<{ x: number; y: number; req: RequestRow } | null>(null);
+
+	function openMemoPopover(e: MouseEvent, r: RequestRow) {
+		e.preventDefault();
+		e.stopPropagation();
+		if (memoPopover?.req.id === r.id) {
+			memoPopover = null;
+			return;
+		}
+		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		const popW = 320;
+		const popH = 180;
+		const margin = 8;
+		let x = rect.left;
+		if (x + popW > window.innerWidth - margin) x = window.innerWidth - popW - margin;
+		let y = rect.bottom + 6;
+		if (y + popH > window.innerHeight - margin) y = rect.top - popH - 6;
+		memoPopover = { x: Math.max(margin, x), y: Math.max(margin, y), req: r };
+	}
+
+	function closeMemoPopover() {
+		memoPopover = null;
+	}
 
 	// idx:  0    1    2    3       4    5    6        7    8        9
 	//       상태 이름 서버 자원(1fr) CPU  MEM  GPUMEM  최근 가동시간 액션
@@ -894,6 +918,7 @@ KPI — 컨테이너·요청·자원 합계
 
 	function handleWindowClick(_e: MouseEvent) {
 		if (ctxMenu) closeCtxMenu();
+		if (memoPopover) closeMemoPopover();
 	}
 
 	function handleGlobalKeydown(e: KeyboardEvent) {
@@ -903,6 +928,12 @@ KPI — 컨테이너·요청·자원 합계
 
 		if (ctxMenu && e.key === 'Escape') {
 			closeCtxMenu();
+			e.preventDefault();
+			return;
+		}
+
+		if (memoPopover && e.key === 'Escape') {
+			closeMemoPopover();
 			e.preventDefault();
 			return;
 		}
@@ -1439,7 +1470,13 @@ KPI — 컨테이너·요청·자원 합계
 							<span class="h-cell" title={r.target_agent_hostname ?? ''}>{r.target_agent_hostname ?? '-'}</span>
 							<span class="h-memo">
 								{#if r.review_note}
-									<span class="memo-chip" title={r.review_note}>메모</span>
+									<button
+										class="memo-chip"
+										class:memo-chip-active={memoPopover?.req.id === r.id}
+										onclick={(e) => openMemoPopover(e, r)}
+										title="클릭해서 메모 상세 보기"
+										aria-label="검토 메모 보기"
+									>메모</button>
 								{:else}
 									<span class="memo-dash" aria-hidden="true">—</span>
 								{/if}
@@ -1556,6 +1593,31 @@ KPI — 컨테이너·요청·자원 합계
 
 	{#if dragState}
 		<div class="drag-guideline" style="left: {dragX}px;" aria-hidden="true"></div>
+	{/if}
+
+	{#if memoPopover}
+		{@const m = memoPopover}
+		<div
+			class="memo-popover"
+			style="left: {m.x}px; top: {m.y}px;"
+			role="dialog"
+			aria-label="검토 메모"
+			onclick={(e) => e.stopPropagation()}
+		>
+			<div class="memo-popover-head">
+				<span>검토 메모</span>
+				<button class="memo-popover-close" onclick={closeMemoPopover} aria-label="닫기">×</button>
+			</div>
+			<div class="memo-popover-body">{m.req.review_note}</div>
+			<div class="memo-popover-foot">
+				{#if m.req.reviewer_username}
+					<span>검토자 <strong>{m.req.reviewer_username}</strong></span>
+				{/if}
+				{#if m.req.reviewed_at}
+					<span>{formatDateTime(m.req.reviewed_at)}</span>
+				{/if}
+			</div>
+		</div>
 	{/if}
 
 	{#if ctxMenu}
@@ -2955,12 +3017,89 @@ KPI — 컨테이너·요청·자원 합계
 		background: rgba(77, 191, 179, 0.10);
 		border: 1px solid rgba(77, 191, 179, 0.30);
 		border-radius: 4px;
-		cursor: help;
+		cursor: pointer;
 		letter-spacing: 0.02em;
+		font-family: inherit;
 	}
 
 	.memo-chip:hover {
 		background: rgba(77, 191, 179, 0.18);
+		border-color: rgba(77, 191, 179, 0.5);
+	}
+
+	.memo-chip-active {
+		background: rgba(77, 191, 179, 0.24);
+		border-color: rgba(77, 191, 179, 0.7);
+	}
+
+	.memo-popover {
+		position: fixed;
+		z-index: 100;
+		width: 320px;
+		background: rgba(13, 17, 23, 0.98);
+		border: 1px solid rgba(77, 191, 179, 0.42);
+		border-radius: 8px;
+		box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+
+	.memo-popover-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 8px 12px;
+		font-size: 12px;
+		font-weight: 900;
+		letter-spacing: 0.04em;
+		color: var(--accent);
+		background: rgba(77, 191, 179, 0.08);
+		border-bottom: 1px solid rgba(77, 191, 179, 0.18);
+	}
+
+	.memo-popover-close {
+		width: 22px;
+		height: 22px;
+		padding: 0;
+		font-size: 16px;
+		line-height: 1;
+		background: transparent;
+		border: none;
+		color: var(--text-muted);
+		cursor: pointer;
+		border-radius: 4px;
+	}
+
+	.memo-popover-close:hover {
+		background: rgba(100, 116, 139, 0.16);
+		color: var(--text-primary);
+	}
+
+	.memo-popover-body {
+		padding: 12px;
+		font-size: 13px;
+		color: var(--text-primary);
+		line-height: 1.55;
+		max-height: 240px;
+		overflow-y: auto;
+		white-space: pre-wrap;
+		word-break: break-word;
+	}
+
+	.memo-popover-foot {
+		display: flex;
+		justify-content: space-between;
+		gap: 8px;
+		padding: 8px 12px;
+		border-top: 1px solid rgba(100, 116, 139, 0.18);
+		font-size: 11.5px;
+		color: var(--text-muted);
+	}
+
+	.memo-popover-foot strong {
+		color: var(--text-secondary);
+		font-weight: 800;
 	}
 
 	.memo-dash {
