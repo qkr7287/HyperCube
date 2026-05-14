@@ -1161,11 +1161,6 @@
 						<strong>{agentOnline ? '온라인' : '오프라인'}</strong>
 						<em title={container.agent ?? '-'}>{container.agent ?? '-'}</em>
 					</div>
-					<div data-tone={paused ? 'warn' : 'success'}>
-						<span>갱신</span>
-						<strong>{paused ? '일시정지' : '자동'}</strong>
-						<em>{paused ? '사용자 확인 중' : `${refreshIntervalLabel()} 주기`}</em>
-					</div>
 				</div>
 			</div>
 
@@ -2744,7 +2739,7 @@
 
 	.runtime-footprint {
 		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 6px;
 		flex: 0 0 auto;
 		min-width: 0;

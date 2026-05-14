@@ -923,32 +923,30 @@ KPI — 컨테이너·요청·자원 합계
 		Math.max(0, Math.min(MIN_VISUAL_ROWS, Math.floor(historyListHeight / ROW_HEIGHT)) - filteredHistory.length),
 	);
 
-	let chordKey = '';
-	let chordTimer: ReturnType<typeof setTimeout> | null = null;
-
 	function handleWindowClick(_e: MouseEvent) {
 		if (ctxMenu) closeCtxMenu();
 		if (memoPopover) closeMemoPopover();
 	}
 
+	// Escape 닫기 핸들러 — context menu / memo popover / 검색 입력 reset 만 담당.
+	// 이전 단축키(/ n g+c g+h)는 사용성 피드백으로 전면 제거.
 	function handleGlobalKeydown(e: KeyboardEvent) {
+		if (e.key !== 'Escape') return;
 		const target = e.target as HTMLElement | null;
 		const tag = target?.tagName;
 		const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || (target as any)?.isContentEditable;
 
-		if (ctxMenu && e.key === 'Escape') {
+		if (ctxMenu) {
 			closeCtxMenu();
 			e.preventDefault();
 			return;
 		}
-
-		if (memoPopover && e.key === 'Escape') {
+		if (memoPopover) {
 			closeMemoPopover();
 			e.preventDefault();
 			return;
 		}
-
-		if (inInput && e.key === 'Escape') {
+		if (inInput) {
 			if (target === searchInputEl) {
 				search = '';
 				debouncedSearch = '';
@@ -960,39 +958,6 @@ KPI — 컨테이너·요청·자원 합계
 				(target as HTMLInputElement).blur();
 				e.preventDefault();
 			}
-			return;
-		}
-
-		if (inInput) return;
-		if (e.ctrlKey || e.altKey || e.metaKey) return;
-		if (newModalOpen) return;
-
-		if (e.key === '/') {
-			if (activeTab === 'containers') searchInputEl?.focus();
-			else historySearchInputEl?.focus();
-			e.preventDefault();
-			return;
-		}
-
-		if (e.key === 'n' || e.key === 'N') {
-			openNewRequest(null);
-			e.preventDefault();
-			return;
-		}
-
-		if (chordKey === 'g') {
-			if (chordTimer) clearTimeout(chordTimer);
-			chordKey = '';
-			if (e.key === 'c' || e.key === 'C') { setTab('containers'); e.preventDefault(); return; }
-			if (e.key === 'h' || e.key === 'H') { setTab('history'); e.preventDefault(); return; }
-		}
-
-		if (e.key === 'g' || e.key === 'G') {
-			chordKey = 'g';
-			if (chordTimer) clearTimeout(chordTimer);
-			chordTimer = setTimeout(() => { chordKey = ''; }, 900);
-			e.preventDefault();
-			return;
 		}
 	}
 
@@ -1200,7 +1165,7 @@ KPI — 컨테이너·요청·자원 합계
 				{#if containers.length === 0}
 					<h3>아직 컨테이너가 없습니다</h3>
 					<p>아래에서 시작해 보세요.</p>
-					<button class="new-btn" onclick={() => openNewRequest(null)}>+ 새 요청 만들기 <kbd>n</kbd></button>
+					<button class="new-btn" onclick={() => openNewRequest(null)}>+ 새 요청 만들기</button>
 					<div class="empty-hints">
 						<div class="hint-card">
 							<strong>워크스페이스</strong>
@@ -1209,10 +1174,6 @@ KPI — 컨테이너·요청·자원 합계
 						<div class="hint-card">
 							<strong>서비스 컨테이너</strong>
 							<p>Redis · Nginx · 자체 이미지 — 컴포즈 그룹도 지원.</p>
-						</div>
-						<div class="hint-card">
-							<strong>단축키</strong>
-							<p><kbd>/</kbd> 검색 · <kbd>n</kbd> 새 요청 · <kbd>g c</kbd> 컨테이너 · <kbd>g h</kbd> 이력</p>
 						</div>
 					</div>
 				{:else}
@@ -1245,10 +1206,10 @@ KPI — 컨테이너·요청·자원 합계
 						MEM (1h){sortField === 'mem' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
 						<span class="col-resize" onmousedown={(e) => startResize(e, 5, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</button>
-					<span class="th">GPU (코어)
+					<span class="th">GPU 코어 (1h)
 						<span class="col-resize" onmousedown={(e) => startResize(e, 6, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</span>
-					<span class="th">GPU (VRAM)
+					<span class="th">GPU VRAM (1h)
 						<span class="col-resize" onmousedown={(e) => startResize(e, 7, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</span>
 					<button class="th sortable" class:active={sortField === 'last_seen'} onclick={() => setSort('last_seen')}>

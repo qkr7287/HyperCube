@@ -4,7 +4,7 @@
   kind 별 색/아이콘 매핑 + tooltip 으로 추가 필드 (exitCode/signal/healthStatus) 노출.
 -->
 <script lang="ts">
-	import { formatDateTime } from '$lib/utils/container-dashboard';
+	import { formatDateTime, formatRelativeTime } from '$lib/utils/container-dashboard';
 	import StateBox from './StateBox.svelte';
 
 	export type EventRow = {
@@ -90,7 +90,7 @@
 					{#if detail(ev)}
 						<span class="detail" data-tone={detailTone(ev)}>{detail(ev)}</span>
 					{/if}
-					<span class="time">{formatDateTime(ev.ts)}</span>
+					<span class="time" title={formatDateTime(ev.ts)}>{formatRelativeTime(ev.ts)}</span>
 				</li>
 			{/each}
 		</ul>
@@ -177,7 +177,7 @@
 		list-style: none;
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
+		gap: 4px;
 		flex: 1 1 0;
 		min-height: 0;
 		min-width: 0;
@@ -186,34 +186,43 @@
 		box-sizing: border-box;
 		max-height: none;
 		overflow-y: auto;
+		padding-right: 2px;
 	}
 
 	.list li {
-		display: flex;
+		display: grid;
+		grid-template-columns: auto auto minmax(0, 1fr) auto;
 		align-items: center;
-		gap: 5px;
-		padding: 4px 6px;
-		border-radius: 7px;
+		gap: 7px;
+		padding: 7px 9px;
+		border-radius: 8px;
 		background: rgba(13, 17, 23, 0.58);
-		border: 1px solid rgba(100, 116, 139, 0.14);
-		font-size: 10px;
+		border: 1px solid rgba(100, 116, 139, 0.16);
+		font-size: 11.5px;
+		transition: border-color var(--ease-fast), background-color var(--ease-fast);
+	}
+	.list li:hover {
+		border-color: rgba(48, 213, 200, 0.32);
+		background: rgba(13, 17, 23, 0.75);
 	}
 
 	.dot {
 		flex: 0 0 auto;
-		width: 6px;
-		height: 6px;
+		width: 7px;
+		height: 7px;
 		border-radius: 50%;
+		box-shadow: 0 0 8px currentColor;
 	}
 
 	.badge {
 		display: inline-flex;
 		align-items: center;
-		gap: 4px;
-		padding: 1px 5px;
+		gap: 5px;
+		padding: 2px 8px;
 		border-radius: 999px;
-		font-size: 9.5px;
-		font-weight: 700;
+		font-size: 10.5px;
+		font-weight: 800;
+		letter-spacing: 0.01em;
 	}
 	.badge.success { background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); }
 	.badge.warn    { background: rgba(234, 179, 8, 0.18);  color: #fde047; border: 1px solid rgba(234, 179, 8, 0.35); }
@@ -223,15 +232,16 @@
 
 	.icon {
 		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-		font-size: 10px;
+		font-size: 11px;
 	}
 
 	.detail {
 		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-		font-size: 10px;
-		font-weight: 700;
-		padding: 2px 6px;
-		border-radius: 4px;
+		font-size: 10.5px;
+		font-weight: 750;
+		padding: 2px 7px;
+		border-radius: 5px;
+		justify-self: start;
 	}
 	.detail[data-tone='muted'] {
 		color: var(--text-muted);
@@ -246,8 +256,10 @@
 	}
 
 	.time {
-		margin-left: auto;
-		font-size: 10px;
-		color: var(--text-secondary);
+		grid-column: -2 / -1;
+		font-size: 10.5px;
+		color: var(--text-muted);
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
 	}
 </style>
