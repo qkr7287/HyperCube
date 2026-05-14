@@ -602,6 +602,9 @@ KPI — 컨테이너·요청·자원 합계
 	const kpiWorkspaceHelp = `workspace_enabled 인 컨테이너 수 (Jupyter 등 작업 환경).`;
 	const activeBannerHelp = `아직 끝나지 않은 요청들의 실시간 진행 상황입니다. 4초마다 자동 갱신됩니다.`;
 	const historyTabHelp = `완료·반려·실패한 과거 요청의 이력입니다. 배포 완료 항목은 컨테이너로 바로 이동할 수 있습니다.`;
+	const agentEventsHelp = `에이전트 서버가 online/offline으로 전환될 때마다 push되는 이벤트입니다.
+서버가 안정적으로 연결되어 있으면 비어 있습니다.
+최근 ${20}건까지 표시합니다.`;
 
 	function decodeJwt(t: string): Record<string, unknown> {
 		try {
@@ -1582,10 +1585,11 @@ KPI — 컨테이너·요청·자원 합계
 
 			<section class="side-section">
 				<header class="side-head">
-					<h2>최근 이벤트<Pill tone="var(--text-secondary)" size="md" minWidth="28px">{liveEvents.length}</Pill></h2>
+					<h2>서버 상태 변화<Pill tone="var(--text-secondary)" size="md" minWidth="28px">{liveEvents.length}</Pill></h2>
+					<InfoTooltip text={agentEventsHelp} label="서버 상태 변화 도움말" placement="bottom-start" />
 				</header>
 				{#if liveEvents.length === 0}
-					<div class="side-empty">최근 변화 없음</div>
+					<div class="side-empty">서버가 안정 연결 중</div>
 				{:else}
 					<ul class="side-event-list">
 						{#each liveEvents.slice(0, 10) as ev (ev.receivedAt + ev.server_id)}
