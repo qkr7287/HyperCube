@@ -1274,7 +1274,6 @@ KPI — 컨테이너·요청·자원 합계
 								</button>
 								<button
 									class="row-btn"
-									class:row-btn-primary={!!(c.workspace_enabled && c.workspace_host_port)}
 									onclick={(e) => (c.workspace_enabled && c.workspace_host_port) && openWorkspace(c, e)}
 									disabled={!(c.workspace_enabled && c.workspace_host_port) || openingId === c.container_id}
 									title={(c.workspace_enabled && c.workspace_host_port) ? 'Jupyter 워크스페이스 열기' : '이 컨테이너는 Jupyter 워크스페이스가 활성화되지 않았습니다'}
@@ -2659,19 +2658,19 @@ KPI — 컨테이너·요청·자원 합계
 		flex-wrap: nowrap;
 		gap: 6px;
 		width: 100%;
-		justify-content: flex-end;
+		justify-content: center;
 		align-items: center !important;
 	}
 
 	.th-actions {
-		justify-content: flex-end;
+		justify-content: center;
 	}
 
 	.h-actions {
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
-		justify-content: flex-end;
+		justify-content: center;
 		width: 100%;
 	}
 
@@ -3246,7 +3245,7 @@ KPI — 컨테이너·요청·자원 합계
 		.row-resources,
 		.row-actions {
 			grid-column: 1 / -1;
-			justify-content: flex-start !important;
+			justify-content: center !important;
 			padding-top: 4px;
 		}
 
