@@ -216,13 +216,120 @@
 		window.removeEventListener('mouseup', stopResize);
 	}
 
+	let _measureCanvas: HTMLCanvasElement | null = null;
+	function measureWidth(text: string, font: string): number {
+		if (!browser || !text) return 0;
+		if (!_measureCanvas) _measureCanvas = document.createElement('canvas');
+		const ctx = _measureCanvas.getContext('2d');
+		if (!ctx) return text.length * 8;
+		ctx.font = font;
+		return ctx.measureText(text).width;
+	}
+
+	const FONT_NAME = '800 15px Pretendard, sans-serif';
+	const FONT_IMAGE = '12.5px ui-monospace, Consolas, monospace';
+	const FONT_HOST = '13.5px Pretendard, sans-serif';
+	const FONT_META = '12.5px Pretendard, sans-serif';
+	const FONT_PILL = '750 13px Pretendard, sans-serif';
+	const FONT_HEAD = '900 13px Pretendard, sans-serif';
+
+	function pillWidth(text: string, mono = false): number {
+		const font = mono ? FONT_IMAGE : FONT_PILL;
+		return measureWidth(text, font) + 26;
+	}
+
+	function autoFitContainerCols() {
+		if (!browser || containers.length === 0) return;
+		try {
+			if (localStorage.getItem('hc_user_cont_cols')) return;
+		} catch { /* ignore */ }
+
+		const PAD = 32;
+		const HEAD_PAD = 36;
+		const next = [...CONTAINER_COLS_DEFAULT];
+
+		next[0] = Math.max(next[0], measureWidth('실행 중', FONT_PILL) + 86);
+		next[1] = Math.max(next[1], measureWidth('이름 / 이미지', FONT_HEAD) + HEAD_PAD);
+		next[2] = Math.max(next[2], measureWidth('서버 · 템플릿', FONT_HEAD) + HEAD_PAD);
+		next[3] = Math.max(next[3], measureWidth('자원', FONT_HEAD) + HEAD_PAD);
+
+		for (const c of containers) {
+			const nameW = measureWidth(c.name ?? '', FONT_NAME) + PAD;
+			const imgW = measureWidth(c.image ?? '', FONT_IMAGE) + PAD;
+			next[1] = Math.max(next[1], nameW, imgW);
+
+			const hostW = measureWidth(c.agent_hostname ?? '', FONT_HOST) + PAD;
+			const tplW = measureWidth(c.template_name ?? '', FONT_META) + PAD;
+			next[2] = Math.max(next[2], hostW, tplW);
+
+			let resourceW = 0;
+			if (c.workspace_enabled && c.workspace_host_port) {
+				resourceW += pillWidth(`${c.workspace_kind ?? 'ws'} :${c.workspace_host_port}`, true);
+			} else {
+				const ports = portList(c);
+				resourceW += ports ? pillWidth(ports, true) : pillWidth('—', true);
+			}
+			if (c.allocated_gpu_slice_ids?.length) {
+				resourceW += 6 + pillWidth(`GPU ×${c.allocated_gpu_slice_ids.length}`);
+			}
+			if (c.mounted_model_versions?.length) {
+				const name = c.mounted_model_versions[0]?.asset_name ?? '';
+				resourceW += 6 + Math.min(160, pillWidth(name));
+				if (c.mounted_model_versions.length > 1) {
+					resourceW += 6 + pillWidth(`+${c.mounted_model_versions.length - 1}`);
+				}
+			}
+			next[3] = Math.max(next[3], resourceW + 20);
+		}
+
+		next[1] = Math.min(next[1], 420);
+		next[2] = Math.min(next[2], 360);
+		next[3] = Math.min(next[3], 480);
+
+		containerCols = next;
+	}
+
+	function autoFitHistoryCols() {
+		if (!browser || historyRequests.length === 0) return;
+		try {
+			if (localStorage.getItem('hc_user_hist_cols')) return;
+		} catch { /* ignore */ }
+
+		const PAD = 32;
+		const HEAD_PAD = 36;
+		const next = [...HISTORY_COLS_DEFAULT];
+
+		next[1] = Math.max(next[1], measureWidth('이름', FONT_HEAD) + HEAD_PAD);
+		next[3] = Math.max(next[3], measureWidth('템플릿', FONT_HEAD) + HEAD_PAD);
+		next[4] = Math.max(next[4], measureWidth('서버', FONT_HEAD) + HEAD_PAD);
+
+		for (const r of historyRequests) {
+			const nameW = measureWidth(requestDisplayName(r), FONT_NAME) + PAD;
+			next[1] = Math.max(next[1], nameW);
+
+			const tplW = measureWidth(r.template_name ?? '', FONT_META) + PAD;
+			next[3] = Math.max(next[3], tplW);
+
+			const hostW = measureWidth(r.target_agent_hostname ?? '', FONT_META) + PAD;
+			next[4] = Math.max(next[4], hostW);
+		}
+
+		next[1] = Math.min(next[1], 420);
+		next[3] = Math.min(next[3], 360);
+		next[4] = Math.min(next[4], 260);
+
+		historyCols = next;
+	}
+
 	function resetColumns(which: 'container' | 'history') {
 		if (which === 'container') {
 			containerCols = [...CONTAINER_COLS_DEFAULT];
 			try { localStorage.removeItem('hc_user_cont_cols'); } catch { /* ignore */ }
+			autoFitContainerCols();
 		} else {
 			historyCols = [...HISTORY_COLS_DEFAULT];
 			try { localStorage.removeItem('hc_user_hist_cols'); } catch { /* ignore */ }
+			autoFitHistoryCols();
 		}
 	}
 
@@ -512,6 +619,8 @@ KPI — 컨테이너·요청·자원 합계
 			metricsFetched = true;
 			fetchSparklines(t);
 		}
+		autoFitContainerCols();
+		autoFitHistoryCols();
 	}
 
 	async function loadMoreRequests() {
