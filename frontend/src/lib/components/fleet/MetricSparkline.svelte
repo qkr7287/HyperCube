@@ -43,14 +43,19 @@
 		if (points.length === 0) return '';
 		if (points.length === 1) return `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
 		let d = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
+		const lastIdx = points.length - 2;
 		for (let i = 0; i < points.length - 1; i++) {
+			// 마지막 segment 는 직선(L) — Catmull-Rom 계열 곡선은 외삽해도
+			// 끝점 직전 미세 휨이 남기 때문. sparkline 스케일에선 마지막 한
+			// 토막만 직선이어도 시각적 부드러움 손실은 무시할 수준.
+			if (i === lastIdx) {
+				d += ` L ${points[i + 1].x.toFixed(2)} ${points[i + 1].y.toFixed(2)}`;
+				continue;
+			}
 			const p0 = points[i - 1] ?? points[i];
 			const p1 = points[i];
 			const p2 = points[i + 1];
-			// 마지막 segment 일 때 p3 = p2 로 두면 cp2 가 안쪽으로 당겨져
-			// 우측 끝이 왼쪽을 향하는 inward curl 발생. p3 를 p2 + (p2 - p1) 로
-			// 외삽한 phantom point 로 두면 tangent 가 자연스럽게 끝점을 향함.
-			const p3 = points[i + 2] ?? { x: 2 * p2.x - p1.x, y: 2 * p2.y - p1.y };
+			const p3 = points[i + 2] ?? p2;
 			const cp1x = p1.x + (p2.x - p0.x) / 6;
 			const cp1y = p1.y + (p2.y - p0.y) / 6;
 			const cp2x = p2.x - (p3.x - p1.x) / 6;
