@@ -109,6 +109,21 @@
 		return clampPercent((value / total) * 100);
 	}
 
+	// 좁은 KPI 인사이트 pill(≈30~50px 내부 폭)에 들어가도록 단위를 한 글자로 압축.
+	// 본문 차트와 hover tooltip에서는 formatBytesValue 가 유지돼 정밀 단위 보임.
+	const COMPACT_UNITS = ['B', 'K', 'M', 'G', 'T'];
+	function compactBytes(value: number | null | undefined): string {
+		if (value == null || !Number.isFinite(value) || value === 0) return '0';
+		const abs = Math.abs(value);
+		const i = Math.floor(Math.log(abs) / Math.log(1024));
+		const idx = Math.max(0, Math.min(i, COMPACT_UNITS.length - 1));
+		const v = value / Math.pow(1024, idx);
+		const sign = v < 0 ? '−' : '';
+		const av = Math.abs(v);
+		const num = av >= 100 ? `${Math.round(av)}` : `${av.toFixed(1)}`;
+		return `${sign}${num}${COMPACT_UNITS[idx]}`;
+	}
+
 	function levelLabel(level: 'normal' | 'warn' | 'danger'): string {
 		if (level === 'danger') return '위험';
 		if (level === 'warn') return '주의';
@@ -276,11 +291,11 @@
 		<div class="insight-row triple">
 			<span title={formatMemoryUsage(memUsed, memLimit)}>
 				<b>사용</b>
-				<span>{formatBytesValue(memUsed)}</span>
+				<span>{compactBytes(memUsed)}</span>
 			</span>
-			<span>
+			<span title="여유 {formatBytesValue(memFree)}">
 				<b>여유</b>
-				<span>{formatBytesValue(memFree)}</span>
+				<span>{compactBytes(memFree)}</span>
 			</span>
 			<span>
 				<b>피크</b>
@@ -327,15 +342,15 @@
 			{netDeltaTotal > 0 ? `${rangeLabel} 트래픽 +${formatBytesValue(netDeltaTotal)}` : `${rangeLabel} 트래픽 정체`}
 		</div>
 		<div class="flow-grid">
-			<span>
+			<span title="RX {formatBytesValue(netRx)}">
 				<b>RX</b>
-				<span>{formatBytesValue(netRx)}</span>
-				{#if netRxDelta > 0}<em>Δ {formatBytesValue(netRxDelta)}</em>{:else}<em class="muted">—</em>{/if}
+				<span>{compactBytes(netRx)}</span>
+				{#if netRxDelta > 0}<em>Δ {compactBytes(netRxDelta)}</em>{:else}<em class="muted">—</em>{/if}
 			</span>
-			<span>
+			<span title="TX {formatBytesValue(netTx)}">
 				<b>TX</b>
-				<span>{formatBytesValue(netTx)}</span>
-				{#if netTxDelta > 0}<em>Δ {formatBytesValue(netTxDelta)}</em>{:else}<em class="muted">—</em>{/if}
+				<span>{compactBytes(netTx)}</span>
+				{#if netTxDelta > 0}<em>Δ {compactBytes(netTxDelta)}</em>{:else}<em class="muted">—</em>{/if}
 			</span>
 		</div>
 	</div>
@@ -378,15 +393,15 @@
 			{diskDeltaTotal > 0 ? `${rangeLabel} I/O +${formatBytesValue(diskDeltaTotal)}` : `${rangeLabel} I/O 정체`}
 		</div>
 		<div class="flow-grid">
-			<span>
+			<span title="Read {formatBytesValue(diskRead)}">
 				<b>Read</b>
-				<span>{formatBytesValue(diskRead)}</span>
-				{#if diskReadDelta > 0}<em>Δ {formatBytesValue(diskReadDelta)}</em>{:else}<em class="muted">—</em>{/if}
+				<span>{compactBytes(diskRead)}</span>
+				{#if diskReadDelta > 0}<em>Δ {compactBytes(diskReadDelta)}</em>{:else}<em class="muted">—</em>{/if}
 			</span>
-			<span>
+			<span title="Write {formatBytesValue(diskWrite)}">
 				<b>Write</b>
-				<span>{formatBytesValue(diskWrite)}</span>
-				{#if diskWriteDelta > 0}<em>Δ {formatBytesValue(diskWriteDelta)}</em>{:else}<em class="muted">—</em>{/if}
+				<span>{compactBytes(diskWrite)}</span>
+				{#if diskWriteDelta > 0}<em>Δ {compactBytes(diskWriteDelta)}</em>{:else}<em class="muted">—</em>{/if}
 			</span>
 		</div>
 	</div>
@@ -497,12 +512,12 @@
 	   status-line / insight)을 공유해 행 위치가 카드별로 같은 y에 정렬된다.
 	   align-content: space-between 으로 카드 stretch 시 남는 세로 공간이 행 사이로 균등 분산. */
 	.kpi-bar {
-		--kpi-pad: clamp(7px, 0.55vw, 10px);
+		--kpi-pad: clamp(5px, 0.4vw, 7px);
 		--kpi-radius: 10px;
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(clamp(136px, 8vw, 178px), 1fr));
 		grid-template-rows: auto auto auto auto auto;
-		column-gap: clamp(5px, 0.4vw, 8px);
+		column-gap: clamp(3px, 0.28vw, 5px);
 		row-gap: 6px;
 		margin-top: 0;
 		align-content: space-between;
@@ -824,7 +839,7 @@
 	.insight-row,
 	.flow-grid {
 		display: grid;
-		gap: 4px;
+		gap: 3px;
 	}
 	.insight-row {
 		grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
@@ -838,22 +853,23 @@
 	.insight-row > span,
 	.flow-grid > span {
 		min-width: 0;
-		padding: 7px 8px 6px;
-		border-radius: 8px;
+		padding: 5px 4px 4px;
+		border-radius: 7px;
 		background: rgba(2, 6, 12, 0.38);
 		border: 1px solid rgba(100, 116, 139, 0.16);
 		color: var(--text-primary);
-		font-size: clamp(11px, 0.68vw, 12.5px);
+		font-size: clamp(10px, 0.58vw, 11px);
 		font-weight: 800;
 		font-variant-numeric: tabular-nums;
 		line-height: 1.15;
+		letter-spacing: -0.01em;
 	}
 	.insight-row b,
 	.flow-grid b {
 		display: block;
-		margin-bottom: 4px;
+		margin-bottom: 3px;
 		color: var(--text-muted);
-		font-size: 9.5px;
+		font-size: 9px;
 		font-weight: 900;
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
