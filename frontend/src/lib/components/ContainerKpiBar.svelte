@@ -138,7 +138,39 @@
 	let memLevel = $derived(severity(memNow, 75, 90));
 	let gpuLevel = $derived(severity(currentGpuUsage ?? 0, 80, 95));
 	let gpuMemLevel = $derived(severity(currentGpuMemPct ?? 0, 80, 95));
+
+	// 현재값과 기간 평균 간 편차 — "지금 평소보다 +N% 위" / "−N% 아래" 직관용.
+	// 음수면 안정·하락, 양수면 상승. 0 근처면 평균 유지.
+	let cpuDelta = $derived(cpuNow - cpuAvg);
+	let memDelta = $derived(memNow - memAvgPct);
+	let gpuDelta = $derived((currentGpuUsage ?? 0) - gpuAvg);
+	let gpuMemDelta = $derived((currentGpuMemPct ?? 0) - gpuMemAvg);
+
+	// status-line 자연어 — severity 임계 정보 + 현재 위치를 한 줄로 요약.
+	// 본문 차트의 markLine 과 의미 일치 (warn/danger 임계).
+	function pctRangeStatus(level: 'normal' | 'warn' | 'danger', warn: number, crit: number): string {
+		if (level === 'danger') return `위험 · ${crit}% 임계 초과`;
+		if (level === 'warn') return `주의 · ${warn}% 임계 진입`;
+		return `정상 범위 · 임계 ${warn}/${crit}%`;
+	}
+	let cpuStatus = $derived(pctRangeStatus(cpuLevel, 70, 90));
+	let memStatus = $derived(pctRangeStatus(memLevel, 75, 90));
+	let gpuStatus = $derived(pctRangeStatus(gpuLevel, 80, 95));
+	let gpuMemStatus = $derived(pctRangeStatus(gpuMemLevel, 80, 95));
+
 	let activeBarTooltip = $state<string | null>(null);
+
+	function formatDelta(value: number, digits = 1): string {
+		const sign = value > 0 ? '+' : value < 0 ? '−' : '±';
+		const abs = Math.abs(value);
+		return `${sign}${abs.toFixed(digits)}%`;
+	}
+	function deltaTone(value: number, warnAt = 5): 'flat' | 'up' | 'up-warn' | 'down' {
+		if (value <= -warnAt) return 'down';
+		if (value >= warnAt * 2) return 'up-warn';
+		if (value >= warnAt) return 'up';
+		return 'flat';
+	}
 
 	function showBarTooltip(key: string) {
 		activeBarTooltip = key;
@@ -184,7 +216,8 @@
 				</span>
 			{/if}
 		</div>
-		<div class="insight-row">
+		<div class="status-line" data-level={cpuLevel}>{cpuStatus}</div>
+		<div class="insight-row triple">
 			<span>
 				<b>평균</b>
 				<span>{formatPercent(cpuAvg, 1)}</span>
@@ -192,6 +225,10 @@
 			<span>
 				<b>피크</b>
 				<span>{formatPercent(cpuPeak, 1)}</span>
+			</span>
+			<span data-tone={deltaTone(cpuDelta)} title="현재값 − {rangeLabel} 평균">
+				<b>Δ 평균</b>
+				<span>{formatDelta(cpuDelta)}</span>
 			</span>
 		</div>
 	</div>
@@ -231,6 +268,7 @@
 				</span>
 			{/if}
 		</div>
+		<div class="status-line" data-level={memLevel}>{memStatus}</div>
 		<div class="insight-row triple">
 			<span title={formatMemoryUsage(memUsed, memLimit)}>
 				<b>사용</b>
@@ -281,6 +319,9 @@
 				</span>
 			{/if}
 		</div>
+		<div class="status-line" data-flow={netDeltaTotal > 0 ? 'active' : 'idle'}>
+			{netDeltaTotal > 0 ? `${rangeLabel} 트래픽 +${formatBytesValue(netDeltaTotal)}` : `${rangeLabel} 트래픽 정체`}
+		</div>
 		<div class="flow-grid">
 			<span>
 				<b>RX</b>
@@ -329,6 +370,9 @@
 				</span>
 			{/if}
 		</div>
+		<div class="status-line" data-flow={diskDeltaTotal > 0 ? 'active' : 'idle'}>
+			{diskDeltaTotal > 0 ? `${rangeLabel} I/O +${formatBytesValue(diskDeltaTotal)}` : `${rangeLabel} I/O 정체`}
+		</div>
 		<div class="flow-grid">
 			<span>
 				<b>Read</b>
@@ -375,7 +419,8 @@
 					</span>
 				{/if}
 			</div>
-			<div class="insight-row">
+			<div class="status-line" data-level={gpuLevel}>{gpuStatus}</div>
+			<div class="insight-row triple">
 				<span>
 					<b>평균</b>
 					<span>{formatPercent(gpuAvg, 1)}</span>
@@ -383,6 +428,10 @@
 				<span>
 					<b>피크</b>
 					<span>{formatPercent(gpuPeak, 1)}</span>
+				</span>
+				<span data-tone={deltaTone(gpuDelta)} title="현재값 − {rangeLabel} 평균">
+					<b>Δ 평균</b>
+					<span>{formatDelta(gpuDelta)}</span>
 				</span>
 			</div>
 		</div>
@@ -420,7 +469,8 @@
 					</span>
 				{/if}
 			</div>
-			<div class="insight-row">
+			<div class="status-line" data-level={gpuMemLevel}>{gpuMemStatus}</div>
+			<div class="insight-row triple">
 				<span>
 					<b>평균</b>
 					<span>{formatPercent(gpuMemAvg, 1)}</span>
@@ -429,30 +479,34 @@
 					<b>피크</b>
 					<span>{formatPercent(gpuMemPeak, 1)}</span>
 				</span>
+				<span data-tone={deltaTone(gpuMemDelta)} title="현재값 − {rangeLabel} 평균">
+					<b>Δ 평균</b>
+					<span>{formatDelta(gpuMemDelta)}</span>
+				</span>
 			</div>
 		</div>
 	{/if}
 </section>
 
 <style>
-	/* 4-row 서브그리드 — 6 카드 모두 같은 row 트랙(kpi-top / metric-hero / meter / insight)
-	   을 공유해 행 위치가 카드별로 같은 y에 정렬된다. align-content: space-between 으로
-	   카드 stretch 시 남는 세로 공간이 행 사이로 균등 분산. */
+	/* 5-row 서브그리드 — 6 카드 모두 같은 row 트랙(kpi-top / metric-hero / meter /
+	   status-line / insight)을 공유해 행 위치가 카드별로 같은 y에 정렬된다.
+	   align-content: space-between 으로 카드 stretch 시 남는 세로 공간이 행 사이로 균등 분산. */
 	.kpi-bar {
 		--kpi-pad: clamp(7px, 0.55vw, 10px);
 		--kpi-radius: 10px;
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(clamp(136px, 8vw, 178px), 1fr));
-		grid-template-rows: auto auto auto auto;
+		grid-template-rows: auto auto auto auto auto;
 		column-gap: clamp(5px, 0.4vw, 8px);
-		row-gap: 7px;
+		row-gap: 6px;
 		margin-top: 0;
 		align-content: space-between;
 	}
 
 	.kpi {
 		min-width: 0;
-		min-height: clamp(98px, 9vh, 118px);
+		min-height: clamp(118px, 11vh, 140px);
 		padding: var(--kpi-pad);
 		background:
 			linear-gradient(180deg, rgba(23, 30, 42, 0.98), rgba(13, 18, 27, 0.98)),
@@ -461,7 +515,7 @@
 		border-radius: var(--kpi-radius);
 		display: grid;
 		grid-template-rows: subgrid;
-		grid-row: span 4;
+		grid-row: span 5;
 		position: relative;
 		overflow: visible;
 		box-shadow:
@@ -507,7 +561,8 @@
 	.kpi-top,
 	.metric-hero,
 	.insight-row,
-	.flow-grid {
+	.flow-grid,
+	.status-line {
 		min-width: 0;
 	}
 
@@ -779,25 +834,43 @@
 	.insight-row > span,
 	.flow-grid > span {
 		min-width: 0;
-		padding: 5px 6px;
-		border-radius: 7px;
-		background: rgba(2, 6, 12, 0.32);
-		border: 1px solid rgba(100, 116, 139, 0.12);
-		color: var(--text-secondary);
-		font-size: clamp(10px, 0.6vw, 11px);
-		font-weight: 750;
+		padding: 7px 8px 6px;
+		border-radius: 8px;
+		background: rgba(2, 6, 12, 0.38);
+		border: 1px solid rgba(100, 116, 139, 0.16);
+		color: var(--text-primary);
+		font-size: clamp(11px, 0.68vw, 12.5px);
+		font-weight: 800;
 		font-variant-numeric: tabular-nums;
+		line-height: 1.15;
 	}
 	.insight-row b,
 	.flow-grid b {
 		display: block;
-		margin-bottom: 3px;
+		margin-bottom: 4px;
 		color: var(--text-muted);
 		font-size: 9.5px;
 		font-weight: 900;
-		letter-spacing: 0;
+		letter-spacing: 0.04em;
 		text-transform: uppercase;
 	}
+
+	/* Δ 평균 pill 색조 — 평균 대비 현재 위치를 운영자가 한눈에. */
+	.insight-row > span[data-tone='up'] {
+		border-color: rgba(251, 191, 36, 0.32);
+		background: rgba(251, 191, 36, 0.07);
+	}
+	.insight-row > span[data-tone='up'] > span { color: #fde68a; }
+	.insight-row > span[data-tone='up-warn'] {
+		border-color: rgba(239, 68, 68, 0.38);
+		background: rgba(239, 68, 68, 0.08);
+	}
+	.insight-row > span[data-tone='up-warn'] > span { color: #fca5a5; }
+	.insight-row > span[data-tone='down'] {
+		border-color: rgba(16, 185, 129, 0.3);
+		background: rgba(16, 185, 129, 0.06);
+	}
+	.insight-row > span[data-tone='down'] > span { color: #6ee7b7; }
 	.insight-row span span,
 	.flow-grid span span,
 	.flow-grid em {
@@ -818,4 +891,56 @@
 		letter-spacing: 0.06em;
 	}
 
+	/* status-line — meter 아래 한 줄 자연어 요약. severity 별 색조 + 좌측 dot.
+	   sparkline 대신 "지금 어떤 위치에 있는가" 텍스트로 KPI 카드 공백 채움. */
+	.status-line {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		padding: 4px 8px;
+		border-radius: 6px;
+		font-size: clamp(10px, 0.6vw, 11px);
+		font-weight: 800;
+		line-height: 1.15;
+		letter-spacing: 0.005em;
+		background: rgba(2, 6, 12, 0.34);
+		border: 1px solid rgba(100, 116, 139, 0.14);
+		color: var(--text-secondary);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.status-line::before {
+		content: '';
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: currentColor;
+		box-shadow: 0 0 6px currentColor;
+		opacity: 0.85;
+		flex: 0 0 auto;
+	}
+	.status-line[data-level='normal'] {
+		color: #6ee7b7;
+		border-color: rgba(16, 185, 129, 0.28);
+		background: rgba(16, 185, 129, 0.06);
+	}
+	.status-line[data-level='warn'] {
+		color: #fde68a;
+		border-color: rgba(251, 191, 36, 0.32);
+		background: rgba(251, 191, 36, 0.07);
+	}
+	.status-line[data-level='danger'] {
+		color: #fca5a5;
+		border-color: rgba(239, 68, 68, 0.36);
+		background: rgba(239, 68, 68, 0.08);
+	}
+	.status-line[data-flow='active'] {
+		color: #93c5fd;
+		border-color: rgba(96, 165, 250, 0.28);
+		background: rgba(96, 165, 250, 0.06);
+	}
+	.status-line[data-flow='idle'] {
+		color: rgba(148, 163, 184, 0.7);
+	}
 </style>

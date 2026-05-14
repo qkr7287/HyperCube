@@ -799,7 +799,7 @@
 	{:else if container}
 		<div class="topbar-sticky">
 			<div class="unified-bar">
-			<section class="hero">
+			<section class="hero" data-status={container.status}>
 				<div class="hero-main">
 					<div class="hero-titlebar">
 						<button
@@ -846,6 +846,20 @@
 						<span class="meta-chip sync" data-fresh={syncFreshness} title="마지막 동기화">
 							<b>동기화</b>
 							<strong>{formatRelativeTime(currentMetrics?.timestamp || container.last_seen)}</strong>
+						</span>
+					</div>
+					<div class="hero-vitals" aria-label="컨테이너 핵심 상태">
+						<span class="vital-chip" title="컨테이너 가동 시간">
+							<b>가동</b>
+							<strong>{uptimeText || '—'}</strong>
+						</span>
+						<span class="vital-chip" data-tone={runtimeRestartCount >= 3 ? 'danger' : runtimeRestartCount >= 1 ? 'warn' : 'ok'} title="누적 재시작 횟수 (inspect.restartCount)">
+							<b>재시작</b>
+							<strong>{runtimeRestartCount}회</strong>
+						</span>
+						<span class="vital-chip" data-tone={runtimeHealthTone} title="컨테이너 헬스 / 런타임 상태">
+							<b>Health</b>
+							<strong>{runtimeHealthText}</strong>
 						</span>
 					</div>
 					{#if recentRestarts >= 1 || isOomKilled || (lastExit && typeof lastExit?.exit_code === 'number' && lastExit.exit_code !== 0) || healthStatus}
@@ -1357,17 +1371,21 @@
 		min-height: clamp(160px, 15vh, 180px);
 	}
 
+	/* hero accent stripe (data-status) — 좌측 4px 컬러 바로 컨테이너 정체성 강화.
+	   기본은 accent teal, running → green, paused/restarting → amber, exited/dead → red. */
 	.hero {
+		--hero-accent: rgba(48, 213, 200, 0.7);
+		--hero-glow: rgba(48, 213, 200, 0.45);
 		display: flex;
 		flex-direction: column;
 		justify-content: space-between;
 		gap: 8px;
-		padding: 9px 12px;
+		padding: 10px 14px 10px 18px;
 		border-radius: 12px;
 		background:
 			radial-gradient(ellipse at top left, rgba(48, 213, 200, 0.10), transparent 60%),
 			rgba(18, 23, 32, 0.98);
-		border: 1px solid rgba(48, 213, 200, 0.18);
+		border: 1px solid rgba(48, 213, 200, 0.22);
 		box-shadow:
 			0 10px 32px rgba(0, 0, 0, 0.18),
 			inset 0 1px 0 rgba(255, 255, 255, 0.03);
@@ -1377,6 +1395,32 @@
 		max-width: 450px;
 		position: relative;
 		overflow: hidden;
+	}
+	.hero::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		top: 8px;
+		bottom: 8px;
+		width: 4px;
+		border-radius: 0 4px 4px 0;
+		background: var(--hero-accent);
+		box-shadow: 0 0 14px var(--hero-glow);
+	}
+	.hero[data-status='running'] {
+		--hero-accent: #34d399;
+		--hero-glow: rgba(52, 211, 153, 0.5);
+	}
+	.hero[data-status='paused'],
+	.hero[data-status='restarting'] {
+		--hero-accent: #fbbf24;
+		--hero-glow: rgba(251, 191, 36, 0.45);
+	}
+	.hero[data-status='exited'],
+	.hero[data-status='dead'],
+	.hero[data-status='oom_killed'] {
+		--hero-accent: #f87171;
+		--hero-glow: rgba(248, 113, 113, 0.5);
 	}
 
 	.hero-main {
@@ -1412,10 +1456,10 @@
 
 	h1 {
 		min-width: 0;
-		font-size: clamp(18px, 1.3vw, 22px);
-		line-height: 1.1;
+		font-size: clamp(20px, 1.45vw, 25px);
+		line-height: 1.05;
 		font-weight: 900;
-		letter-spacing: -0.01em;
+		letter-spacing: -0.015em;
 		color: var(--text-primary);
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -1523,6 +1567,73 @@
 		align-items: center;
 		min-width: 0;
 	}
+
+	/* hero vitals — 가동 / 재시작 / health 항상 표시. hero 중앙 공백 채움 +
+	   "이 컨테이너가 지금 어떤 상태인가" 한 줄 요약. tone 별로 좌측 dot 색. */
+	.hero-vitals {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 5px;
+		min-width: 0;
+	}
+	.vital-chip {
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		padding: 5px 8px 5px 10px;
+		border-radius: 8px;
+		background: rgba(2, 6, 12, 0.4);
+		border: 1px solid rgba(100, 116, 139, 0.18);
+		position: relative;
+		overflow: hidden;
+	}
+	.vital-chip::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		top: 5px;
+		bottom: 5px;
+		width: 2px;
+		border-radius: 2px;
+		background: rgba(148, 163, 184, 0.55);
+	}
+	.vital-chip b {
+		color: var(--text-muted);
+		font-size: 9.5px;
+		font-weight: 900;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		line-height: 1;
+	}
+	.vital-chip strong {
+		min-width: 0;
+		color: var(--text-primary);
+		font-size: 12.5px;
+		font-weight: 850;
+		line-height: 1.15;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-variant-numeric: tabular-nums;
+	}
+	.vital-chip[data-tone='success']::before,
+	.vital-chip[data-tone='ok']::before {
+		background: #34d399;
+		box-shadow: 0 0 6px rgba(52, 211, 153, 0.45);
+	}
+	.vital-chip[data-tone='success'] strong,
+	.vital-chip[data-tone='ok'] strong { color: #6ee7b7; }
+	.vital-chip[data-tone='warn']::before {
+		background: #fbbf24;
+		box-shadow: 0 0 6px rgba(251, 191, 36, 0.45);
+	}
+	.vital-chip[data-tone='warn'] strong { color: #fde68a; }
+	.vital-chip[data-tone='danger']::before {
+		background: #f87171;
+		box-shadow: 0 0 6px rgba(248, 113, 113, 0.5);
+	}
+	.vital-chip[data-tone='danger'] strong { color: #fca5a5; }
 
 	/* 운영 인사이트 chip — 이상 신호만 시각 강조. severity 색 한눈에. */
 	.insight-chip {
