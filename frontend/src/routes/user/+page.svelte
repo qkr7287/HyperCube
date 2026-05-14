@@ -1448,7 +1448,7 @@ KPI — 컨테이너·요청·자원 합계
 		<aside class="side-panel" aria-label="사이드 패널">
 			<section class="side-section">
 				<header class="side-head">
-					<h2>진행 중 요청<Pill kind="accent" size="md" minWidth="28px">{activeRequests.length}</Pill></h2>
+					<h2>진행 중 요청<Pill tone="var(--text-secondary)" size="md" minWidth="28px">{activeRequests.length}</Pill></h2>
 					<InfoTooltip text={activeBannerHelp} label="진행 중 도움말" placement="bottom-start" />
 				</header>
 				{#if activeRequests.length === 0}
@@ -1479,7 +1479,7 @@ KPI — 컨테이너·요청·자원 합계
 
 			<section class="side-section">
 				<header class="side-head">
-					<h2>최근 이벤트</h2>
+					<h2>최근 이벤트<Pill tone="var(--text-secondary)" size="md" minWidth="28px">{liveEvents.length}</Pill></h2>
 				</header>
 				{#if liveEvents.length === 0}
 					<div class="side-empty">최근 변화 없음</div>
