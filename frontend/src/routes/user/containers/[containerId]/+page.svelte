@@ -121,27 +121,29 @@
 	};
 
 	const RANGE_OPTIONS = [
+		{ key: '30s', label: '30초' },
 		{ key: '1m', label: '1분' },
 		{ key: '5m', label: '5분' },
 		{ key: '1h', label: '1시간' },
 		{ key: '24h', label: '24시간' },
-		{ key: '7d', label: '7일' },
 	] as const;
 
 	// range = 데이터 sample 간격(bucket). window는 그 단위에 맞게 적당한 양으로 자동.
 	const RANGE_BUCKET_MAP: Record<(typeof RANGE_OPTIONS)[number]['key'], { window: string; bucket: string }> = {
+		'30s': { window: '5m', bucket: '30s' },
 		'1m': { window: '1h', bucket: '1m' },
 		'5m': { window: '6h', bucket: '5m' },
 		'1h': { window: '24h', bucket: '1h' },
 		'24h': { window: '7d', bucket: '1d' },
-		'7d': { window: '7d', bucket: '1d' },
 	};
 
+	// 자동 새로고침 주기 — 차트 range 옵션과 같은 label set 으로 sync.
 	const REFRESH_INTERVAL_OPTIONS = [
-		{ value: 15_000, label: '15초' },
 		{ value: 30_000, label: '30초' },
 		{ value: 60_000, label: '1분' },
 		{ value: 300_000, label: '5분' },
+		{ value: 3_600_000, label: '1시간' },
+		{ value: 86_400_000, label: '24시간' },
 	] as const;
 
 	let container = $state<ContainerDetail | null>(null);
