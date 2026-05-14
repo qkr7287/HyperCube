@@ -202,6 +202,7 @@
 				name: ds.label,
 				data: ds.values,
 				smooth: 0.32,
+				smoothMonotone: 'x',
 				symbol: 'none',
 				lineStyle: { color: ds.color, width: 2 },
 				itemStyle: { color: ds.color },

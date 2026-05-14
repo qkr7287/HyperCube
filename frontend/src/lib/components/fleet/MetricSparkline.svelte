@@ -47,7 +47,10 @@
 			const p0 = points[i - 1] ?? points[i];
 			const p1 = points[i];
 			const p2 = points[i + 1];
-			const p3 = points[i + 2] ?? p2;
+			// 마지막 segment 일 때 p3 = p2 로 두면 cp2 가 안쪽으로 당겨져
+			// 우측 끝이 왼쪽을 향하는 inward curl 발생. p3 를 p2 + (p2 - p1) 로
+			// 외삽한 phantom point 로 두면 tangent 가 자연스럽게 끝점을 향함.
+			const p3 = points[i + 2] ?? { x: 2 * p2.x - p1.x, y: 2 * p2.y - p1.y };
 			const cp1x = p1.x + (p2.x - p0.x) / 6;
 			const cp1y = p1.y + (p2.y - p0.y) / 6;
 			const cp2x = p2.x - (p3.x - p1.x) / 6;
