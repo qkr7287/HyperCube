@@ -560,24 +560,41 @@
 		history.map((row) => formatHistoryTime(row.recorded_at, true)),
 	);
 
-	// 차트는 bucket max 시리즈 — 짧은 spike (예: 60s 99% GPU 부하) 도
-	// 1h bucket 안에서 max 로 살아남아 시각적으로 보이게 한다.
-	// KPI 의 "평균" 은 별도 cpu_usage(=avg) 필드 기반으로 계산.
+	// 본문 차트는 dual series:
+	//   1) main = bucket 평균 (부드러운 평균 부하 trend)
+	//   2) max = bucket 최댓값 (짧은 spike 시각화) — 옅은 색, dashed
+	// 둘 다 같은 bucket 단위라 spike 와 trend 를 동시에 비교 가능.
 	let cpuDatasets = $derived([
 		{
-			label: 'CPU 사용률 (1h bucket max)',
+			label: 'CPU 평균',
+			color: '#30d5c8',
+			values: history.map((row) => row.cpu_usage),
+			fill: true,
+			format: 'percent' as const,
+		},
+		{
+			label: 'CPU 최댓값',
 			color: '#30d5c8',
 			values: history.map((row) => row.cpu_usage_max),
-			fill: true,
+			fill: false,
+			dashed: true,
 			format: 'percent' as const,
 		},
 	]);
 	let memoryDatasets = $derived([
 		{
-			label: '메모리 사용률 (1h bucket max)',
+			label: '메모리 평균',
+			color: '#4fc3f7',
+			values: history.map((row) => row.memory_percent),
+			fill: true,
+			format: 'percent' as const,
+		},
+		{
+			label: '메모리 최댓값',
 			color: '#4fc3f7',
 			values: history.map((row) => row.memory_percent_max),
-			fill: true,
+			fill: false,
+			dashed: true,
 			format: 'percent' as const,
 		},
 	]);
@@ -668,7 +685,14 @@
 	);
 	let gpuDatasets = $derived([
 		{
-			label: 'GPU 코어 사용률 (1h bucket max)',
+			label: 'GPU 코어 평균',
+			color: '#f472b6',
+			values: history.map((row) => (typeof row.gpu_usage === 'number' ? row.gpu_usage : 0)),
+			fill: true,
+			format: 'percent' as const,
+		},
+		{
+			label: 'GPU 코어 최댓값',
 			color: '#f472b6',
 			values: history.map((row) =>
 				typeof row.gpu_usage_max === 'number'
@@ -677,7 +701,8 @@
 						? row.gpu_usage
 						: 0,
 			),
-			fill: true,
+			fill: false,
+			dashed: true,
 			format: 'percent' as const,
 		},
 	]);

@@ -12,6 +12,8 @@ export type LineSeries = {
 	values: number[];
 	fill?: boolean;
 	format?: ValueFormat;
+	/** dashed 보조 series — 같은 색 더 옅고 점선. avg/max 같은 한 쌍에 사용. */
+	dashed?: boolean;
 };
 
 /**

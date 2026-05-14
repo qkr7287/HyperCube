@@ -204,7 +204,12 @@
 				smooth: 0.32,
 				smoothMonotone: 'x',
 				symbol: 'none',
-				lineStyle: { color: ds.color, width: 2 },
+				lineStyle: {
+					color: ds.color,
+					width: ds.dashed ? 1.4 : 2,
+					type: ds.dashed ? 'dashed' : 'solid',
+					opacity: ds.dashed ? 0.7 : 1,
+				},
 				itemStyle: { color: ds.color },
 				areaStyle: ds.fill !== false ? { color: `${ds.color}1f` } : undefined,
 				emphasis: { focus: 'series' },
