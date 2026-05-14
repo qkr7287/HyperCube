@@ -30,6 +30,7 @@
 		progress_message?: string;
 		progress_percent?: number | null;
 		review_note?: string;
+		reviewer_username?: string | null;
 		created_at: string;
 	};
 
@@ -39,6 +40,7 @@
 		image: string;
 		status: string;
 		last_seen: string;
+		requested_at?: string | null;
 		agent_hostname?: string;
 		template_name?: string | null;
 		allocated_gpu_slice_ids?: (string | number)[];
@@ -165,15 +167,25 @@
 	let ctxMenu = $state<{ x: number; y: number; container: MyContainer } | null>(null);
 	let ctxBusy = $state(false);
 
-	const CONTAINER_COLS_DEFAULT = [110, 240, 200, 290, 105, 105, 105, 90, 180];
-	const HISTORY_COLS_DEFAULT = [60, 260, 100, 240, 140, 75, 170, 80];
+	// idx:  0    1    2    3       4    5    6        7    8        9
+	//       상태 이름 서버 자원(1fr) CPU  MEM  GPUMEM  최근 가동시간 액션
+	const CONTAINER_COLS_DEFAULT = [110, 240, 200, 290, 105, 105, 105, 90, 110, 220];
+	// idx:  0    1    2    3            4    5    6        7    8
+	//       유형 이름 상태 템플릿(1fr)  서버 메모 검토자  시각 액션
+	const HISTORY_COLS_DEFAULT = [60, 260, 100, 240, 140, 75, 110, 170, 220];
 	let containerCols = $state<number[]>([...CONTAINER_COLS_DEFAULT]);
 	let historyCols = $state<number[]>([...HISTORY_COLS_DEFAULT]);
+	// 자원(idx 3) 컬럼이 남는 가로 공간을 흡수 (1fr). 나머지는 px 고정.
 	let containerColsStyle = $derived(
-		`--ct-cols: ${containerCols.slice(0, -1).map((w) => w + 'px').join(' ')} minmax(${Math.max(180, containerCols[containerCols.length - 1])}px, 1fr);`,
+		`--ct-cols: ${containerCols
+			.map((w, i) => (i === 3 ? `minmax(${Math.max(260, w)}px, 1fr)` : w + 'px'))
+			.join(' ')};`,
 	);
+	// 템플릿(idx 3) 컬럼이 남는 가로 공간을 흡수 (1fr).
 	let historyColsStyle = $derived(
-		`--hist-cols: ${historyCols.slice(0, -1).map((w) => w + 'px').join(' ')} minmax(${Math.max(80, historyCols[historyCols.length - 1])}px, 1fr);`,
+		`--hist-cols: ${historyCols
+			.map((w, i) => (i === 3 ? `minmax(${Math.max(220, w)}px, 1fr)` : w + 'px'))
+			.join(' ')};`,
 	);
 	let dragState = $state<{ idx: number; startX: number; startW: number; which: 'container' | 'history' } | null>(null);
 	let dragX = $state(0);
@@ -722,6 +734,22 @@ KPI — 컨테이너·요청·자원 합계
 		return `요청 #${String(r.id).slice(0, 8)}`;
 	}
 
+	function uptimeLabel(c: MyContainer): string {
+		const since = c.requested_at;
+		if (!since) return '-';
+		const ms = Date.now() - new Date(since).getTime();
+		if (!Number.isFinite(ms) || ms < 0) return '-';
+		const sec = Math.floor(ms / 1000);
+		if (sec < 60) return `${sec}초`;
+		const min = Math.floor(sec / 60);
+		if (min < 60) return `${min}분`;
+		const hr = Math.floor(min / 60);
+		if (hr < 24) return `${hr}시간`;
+		const day = Math.floor(hr / 24);
+		const remHr = hr % 24;
+		return remHr > 0 ? `${day}일 ${remHr}시간` : `${day}일`;
+	}
+
 	function portList(c: MyContainer): string {
 		const ports = c.custom_ports;
 		if (!ports) return '';
@@ -1104,8 +1132,10 @@ KPI — 컨테이너·요청·자원 합계
 						<span class="skel-bar" style="width: 75%;"></span>
 						<span class="skel-bar" style="width: 50%;"></span>
 						<span class="skel-bar" style="width: 50%;"></span>
+						<span class="skel-bar" style="width: 50%;"></span>
 						<span class="skel-bar" style="width: 40%;"></span>
-						<span class="skel-bar" style="width: 80%;"></span>
+						<span class="skel-bar" style="width: 45%;"></span>
+						<span class="skel-bar" style="width: 70%;"></span>
 					</div>
 				{/each}
 			</div>
@@ -1166,6 +1196,9 @@ KPI — 컨테이너·요청·자원 합계
 						최근{sortField === 'last_seen' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
 						<span class="col-resize" onmousedown={(e) => startResize(e, 7, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</button>
+					<span class="th">가동 시간
+						<span class="col-resize" onmousedown={(e) => startResize(e, 8, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
+					</span>
 					<span class="th th-actions"><span>액션</span></span>
 				</div>
 				<ul class="container-list" bind:this={containerListEl}>
@@ -1262,6 +1295,7 @@ KPI — 컨테이너·요청·자원 합계
 								{/if}
 							</span>
 							<span class="row-time">{formatRelativeTime(c.last_seen)}</span>
+							<span class="row-uptime" title={c.requested_at ? formatDateTime(c.requested_at) : '-'}>{uptimeLabel(c)}</span>
 							<div class="row-actions" onclick={(e) => e.stopPropagation()} role="presentation">
 								<button class="row-btn" onclick={() => openContainer(c.container_id)} title="모니터링 대시보드 열기">
 									<svg class="row-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1336,6 +1370,7 @@ KPI — 컨테이너·요청·자원 합계
 						<span class="skel-bar" style="width: 70%;"></span>
 						<span class="skel-bar" style="width: 50%;"></span>
 						<span class="skel-bar" style="width: 35%;"></span>
+						<span class="skel-bar" style="width: 50%;"></span>
 						<span class="skel-bar" style="width: 60%;"></span>
 						<span class="skel-bar" style="width: 30%;"></span>
 					</div>
@@ -1370,9 +1405,12 @@ KPI — 컨테이너·요청·자원 합계
 					<span class="th">검토 메모
 						<span class="col-resize" onmousedown={(e) => startResize(e, 5, 'history')} ondblclick={(e) => { e.stopPropagation(); resetColumns('history'); }} aria-hidden="true"></span>
 					</span>
+					<span class="th">검토자
+						<span class="col-resize" onmousedown={(e) => startResize(e, 6, 'history')} ondblclick={(e) => { e.stopPropagation(); resetColumns('history'); }} aria-hidden="true"></span>
+					</span>
 					<button class="th sortable" class:active={historySortField === 'created_at'} onclick={() => setHistorySort('created_at')}>
 						요청 시각{historySortField === 'created_at' ? (historySortDir === 'asc' ? ' ↑' : ' ↓') : ''}
-						<span class="col-resize" onmousedown={(e) => startResize(e, 6, 'history')} ondblclick={(e) => { e.stopPropagation(); resetColumns('history'); }} aria-hidden="true"></span>
+						<span class="col-resize" onmousedown={(e) => startResize(e, 7, 'history')} ondblclick={(e) => { e.stopPropagation(); resetColumns('history'); }} aria-hidden="true"></span>
 					</button>
 					<span class="th th-actions"><span>액션</span></span>
 				</div>
@@ -1401,6 +1439,7 @@ KPI — 컨테이너·요청·자원 합계
 									<span class="memo-dash" aria-hidden="true">—</span>
 								{/if}
 							</span>
+							<span class="h-cell h-reviewer" title={r.reviewer_username ?? ''}>{r.reviewer_username || '—'}</span>
 							<time class="h-time" title={formatDateTime(r.created_at)}>
 								<span>{formatDateTime(r.created_at)}</span>
 								<span class="h-time-rel">{formatRelativeTime(r.created_at)}</span>
@@ -2420,7 +2459,7 @@ KPI — 컨테이너·요청·자원 합계
 	.container-head,
 	.container-row {
 		display: grid;
-		grid-template-columns: var(--ct-cols, 110px 240px 200px 290px 105px 105px 105px 90px 180px);
+		grid-template-columns: var(--ct-cols, 110px 240px 200px minmax(290px, 1fr) 105px 105px 105px 90px 110px 220px);
 		gap: 10px;
 		align-items: center;
 	}
@@ -2597,6 +2636,13 @@ KPI — 컨테이너·요청·자원 합계
 	}
 
 	.row-time {
+		font-size: 13px;
+		color: var(--text-secondary);
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+
+	.row-uptime {
 		font-size: 13px;
 		color: var(--text-secondary);
 		font-variant-numeric: tabular-nums;
@@ -2796,7 +2842,7 @@ KPI — 컨테이너·요청·자원 합계
 	.history-head,
 	.history-row {
 		display: grid;
-		grid-template-columns: var(--hist-cols, 60px 260px 100px 240px 140px 75px 170px 80px);
+		grid-template-columns: var(--hist-cols, 60px 260px 100px minmax(220px, 1fr) 140px 75px 110px 170px 220px);
 		gap: 10px;
 		align-items: center;
 	}
