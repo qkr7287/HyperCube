@@ -168,8 +168,12 @@
 	const HISTORY_COLS_DEFAULT = [60, 260, 100, 240, 140, 75, 170, 80];
 	let containerCols = $state<number[]>([...CONTAINER_COLS_DEFAULT]);
 	let historyCols = $state<number[]>([...HISTORY_COLS_DEFAULT]);
-	let containerColsStyle = $derived(`--ct-cols: ${containerCols.map((w) => w + 'px').join(' ')};`);
-	let historyColsStyle = $derived(`--hist-cols: ${historyCols.map((w) => w + 'px').join(' ')};`);
+	let containerColsStyle = $derived(
+		`--ct-cols: ${containerCols.slice(0, -1).map((w) => w + 'px').join(' ')} minmax(${Math.max(180, containerCols[containerCols.length - 1])}px, 1fr);`,
+	);
+	let historyColsStyle = $derived(
+		`--hist-cols: ${historyCols.slice(0, -1).map((w) => w + 'px').join(' ')} minmax(${Math.max(80, historyCols[historyCols.length - 1])}px, 1fr);`,
+	);
 	let dragState = $state<{ idx: number; startX: number; startW: number; which: 'container' | 'history' } | null>(null);
 	let dragX = $state(0);
 
@@ -1148,7 +1152,7 @@ KPI — 컨테이너·요청·자원 합계
 						최근{sortField === 'last_seen' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
 						<span class="col-resize" onmousedown={(e) => startResize(e, 6, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</button>
-					<span class="th"></span>
+					<span class="th th-actions">액션</span>
 				</div>
 				<ul class="container-list" bind:this={containerListEl}>
 					{#each filteredContainers as c (c.container_id + ':' + (recentlyChanged[c.container_id] ?? 0))}
@@ -1224,25 +1228,41 @@ KPI — 컨테이너·요청·자원 합계
 							</span>
 							<span class="row-time">{formatRelativeTime(c.last_seen)}</span>
 							<div class="row-actions" onclick={(e) => e.stopPropagation()} role="presentation">
-								<button class="row-action ghost" onclick={() => openContainer(c.container_id)} title="모니터링 대시보드 열기">모니터링</button>
+								<button class="row-btn" onclick={() => openContainer(c.container_id)} title="모니터링 대시보드 열기">
+									<svg class="row-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+										<path d="M3 3v18h18" />
+										<path d="M7 15v3" />
+										<path d="M12 10v8" />
+										<path d="M17 5v13" />
+									</svg>
+									<span>모니터링</span>
+								</button>
 								{#if c.workspace_enabled && c.workspace_host_port}
 									<button
-										class="row-action primary"
+										class="row-btn row-btn-primary"
 										onclick={(e) => openWorkspace(c, e)}
 										disabled={openingId === c.container_id}
 										title="Jupyter 워크스페이스 열기"
 									>
-										{openingId === c.container_id ? '여는 중…' : 'Jupyter'}
+										<svg class="row-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+											<ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(45 12 12)" />
+											<circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
+										</svg>
+										<span>{openingId === c.container_id ? '여는 중…' : 'Jupyter'}</span>
 									</button>
-								{:else}
-									<span class="row-action-placeholder" aria-hidden="true"></span>
 								{/if}
 								<button
-									class="row-action-more"
+									class="row-btn row-btn-icon row-btn-more"
 									onclick={(e) => onRowMoreClick(e, c)}
 									title="더 보기 (우클릭과 동일)"
 									aria-label="더 많은 액션"
-								>⋯</button>
+								>
+									<svg class="row-btn-ico" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
+										<circle cx="5" cy="12" r="1.6" />
+										<circle cx="12" cy="12" r="1.6" />
+										<circle cx="19" cy="12" r="1.6" />
+									</svg>
+								</button>
 							</div>
 						</li>
 					{/each}
@@ -1321,7 +1341,7 @@ KPI — 컨테이너·요청·자원 합계
 						요청 시각{historySortField === 'created_at' ? (historySortDir === 'asc' ? ' ↑' : ' ↓') : ''}
 						<span class="col-resize" onmousedown={(e) => startResize(e, 6, 'history')} ondblclick={(e) => { e.stopPropagation(); resetColumns('history'); }} aria-hidden="true"></span>
 					</button>
-					<span class="th"></span>
+					<span class="th th-actions">액션</span>
 				</div>
 				<ul class="history-list" bind:this={historyListEl}>
 					{#each filteredHistory as r (r.id)}
@@ -1354,10 +1374,21 @@ KPI — 컨테이너·요청·자원 합계
 							</time>
 							<div class="h-actions">
 								{#if r.status === 'deployed' && r.target_container}
-									<button class="link-btn" onclick={() => openContainer(r.target_container!)}>열기 →</button>
+									<button class="row-btn" onclick={() => openContainer(r.target_container!)} title="컨테이너 모니터링 열기">
+										<svg class="row-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+											<path d="M7 17L17 7" />
+											<path d="M9 7h8v8" />
+										</svg>
+										<span>열기</span>
+									</button>
 								{/if}
 								{#if r.action === 'create' && r.template}
-									<button class="row-action-more h-redo" onclick={() => reRequest(r)} title="이 요청과 같은 설정으로 새 요청 만들기" aria-label="다시 요청">↻</button>
+									<button class="row-btn row-btn-icon h-redo" onclick={() => reRequest(r)} title="이 요청과 같은 설정으로 새 요청 만들기" aria-label="다시 요청">
+										<svg class="row-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+											<path d="M21 12a9 9 0 1 1-3-6.7" />
+											<path d="M21 4v5h-5" />
+										</svg>
+									</button>
 								{/if}
 							</div>
 						</li>
@@ -2582,79 +2613,98 @@ KPI — 컨테이너·요청·자원 합계
 	}
 
 	.row-actions {
-		display: grid !important;
-		grid-template-columns: 1fr 1fr 22px;
+		display: inline-flex !important;
+		flex-wrap: nowrap;
 		gap: 6px;
 		width: 100%;
+		justify-content: flex-end;
 		align-items: center !important;
 	}
 
-	.row-action-more {
-		width: 22px;
-		height: 26px;
-		padding: 0;
-		font-size: 16px;
-		font-weight: 800;
-		line-height: 1;
-		background: transparent;
-		border: 1px solid transparent;
-		border-radius: 5px;
-		color: var(--text-muted);
-		cursor: pointer;
-		opacity: 0;
-		transition: opacity 0.12s, background 0.12s, color 0.12s, border-color 0.12s;
+	.h-actions {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		justify-content: flex-end;
+		width: 100%;
 	}
 
-	.container-row:hover .row-action-more,
-	.row-action-more:focus-visible {
+	.row-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		height: 28px;
+		padding: 0 11px;
+		font-size: 12px;
+		font-weight: 750;
+		line-height: 1;
+		white-space: nowrap;
+		background: rgba(13, 17, 23, 0.5);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text-secondary);
+		cursor: pointer;
+		transition: background 0.12s, color 0.12s, border-color 0.12s;
+	}
+
+	.row-btn:hover {
+		color: var(--accent);
+		background: rgba(77, 191, 179, 0.08);
+		border-color: rgba(77, 191, 179, 0.42);
+	}
+
+	.row-btn:disabled {
+		opacity: 0.55;
+		cursor: not-allowed;
+	}
+
+	.row-btn-primary {
+		color: var(--accent);
+		background: rgba(77, 191, 179, 0.10);
+		border-color: rgba(77, 191, 179, 0.42);
+	}
+
+	.row-btn-primary:hover {
+		background: rgba(77, 191, 179, 0.18);
+		border-color: rgba(77, 191, 179, 0.6);
+	}
+
+	.row-btn-icon {
+		padding: 0;
+		width: 28px;
+	}
+
+	.row-btn-ico {
+		width: 13px;
+		height: 13px;
+		flex-shrink: 0;
+	}
+
+	.row-btn-more {
+		opacity: 0;
+		transition: opacity 0.12s, background 0.12s, color 0.12s, border-color 0.12s;
+		color: var(--text-muted);
+		background: transparent;
+		border-color: transparent;
+	}
+
+	.container-row:hover .row-btn-more,
+	.row-btn-more:focus-visible {
 		opacity: 1;
 	}
 
-	.row-action-more:hover {
-		background: rgba(77, 191, 179, 0.12);
-		border-color: rgba(77, 191, 179, 0.32);
-		color: var(--accent);
+	.h-redo {
+		opacity: 0;
+		transition: opacity 0.12s, background 0.12s, color 0.12s, border-color 0.12s;
+		color: var(--text-muted);
+		background: transparent;
+		border-color: transparent;
 	}
 
-	.row-action {
-		width: 100%;
-		padding: 6px 10px;
-		font-size: 12px;
-		font-weight: 800;
-		border-radius: 6px;
-		cursor: pointer;
-		border: 1px solid transparent;
-		white-space: nowrap;
-	}
-
-	.row-action-placeholder {
-		display: block;
-		width: 100%;
-	}
-
-	.row-action.ghost {
-		background: rgba(13, 17, 23, 0.5);
-		border-color: var(--border);
-		color: var(--text-primary);
-	}
-
-	.row-action.ghost:hover {
-		border-color: rgba(77, 191, 179, 0.4);
-		color: var(--accent);
-	}
-
-	.row-action.primary {
-		background: var(--accent);
-		color: var(--accent-dark);
-	}
-
-	.row-action.primary:hover {
-		filter: brightness(1.06);
-	}
-
-	.row-action:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
+	.history-row:hover .h-redo,
+	.h-redo:focus-visible {
+		opacity: 1;
 	}
 
 	/* filter-chips / kpi-pill 은 Pill 컴포넌트 size=md 와 동일한 외형 (height 30, radius 6) */
@@ -2676,20 +2726,6 @@ KPI — 컨테이너·요청·자원 합계
 		flex-shrink: 0;
 		box-sizing: border-box;
 		letter-spacing: 0.01em;
-	}
-
-	.link-btn {
-		background: transparent;
-		border: none;
-		color: var(--accent);
-		font-size: 12.5px;
-		font-weight: 800;
-		cursor: pointer;
-		padding: 2px 4px;
-	}
-
-	.link-btn:hover {
-		filter: brightness(1.18);
 	}
 
 	.history-table {
@@ -2849,44 +2885,6 @@ KPI — 컨테이너·요청·자원 합계
 	.h-time-rel {
 		font-size: 11.5px;
 		color: var(--text-muted);
-	}
-
-	.h-actions {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		justify-content: flex-end;
-		width: 100%;
-	}
-
-	.h-redo {
-		opacity: 0;
-		width: 26px;
-		height: 26px;
-		padding: 0;
-		font-size: 14px;
-		font-weight: 800;
-		line-height: 1;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		background: transparent;
-		border: 1px solid transparent;
-		border-radius: 5px;
-		color: var(--text-muted);
-		cursor: pointer;
-		transition: opacity 0.12s, background 0.12s, color 0.12s, border-color 0.12s;
-	}
-
-	.history-row:hover .h-redo,
-	.h-redo:focus-visible {
-		opacity: 1;
-	}
-
-	.h-redo:hover {
-		background: rgba(77, 191, 179, 0.12);
-		border-color: rgba(77, 191, 179, 0.32);
-		color: var(--accent);
 	}
 
 	.history-loadmore {
@@ -3202,11 +3200,7 @@ KPI — 컨테이너·요청·자원 합계
 		.row-resources,
 		.row-actions {
 			grid-column: 1 / -1;
-		}
-
-		.row-actions {
-			grid-template-columns: 1fr 1fr;
-			gap: 6px;
+			justify-content: flex-start !important;
 			padding-top: 4px;
 		}
 
