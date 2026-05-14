@@ -103,14 +103,17 @@
 	type MetricsHistoryRow = {
 		recorded_at: string;
 		cpu_usage: number;
+		cpu_usage_max: number;
 		memory_usage: number;
 		memory_limit: number;
 		memory_percent: number;
+		memory_percent_max: number;
 		network_rx: number;
 		network_tx: number;
 		disk_read: number;
 		disk_write: number;
 		gpu_usage: number | null;
+		gpu_usage_max: number | null;
 		gpu_memory_used?: number | null;
 		gpu_memory_total?: number | null;
 	};
@@ -376,14 +379,17 @@
 		history = rows.map((r) => ({
 			recorded_at: r.bucket_start,
 			cpu_usage: Number(r.cpu_usage_pct_avg ?? r.cpu_avg ?? 0),
+			cpu_usage_max: Number(r.cpu_max ?? r.cpu_avg ?? 0),
 			memory_usage: Number(r.memory_avg ?? 0),
 			memory_limit: 0,
 			memory_percent: Number(r.memory_percent_avg ?? 0),
+			memory_percent_max: Number(r.memory_percent_max ?? r.memory_percent_avg ?? 0),
 			network_rx: Number(r.network_rx_max ?? 0),
 			network_tx: Number(r.network_tx_max ?? 0),
 			disk_read: Number(r.disk_read_max ?? 0),
 			disk_write: Number(r.disk_write_max ?? 0),
 			gpu_usage: r.gpu_usage_avg !== undefined && r.gpu_usage_avg !== null ? Number(r.gpu_usage_avg) : null,
+			gpu_usage_max: r.gpu_usage_max !== undefined && r.gpu_usage_max !== null ? Number(r.gpu_usage_max) : null,
 			gpu_memory_used: r.gpu_memory_used_max !== undefined && r.gpu_memory_used_max !== null ? Number(r.gpu_memory_used_max) : null,
 			gpu_memory_total: r.gpu_memory_total_max !== undefined && r.gpu_memory_total_max !== null ? Number(r.gpu_memory_total_max) : null,
 		}));
@@ -512,9 +518,9 @@
 	}
 
 	let cpuAvg = $derived(avgOf(history.map((r) => r.cpu_usage)));
-	let cpuPeak = $derived(peakOf(history.map((r) => r.cpu_usage)));
+	let cpuPeak = $derived(peakOf(history.map((r) => r.cpu_usage_max)));
 	let memAvgPct = $derived(avgOf(history.map((r) => r.memory_percent)));
-	let memPeakPct = $derived(peakOf(history.map((r) => r.memory_percent)));
+	let memPeakPct = $derived(peakOf(history.map((r) => r.memory_percent_max)));
 	let netRxDelta = $derived(deltaOf(history.map((r) => r.network_rx)));
 	let netTxDelta = $derived(deltaOf(history.map((r) => r.network_tx)));
 	let diskReadDelta = $derived(deltaOf(history.map((r) => r.disk_read)));
@@ -524,8 +530,13 @@
 			.filter((r) => typeof r.gpu_usage === 'number')
 			.map((r) => r.gpu_usage as number),
 	);
+	let gpuMaxValid = $derived(
+		history
+			.filter((r) => typeof r.gpu_usage_max === 'number')
+			.map((r) => r.gpu_usage_max as number),
+	);
 	let gpuAvg = $derived(avgOf(gpuValid));
-	let gpuPeak = $derived(peakOf(gpuValid));
+	let gpuPeak = $derived(peakOf(gpuMaxValid.length > 0 ? gpuMaxValid : gpuValid));
 	let gpuMemPctSeries = $derived(
 		history.map((r) => {
 			const u = Number((r as any).gpu_memory_used ?? 0);
@@ -549,20 +560,23 @@
 		history.map((row) => formatHistoryTime(row.recorded_at, true)),
 	);
 
+	// 차트는 bucket max 시리즈 — 짧은 spike (예: 60s 99% GPU 부하) 도
+	// 1h bucket 안에서 max 로 살아남아 시각적으로 보이게 한다.
+	// KPI 의 "평균" 은 별도 cpu_usage(=avg) 필드 기반으로 계산.
 	let cpuDatasets = $derived([
 		{
-			label: 'CPU 사용률',
+			label: 'CPU 사용률 (1h bucket max)',
 			color: '#30d5c8',
-			values: history.map((row) => row.cpu_usage),
+			values: history.map((row) => row.cpu_usage_max),
 			fill: true,
 			format: 'percent' as const,
 		},
 	]);
 	let memoryDatasets = $derived([
 		{
-			label: '메모리 사용률',
+			label: '메모리 사용률 (1h bucket max)',
 			color: '#4fc3f7',
-			values: history.map((row) => row.memory_percent),
+			values: history.map((row) => row.memory_percent_max),
 			fill: true,
 			format: 'percent' as const,
 		},
@@ -654,9 +668,15 @@
 	);
 	let gpuDatasets = $derived([
 		{
-			label: 'GPU 코어 사용률',
+			label: 'GPU 코어 사용률 (1h bucket max)',
 			color: '#f472b6',
-			values: history.map((row) => (typeof row.gpu_usage === 'number' ? row.gpu_usage : 0)),
+			values: history.map((row) =>
+				typeof row.gpu_usage_max === 'number'
+					? row.gpu_usage_max
+					: typeof row.gpu_usage === 'number'
+						? row.gpu_usage
+						: 0,
+			),
 			fill: true,
 			format: 'percent' as const,
 		},

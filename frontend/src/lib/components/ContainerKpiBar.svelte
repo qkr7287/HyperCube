@@ -27,12 +27,15 @@
 
 	type MetricsHistoryRow = {
 		cpu_usage: number;
+		cpu_usage_max?: number;
 		memory_percent: number;
+		memory_percent_max?: number;
 		network_rx: number;
 		network_tx: number;
 		disk_read: number;
 		disk_write: number;
 		gpu_usage: number | null;
+		gpu_usage_max?: number | null;
 		gpu_memory_used?: number | null;
 		gpu_memory_total?: number | null;
 	};
@@ -113,11 +116,13 @@
 		return '정상';
 	}
 
-	let cpuTrend = $derived(history.map((r) => r.cpu_usage));
-	let memTrend = $derived(history.map((r) => r.memory_percent));
+	// trend sparkline 은 bucket max 시리즈 — 짧은 spike 도 시각적으로 잡힘.
+	// (KPI 큰 % / 평균 값은 별도 props 로 부모가 정확한 계산 결과를 넘긴다)
+	let cpuTrend = $derived(history.map((r) => r.cpu_usage_max ?? r.cpu_usage));
+	let memTrend = $derived(history.map((r) => r.memory_percent_max ?? r.memory_percent));
 	let netTrend = $derived(history.map((r) => (r.network_rx ?? 0) + (r.network_tx ?? 0)));
 	let diskTrend = $derived(history.map((r) => (r.disk_read ?? 0) + (r.disk_write ?? 0)));
-	let gpuTrend = $derived(history.map((r) => r.gpu_usage ?? 0));
+	let gpuTrend = $derived(history.map((r) => r.gpu_usage_max ?? r.gpu_usage ?? 0));
 	let gpuMemTrend = $derived(
 		history.map((r) => {
 			const u = Number(r.gpu_memory_used ?? 0);
