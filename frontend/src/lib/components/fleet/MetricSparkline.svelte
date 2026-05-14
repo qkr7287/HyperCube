@@ -81,7 +81,6 @@
 			? `${linePath} L ${pts[pts.length - 1].x.toFixed(2)} ${height} L ${pts[0].x.toFixed(2)} ${height} Z`
 			: ''
 	);
-	let tip = $derived(pts.length ? pts[pts.length - 1] : null);
 </script>
 
 <div class="spark-wrap">
@@ -118,10 +117,6 @@
 				filter="url(#{glowId})"
 				vector-effect="non-scaling-stroke"
 			/>
-			{#if tip}
-				<circle cx={tip.x} cy={tip.y} r="1.6" fill={color} class="tip" />
-				<circle cx={tip.x} cy={tip.y} r="3" fill={color} fill-opacity="0.18" class="tip-halo" />
-			{/if}
 		{:else}
 			<text x={width / 2} y={height / 2 + 3} text-anchor="middle">No data</text>
 		{/if}
@@ -162,12 +157,6 @@
 	path.dim {
 		opacity: 0.32;
 	}
-	.tip {
-		filter: drop-shadow(0 0 2px currentColor);
-	}
-	.tip-halo {
-		animation: spark-pulse 2.4s ease-in-out infinite;
-	}
 	text {
 		fill: var(--text-muted);
 		font-size: 8px;
@@ -188,15 +177,6 @@
 	@keyframes spark-spin {
 		to {
 			transform: rotate(360deg);
-		}
-	}
-	@keyframes spark-pulse {
-		0%,
-		100% {
-			opacity: 0.18;
-		}
-		50% {
-			opacity: 0.42;
 		}
 	}
 </style>
