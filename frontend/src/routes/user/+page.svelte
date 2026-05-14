@@ -152,6 +152,7 @@
 	let liveEvents = $state<AgentStatusEvent[]>([]);
 	let cpuHistory = $state<Record<string, number[]>>({});
 	let memHistory = $state<Record<string, number[]>>({});
+	let gpuMemHistory = $state<Record<string, number[]>>({});
 	let metricsFetched = false;
 	let recentlyChanged = $state<Record<string, number>>({});
 	let focusedContainerId = $state('');
@@ -164,7 +165,7 @@
 	let ctxMenu = $state<{ x: number; y: number; container: MyContainer } | null>(null);
 	let ctxBusy = $state(false);
 
-	const CONTAINER_COLS_DEFAULT = [110, 240, 200, 290, 105, 105, 90, 180];
+	const CONTAINER_COLS_DEFAULT = [110, 240, 200, 290, 105, 105, 105, 90, 180];
 	const HISTORY_COLS_DEFAULT = [60, 260, 100, 240, 140, 75, 170, 80];
 	let containerCols = $state<number[]>([...CONTAINER_COLS_DEFAULT]);
 	let historyCols = $state<number[]>([...HISTORY_COLS_DEFAULT]);
@@ -496,11 +497,21 @@
 					const memSeries = arr
 						.map((p) => Number(p.memory_percent ?? p.mem_percent ?? 0))
 						.filter((n) => Number.isFinite(n));
+					const gpuMemSeries = arr
+						.map((p) => {
+							const used = Number(p.gpu_memory_used ?? 0);
+							const total = Number(p.gpu_memory_total ?? 0);
+							return total > 0 ? (used / total) * 100 : 0;
+						})
+						.filter((n) => Number.isFinite(n));
 					if (cpuSeries.length > 0) {
 						cpuHistory = { ...cpuHistory, [c.container_id]: cpuSeries };
 					}
 					if (memSeries.length > 0) {
 						memHistory = { ...memHistory, [c.container_id]: memSeries };
+					}
+					if (gpuMemSeries.length > 0) {
+						gpuMemHistory = { ...gpuMemHistory, [c.container_id]: gpuMemSeries };
 					}
 				} catch {
 					/* ignore per-container failure */
@@ -1148,11 +1159,14 @@ KPI — 컨테이너·요청·자원 합계
 						MEM (1h){sortField === 'mem' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
 						<span class="col-resize" onmousedown={(e) => startResize(e, 5, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</button>
+					<span class="th">GPU MEM
+						<span class="col-resize" onmousedown={(e) => startResize(e, 6, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
+					</span>
 					<button class="th sortable" class:active={sortField === 'last_seen'} onclick={() => setSort('last_seen')}>
 						최근{sortField === 'last_seen' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
-						<span class="col-resize" onmousedown={(e) => startResize(e, 6, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
+						<span class="col-resize" onmousedown={(e) => startResize(e, 7, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</button>
-					<span class="th th-actions">액션</span>
+					<span class="th th-actions"><span>액션</span></span>
 				</div>
 				<ul class="container-list" bind:this={containerListEl}>
 					{#each filteredContainers as c (c.container_id + ':' + (recentlyChanged[c.container_id] ?? 0))}
@@ -1226,6 +1240,27 @@ KPI — 컨테이너·요청·자원 합계
 									<span class="spark-pending">—</span>
 								{/if}
 							</span>
+							<span class="row-spark">
+								{#if (c.allocated_gpu_slice_ids?.length ?? 0) === 0}
+									<span class="spark-pending" title="GPU 슬라이스 미할당">—</span>
+								{:else if gpuMemHistory[c.container_id]}
+									{@const series = gpuMemHistory[c.container_id]}
+									{@const sMax = Math.max(...series)}
+									{#if series.length >= 2 && sMax >= 0.5}
+										{@const sp = sparklinePoints(series, 60, 16)}
+										<svg viewBox="0 0 60 16" preserveAspectRatio="none" class="spark-svg">
+											<line x1="0" y1="15" x2="60" y2="15" stroke="rgba(100,116,139,0.32)" stroke-width="0.6" stroke-dasharray="2 2" />
+											<path d={sp.area} fill="rgba(160,135,217,0.18)" stroke="none" />
+											<path d={sp.line} fill="none" stroke="#a087d9" stroke-width="1.4" />
+										</svg>
+									{:else}
+										<span class="spark-flat gpu" aria-hidden="true"></span>
+									{/if}
+									<span class="spark-num gpu">{(series[series.length - 1] ?? 0).toFixed(0)}%</span>
+								{:else}
+									<span class="spark-pending">…</span>
+								{/if}
+							</span>
 							<span class="row-time">{formatRelativeTime(c.last_seen)}</span>
 							<div class="row-actions" onclick={(e) => e.stopPropagation()} role="presentation">
 								<button class="row-btn" onclick={() => openContainer(c.container_id)} title="모니터링 대시보드 열기">
@@ -1237,20 +1272,19 @@ KPI — 컨테이너·요청·자원 합계
 									</svg>
 									<span>모니터링</span>
 								</button>
-								{#if c.workspace_enabled && c.workspace_host_port}
-									<button
-										class="row-btn row-btn-primary"
-										onclick={(e) => openWorkspace(c, e)}
-										disabled={openingId === c.container_id}
-										title="Jupyter 워크스페이스 열기"
-									>
-										<svg class="row-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-											<ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(45 12 12)" />
-											<circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
-										</svg>
-										<span>{openingId === c.container_id ? '여는 중…' : 'Jupyter'}</span>
-									</button>
-								{/if}
+								<button
+									class="row-btn"
+									class:row-btn-primary={!!(c.workspace_enabled && c.workspace_host_port)}
+									onclick={(e) => (c.workspace_enabled && c.workspace_host_port) && openWorkspace(c, e)}
+									disabled={!(c.workspace_enabled && c.workspace_host_port) || openingId === c.container_id}
+									title={(c.workspace_enabled && c.workspace_host_port) ? 'Jupyter 워크스페이스 열기' : '이 컨테이너는 Jupyter 워크스페이스가 활성화되지 않았습니다'}
+								>
+									<svg class="row-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+										<ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(45 12 12)" />
+										<circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
+									</svg>
+									<span>{openingId === c.container_id ? '여는 중…' : 'Jupyter'}</span>
+								</button>
 								<button
 									class="row-btn row-btn-icon row-btn-more"
 									onclick={(e) => onRowMoreClick(e, c)}
@@ -1341,7 +1375,7 @@ KPI — 컨테이너·요청·자원 합계
 						요청 시각{historySortField === 'created_at' ? (historySortDir === 'asc' ? ' ↑' : ' ↓') : ''}
 						<span class="col-resize" onmousedown={(e) => startResize(e, 6, 'history')} ondblclick={(e) => { e.stopPropagation(); resetColumns('history'); }} aria-hidden="true"></span>
 					</button>
-					<span class="th th-actions">액션</span>
+					<span class="th th-actions"><span>액션</span></span>
 				</div>
 				<ul class="history-list" bind:this={historyListEl}>
 					{#each filteredHistory as r (r.id)}
@@ -2387,7 +2421,7 @@ KPI — 컨테이너·요청·자원 합계
 	.container-head,
 	.container-row {
 		display: grid;
-		grid-template-columns: var(--ct-cols, 110px 240px 200px 290px 105px 105px 90px 180px);
+		grid-template-columns: var(--ct-cols, 110px 240px 200px 290px 105px 105px 105px 90px 180px);
 		gap: 10px;
 		align-items: center;
 	}
@@ -2596,6 +2630,14 @@ KPI — 컨테이너·요청·자원 합계
 		border-bottom-color: rgba(165, 180, 252, 0.32);
 	}
 
+	.spark-flat.gpu {
+		border-bottom-color: rgba(160, 135, 217, 0.32);
+	}
+
+	.spark-num.gpu {
+		color: #a087d9;
+	}
+
 	.spark-num {
 		font-size: 12.5px;
 		font-weight: 800;
@@ -2619,6 +2661,10 @@ KPI — 컨테이너·요청·자원 합계
 		width: 100%;
 		justify-content: flex-end;
 		align-items: center !important;
+	}
+
+	.th-actions {
+		justify-content: flex-end;
 	}
 
 	.h-actions {
