@@ -115,7 +115,9 @@
 		gpu_usage: number | null;
 		gpu_usage_max: number | null;
 		gpu_memory_used?: number | null;
+		gpu_memory_used_max?: number | null;
 		gpu_memory_total?: number | null;
+		gpu_memory_total_max?: number | null;
 	};
 
 	const RANGE_OPTIONS = [
@@ -390,8 +392,10 @@
 			disk_write: Number(r.disk_write_max ?? 0),
 			gpu_usage: r.gpu_usage_avg !== undefined && r.gpu_usage_avg !== null ? Number(r.gpu_usage_avg) : null,
 			gpu_usage_max: r.gpu_usage_max !== undefined && r.gpu_usage_max !== null ? Number(r.gpu_usage_max) : null,
-			gpu_memory_used: r.gpu_memory_used_max !== undefined && r.gpu_memory_used_max !== null ? Number(r.gpu_memory_used_max) : null,
-			gpu_memory_total: r.gpu_memory_total_max !== undefined && r.gpu_memory_total_max !== null ? Number(r.gpu_memory_total_max) : null,
+			gpu_memory_used: r.gpu_memory_used_avg !== undefined && r.gpu_memory_used_avg !== null ? Number(r.gpu_memory_used_avg) : (r.gpu_memory_used_max !== undefined && r.gpu_memory_used_max !== null ? Number(r.gpu_memory_used_max) : null),
+			gpu_memory_used_max: r.gpu_memory_used_max !== undefined && r.gpu_memory_used_max !== null ? Number(r.gpu_memory_used_max) : null,
+			gpu_memory_total: r.gpu_memory_total_avg !== undefined && r.gpu_memory_total_avg !== null ? Number(r.gpu_memory_total_avg) : (r.gpu_memory_total_max !== undefined && r.gpu_memory_total_max !== null ? Number(r.gpu_memory_total_max) : null),
+			gpu_memory_total_max: r.gpu_memory_total_max !== undefined && r.gpu_memory_total_max !== null ? Number(r.gpu_memory_total_max) : null,
 		}));
 	}
 
@@ -539,14 +543,22 @@
 	let gpuPeak = $derived(peakOf(gpuMaxValid.length > 0 ? gpuMaxValid : gpuValid));
 	let gpuMemPctSeries = $derived(
 		history.map((r) => {
-			const u = Number((r as any).gpu_memory_used ?? 0);
-			const t = Number((r as any).gpu_memory_total ?? 0);
+			const u = Number(r.gpu_memory_used ?? 0);
+			const t = Number(r.gpu_memory_total ?? 0);
+			return t > 0 ? (u / t) * 100 : 0;
+		}),
+	);
+	let gpuMemPctMaxSeries = $derived(
+		history.map((r) => {
+			const u = Number(r.gpu_memory_used_max ?? r.gpu_memory_used ?? 0);
+			const t = Number(r.gpu_memory_total_max ?? r.gpu_memory_total ?? 0);
 			return t > 0 ? (u / t) * 100 : 0;
 		}),
 	);
 	let gpuMemValid = $derived(gpuMemPctSeries.filter((v) => v > 0));
+	let gpuMemMaxValid = $derived(gpuMemPctMaxSeries.filter((v) => v > 0));
 	let gpuMemAvg = $derived(avgOf(gpuMemValid));
-	let gpuMemPeak = $derived(peakOf(gpuMemValid));
+	let gpuMemPeak = $derived(peakOf(gpuMemMaxValid.length > 0 ? gpuMemMaxValid : gpuMemValid));
 	let currentGpuMemPct = $derived.by(() => {
 		const last = gpuMemPctSeries.length ? gpuMemPctSeries[gpuMemPctSeries.length - 1] : 0;
 		return last > 0 ? last : null;
@@ -708,10 +720,18 @@
 	]);
 	let gpuMemDatasets = $derived([
 		{
-			label: 'GPU 메모리 (VRAM)',
+			label: 'GPU 메모리 평균',
 			color: '#a087d9',
 			values: gpuMemPctSeries,
 			fill: true,
+			format: 'percent' as const,
+		},
+		{
+			label: 'GPU 메모리 최댓값',
+			color: '#a087d9',
+			values: gpuMemPctMaxSeries,
+			fill: false,
+			dashed: true,
 			format: 'percent' as const,
 		},
 	]);

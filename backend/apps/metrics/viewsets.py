@@ -362,7 +362,9 @@ class StackMetricsViewSet(GenericViewSet):
             annotations.update(
                 gpu_usage_avg=Avg("gpu_usage"),
                 gpu_usage_max=Max("gpu_usage"),
+                gpu_memory_used_avg=Avg("gpu_memory_used"),
                 gpu_memory_used_max=Max("gpu_memory_used"),
+                gpu_memory_total_avg=Avg("gpu_memory_total"),
                 gpu_memory_total_max=Max("gpu_memory_total"),
             )
 
@@ -401,8 +403,14 @@ class StackMetricsViewSet(GenericViewSet):
                 row["gpu_usage_max"] = (
                     round(r["gpu_usage_max"], 2) if r.get("gpu_usage_max") is not None else None
                 )
+                row["gpu_memory_used_avg"] = (
+                    int(r["gpu_memory_used_avg"]) if r.get("gpu_memory_used_avg") is not None else None
+                )
                 row["gpu_memory_used_max"] = (
                     int(r["gpu_memory_used_max"]) if r.get("gpu_memory_used_max") is not None else None
+                )
+                row["gpu_memory_total_avg"] = (
+                    int(r["gpu_memory_total_avg"]) if r.get("gpu_memory_total_avg") is not None else None
                 )
                 row["gpu_memory_total_max"] = (
                     int(r["gpu_memory_total_max"]) if r.get("gpu_memory_total_max") is not None else None
@@ -532,7 +540,9 @@ class ContainerMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet
             annotations.update(
                 gpu_usage_avg=Avg("gpu_usage"),
                 gpu_usage_max=Max("gpu_usage"),
+                gpu_memory_used_avg=Avg("gpu_memory_used"),
                 gpu_memory_used_max=Max("gpu_memory_used"),
+                gpu_memory_total_avg=Avg("gpu_memory_total"),
                 gpu_memory_total_max=Max("gpu_memory_total"),
             )
 
@@ -578,9 +588,19 @@ class ContainerMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet
                     if has_gpu_cols and r.get("gpu_usage_max") is not None
                     else None
                 ),
+                "gpu_memory_used_avg": (
+                    int(r["gpu_memory_used_avg"])
+                    if has_gpu_cols and r.get("gpu_memory_used_avg") is not None
+                    else None
+                ),
                 "gpu_memory_used_max": (
                     int(r["gpu_memory_used_max"])
                     if has_gpu_cols and r.get("gpu_memory_used_max") is not None
+                    else None
+                ),
+                "gpu_memory_total_avg": (
+                    int(r["gpu_memory_total_avg"])
+                    if has_gpu_cols and r.get("gpu_memory_total_avg") is not None
                     else None
                 ),
                 "gpu_memory_total_max": (
