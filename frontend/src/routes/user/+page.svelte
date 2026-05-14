@@ -582,13 +582,18 @@ KPI — 컨테이너·요청·자원 합계
 		if (!t) return;
 		if (opts.silent) refreshing = true;
 		else loading = containers.length === 0 && requests.length === 0;
+		// silent polling 시 사용자가 "더 보기"로 로드한 페이지를 잃지 않도록
+		// 현재 누적된 row 수만큼 한 번에 fetch (max_page_size=100 cap)
+		const reqSize = opts.silent && requests.length > REQ_PAGE_SIZE
+			? Math.min(100, requests.length)
+			: REQ_PAGE_SIZE;
 		const [reqJson, contJson] = await Promise.all([
-			fetchJson(`/api/requests/?page=1&page_size=${REQ_PAGE_SIZE}&ordering=-created_at`, t),
+			fetchJson(`/api/requests/?page=1&page_size=${reqSize}&ordering=-created_at`, t),
 			fetchJson('/api/my-containers/?page_size=100&ordering=-last_seen', t),
 		]);
 		if (reqJson) {
 			requests = reqJson?.data?.results ?? [];
-			requestPage = 1;
+			if (!opts.silent) requestPage = 1;
 			requestHasMore = !!reqJson?.data?.next;
 			requestTotal = Number(reqJson?.data?.count ?? requests.length) || requests.length;
 		}
