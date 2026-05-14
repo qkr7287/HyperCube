@@ -32,7 +32,7 @@
 		start:    { label: '시작',     icon: '▶' },
 		stop:     { label: '중지',     icon: '■', destructive: true,  needsConfirm: true,  help: '컨테이너에 SIGTERM을 보내 정상 종료를 시도합니다.' },
 		restart:  { label: '재시작',   icon: '↻', destructive: false, needsConfirm: true,  help: '컨테이너를 멈추고 다시 시작합니다. 진행 중인 작업이 끊깁니다.' },
-		pause:    { label: '일시정지', icon: '❚❚' },
+		pause:    { label: '일시정지', icon: '⏸' },
 		unpause:  { label: '재개',     icon: '▶' },
 		kill:     { label: '강제종료', icon: '✕', destructive: true,  needsConfirm: true,  help: 'SIGKILL로 즉시 종료합니다. 데이터 손실 가능.' },
 	};

@@ -205,6 +205,19 @@
 		return h > 0 ? `${d}일 ${h}시간` : `${d}일 가동`;
 	});
 	let containerPid = $derived<number | null>(inspectData?.state?.pid ?? null);
+	// 마지막 동기화 신선도 — meta-chip 색상 분기용. 30초 이내 fresh, 2분 이내 default,
+	// 그 이상이면 stale 색으로 운영자가 즉시 인지하도록.
+	let syncFreshness = $derived.by<'fresh' | 'ok' | 'stale' | 'cold'>(() => {
+		const iso = currentMetrics?.timestamp || container?.last_seen;
+		if (!iso) return 'cold';
+		const ts = new Date(iso).getTime();
+		if (!Number.isFinite(ts)) return 'cold';
+		const ageSec = (Date.now() - ts) / 1000;
+		if (ageSec < 30) return 'fresh';
+		if (ageSec < 120) return 'ok';
+		if (ageSec < 600) return 'stale';
+		return 'cold';
+	});
 	let runtimeRestartCount = $derived(Number(inspectData?.restartCount ?? 0));
 	let runtimeHealthText = $derived.by<string>(() => {
 		if (isOomKilled) return 'OOM Killed';
@@ -830,7 +843,7 @@
 							<b>요청</b>
 							<strong>{statusLabel(container.request_status)}</strong>
 						</span>
-						<span class="meta-chip" title="마지막 동기화">
+						<span class="meta-chip sync" data-fresh={syncFreshness} title="마지막 동기화">
 							<b>동기화</b>
 							<strong>{formatRelativeTime(currentMetrics?.timestamp || container.last_seen)}</strong>
 						</span>
@@ -878,7 +891,7 @@
 						onclick={() => (paused = !paused)}
 						title={paused ? '자동 새로고침 재개' : '자동 새로고침 일시정지'}
 					>
-						{paused ? '▶ 재개' : '❚❚ 일시정지'}
+						{paused ? '▶ 재개' : '⏸ 일시정지'}
 					</button>
 					<button class="refresh-btn" onclick={() => loadDashboard({ withDetail: true })} disabled={refreshing}>
 						{refreshing ? '새로고침 중...' : '↻ 새로고침'}
@@ -1478,6 +1491,23 @@
 		font-weight: 800;
 	}
 
+	/* 동기화 신선도 — 30s/2m/10m 임계로 색 분기. fresh = 정상, stale/cold = 운영자 주의 */
+	.meta-chip.sync[data-fresh='fresh'] {
+		border-color: rgba(16, 185, 129, 0.32);
+		background: rgba(16, 185, 129, 0.06);
+	}
+	.meta-chip.sync[data-fresh='fresh'] strong { color: #6ee7b7; }
+	.meta-chip.sync[data-fresh='stale'] {
+		border-color: rgba(251, 191, 36, 0.34);
+		background: rgba(251, 191, 36, 0.06);
+	}
+	.meta-chip.sync[data-fresh='stale'] strong { color: #fde68a; }
+	.meta-chip.sync[data-fresh='cold'] {
+		border-color: rgba(239, 68, 68, 0.34);
+		background: rgba(239, 68, 68, 0.06);
+	}
+	.meta-chip.sync[data-fresh='cold'] strong { color: #fca5a5; }
+
 	.hero-meta {
 		display: flex;
 		flex-wrap: wrap;
@@ -1830,25 +1860,46 @@
 		font-weight: 900;
 	}
 	.ops-quick em {
-		color: var(--text-muted);
-		font-size: 11px;
+		color: rgba(148, 163, 184, 0.62);
+		font-size: 10.5px;
 		font-style: normal;
 		font-weight: 700;
+		letter-spacing: 0.01em;
+	}
+	/* 상태 색은 좌측 stripe 와 strong 텍스트 컬러로만 표시 — 배경 oversaturation 방지. */
+	.ops-quick span.ok,
+	.ops-quick span.bad,
+	.ops-quick span.paused {
+		position: relative;
+	}
+	.ops-quick span.ok::before,
+	.ops-quick span.bad::before,
+	.ops-quick span.paused::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		top: 6px;
+		bottom: 6px;
+		width: 2px;
+		border-radius: 2px;
 	}
 	.ops-quick span.ok {
 		border-color: rgba(16, 185, 129, 0.3);
-		background: rgba(16, 185, 129, 0.08);
+		background: rgba(16, 185, 129, 0.04);
 	}
+	.ops-quick span.ok::before { background: #34d399; box-shadow: 0 0 6px rgba(52, 211, 153, 0.45); }
 	.ops-quick span.ok strong { color: #6ee7b7; }
 	.ops-quick span.bad {
 		border-color: rgba(239, 68, 68, 0.34);
-		background: rgba(239, 68, 68, 0.09);
+		background: rgba(239, 68, 68, 0.05);
 	}
+	.ops-quick span.bad::before { background: #f87171; box-shadow: 0 0 6px rgba(248, 113, 113, 0.45); }
 	.ops-quick span.bad strong { color: #fca5a5; }
 	.ops-quick span.paused {
 		border-color: rgba(251, 191, 36, 0.34);
-		background: rgba(251, 191, 36, 0.08);
+		background: rgba(251, 191, 36, 0.05);
 	}
+	.ops-quick span.paused::before { background: #fbbf24; box-shadow: 0 0 6px rgba(251, 191, 36, 0.4); }
 	.ops-quick span.paused strong { color: #fde68a; }
 
 	.ops-divider {

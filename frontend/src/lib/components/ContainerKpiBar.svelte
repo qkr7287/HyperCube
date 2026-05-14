@@ -283,14 +283,14 @@
 		</div>
 		<div class="flow-grid">
 			<span>
-				<b>RX 누적</b>
+				<b>RX</b>
 				<span>{formatBytesValue(netRx)}</span>
-				<em>Δ {formatBytesValue(netRxDelta)}</em>
+				{#if netRxDelta > 0}<em>Δ {formatBytesValue(netRxDelta)}</em>{:else}<em class="muted">—</em>{/if}
 			</span>
 			<span>
-				<b>TX 누적</b>
+				<b>TX</b>
 				<span>{formatBytesValue(netTx)}</span>
-				<em>Δ {formatBytesValue(netTxDelta)}</em>
+				{#if netTxDelta > 0}<em>Δ {formatBytesValue(netTxDelta)}</em>{:else}<em class="muted">—</em>{/if}
 			</span>
 		</div>
 	</div>
@@ -333,12 +333,12 @@
 			<span>
 				<b>Read</b>
 				<span>{formatBytesValue(diskRead)}</span>
-				<em>Δ {formatBytesValue(diskReadDelta)}</em>
+				{#if diskReadDelta > 0}<em>Δ {formatBytesValue(diskReadDelta)}</em>{:else}<em class="muted">—</em>{/if}
 			</span>
 			<span>
 				<b>Write</b>
 				<span>{formatBytesValue(diskWrite)}</span>
-				<em>Δ {formatBytesValue(diskWriteDelta)}</em>
+				{#if diskWriteDelta > 0}<em>Δ {formatBytesValue(diskWriteDelta)}</em>{:else}<em class="muted">—</em>{/if}
 			</span>
 		</div>
 	</div>
@@ -530,28 +530,42 @@
 	.scope {
 		display: inline-flex;
 		align-items: center;
+		gap: 4px;
 		justify-content: center;
-		padding: 2px 6px;
+		padding: 2px 7px 2px 6px;
 		border-radius: 999px;
-		background: rgba(2, 6, 12, 0.42);
-		border: 1px solid rgba(100, 116, 139, 0.18);
+		background: rgba(2, 6, 12, 0.5);
+		border: 1px solid rgba(100, 116, 139, 0.22);
 		color: var(--text-muted);
-		font-size: 9.5px;
-		font-weight: 850;
+		font-size: 10px;
+		font-weight: 900;
+		letter-spacing: 0.02em;
 		line-height: 1;
 		white-space: nowrap;
 	}
+	.scope[data-level]::before {
+		content: '';
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: currentColor;
+		box-shadow: 0 0 6px currentColor;
+		opacity: 0.85;
+	}
 	.scope[data-level='normal'] {
 		color: #6ee7b7;
-		border-color: rgba(16, 185, 129, 0.28);
+		border-color: rgba(16, 185, 129, 0.32);
+		background: rgba(16, 185, 129, 0.08);
 	}
 	.scope[data-level='warn'] {
 		color: #fde68a;
-		border-color: rgba(251, 191, 36, 0.32);
+		border-color: rgba(251, 191, 36, 0.36);
+		background: rgba(251, 191, 36, 0.08);
 	}
 	.scope[data-level='danger'] {
 		color: #fca5a5;
-		border-color: rgba(239, 68, 68, 0.36);
+		border-color: rgba(239, 68, 68, 0.4);
+		background: rgba(239, 68, 68, 0.1);
 	}
 
 	.metric-hero {
@@ -589,7 +603,7 @@
 	.meter,
 	.split-meter {
 		position: relative;
-		height: 12px;
+		height: 14px;
 		border-radius: 999px;
 		background: rgba(2, 6, 12, 0.58);
 		border: 1px solid rgba(100, 116, 139, 0.18);
@@ -619,12 +633,12 @@
 	}
 	.meter-marker {
 		position: absolute;
-		top: -4px;
-		width: 2px;
-		height: 20px;
+		top: -5px;
+		width: 2.5px;
+		height: 24px;
 		border-radius: 999px;
-		background: rgba(255, 255, 255, 0.72);
-		box-shadow: 0 0 0 1px rgba(2, 6, 12, 0.7);
+		background: rgba(255, 255, 255, 0.78);
+		box-shadow: 0 0 0 1px rgba(2, 6, 12, 0.78);
 	}
 	.meter-marker.avg {
 		left: var(--avg, 0%);
@@ -798,6 +812,10 @@
 		font-size: 9.5px;
 		font-style: normal;
 		font-weight: 700;
+	}
+	.flow-grid em.muted {
+		color: rgba(100, 116, 139, 0.45);
+		letter-spacing: 0.06em;
 	}
 
 </style>
