@@ -87,6 +87,7 @@
 		custom_env?: Record<string, string>;
 		custom_ports?: Array<{ host?: number; container?: number; protocol?: string }>;
 		selected_image?: string;
+		allocated_gpu_slice_ids?: (string | number)[];
 	};
 
 	type MetricsSnapshot = {
@@ -110,6 +111,8 @@
 		disk_read: number;
 		disk_write: number;
 		gpu_usage: number | null;
+		gpu_memory_used?: number | null;
+		gpu_memory_total?: number | null;
 	};
 
 	const RANGE_OPTIONS = [
@@ -521,6 +524,21 @@
 	);
 	let gpuAvg = $derived(avgOf(gpuValid));
 	let gpuPeak = $derived(peakOf(gpuValid));
+	let gpuMemPctSeries = $derived(
+		history.map((r) => {
+			const u = Number((r as any).gpu_memory_used ?? 0);
+			const t = Number((r as any).gpu_memory_total ?? 0);
+			return t > 0 ? (u / t) * 100 : 0;
+		}),
+	);
+	let gpuMemValid = $derived(gpuMemPctSeries.filter((v) => v > 0));
+	let gpuMemAvg = $derived(avgOf(gpuMemValid));
+	let gpuMemPeak = $derived(peakOf(gpuMemValid));
+	let currentGpuMemPct = $derived.by(() => {
+		const last = gpuMemPctSeries.length ? gpuMemPctSeries[gpuMemPctSeries.length - 1] : 0;
+		return last > 0 ? last : null;
+	});
+	let hasGpuMemHistory = $derived(hasGpuAllocated || gpuMemValid.length > 0);
 	let historyShowsDateOnAxis = $derived(shouldShowDateOnAxis(history));
 	let historyLabels = $derived(
 		history.map((row) => formatHistoryTime(row.recorded_at, historyShowsDateOnAxis)),
@@ -628,12 +646,24 @@
 		...THRESHOLD_LINES,
 	]);
 
-	let hasGpuHistory = $derived(history.some((row) => typeof row.gpu_usage === 'number'));
+	let hasGpuAllocated = $derived((container?.allocated_gpu_slice_ids?.length ?? 0) > 0);
+	let hasGpuHistory = $derived(
+		hasGpuAllocated || history.some((row) => typeof row.gpu_usage === 'number'),
+	);
 	let gpuDatasets = $derived([
 		{
-			label: 'GPU 사용률',
+			label: 'GPU 코어 사용률',
 			color: '#f472b6',
 			values: history.map((row) => (typeof row.gpu_usage === 'number' ? row.gpu_usage : 0)),
+			fill: true,
+			format: 'percent' as const,
+		},
+	]);
+	let gpuMemDatasets = $derived([
+		{
+			label: 'GPU 메모리 (VRAM)',
+			color: '#a087d9',
+			values: gpuMemPctSeries,
 			fill: true,
 			format: 'percent' as const,
 		},
@@ -789,6 +819,10 @@
 					{currentGpuUsage}
 					{gpuAvg}
 					{gpuPeak}
+					hasGpuMem={hasGpuMemHistory || (currentGpuMemPct !== null && currentGpuMemPct !== undefined)}
+					{currentGpuMemPct}
+					{gpuMemAvg}
+					{gpuMemPeak}
 					{cpuHelp}
 					{memoryHelp}
 					{networkHelp}
@@ -926,9 +960,17 @@
 				{#if hasGpuHistory || (currentGpuUsage !== null && currentGpuUsage !== undefined)}
 					<div class="chart-card">
 						<div class="chart-head">
-							<h3>GPU 사용률</h3>
+							<h3>GPU 코어 사용률</h3>
 						</div>
 						<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} datasets={gpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
+					</div>
+				{/if}
+				{#if hasGpuMemHistory || (currentGpuMemPct !== null && currentGpuMemPct !== undefined)}
+					<div class="chart-card">
+						<div class="chart-head">
+							<h3>GPU 메모리 (VRAM)</h3>
+						</div>
+						<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} datasets={gpuMemDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
 					</div>
 				{/if}
 			</div>

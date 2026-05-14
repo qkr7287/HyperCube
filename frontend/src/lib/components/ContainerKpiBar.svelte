@@ -33,6 +33,8 @@
 		disk_read: number;
 		disk_write: number;
 		gpu_usage: number | null;
+		gpu_memory_used?: number | null;
+		gpu_memory_total?: number | null;
 	};
 
 	let {
@@ -51,6 +53,10 @@
 		currentGpuUsage = null,
 		gpuAvg = 0,
 		gpuPeak = 0,
+		hasGpuMem = false,
+		currentGpuMemPct = null,
+		gpuMemAvg = 0,
+		gpuMemPeak = 0,
 		cpuHelp = '',
 		memoryHelp = '',
 		networkHelp = '',
@@ -71,6 +77,10 @@
 		currentGpuUsage?: number | null;
 		gpuAvg?: number;
 		gpuPeak?: number;
+		hasGpuMem?: boolean;
+		currentGpuMemPct?: number | null;
+		gpuMemAvg?: number;
+		gpuMemPeak?: number;
 		cpuHelp?: string;
 		memoryHelp?: string;
 		networkHelp?: string;
@@ -108,6 +118,13 @@
 	let netTrend = $derived(history.map((r) => (r.network_rx ?? 0) + (r.network_tx ?? 0)));
 	let diskTrend = $derived(history.map((r) => (r.disk_read ?? 0) + (r.disk_write ?? 0)));
 	let gpuTrend = $derived(history.map((r) => r.gpu_usage ?? 0));
+	let gpuMemTrend = $derived(
+		history.map((r) => {
+			const u = Number(r.gpu_memory_used ?? 0);
+			const t = Number(r.gpu_memory_total ?? 0);
+			return t > 0 ? (u / t) * 100 : 0;
+		}),
+	);
 
 	let cpuNow = $derived(asNumber(currentMetrics?.cpu?.usage));
 	let memNow = $derived(asNumber(currentMetrics?.memory?.percent));
@@ -131,6 +148,7 @@
 	let cpuLevel = $derived(severity(cpuNow, 70, 90));
 	let memLevel = $derived(severity(memNow, 75, 90));
 	let gpuLevel = $derived(severity(currentGpuUsage ?? 0, 80, 95));
+	let gpuMemLevel = $derived(severity(currentGpuMemPct ?? 0, 80, 95));
 	let activeBarTooltip = $state<string | null>(null);
 
 	function showBarTooltip(key: string) {
@@ -142,7 +160,7 @@
 	}
 </script>
 
-<section class="kpi-bar" class:with-gpu={hasGpu} aria-label="컨테이너 메트릭 요약">
+<section class="kpi-bar" class:with-gpu={hasGpu || hasGpuMem} aria-label="컨테이너 메트릭 요약">
 	<div class="kpi" data-level={cpuLevel}>
 		<div class="kpi-top">
 			<span class="label">
@@ -351,7 +369,7 @@
 	{#if hasGpu}
 		<div class="kpi" data-level={gpuLevel}>
 			<div class="kpi-top">
-				<span class="label">GPU</span>
+				<span class="label">GPU (코어)</span>
 				<span class="scope" data-level={gpuLevel}>{levelLabel(gpuLevel)}</span>
 			</div>
 			<div class="metric-hero">
@@ -361,7 +379,7 @@
 			<div
 				class="meter gpu"
 				tabindex="0"
-				aria-label={`GPU 현재 ${currentGpuUsage !== null ? formatPercent(currentGpuUsage, 2) : '-'}, ${rangeLabel} 평균 ${formatPercent(gpuAvg, 1)}, 피크 ${formatPercent(gpuPeak, 1)}`}
+				aria-label={`GPU 코어 현재 ${currentGpuUsage !== null ? formatPercent(currentGpuUsage, 2) : '-'}, ${rangeLabel} 평균 ${formatPercent(gpuAvg, 1)}, 피크 ${formatPercent(gpuPeak, 1)}`}
 				onmouseenter={() => showBarTooltip('gpu')}
 				onfocus={() => showBarTooltip('gpu')}
 				onmouseleave={() => hideBarTooltip('gpu')}
@@ -373,7 +391,7 @@
 				<span class="meter-marker peak" title="{rangeLabel} 피크 {formatPercent(gpuPeak, 1)}"></span>
 				{#if activeBarTooltip === 'gpu'}
 					<span class="bar-tooltip" role="tooltip">
-						<strong>GPU 사용률</strong>
+						<strong>GPU 코어 사용률</strong>
 						<span><em>현재</em><b>{currentGpuUsage !== null ? formatPercent(currentGpuUsage, 2) : '-'}</b></span>
 						<span><em>{rangeLabel} 평균</em><b>{formatPercent(gpuAvg, 1)}</b></span>
 						<span><em>{rangeLabel} 피크</em><b>{formatPercent(gpuPeak, 1)}</b></span>
@@ -391,7 +409,55 @@
 				</span>
 			</div>
 			<div class="trend-strip">
-				<MetricSparkline values={gpuTrend} color="#f472b6" label="GPU 추이" stretch />
+				<MetricSparkline values={gpuTrend} color="#f472b6" label="GPU 코어 추이" stretch />
+			</div>
+		</div>
+	{/if}
+
+	{#if hasGpuMem}
+		<div class="kpi" data-level={gpuMemLevel}>
+			<div class="kpi-top">
+				<span class="label">GPU (VRAM)</span>
+				<span class="scope" data-level={gpuMemLevel}>{levelLabel(gpuMemLevel)}</span>
+			</div>
+			<div class="metric-hero">
+				<strong class="value">{currentGpuMemPct !== null ? formatPercent(currentGpuMemPct, 2) : '-'}</strong>
+				<span class="hero-note">{rangeLabel} 기준</span>
+			</div>
+			<div
+				class="meter gpu-mem"
+				tabindex="0"
+				aria-label={`GPU VRAM 현재 ${currentGpuMemPct !== null ? formatPercent(currentGpuMemPct, 2) : '-'}, ${rangeLabel} 평균 ${formatPercent(gpuMemAvg, 1)}, 피크 ${formatPercent(gpuMemPeak, 1)}`}
+				onmouseenter={() => showBarTooltip('gpuMem')}
+				onfocus={() => showBarTooltip('gpuMem')}
+				onmouseleave={() => hideBarTooltip('gpuMem')}
+				onblur={() => hideBarTooltip('gpuMem')}
+				style={`--value:${clampPercent(currentGpuMemPct ?? 0)}%;--avg:${clampPercent(gpuMemAvg)}%;--peak:${clampPercent(gpuMemPeak)}%;`}
+			>
+				<span class="meter-fill"></span>
+				<span class="meter-marker avg" title="{rangeLabel} 평균 {formatPercent(gpuMemAvg, 1)}"></span>
+				<span class="meter-marker peak" title="{rangeLabel} 피크 {formatPercent(gpuMemPeak, 1)}"></span>
+				{#if activeBarTooltip === 'gpuMem'}
+					<span class="bar-tooltip" role="tooltip">
+						<strong>GPU 메모리 (VRAM)</strong>
+						<span><em>현재</em><b>{currentGpuMemPct !== null ? formatPercent(currentGpuMemPct, 2) : '-'}</b></span>
+						<span><em>{rangeLabel} 평균</em><b>{formatPercent(gpuMemAvg, 1)}</b></span>
+						<span><em>{rangeLabel} 피크</em><b>{formatPercent(gpuMemPeak, 1)}</b></span>
+					</span>
+				{/if}
+			</div>
+			<div class="insight-row">
+				<span>
+					<b>평균</b>
+					<span>{formatPercent(gpuMemAvg, 1)}</span>
+				</span>
+				<span>
+					<b>피크</b>
+					<span>{formatPercent(gpuMemPeak, 1)}</span>
+				</span>
+			</div>
+			<div class="trend-strip">
+				<MetricSparkline values={gpuMemTrend} color="#a087d9" label="GPU VRAM 추이" stretch />
 			</div>
 		</div>
 	{/if}

@@ -155,6 +155,7 @@
 	let liveEvents = $state<AgentStatusEvent[]>([]);
 	let cpuHistory = $state<Record<string, number[]>>({});
 	let memHistory = $state<Record<string, number[]>>({});
+	let gpuUsageHistory = $state<Record<string, number[]>>({});
 	let gpuMemHistory = $state<Record<string, number[]>>({});
 	let metricsFetched = false;
 	let recentlyChanged = $state<Record<string, number>>({});
@@ -191,9 +192,9 @@
 		memoPopover = null;
 	}
 
-	// idx:  0    1    2    3       4    5    6        7    8        9
-	//       상태 이름 서버 자원(1fr) CPU  MEM  GPUMEM  최근 가동시간 액션
-	const CONTAINER_COLS_DEFAULT = [110, 240, 200, 290, 105, 105, 105, 90, 110, 220];
+	// idx:  0    1    2    3       4    5    6        7         8    9        10
+	//       상태 이름 서버 자원(1fr) CPU  MEM  GPU코어  GPU VRAM 최근 가동시간 액션
+	const CONTAINER_COLS_DEFAULT = [110, 240, 200, 290, 105, 105, 110, 115, 90, 110, 220];
 	// idx:  0    1    2    3            4    5    6        7    8
 	//       유형 이름 상태 템플릿(1fr)  서버 메모 검토자  시각 액션
 	const HISTORY_COLS_DEFAULT = [60, 260, 100, 240, 140, 75, 110, 170, 200];
@@ -540,11 +541,17 @@
 							return total > 0 ? (used / total) * 100 : 0;
 						})
 						.filter((n) => Number.isFinite(n));
+					const gpuUsageSeries = arr
+						.map((p) => Number(p.gpu_usage ?? 0))
+						.filter((n) => Number.isFinite(n));
 					if (cpuSeries.length > 0) {
 						cpuHistory = { ...cpuHistory, [c.container_id]: cpuSeries };
 					}
 					if (memSeries.length > 0) {
 						memHistory = { ...memHistory, [c.container_id]: memSeries };
+					}
+					if (gpuUsageSeries.length > 0) {
+						gpuUsageHistory = { ...gpuUsageHistory, [c.container_id]: gpuUsageSeries };
 					}
 					if (gpuMemSeries.length > 0) {
 						gpuMemHistory = { ...gpuMemHistory, [c.container_id]: gpuMemSeries };
@@ -1178,6 +1185,7 @@ KPI — 컨테이너·요청·자원 합계
 						<span class="skel-cell"><span class="skel-spark"></span></span>
 						<span class="skel-cell"><span class="skel-spark"></span></span>
 						<span class="skel-cell"><span class="skel-spark"></span></span>
+						<span class="skel-cell"><span class="skel-spark"></span></span>
 						<span class="skel-cell"><span class="skel-bar" style="width: 60%"></span></span>
 						<span class="skel-cell"><span class="skel-bar" style="width: 70%"></span></span>
 						<span class="skel-cell skel-cell-actions">
@@ -1237,15 +1245,18 @@ KPI — 컨테이너·요청·자원 합계
 						MEM (1h){sortField === 'mem' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
 						<span class="col-resize" onmousedown={(e) => startResize(e, 5, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</button>
-					<span class="th">GPU MEM
+					<span class="th">GPU (코어)
 						<span class="col-resize" onmousedown={(e) => startResize(e, 6, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
+					</span>
+					<span class="th">GPU (VRAM)
+						<span class="col-resize" onmousedown={(e) => startResize(e, 7, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</span>
 					<button class="th sortable" class:active={sortField === 'last_seen'} onclick={() => setSort('last_seen')}>
 						최근{sortField === 'last_seen' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
-						<span class="col-resize" onmousedown={(e) => startResize(e, 7, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
+						<span class="col-resize" onmousedown={(e) => startResize(e, 8, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</button>
 					<span class="th">가동 시간
-						<span class="col-resize" onmousedown={(e) => startResize(e, 8, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
+						<span class="col-resize" onmousedown={(e) => startResize(e, 9, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</span>
 					<span class="th th-actions"><span>액션</span></span>
 				</div>
@@ -1319,6 +1330,27 @@ KPI — 컨테이너·요청·자원 합계
 									<span class="spark-num mem">{(series[series.length - 1] ?? 0).toFixed(0)}%</span>
 								{:else}
 									<span class="spark-pending">—</span>
+								{/if}
+							</span>
+							<span class="row-spark">
+								{#if (c.allocated_gpu_slice_ids?.length ?? 0) === 0}
+									<span class="spark-pending" title="GPU 슬라이스 미할당">—</span>
+								{:else if gpuUsageHistory[c.container_id]}
+									{@const series = gpuUsageHistory[c.container_id]}
+									{@const sMax = Math.max(...series)}
+									{#if series.length >= 2 && sMax >= 0.5}
+										{@const sp = sparklinePoints(series, 60, 16)}
+										<svg viewBox="0 0 60 16" preserveAspectRatio="none" class="spark-svg">
+											<line x1="0" y1="15" x2="60" y2="15" stroke="rgba(100,116,139,0.32)" stroke-width="0.6" stroke-dasharray="2 2" />
+											<path d={sp.area} fill="rgba(244,114,182,0.18)" stroke="none" />
+											<path d={sp.line} fill="none" stroke="#f472b6" stroke-width="1.4" />
+										</svg>
+									{:else}
+										<span class="spark-flat gpu-util" aria-hidden="true"></span>
+									{/if}
+									<span class="spark-num gpu-util">{(series[series.length - 1] ?? 0).toFixed(0)}%</span>
+								{:else}
+									<span class="spark-pending">…</span>
 								{/if}
 							</span>
 							<span class="row-spark">
@@ -2615,7 +2647,7 @@ KPI — 컨테이너·요청·자원 합계
 	.container-head,
 	.container-row {
 		display: grid;
-		grid-template-columns: var(--ct-cols, 110px 240px 200px minmax(290px, 1fr) 105px 105px 105px 90px 110px 220px);
+		grid-template-columns: var(--ct-cols, 110px 240px 200px minmax(290px, 1fr) 105px 105px 110px 115px 90px 110px 220px);
 		gap: 10px;
 		align-items: center;
 	}
@@ -2837,6 +2869,14 @@ KPI — 컨테이너·요청·자원 합계
 
 	.spark-num.gpu {
 		color: #a087d9;
+	}
+
+	.spark-flat.gpu-util {
+		border-bottom-color: rgba(244, 114, 182, 0.32);
+	}
+
+	.spark-num.gpu-util {
+		color: #f472b6;
 	}
 
 	.spark-num {
