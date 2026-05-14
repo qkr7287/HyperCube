@@ -435,15 +435,38 @@
 		}, refreshIntervalMs);
 	}
 
+	// 두 selector 가 같은 label set 을 공유하므로, 한쪽이 바뀌면 다른 쪽도
+	// 같은 시간 단위로 sync 해서 UI 가 어긋나 보이지 않게 한다.
+	const RANGE_KEY_TO_MS: Record<(typeof RANGE_OPTIONS)[number]['key'], number> = {
+		'30s': 30_000,
+		'1m': 60_000,
+		'5m': 300_000,
+		'1h': 3_600_000,
+		'24h': 86_400_000,
+	};
+	const MS_TO_RANGE_KEY = Object.fromEntries(
+		Object.entries(RANGE_KEY_TO_MS).map(([k, v]) => [v, k]),
+	) as Record<number, (typeof RANGE_OPTIONS)[number]['key']>;
+
 	function handleRefreshIntervalChange(event: Event) {
 		const next = Number((event.currentTarget as HTMLSelectElement).value);
 		if (!Number.isFinite(next) || next <= 0) return;
 		refreshIntervalMs = next;
 		startRefreshTimer();
+		const matchKey = MS_TO_RANGE_KEY[next];
+		if (matchKey && selectedRange !== matchKey) {
+			selectedRange = matchKey;
+			loadDashboard();
+		}
 	}
 
 	function handleRangeChange(rangeKey: (typeof RANGE_OPTIONS)[number]['key']) {
 		selectedRange = rangeKey;
+		const matchMs = RANGE_KEY_TO_MS[rangeKey];
+		if (matchMs && refreshIntervalMs !== matchMs) {
+			refreshIntervalMs = matchMs;
+			startRefreshTimer();
+		}
 		loadDashboard();
 	}
 
