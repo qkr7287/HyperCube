@@ -130,7 +130,7 @@
 	let ctxBusy = $state(false);
 
 	const CONTAINER_COLS_DEFAULT = [110, 240, 200, 290, 105, 105, 90, 180];
-	const HISTORY_COLS_DEFAULT = [60, 240, 100, 220, 130, 130, 170, 80];
+	const HISTORY_COLS_DEFAULT = [60, 260, 100, 240, 140, 75, 170, 80];
 	let containerCols = $state<number[]>([...CONTAINER_COLS_DEFAULT]);
 	let historyCols = $state<number[]>([...HISTORY_COLS_DEFAULT]);
 	let containerColsStyle = $derived(`--ct-cols: ${containerCols.map((w) => w + 'px').join(' ')};`);
@@ -796,7 +796,7 @@ KPI — 컨테이너·요청·자원 합계
 	<section class="hero">
 		<div class="hero-left">
 			<div class="title-row">
-				<h1>{username || 'user'}<span class="title-suffix">의 작업공간</span></h1>
+				<h1>내 대시보드<span class="title-suffix">컨테이너 · 요청 · 자원 한눈에</span></h1>
 				<InfoTooltip text={pageHelp} label="페이지 도움말" placement="bottom-start" maxWidth={420} />
 			</div>
 			<div class="kpi-inline">
@@ -868,13 +868,40 @@ KPI — 컨테이너·요청·자원 합계
 		</section>
 
 		{#if loading && containers.length === 0}
-			<div class="state">불러오는 중…</div>
+			<div class="skel-table" aria-busy="true" aria-label="컨테이너 불러오는 중">
+				{#each Array(6) as _, i (i)}
+					<div class="skel-row">
+						<span class="skel-bar" style="width: 70%;"></span>
+						<span class="skel-bar" style="width: 85%;"></span>
+						<span class="skel-bar" style="width: 60%;"></span>
+						<span class="skel-bar" style="width: 75%;"></span>
+						<span class="skel-bar" style="width: 50%;"></span>
+						<span class="skel-bar" style="width: 50%;"></span>
+						<span class="skel-bar" style="width: 40%;"></span>
+						<span class="skel-bar" style="width: 80%;"></span>
+					</div>
+				{/each}
+			</div>
 		{:else if filteredContainers.length === 0}
 			<div class="state empty">
 				{#if containers.length === 0}
 					<h3>아직 컨테이너가 없습니다</h3>
-					<p>첫 요청을 만들어 배포해 보세요.</p>
-					<button class="new-btn" onclick={() => (newModalOpen = true)}>+ 첫 요청 만들기</button>
+					<p>아래에서 시작해 보세요.</p>
+					<button class="new-btn" onclick={() => (newModalOpen = true)}>+ 새 요청 만들기 <kbd>n</kbd></button>
+					<div class="empty-hints">
+						<div class="hint-card">
+							<strong>워크스페이스</strong>
+							<p>Jupyter Lab + GPU 1슬라이스로 빠르게 실험 환경 구성.</p>
+						</div>
+						<div class="hint-card">
+							<strong>서비스 컨테이너</strong>
+							<p>Redis · Nginx · 자체 이미지 — 컴포즈 그룹도 지원.</p>
+						</div>
+						<div class="hint-card">
+							<strong>단축키</strong>
+							<p><kbd>/</kbd> 검색 · <kbd>n</kbd> 새 요청 · <kbd>g c</kbd> 컨테이너 · <kbd>g h</kbd> 이력</p>
+						</div>
+					</div>
 				{:else}
 					<h3>조건에 맞는 컨테이너가 없습니다</h3>
 					<p>필터를 바꾸거나 검색어를 지워보세요.</p>
@@ -915,8 +942,7 @@ KPI — 컨테이너·요청·자원 합계
 					{#each filteredContainers as c (c.container_id + ':' + (recentlyChanged[c.container_id] ?? 0))}
 						<li class="container-row" class:row-changed={!!recentlyChanged[c.container_id]} onclick={() => openContainer(c.container_id)} oncontextmenu={(e) => onRowContextMenu(e, c)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && openContainer(c.container_id)}>
 							<span class="row-status">
-								<span class="dot" class:running={c.status === 'running'} aria-hidden="true"></span>
-								<Pill status={c.status} size="md" minWidth="70px">{statusLabel(c.status)}</Pill>
+								<Pill status={c.status} dot size="md" minWidth="76px">{statusLabel(c.status)}</Pill>
 							</span>
 							<div class="row-name">
 								<strong title={c.name}>{c.name}</strong>
@@ -1027,7 +1053,20 @@ KPI — 컨테이너·요청·자원 합계
 		</section>
 
 		{#if loading && requests.length === 0}
-			<div class="state">불러오는 중…</div>
+			<div class="skel-table" aria-busy="true" aria-label="요청 이력 불러오는 중">
+				{#each Array(8) as _, i (i)}
+					<div class="skel-row">
+						<span class="skel-bar" style="width: 40%;"></span>
+						<span class="skel-bar" style="width: 80%;"></span>
+						<span class="skel-bar" style="width: 55%;"></span>
+						<span class="skel-bar" style="width: 70%;"></span>
+						<span class="skel-bar" style="width: 50%;"></span>
+						<span class="skel-bar" style="width: 35%;"></span>
+						<span class="skel-bar" style="width: 60%;"></span>
+						<span class="skel-bar" style="width: 30%;"></span>
+					</div>
+				{/each}
+			</div>
 		{:else if filteredHistory.length === 0}
 			<div class="state empty">
 				<h3>요청 이력이 없습니다</h3>
@@ -1077,11 +1116,17 @@ KPI — 컨테이너·요청·자원 합계
 							</span>
 							<strong class="h-name" title={requestDisplayName(r)}>{requestDisplayName(r)}</strong>
 							<span class="h-status-cell">
-								<Pill status={r.status} size="md" minWidth="70px">{statusLabel(r.status)}</Pill>
+								<Pill status={r.status} dot size="md" minWidth="76px">{statusLabel(r.status)}</Pill>
 							</span>
 							<span class="h-cell" title={r.template_name ?? ''}>{r.template_name ?? '-'}</span>
 							<span class="h-cell" title={r.target_agent_hostname ?? ''}>{r.target_agent_hostname ?? '-'}</span>
-							<span class="h-memo" title={r.review_note ?? ''}>{r.review_note || '-'}</span>
+							<span class="h-memo">
+								{#if r.review_note}
+									<span class="memo-chip" title={r.review_note}>메모</span>
+								{:else}
+									<span class="memo-dash" aria-hidden="true">—</span>
+								{/if}
+							</span>
 							<time class="h-time" title={formatDateTime(r.created_at)}>
 								<span>{formatDateTime(r.created_at)}</span>
 								<span class="h-time-rel">{formatRelativeTime(r.created_at)}</span>
@@ -1128,7 +1173,7 @@ KPI — 컨테이너·요청·자원 합계
 									<strong title={requestDisplayName(r)}>
 										{requestDisplayName(r)}
 									</strong>
-									<Pill status={r.status} size="md" minWidth="70px">{statusLabel(r.status)}</Pill>
+									<Pill status={r.status} dot size="md" minWidth="76px">{statusLabel(r.status)}</Pill>
 								</div>
 								<div class="side-req-meta">{r.template_name ?? '-'} · {r.target_agent_hostname ?? '-'}</div>
 								<div class="track tiny">
@@ -1889,6 +1934,49 @@ KPI — 컨테이너·요청·자원 합계
 		font-size: 13px;
 	}
 
+	.skel-table {
+		background: var(--bg-card);
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		overflow: hidden;
+		padding: 0;
+		flex: 1;
+		min-height: 0;
+	}
+
+	.skel-row {
+		display: flex;
+		gap: 14px;
+		align-items: center;
+		padding: 14px 16px;
+		border-top: 1px solid rgba(100, 116, 139, 0.10);
+	}
+
+	.skel-row:first-child {
+		border-top: none;
+	}
+
+	.skel-bar {
+		display: block;
+		height: 12px;
+		border-radius: 4px;
+		background: rgba(100, 116, 139, 0.12);
+		background-image: linear-gradient(
+			90deg,
+			rgba(100, 116, 139, 0.08) 0%,
+			rgba(100, 116, 139, 0.24) 50%,
+			rgba(100, 116, 139, 0.08) 100%
+		);
+		background-size: 220% 100%;
+		animation: skelShimmer 1.4s ease-in-out infinite;
+		flex-shrink: 0;
+	}
+
+	@keyframes skelShimmer {
+		0% { background-position: 220% 0; }
+		100% { background-position: -120% 0; }
+	}
+
 	.state.empty h3 {
 		margin: 0 0 6px;
 		font-size: 16px;
@@ -1899,6 +1987,57 @@ KPI — 컨테이너·요청·자원 합계
 	.state.empty p {
 		margin: 0 0 16px;
 		font-size: 12.5px;
+	}
+
+	.empty-hints {
+		margin: 28px auto 0;
+		max-width: 760px;
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+		gap: 12px;
+	}
+
+	.hint-card {
+		background: rgba(13, 17, 23, 0.5);
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		padding: 14px 16px;
+		text-align: left;
+	}
+
+	.hint-card strong {
+		display: block;
+		font-size: 13px;
+		font-weight: 900;
+		color: var(--accent);
+		margin-bottom: 6px;
+		letter-spacing: 0.02em;
+	}
+
+	.hint-card p {
+		margin: 0;
+		font-size: 12.5px;
+		color: var(--text-secondary);
+		line-height: 1.55;
+	}
+
+	.state kbd,
+	.empty-hints kbd {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 18px;
+		height: 18px;
+		padding: 0 5px;
+		margin: 0 2px;
+		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+		font-size: 11px;
+		font-weight: 700;
+		color: var(--text-primary);
+		background: rgba(100, 116, 139, 0.18);
+		border: 1px solid rgba(100, 116, 139, 0.3);
+		border-radius: 4px;
+		vertical-align: middle;
 	}
 
 	.container-table {
@@ -2244,7 +2383,7 @@ KPI — 컨테이너·요청·자원 합계
 	.history-head,
 	.history-row {
 		display: grid;
-		grid-template-columns: var(--hist-cols, 60px 240px 100px 220px 130px 130px 170px 80px);
+		grid-template-columns: var(--hist-cols, 60px 260px 100px 240px 140px 75px 170px 80px);
 		gap: 10px;
 		align-items: center;
 	}
@@ -2337,6 +2476,32 @@ KPI — 컨테이너·요청·자원 합계
 
 	.h-memo {
 		color: var(--text-muted);
+		justify-content: center;
+	}
+
+	.memo-chip {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		height: 22px;
+		padding: 0 8px;
+		font-size: 11px;
+		font-weight: 800;
+		color: var(--accent);
+		background: rgba(77, 191, 179, 0.10);
+		border: 1px solid rgba(77, 191, 179, 0.30);
+		border-radius: 4px;
+		cursor: help;
+		letter-spacing: 0.02em;
+	}
+
+	.memo-chip:hover {
+		background: rgba(77, 191, 179, 0.18);
+	}
+
+	.memo-dash {
+		color: var(--text-muted);
+		opacity: 0.5;
 	}
 
 	.h-time {
@@ -2577,8 +2742,8 @@ KPI — 컨테이너·요청·자원 합계
 		}
 
 		.history-row {
-			grid-template-columns: 1fr 1fr;
-			gap: 6px;
+			grid-template-columns: auto 1fr !important;
+			gap: 6px 10px;
 			padding: 10px 12px;
 		}
 
@@ -2589,6 +2754,56 @@ KPI — 컨테이너·요청·자원 합계
 		.h-time,
 		.h-memo {
 			grid-column: 1 / -1;
+		}
+
+		.history-row > * {
+			border-right: none;
+			padding-right: 0;
+		}
+
+		.container-head {
+			display: none;
+		}
+
+		.container-row {
+			grid-template-columns: auto 1fr !important;
+			gap: 6px 10px;
+			padding: 10px 12px;
+		}
+
+		.container-row > * {
+			border-right: none;
+			padding-right: 0;
+		}
+
+		.row-name,
+		.row-host,
+		.row-resources,
+		.row-actions {
+			grid-column: 1 / -1;
+		}
+
+		.row-actions {
+			grid-template-columns: 1fr 1fr;
+			gap: 6px;
+			padding-top: 4px;
+		}
+
+		.col-resize {
+			display: none;
+		}
+
+		.side-toggle {
+			display: none;
+		}
+
+		.main-grid,
+		.main-grid.no-side {
+			grid-template-columns: minmax(0, 1fr);
+		}
+
+		.main-grid .side-panel {
+			display: none;
 		}
 	}
 </style>

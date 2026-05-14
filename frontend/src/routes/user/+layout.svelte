@@ -87,7 +87,7 @@
 				href={base + '/user'}
 				class="nav-link"
 				class:active={currentPath === `${base}/user` || currentPath === `${base}/user/`}
-			>요청 현황</a>
+			>대시보드</a>
 			<a
 				href={base + '/user/containers'}
 				class="nav-link"
