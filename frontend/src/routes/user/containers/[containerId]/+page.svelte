@@ -3033,6 +3033,26 @@
 		}
 	}
 
+	/* viewport 세로가 짧으면 zero-scroll 정책을 해제하고 page 자체를 스크롤 가능.
+	   한 화면에 모두 담으려면 6 차트 카드(GPU 컨테이너)가 1/3씩 분할되어 찌부됨.
+	   세로 ≤ 900 환경(노트북 1366×768, 1600×900 등)은 scroll 허용 + 차트 카드
+	   floor 보장으로 가독성 회복. */
+	@media (max-height: 900px) {
+		.page {
+			overflow-y: auto;
+		}
+		.bento {
+			overflow: visible;
+			grid-template-rows: minmax(220px, auto) minmax(180px, auto) minmax(180px, auto);
+		}
+		.chart-card {
+			min-height: 150px;
+		}
+		.area-charts {
+			min-height: 0;
+		}
+	}
+
 	/* ≤980: 1열 stack (모바일) */
 	@media (max-width: 980px) {
 		.page {
