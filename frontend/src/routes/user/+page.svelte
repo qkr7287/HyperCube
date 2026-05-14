@@ -1497,7 +1497,7 @@ KPI — 컨테이너·요청·자원 합계
 									</button>
 								{/if}
 								{#if r.action === 'create' && r.template}
-									<button class="row-btn row-btn-icon h-redo" onclick={() => reRequest(r)} title="이 요청과 같은 설정으로 새 요청 만들기" aria-label="다시 요청">
+									<button class="row-btn row-btn-icon" onclick={() => reRequest(r)} title="이 요청과 같은 설정으로 새 요청 만들기" aria-label="다시 요청">
 										<svg class="row-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 											<path d="M21 12a9 9 0 1 1-3-6.7" />
 											<path d="M21 4v5h-5" />
@@ -2852,18 +2852,6 @@ KPI — 컨테이너·요청·자원 합계
 		opacity: 1;
 	}
 
-	.h-redo {
-		opacity: 0;
-		transition: opacity 0.12s, background 0.12s, color 0.12s, border-color 0.12s;
-		color: var(--text-muted);
-		background: transparent;
-		border-color: transparent;
-	}
-
-	.history-row:hover .h-redo,
-	.h-redo:focus-visible {
-		opacity: 1;
-	}
 
 	/* filter-chips / kpi-pill 은 Pill 컴포넌트 size=md 와 동일한 외형 (height 30, radius 6) */
 	.filter-chips button,
