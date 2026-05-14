@@ -21,6 +21,8 @@
 	const height = 32;
 	const padTop = 3;
 	const padBottom = 3;
+	// 점·tip-halo 가 viewBox 가장자리에서 반쪽만 보여 "<" 모양으로 잘리는 걸 막기 위한 좌우 inset.
+	const padX = 3.5;
 
 	const uid = ++__sparkCounter;
 	const gradId = `spark-grad-${uid}`;
@@ -32,7 +34,10 @@
 
 	let pts = $derived(
 		nums.map((value, index) => {
-			const x = nums.length <= 1 ? width : (index / (nums.length - 1)) * width;
+			const x =
+				nums.length <= 1
+					? width / 2
+					: padX + (index / (nums.length - 1)) * (width - padX * 2);
 			const spread = max - min || 1;
 			const y = height - padBottom - ((value - min) / spread) * (height - padTop - padBottom);
 			return { x, y };
