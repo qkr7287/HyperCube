@@ -12,7 +12,6 @@
 		formatDateTime,
 		formatRelativeTime,
 		statusLabel,
-		statusTone,
 	} from '$lib/utils/container-dashboard';
 
 	type RequestRow = {
@@ -23,6 +22,7 @@
 		target_agent_hostname?: string | null;
 		target_container?: string | null;
 		target_container_name?: string | null;
+		target_container_snapshot_name?: string | null;
 		custom_name?: string;
 		progress_message?: string;
 		progress_percent?: number | null;
@@ -63,6 +63,7 @@
 	let containerFilter = $state<ContainerFilter>('all');
 	let historyFilter = $state<HistoryFilter>('all');
 	let search = $state('');
+	let debouncedSearch = $state('');
 	let containers = $state<MyContainer[]>([]);
 	let requests = $state<RequestRow[]>([]);
 	let loading = $state(true);
@@ -78,6 +79,23 @@
 	let historySortField = $state<'name' | 'status' | 'action' | 'created_at'>('created_at');
 	let historySortDir = $state<'asc' | 'desc'>('desc');
 	let historySearch = $state('');
+	let debouncedHistorySearch = $state('');
+	let searchInputEl = $state<HTMLInputElement | null>(null);
+	let historySearchInputEl = $state<HTMLInputElement | null>(null);
+	let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+	let historySearchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+	$effect(() => {
+		const v = search;
+		if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+		searchDebounceTimer = setTimeout(() => { debouncedSearch = v; }, 180);
+	});
+
+	$effect(() => {
+		const v = historySearch;
+		if (historySearchDebounceTimer) clearTimeout(historySearchDebounceTimer);
+		historySearchDebounceTimer = setTimeout(() => { debouncedHistorySearch = v; }, 180);
+	});
 
 	function pushToast(kind: 'success' | 'error' | 'info', text: string) {
 		const id = ++toastSeq;
@@ -102,6 +120,135 @@
 	let cpuHistory = $state<Record<string, number[]>>({});
 	let memHistory = $state<Record<string, number[]>>({});
 	let metricsFetched = false;
+	let recentlyChanged = $state<Record<string, number>>({});
+	const REQ_PAGE_SIZE = 50;
+	let requestPage = $state(1);
+	let requestHasMore = $state(false);
+	let requestLoadingMore = $state(false);
+	let requestTotal = $state(0);
+	let ctxMenu = $state<{ x: number; y: number; container: MyContainer } | null>(null);
+	let ctxBusy = $state(false);
+
+	const CONTAINER_COLS_DEFAULT = [110, 240, 200, 220, 105, 105, 90, 180];
+	const HISTORY_COLS_DEFAULT = [60, 240, 100, 220, 130, 130, 170, 80];
+	let containerCols = $state<number[]>([...CONTAINER_COLS_DEFAULT]);
+	let historyCols = $state<number[]>([...HISTORY_COLS_DEFAULT]);
+	let containerColsStyle = $derived(`--ct-cols: ${containerCols.map((w) => w + 'px').join(' ')};`);
+	let historyColsStyle = $derived(`--hist-cols: ${historyCols.map((w) => w + 'px').join(' ')};`);
+	let dragState: { idx: number; startX: number; startW: number; which: 'container' | 'history' } | null = null;
+
+	function startResize(e: MouseEvent, idx: number, which: 'container' | 'history') {
+		e.preventDefault();
+		e.stopPropagation();
+		const widths = which === 'container' ? containerCols : historyCols;
+		dragState = { idx, startX: e.clientX, startW: widths[idx], which };
+		document.body.style.cursor = 'col-resize';
+		document.body.style.userSelect = 'none';
+		window.addEventListener('mousemove', onResizing);
+		window.addEventListener('mouseup', stopResize);
+	}
+
+	function onResizing(e: MouseEvent) {
+		if (!dragState) return;
+		const delta = e.clientX - dragState.startX;
+		const newW = Math.max(50, dragState.startW + delta);
+		if (dragState.which === 'container') {
+			const next = [...containerCols];
+			next[dragState.idx] = newW;
+			containerCols = next;
+		} else {
+			const next = [...historyCols];
+			next[dragState.idx] = newW;
+			historyCols = next;
+		}
+	}
+
+	function stopResize() {
+		if (!dragState) return;
+		try {
+			if (dragState.which === 'container') localStorage.setItem('hc_user_cont_cols', JSON.stringify(containerCols));
+			else localStorage.setItem('hc_user_hist_cols', JSON.stringify(historyCols));
+		} catch {
+			/* ignore */
+		}
+		dragState = null;
+		document.body.style.cursor = '';
+		document.body.style.userSelect = '';
+		window.removeEventListener('mousemove', onResizing);
+		window.removeEventListener('mouseup', stopResize);
+	}
+
+	function resetColumns(which: 'container' | 'history') {
+		if (which === 'container') {
+			containerCols = [...CONTAINER_COLS_DEFAULT];
+			try { localStorage.removeItem('hc_user_cont_cols'); } catch { /* ignore */ }
+		} else {
+			historyCols = [...HISTORY_COLS_DEFAULT];
+			try { localStorage.removeItem('hc_user_hist_cols'); } catch { /* ignore */ }
+		}
+	}
+
+	function onRowContextMenu(e: MouseEvent, c: MyContainer) {
+		e.preventDefault();
+		const margin = 8;
+		const menuW = 200;
+		const menuH = 200;
+		const x = Math.min(e.clientX, window.innerWidth - menuW - margin);
+		const y = Math.min(e.clientY, window.innerHeight - menuH - margin);
+		ctxMenu = { x, y, container: c };
+	}
+
+	function closeCtxMenu() {
+		ctxMenu = null;
+	}
+
+	async function controlAction(c: MyContainer, action: 'start' | 'stop' | 'restart') {
+		if (ctxBusy) return;
+		closeCtxMenu();
+		const t = token();
+		if (!t) return;
+		ctxBusy = true;
+		try {
+			const res = await fetch(`${base}/api/my-containers/${c.container_id}/control/`, {
+				method: 'POST',
+				headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action }),
+			});
+			const json = await res.json().catch(() => ({}));
+			if (!res.ok) throw new Error(json?.detail || `HTTP ${res.status}`);
+			const label = action === 'start' ? '시작' : action === 'stop' ? '정지' : '재시작';
+			pushToast('success', `${c.name} ${label} 명령을 보냈습니다`);
+			load({ silent: true });
+		} catch (err: any) {
+			pushToast('error', err?.message || '제어 명령 실패');
+		} finally {
+			ctxBusy = false;
+		}
+	}
+
+	async function requestDelete(c: MyContainer) {
+		if (ctxBusy) return;
+		closeCtxMenu();
+		if (!confirm(`${c.name} 컨테이너 삭제를 요청합니다. 관리자 승인 후 삭제됩니다. 계속하시겠습니까?`)) return;
+		const t = token();
+		if (!t) return;
+		ctxBusy = true;
+		try {
+			const res = await fetch(`${base}/api/requests/`, {
+				method: 'POST',
+				headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action: 'delete', target_container: c.container_id }),
+			});
+			const json = await res.json().catch(() => ({}));
+			if (!res.ok) throw new Error(json?.detail || `HTTP ${res.status}`);
+			pushToast('success', '삭제 요청이 제출되었습니다');
+			load({ silent: true });
+		} catch (err: any) {
+			pushToast('error', err?.message || '삭제 요청 실패');
+		} finally {
+			ctxBusy = false;
+		}
+	}
 
 	const unsubEvents = statusEvents.subscribe((value) => {
 		liveEvents = value;
@@ -220,17 +367,61 @@ KPI — 컨테이너·요청·자원 합계
 		if (opts.silent) refreshing = true;
 		else loading = containers.length === 0 && requests.length === 0;
 		const [reqJson, contJson] = await Promise.all([
-			fetchJson('/api/requests/?page_size=200&ordering=-created_at', t),
-			fetchJson('/api/my-containers/?page_size=200&ordering=-last_seen', t),
+			fetchJson(`/api/requests/?page=1&page_size=${REQ_PAGE_SIZE}&ordering=-created_at`, t),
+			fetchJson('/api/my-containers/?page_size=100&ordering=-last_seen', t),
 		]);
-		if (reqJson) requests = reqJson?.data?.results ?? [];
-		if (contJson) containers = contJson?.data?.results ?? [];
+		if (reqJson) {
+			requests = reqJson?.data?.results ?? [];
+			requestPage = 1;
+			requestHasMore = !!reqJson?.data?.next;
+			requestTotal = Number(reqJson?.data?.count ?? requests.length) || requests.length;
+		}
+		if (contJson) {
+			const next: MyContainer[] = contJson?.data?.results ?? [];
+			const prevMap = Object.fromEntries(containers.map((c) => [c.container_id, c.status]));
+			const now = Date.now();
+			const flashed: Record<string, number> = {};
+			for (const c of next) {
+				const prev = prevMap[c.container_id];
+				if (prev && prev !== c.status) flashed[c.container_id] = now;
+			}
+			if (Object.keys(flashed).length > 0) {
+				recentlyChanged = { ...recentlyChanged, ...flashed };
+				setTimeout(() => {
+					const cutoff = Date.now() - 2400;
+					recentlyChanged = Object.fromEntries(
+						Object.entries(recentlyChanged).filter(([, t]) => t > cutoff),
+					);
+				}, 2600);
+			}
+			containers = next;
+		}
 		loading = false;
 		refreshing = false;
 		syncPolling();
 		if (!metricsFetched && containers.length > 0) {
 			metricsFetched = true;
 			fetchSparklines(t);
+		}
+	}
+
+	async function loadMoreRequests() {
+		if (!requestHasMore || requestLoadingMore) return;
+		const t = token();
+		if (!t) return;
+		requestLoadingMore = true;
+		try {
+			const nextPage = requestPage + 1;
+			const json = await fetchJson(`/api/requests/?page=${nextPage}&page_size=${REQ_PAGE_SIZE}&ordering=-created_at`, t);
+			if (!json) return;
+			const results: RequestRow[] = json?.data?.results ?? [];
+			const have = new Set(requests.map((r) => r.id));
+			requests = [...requests, ...results.filter((r) => !have.has(r.id))];
+			requestPage = nextPage;
+			requestHasMore = !!json?.data?.next;
+			requestTotal = Number(json?.data?.count ?? requestTotal) || requestTotal;
+		} finally {
+			requestLoadingMore = false;
 		}
 	}
 
@@ -282,6 +473,7 @@ KPI — 컨테이너·요청·자원 합계
 	function requestDisplayName(r: RequestRow): string {
 		if (r.custom_name) return r.custom_name;
 		if (r.target_container_name) return r.target_container_name;
+		if (r.target_container_snapshot_name) return r.target_container_snapshot_name;
 		if (r.target_container) {
 			const prefix = r.action === 'delete' ? '삭제' : '대상';
 			return `${prefix}: ${String(r.target_container).slice(0, 12)}`;
@@ -368,7 +560,7 @@ KPI — 컨테이너·요청·자원 합계
 				if (containerFilter === 'running' && c.status !== 'running') return false;
 				if (containerFilter === 'workspace' && !c.workspace_enabled) return false;
 				if (containerFilter === 'stopped' && !isStopped(c)) return false;
-				const kw = search.trim().toLowerCase();
+				const kw = debouncedSearch.trim().toLowerCase();
 				if (!kw) return true;
 				return [c.name, c.image, c.agent_hostname, c.template_name].some((v) =>
 					String(v ?? '').toLowerCase().includes(kw),
@@ -408,7 +600,7 @@ KPI — 컨테이너·요청·자원 합계
 				if (historyFilter === 'deployed' && r.status !== 'deployed') return false;
 				if (historyFilter === 'rejected' && r.status !== 'rejected') return false;
 				if (historyFilter === 'others' && (r.status === 'deployed' || r.status === 'rejected')) return false;
-				const kw = historySearch.trim().toLowerCase();
+				const kw = debouncedHistorySearch.trim().toLowerCase();
 				if (!kw) return true;
 				return [requestDisplayName(r), r.template_name, r.target_agent_hostname, r.review_note].some(
 					(v) => String(v ?? '').toLowerCase().includes(kw),
@@ -427,6 +619,88 @@ KPI — 컨테이너·요청·자원 합계
 	);
 
 	let sidePanelEmpty = $derived(activeRequests.length === 0 && liveEvents.length === 0);
+	let sidePanelUserShown = $state<boolean | null>(null);
+	let sidePanelOpen = $derived(
+		sidePanelUserShown !== null ? sidePanelUserShown : !sidePanelEmpty,
+	);
+
+	let chordKey = '';
+	let chordTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function handleWindowClick(_e: MouseEvent) {
+		if (ctxMenu) closeCtxMenu();
+	}
+
+	function handleGlobalKeydown(e: KeyboardEvent) {
+		const target = e.target as HTMLElement | null;
+		const tag = target?.tagName;
+		const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || (target as any)?.isContentEditable;
+
+		if (ctxMenu && e.key === 'Escape') {
+			closeCtxMenu();
+			e.preventDefault();
+			return;
+		}
+
+		if (inInput && e.key === 'Escape') {
+			if (target === searchInputEl) {
+				search = '';
+				debouncedSearch = '';
+				(target as HTMLInputElement).blur();
+				e.preventDefault();
+			} else if (target === historySearchInputEl) {
+				historySearch = '';
+				debouncedHistorySearch = '';
+				(target as HTMLInputElement).blur();
+				e.preventDefault();
+			}
+			return;
+		}
+
+		if (inInput) return;
+		if (e.ctrlKey || e.altKey || e.metaKey) return;
+		if (newModalOpen) return;
+
+		if (e.key === '/') {
+			if (activeTab === 'containers') searchInputEl?.focus();
+			else historySearchInputEl?.focus();
+			e.preventDefault();
+			return;
+		}
+
+		if (e.key === 'n' || e.key === 'N') {
+			newModalOpen = true;
+			e.preventDefault();
+			return;
+		}
+
+		if (chordKey === 'g') {
+			if (chordTimer) clearTimeout(chordTimer);
+			chordKey = '';
+			if (e.key === 'c' || e.key === 'C') { setTab('containers'); e.preventDefault(); return; }
+			if (e.key === 'h' || e.key === 'H') { setTab('history'); e.preventDefault(); return; }
+		}
+
+		if (e.key === 'g' || e.key === 'G') {
+			chordKey = 'g';
+			if (chordTimer) clearTimeout(chordTimer);
+			chordTimer = setTimeout(() => { chordKey = ''; }, 900);
+			e.preventDefault();
+			return;
+		}
+	}
+
+	function toggleSidePanel() {
+		const next = !sidePanelOpen;
+		sidePanelUserShown = next;
+		if (browser) {
+			try {
+				localStorage.setItem('hc_user_side', next ? '1' : '0');
+			} catch {
+				/* ignore */
+			}
+		}
+	}
 
 	let historyCounts = $derived({
 		all: historyRequests.length,
@@ -478,12 +752,42 @@ KPI — 컨테이너·요청·자원 합계
 		if (hist === 'deployed' || hist === 'rejected' || hist === 'others') {
 			historyFilter = hist;
 		}
+		try {
+			const raw = localStorage.getItem('hc_user_side');
+			if (raw === '1') sidePanelUserShown = true;
+			else if (raw === '0') sidePanelUserShown = false;
+			const cc = localStorage.getItem('hc_user_cont_cols');
+			if (cc) {
+				const arr = JSON.parse(cc);
+				if (Array.isArray(arr) && arr.length === CONTAINER_COLS_DEFAULT.length) {
+					containerCols = arr.map((n) => Math.max(50, Number(n) || 0));
+				}
+			}
+			const hc = localStorage.getItem('hc_user_hist_cols');
+			if (hc) {
+				const arr = JSON.parse(hc);
+				if (Array.isArray(arr) && arr.length === HISTORY_COLS_DEFAULT.length) {
+					historyCols = arr.map((n) => Math.max(50, Number(n) || 0));
+				}
+			}
+		} catch {
+			/* ignore */
+		}
+		window.addEventListener('keydown', handleGlobalKeydown);
+		window.addEventListener('click', handleWindowClick);
 		load();
 	});
 
 	onDestroy(() => {
 		if (pollTimer) clearInterval(pollTimer);
 		if (urlSyncTimer) clearTimeout(urlSyncTimer);
+		if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+		if (historySearchDebounceTimer) clearTimeout(historySearchDebounceTimer);
+		if (chordTimer) clearTimeout(chordTimer);
+		if (browser) {
+			window.removeEventListener('keydown', handleGlobalKeydown);
+			window.removeEventListener('click', handleWindowClick);
+		}
 		unsubEvents();
 	});
 </script>
@@ -535,7 +839,16 @@ KPI — 컨테이너·요청·자원 합계
 		</button>
 	</nav>
 
-	<div class="main-grid" class:no-side={sidePanelEmpty}>
+	<div class="main-grid" class:no-side={!sidePanelOpen}>
+		<button
+			class="side-toggle"
+			class:side-toggle-collapsed={!sidePanelOpen}
+			onclick={toggleSidePanel}
+			aria-label={sidePanelOpen ? '사이드 패널 숨기기' : '사이드 패널 보이기'}
+			title={sidePanelOpen ? '사이드 패널 숨기기' : '사이드 패널 보이기'}
+		>
+			{sidePanelOpen ? '›' : '‹'}
+		</button>
 		<section class="main-content">
 
 	{#if activeTab === 'containers'}
@@ -546,7 +859,12 @@ KPI — 컨테이너·요청·자원 합계
 				<button class:active={containerFilter === 'workspace'} onclick={() => setContainerFilter('workspace')}>워크스페이스 <span class="chip-num">{workspaceCount}</span></button>
 				<button class:active={containerFilter === 'stopped'} onclick={() => setContainerFilter('stopped')}>중지됨 <span class="chip-num">{stoppedCount}</span></button>
 			</div>
-			<input class="search-input" bind:value={search} type="text" placeholder="이름·이미지·서버·템플릿 검색" />
+			<div class="search-wrap">
+				<input class="search-input" bind:this={searchInputEl} bind:value={search} type="text" placeholder="이름·이미지·서버·템플릿 검색 ( / )" />
+				{#if search}
+					<button class="search-clear" onclick={() => { search = ''; debouncedSearch = ''; searchInputEl?.focus(); }} aria-label="검색 초기화" title="검색 초기화 (Esc)">×</button>
+				{/if}
+			</div>
 		</section>
 
 		{#if loading && containers.length === 0}
@@ -563,33 +881,42 @@ KPI — 컨테이너·요청·자원 합계
 				{/if}
 			</div>
 		{:else}
-			<div class="container-table">
+			<div class="container-table" style={containerColsStyle}>
 				<div class="container-head">
 					<button class="th sortable" class:active={sortField === 'status'} onclick={() => setSort('status')}>
 						상태{sortField === 'status' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+						<span class="col-resize" onmousedown={(e) => startResize(e, 0, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</button>
 					<button class="th sortable" class:active={sortField === 'name'} onclick={() => setSort('name')}>
 						이름 / 이미지{sortField === 'name' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+						<span class="col-resize" onmousedown={(e) => startResize(e, 1, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</button>
-					<span class="th">서버 · 템플릿</span>
-					<span class="th">자원</span>
+					<span class="th">서버 · 템플릿
+						<span class="col-resize" onmousedown={(e) => startResize(e, 2, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
+					</span>
+					<span class="th">자원
+						<span class="col-resize" onmousedown={(e) => startResize(e, 3, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
+					</span>
 					<button class="th sortable" class:active={sortField === 'cpu'} onclick={() => setSort('cpu')}>
 						CPU (1h){sortField === 'cpu' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+						<span class="col-resize" onmousedown={(e) => startResize(e, 4, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</button>
 					<button class="th sortable" class:active={sortField === 'mem'} onclick={() => setSort('mem')}>
 						MEM (1h){sortField === 'mem' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+						<span class="col-resize" onmousedown={(e) => startResize(e, 5, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</button>
 					<button class="th sortable" class:active={sortField === 'last_seen'} onclick={() => setSort('last_seen')}>
 						최근{sortField === 'last_seen' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+						<span class="col-resize" onmousedown={(e) => startResize(e, 6, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</button>
 					<span class="th"></span>
 				</div>
 				<ul class="container-list" bind:this={containerListEl}>
-					{#each filteredContainers as c (c.container_id)}
-						<li class="container-row" onclick={() => openContainer(c.container_id)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && openContainer(c.container_id)}>
+					{#each filteredContainers as c (c.container_id + ':' + (recentlyChanged[c.container_id] ?? 0))}
+						<li class="container-row" class:row-changed={!!recentlyChanged[c.container_id]} onclick={() => openContainer(c.container_id)} oncontextmenu={(e) => onRowContextMenu(e, c)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && openContainer(c.container_id)}>
 							<span class="row-status">
 								<span class="dot" class:running={c.status === 'running'} aria-hidden="true"></span>
-								<Pill tone={statusTone(c.status)} size="md" minWidth="70px">{statusLabel(c.status)}</Pill>
+								<Pill status={c.status} size="md" minWidth="70px">{statusLabel(c.status)}</Pill>
 							</span>
 							<div class="row-name">
 								<strong title={c.name}>{c.name}</strong>
@@ -601,9 +928,9 @@ KPI — 컨테이너·요청·자원 합계
 							</div>
 							<div class="row-resources">
 								{#if c.workspace_enabled && c.workspace_host_port}
-									<Pill tone="var(--accent)" size="md" mono truncate>{c.workspace_kind ?? 'ws'} :{c.workspace_host_port}</Pill>
+									<Pill kind="accent" size="md" mono truncate>{c.workspace_kind ?? 'ws'} :{c.workspace_host_port}</Pill>
 								{:else if portList(c)}
-									<Pill tone="var(--accent)" size="md" mono truncate>{portList(c)}</Pill>
+									<Pill kind="accent" size="md" mono truncate>{portList(c)}</Pill>
 								{:else}
 									<Pill tone="var(--text-muted)" size="md" mono>—</Pill>
 								{/if}
@@ -691,7 +1018,12 @@ KPI — 컨테이너·요청·자원 합계
 				<button class:active={historyFilter === 'rejected'} onclick={() => setHistoryFilter('rejected')}>반려 <span class="chip-num">{historyCounts.rejected}</span></button>
 				<button class:active={historyFilter === 'others'} onclick={() => setHistoryFilter('others')}>기타 <span class="chip-num">{historyCounts.others}</span></button>
 			</div>
-			<input class="search-input" bind:value={historySearch} type="text" placeholder="이름·템플릿·서버·검토 메모 검색" />
+			<div class="search-wrap">
+				<input class="search-input" bind:this={historySearchInputEl} bind:value={historySearch} type="text" placeholder="이름·템플릿·서버·검토 메모 검색 ( / )" />
+				{#if historySearch}
+					<button class="search-clear" onclick={() => { historySearch = ''; debouncedHistorySearch = ''; historySearchInputEl?.focus(); }} aria-label="검색 초기화" title="검색 초기화 (Esc)">×</button>
+				{/if}
+			</div>
 		</section>
 
 		{#if loading && requests.length === 0}
@@ -702,22 +1034,32 @@ KPI — 컨테이너·요청·자원 합계
 				<p>완료·반려·취소된 과거 요청이 여기 표시됩니다.</p>
 			</div>
 		{:else}
-			<div class="history-table">
+			<div class="history-table" style={historyColsStyle}>
 				<div class="history-head">
 					<button class="th sortable" class:active={historySortField === 'action'} onclick={() => setHistorySort('action')}>
 						유형{historySortField === 'action' ? (historySortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+						<span class="col-resize" onmousedown={(e) => startResize(e, 0, 'history')} ondblclick={(e) => { e.stopPropagation(); resetColumns('history'); }} aria-hidden="true"></span>
 					</button>
 					<button class="th sortable" class:active={historySortField === 'name'} onclick={() => setHistorySort('name')}>
 						이름{historySortField === 'name' ? (historySortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+						<span class="col-resize" onmousedown={(e) => startResize(e, 1, 'history')} ondblclick={(e) => { e.stopPropagation(); resetColumns('history'); }} aria-hidden="true"></span>
 					</button>
 					<button class="th sortable" class:active={historySortField === 'status'} onclick={() => setHistorySort('status')}>
 						상태{historySortField === 'status' ? (historySortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+						<span class="col-resize" onmousedown={(e) => startResize(e, 2, 'history')} ondblclick={(e) => { e.stopPropagation(); resetColumns('history'); }} aria-hidden="true"></span>
 					</button>
-					<span class="th">템플릿</span>
-					<span class="th">서버</span>
-					<span class="th">검토 메모</span>
+					<span class="th">템플릿
+						<span class="col-resize" onmousedown={(e) => startResize(e, 3, 'history')} ondblclick={(e) => { e.stopPropagation(); resetColumns('history'); }} aria-hidden="true"></span>
+					</span>
+					<span class="th">서버
+						<span class="col-resize" onmousedown={(e) => startResize(e, 4, 'history')} ondblclick={(e) => { e.stopPropagation(); resetColumns('history'); }} aria-hidden="true"></span>
+					</span>
+					<span class="th">검토 메모
+						<span class="col-resize" onmousedown={(e) => startResize(e, 5, 'history')} ondblclick={(e) => { e.stopPropagation(); resetColumns('history'); }} aria-hidden="true"></span>
+					</span>
 					<button class="th sortable" class:active={historySortField === 'created_at'} onclick={() => setHistorySort('created_at')}>
 						요청 시각{historySortField === 'created_at' ? (historySortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+						<span class="col-resize" onmousedown={(e) => startResize(e, 6, 'history')} ondblclick={(e) => { e.stopPropagation(); resetColumns('history'); }} aria-hidden="true"></span>
 					</button>
 					<span class="th"></span>
 				</div>
@@ -726,7 +1068,7 @@ KPI — 컨테이너·요청·자원 합계
 						<li class="history-row">
 							<span class="h-action-cell">
 								<Pill
-									tone={r.action === 'create' ? '#8ed4a8' : r.action === 'delete' ? '#fca5a5' : 'var(--text-secondary)'}
+									kind={r.action === 'create' ? 'success' : r.action === 'delete' ? 'danger' : 'neutral'}
 									size="md"
 									minWidth="46px"
 								>
@@ -735,7 +1077,7 @@ KPI — 컨테이너·요청·자원 합계
 							</span>
 							<strong class="h-name" title={requestDisplayName(r)}>{requestDisplayName(r)}</strong>
 							<span class="h-status-cell">
-								<Pill tone={statusTone(r.status)} size="md" minWidth="70px">{statusLabel(r.status)}</Pill>
+								<Pill status={r.status} size="md" minWidth="70px">{statusLabel(r.status)}</Pill>
 							</span>
 							<span class="h-cell" title={r.template_name ?? ''}>{r.template_name ?? '-'}</span>
 							<span class="h-cell" title={r.target_agent_hostname ?? ''}>{r.target_agent_hostname ?? '-'}</span>
@@ -751,6 +1093,13 @@ KPI — 컨테이너·요청·자원 합계
 							{/if}
 						</li>
 					{/each}
+					{#if requestHasMore}
+						<li class="history-loadmore">
+							<button class="loadmore-btn" disabled={requestLoadingMore} onclick={loadMoreRequests}>
+								{requestLoadingMore ? '불러오는 중…' : `더 보기 (남은 ${Math.max(0, requestTotal - requests.length)}개)`}
+							</button>
+						</li>
+					{/if}
 					{#each Array(historyEmptyRows) as _, i (i)}
 						<li class="history-row empty-row" aria-hidden="true">
 							<span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
@@ -766,7 +1115,7 @@ KPI — 컨테이너·요청·자원 합계
 		<aside class="side-panel" aria-label="사이드 패널">
 			<section class="side-section">
 				<header class="side-head">
-					<h2>진행 중 요청<Pill tone="var(--accent)" size="md" minWidth="28px">{activeRequests.length}</Pill></h2>
+					<h2>진행 중 요청<Pill kind="accent" size="md" minWidth="28px">{activeRequests.length}</Pill></h2>
 					<InfoTooltip text={activeBannerHelp} label="진행 중 도움말" placement="bottom-start" />
 				</header>
 				{#if activeRequests.length === 0}
@@ -779,7 +1128,7 @@ KPI — 컨테이너·요청·자원 합계
 									<strong title={requestDisplayName(r)}>
 										{requestDisplayName(r)}
 									</strong>
-									<Pill tone={statusTone(r.status)} size="md" minWidth="70px">{statusLabel(r.status)}</Pill>
+									<Pill status={r.status} size="md" minWidth="70px">{statusLabel(r.status)}</Pill>
 								</div>
 								<div class="side-req-meta">{r.template_name ?? '-'} · {r.target_agent_hostname ?? '-'}</div>
 								<div class="track tiny">
@@ -825,6 +1174,23 @@ KPI — 컨테이너·요청·자원 합계
 		<div class="toast error legacy" role="status">
 			<span>{errorMsg}</span>
 			<button class="toast-close" onclick={dismissError} aria-label="닫기">×</button>
+		</div>
+	{/if}
+
+	{#if ctxMenu}
+		{@const m = ctxMenu}
+		<div
+			class="ctx-menu"
+			style="left: {m.x}px; top: {m.y}px;"
+			role="menu"
+			onclick={(e) => e.stopPropagation()}
+		>
+			<div class="ctx-head" title={m.container.name}>{m.container.name}</div>
+			<button class="ctx-item" disabled={ctxBusy || m.container.status === 'running'} onclick={() => controlAction(m.container, 'start')}>시작</button>
+			<button class="ctx-item" disabled={ctxBusy || m.container.status !== 'running'} onclick={() => controlAction(m.container, 'stop')}>정지</button>
+			<button class="ctx-item" disabled={ctxBusy} onclick={() => controlAction(m.container, 'restart')}>재시작</button>
+			<div class="ctx-divider"></div>
+			<button class="ctx-item danger" disabled={ctxBusy} onclick={() => requestDelete(m.container)}>삭제 요청</button>
 		</div>
 	{/if}
 
@@ -1018,6 +1384,7 @@ KPI — 컨테이너·요청·자원 합계
 	}
 
 	.main-grid {
+		position: relative;
 		flex: 1;
 		min-height: 0;
 		display: grid;
@@ -1031,6 +1398,37 @@ KPI — 컨테이너·요청·자원 합계
 
 	.main-grid.no-side .side-panel {
 		display: none;
+	}
+
+	.side-toggle {
+		position: absolute;
+		top: 14px;
+		right: -8px;
+		z-index: 5;
+		width: 18px;
+		height: 36px;
+		border-radius: 4px;
+		border: 1px solid var(--border);
+		background: rgba(13, 17, 23, 0.92);
+		color: var(--text-secondary);
+		font-size: 14px;
+		line-height: 1;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		padding: 0;
+		transition: background 0.15s, color 0.15s, border-color 0.15s;
+	}
+
+	.side-toggle:hover {
+		background: rgba(21, 28, 39, 0.95);
+		color: var(--accent);
+		border-color: rgba(77, 191, 179, 0.4);
+	}
+
+	.main-grid:not(.no-side) .side-toggle {
+		right: calc(clamp(260px, 22vw, 340px) - 9px);
 	}
 
 	.main-content {
@@ -1429,16 +1827,23 @@ KPI — 컨테이너·요청·자원 합계
 		color: var(--accent);
 	}
 
+	.search-wrap {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+	}
+
 	.search-input {
 		min-width: 240px;
 		max-width: 380px;
-		padding: 8px 13px;
+		padding: 8px 32px 8px 13px;
 		font-size: 13.5px;
 		background: var(--bg-card);
 		border: 1px solid var(--border);
 		border-radius: 8px;
 		color: var(--text-primary);
 		outline: none;
+		width: 100%;
 	}
 
 	.search-input:focus {
@@ -1447,6 +1852,31 @@ KPI — 컨테이너·요청·자원 합계
 
 	.search-input::placeholder {
 		color: var(--text-muted);
+	}
+
+	.search-clear {
+		position: absolute;
+		right: 6px;
+		top: 50%;
+		transform: translateY(-50%);
+		width: 22px;
+		height: 22px;
+		border-radius: 50%;
+		border: none;
+		background: rgba(100, 116, 139, 0.18);
+		color: var(--text-secondary);
+		font-size: 14px;
+		line-height: 1;
+		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0;
+	}
+
+	.search-clear:hover {
+		background: rgba(100, 116, 139, 0.32);
+		color: var(--text-primary);
 	}
 
 	.state {
@@ -1494,7 +1924,7 @@ KPI — 컨테이너·요청·자원 합계
 	.container-head,
 	.container-row {
 		display: grid;
-		grid-template-columns: 110px minmax(180px, 1.4fr) minmax(150px, 1fr) minmax(160px, 1.1fr) 105px 105px 80px 180px;
+		grid-template-columns: var(--ct-cols, 110px 240px 200px 220px 105px 105px 90px 180px);
 		gap: 10px;
 		align-items: center;
 	}
@@ -1547,6 +1977,16 @@ KPI — 컨테이너·요청·자원 합계
 
 	.container-row:not(.empty-row):hover {
 		background: rgba(21, 28, 39, 0.7);
+	}
+
+	.container-row.row-changed {
+		animation: rowFlash 2.2s ease-out 1;
+	}
+
+	@keyframes rowFlash {
+		0% { background: rgba(77, 191, 179, 0.22); }
+		60% { background: rgba(77, 191, 179, 0.08); }
+		100% { background: transparent; }
 	}
 
 	.container-row:focus-visible {
@@ -1796,7 +2236,7 @@ KPI — 컨테이너·요청·자원 합계
 	.history-head,
 	.history-row {
 		display: grid;
-		grid-template-columns: 60px minmax(160px, 1.4fr) 90px minmax(150px, 1.3fr) minmax(110px, 0.85fr) minmax(90px, 0.55fr) 170px 80px;
+		grid-template-columns: var(--hist-cols, 60px 240px 100px 220px 130px 130px 170px 80px);
 		gap: 10px;
 		align-items: center;
 	}
@@ -1905,6 +2345,95 @@ KPI — 컨테이너·요청·자원 합계
 		color: var(--text-muted);
 	}
 
+	.history-loadmore {
+		list-style: none;
+		border-top: 1px solid rgba(100, 116, 139, 0.18);
+	}
+
+	.loadmore-btn {
+		width: 100%;
+		padding: 12px 14px;
+		background: rgba(13, 17, 23, 0.4);
+		border: none;
+		color: var(--accent);
+		font-weight: 800;
+		font-size: 13px;
+		cursor: pointer;
+		text-align: center;
+	}
+
+	.loadmore-btn:hover:not(:disabled) {
+		background: rgba(77, 191, 179, 0.08);
+		filter: brightness(1.06);
+	}
+
+	.loadmore-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.ctx-menu {
+		position: fixed;
+		z-index: 100;
+		min-width: 180px;
+		padding: 6px;
+		background: rgba(13, 17, 23, 0.98);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+	}
+
+	.ctx-head {
+		padding: 6px 10px 8px;
+		font-size: 11.5px;
+		color: var(--text-muted);
+		border-bottom: 1px solid rgba(100, 116, 139, 0.18);
+		margin-bottom: 4px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.ctx-item {
+		padding: 7px 10px;
+		font-size: 13px;
+		font-weight: 700;
+		background: transparent;
+		border: none;
+		color: var(--text-primary);
+		text-align: left;
+		border-radius: 5px;
+		cursor: pointer;
+	}
+
+	.ctx-item:hover:not(:disabled) {
+		background: rgba(77, 191, 179, 0.12);
+		color: var(--accent);
+	}
+
+	.ctx-item.danger {
+		color: #e69b9b;
+	}
+
+	.ctx-item.danger:hover:not(:disabled) {
+		background: rgba(217, 112, 112, 0.12);
+		color: #f0bcbc;
+	}
+
+	.ctx-item:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.ctx-divider {
+		height: 1px;
+		background: rgba(100, 116, 139, 0.18);
+		margin: 4px 0;
+	}
+
 	.toast-stack {
 		position: fixed;
 		right: 18px;
@@ -1974,6 +2503,7 @@ KPI — 컨테이너·요청·자원 합계
 	}
 
 	.th {
+		position: relative;
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
@@ -1985,6 +2515,21 @@ KPI — 컨테이너·요청·자원 합계
 		letter-spacing: inherit;
 		padding: 0;
 		text-align: left;
+	}
+
+	.col-resize {
+		position: absolute;
+		top: -11px;
+		right: -10px;
+		width: 10px;
+		height: calc(100% + 22px);
+		cursor: col-resize;
+		z-index: 3;
+		background: transparent;
+	}
+
+	.col-resize:hover {
+		background: rgba(77, 191, 179, 0.22);
 	}
 
 	.th.sortable {

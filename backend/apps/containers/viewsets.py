@@ -595,9 +595,12 @@ class ContainerRequestViewSet(ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
+        target = serializer.validated_data.get("target_container")
+        snapshot_name = getattr(target, "name", "") or "" if target else ""
         serializer.save(
             requester=self.request.user,
             status=ContainerRequest.Status.PENDING,
+            target_container_snapshot_name=snapshot_name,
         )
 
     def destroy(self, request, *args, **kwargs):

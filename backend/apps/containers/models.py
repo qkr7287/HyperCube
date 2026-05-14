@@ -273,6 +273,12 @@ class ContainerRequest(models.Model):
         blank=True,
         related_name="delete_requests",
     )
+    # delete 요청 시 컨테이너 이름 스냅샷.
+    # target_container 가 on_delete=SET_NULL 이라 컨테이너 삭제 후 라벨이 사라지는
+    # 문제를 막기 위해 요청 시점 이름을 영구 보존한다.
+    target_container_snapshot_name = models.CharField(
+        max_length=255, blank=True, default=""
+    )
 
     # 승인/반려 공통 ---
     reviewer = models.ForeignKey(

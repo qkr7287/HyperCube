@@ -285,6 +285,7 @@ class ContainerRequestSerializer(serializers.ModelSerializer):
             # delete-specific
             "target_container",
             "target_container_name",
+            "target_container_snapshot_name",
             # review
             "reviewer",
             "reviewer_username",
@@ -306,6 +307,7 @@ class ContainerRequestSerializer(serializers.ModelSerializer):
             "template_name",
             "target_agent_hostname",
             "target_container_name",
+            "target_container_snapshot_name",
             "reviewer",
             "reviewer_username",
             "reviewed_at",
