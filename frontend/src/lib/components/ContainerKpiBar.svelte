@@ -147,11 +147,12 @@
 	let gpuMemDelta = $derived((currentGpuMemPct ?? 0) - gpuMemAvg);
 
 	// status-line 자연어 — severity 임계 정보 + 현재 위치를 한 줄로 요약.
-	// 본문 차트의 markLine 과 의미 일치 (warn/danger 임계).
+	// 본문 차트의 markLine 과 의미 일치. 좁은 KPI 카드(135~150px)에 들어가도록
+	// 단어 압축 — 정상에선 raw 임계값만, 경보 시엔 등급 라벨 + 임계.
 	function pctRangeStatus(level: 'normal' | 'warn' | 'danger', warn: number, crit: number): string {
-		if (level === 'danger') return `위험 · ${crit}% 임계 초과`;
-		if (level === 'warn') return `주의 · ${warn}% 임계 진입`;
-		return `정상 범위 · 임계 ${warn}/${crit}%`;
+		if (level === 'danger') return `위험 · ≥ ${crit}%`;
+		if (level === 'warn') return `주의 · ≥ ${warn}%`;
+		return `정상 · 임계 ${warn}/${crit}%`;
 	}
 	let cpuStatus = $derived(pctRangeStatus(cpuLevel, 70, 90));
 	let memStatus = $derived(pctRangeStatus(memLevel, 75, 90));
@@ -161,11 +162,14 @@
 	let activeBarTooltip = $state<string | null>(null);
 
 	function formatDelta(value: number, digits = 1): string {
-		const sign = value > 0 ? '+' : value < 0 ? '−' : '±';
-		const abs = Math.abs(value);
-		return `${sign}${abs.toFixed(digits)}%`;
+		// 표시 자리수보다 작은 편차는 평균과 동일하게 취급 — "−0.0%" 같은 헷갈리는 부호 방지.
+		const epsilon = Math.pow(10, -digits) / 2;
+		if (Math.abs(value) < epsilon) return `±0.${'0'.repeat(digits)}%`;
+		const sign = value > 0 ? '+' : '−';
+		return `${sign}${Math.abs(value).toFixed(digits)}%`;
 	}
 	function deltaTone(value: number, warnAt = 5): 'flat' | 'up' | 'up-warn' | 'down' {
+		if (Math.abs(value) < 0.5) return 'flat';
 		if (value <= -warnAt) return 'down';
 		if (value >= warnAt * 2) return 'up-warn';
 		if (value >= warnAt) return 'up';
