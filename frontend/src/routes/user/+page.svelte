@@ -135,13 +135,15 @@
 	let historyCols = $state<number[]>([...HISTORY_COLS_DEFAULT]);
 	let containerColsStyle = $derived(`--ct-cols: ${containerCols.map((w) => w + 'px').join(' ')};`);
 	let historyColsStyle = $derived(`--hist-cols: ${historyCols.map((w) => w + 'px').join(' ')};`);
-	let dragState: { idx: number; startX: number; startW: number; which: 'container' | 'history' } | null = null;
+	let dragState = $state<{ idx: number; startX: number; startW: number; which: 'container' | 'history' } | null>(null);
+	let dragX = $state(0);
 
 	function startResize(e: MouseEvent, idx: number, which: 'container' | 'history') {
 		e.preventDefault();
 		e.stopPropagation();
 		const widths = which === 'container' ? containerCols : historyCols;
 		dragState = { idx, startX: e.clientX, startW: widths[idx], which };
+		dragX = e.clientX;
 		document.body.style.cursor = 'col-resize';
 		document.body.style.userSelect = 'none';
 		window.addEventListener('mousemove', onResizing);
@@ -152,6 +154,7 @@
 		if (!dragState) return;
 		const delta = e.clientX - dragState.startX;
 		const newW = Math.max(50, dragState.startW + delta);
+		dragX = e.clientX;
 		if (dragState.which === 'container') {
 			const next = [...containerCols];
 			next[dragState.idx] = newW;
@@ -1222,6 +1225,10 @@ KPI — 컨테이너·요청·자원 합계
 		</div>
 	{/if}
 
+	{#if dragState}
+		<div class="drag-guideline" style="left: {dragX}px;" aria-hidden="true"></div>
+	{/if}
+
 	{#if ctxMenu}
 		{@const m = ctxMenu}
 		<div
@@ -1310,8 +1317,23 @@ KPI — 컨테이너·요청·자원 합계
 
 	.title-suffix {
 		font-weight: 500;
-		color: var(--text-secondary);
-		margin-left: 4px;
+		color: var(--text-muted);
+		margin-left: 12px;
+		font-size: clamp(11.5px, 0.78vw, 13px);
+		letter-spacing: 0.02em;
+		position: relative;
+		padding-left: 14px;
+	}
+
+	.title-suffix::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		top: 50%;
+		transform: translateY(-50%);
+		width: 1px;
+		height: 60%;
+		background: rgba(100, 116, 139, 0.42);
 	}
 
 	.kpi-inline {
@@ -1447,29 +1469,31 @@ KPI — 컨테이너·요청·자원 합계
 
 	.side-toggle {
 		position: absolute;
-		top: 12px;
+		top: 10px;
 		right: 2px;
 		z-index: 5;
-		width: 16px;
-		height: 34px;
-		border-radius: 4px;
-		border: 1px solid var(--border);
-		background: rgba(13, 17, 23, 0.92);
-		color: var(--text-secondary);
-		font-size: 13px;
+		width: 20px;
+		height: 42px;
+		border-radius: 5px;
+		border: 1px solid rgba(77, 191, 179, 0.22);
+		background: linear-gradient(135deg, rgba(21, 28, 39, 0.96), rgba(13, 17, 23, 0.94));
+		color: var(--accent);
+		font-size: 15px;
+		font-weight: 700;
 		line-height: 1;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		cursor: pointer;
 		padding: 0;
-		transition: background 0.15s, color 0.15s, border-color 0.15s;
+		transition: background 0.15s, color 0.15s, border-color 0.15s, width 0.15s;
 	}
 
 	.side-toggle:hover {
-		background: rgba(21, 28, 39, 0.95);
+		background: linear-gradient(135deg, rgba(77, 191, 179, 0.12), rgba(13, 17, 23, 0.94));
 		color: var(--accent);
-		border-color: rgba(77, 191, 179, 0.4);
+		border-color: rgba(77, 191, 179, 0.55);
+		width: 24px;
 	}
 
 	.main-grid:not(.no-side) .side-toggle {
@@ -2704,6 +2728,17 @@ KPI — 컨테이너·요청·자원 합계
 
 	.col-resize:hover {
 		background: rgba(77, 191, 179, 0.22);
+	}
+
+	.drag-guideline {
+		position: fixed;
+		top: 0;
+		bottom: 0;
+		width: 1px;
+		background: linear-gradient(180deg, rgba(77, 191, 179, 0.0) 0%, rgba(77, 191, 179, 0.65) 12%, rgba(77, 191, 179, 0.65) 88%, rgba(77, 191, 179, 0.0) 100%);
+		box-shadow: 0 0 6px rgba(77, 191, 179, 0.5);
+		z-index: 99;
+		pointer-events: none;
 	}
 
 	.th.sortable {
