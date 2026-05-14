@@ -43,11 +43,14 @@
 		if (points.length === 0) return '';
 		if (points.length === 1) return `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
 		let d = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
+		// 마지막 spike 가 있을 때 인접 segment 의 Bezier cp 가 chart 밖으로
+		// 빠져나가 V 자 dip 을 만드는 걸 막기 위해, cp y 좌표를 chart 영역
+		// 안으로 clamp 한다.
+		const yMin = padTop;
+		const yMax = height - padBottom;
 		const lastIdx = points.length - 2;
 		for (let i = 0; i < points.length - 1; i++) {
-			// 마지막 segment 는 직선(L) — Catmull-Rom 계열 곡선은 외삽해도
-			// 끝점 직전 미세 휨이 남기 때문. sparkline 스케일에선 마지막 한
-			// 토막만 직선이어도 시각적 부드러움 손실은 무시할 수준.
+			// 마지막 segment 는 직선(L) — Catmull-Rom 끝점 휨 완전 제거.
 			if (i === lastIdx) {
 				d += ` L ${points[i + 1].x.toFixed(2)} ${points[i + 1].y.toFixed(2)}`;
 				continue;
@@ -57,9 +60,11 @@
 			const p2 = points[i + 1];
 			const p3 = points[i + 2] ?? p2;
 			const cp1x = p1.x + (p2.x - p0.x) / 6;
-			const cp1y = p1.y + (p2.y - p0.y) / 6;
+			let cp1y = p1.y + (p2.y - p0.y) / 6;
 			const cp2x = p2.x - (p3.x - p1.x) / 6;
-			const cp2y = p2.y - (p3.y - p1.y) / 6;
+			let cp2y = p2.y - (p3.y - p1.y) / 6;
+			cp1y = Math.max(yMin, Math.min(yMax, cp1y));
+			cp2y = Math.max(yMin, Math.min(yMax, cp2y));
 			d += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
 		}
 		return d;
