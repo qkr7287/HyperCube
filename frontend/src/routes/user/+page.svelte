@@ -1159,19 +1159,28 @@ KPI — 컨테이너·요청·자원 합계
 		</section>
 
 		{#if loading && containers.length === 0}
-			<div class="skel-table" aria-busy="true" aria-label="컨테이너 불러오는 중">
+			<div class="skel-table" style={containerColsStyle} aria-busy="true" aria-label="컨테이너 불러오는 중">
 				{#each Array(6) as _, i (i)}
-					<div class="skel-row">
-						<span class="skel-bar" style="width: 70%;"></span>
-						<span class="skel-bar" style="width: 85%;"></span>
-						<span class="skel-bar" style="width: 60%;"></span>
-						<span class="skel-bar" style="width: 75%;"></span>
-						<span class="skel-bar" style="width: 50%;"></span>
-						<span class="skel-bar" style="width: 50%;"></span>
-						<span class="skel-bar" style="width: 50%;"></span>
-						<span class="skel-bar" style="width: 40%;"></span>
-						<span class="skel-bar" style="width: 45%;"></span>
-						<span class="skel-bar" style="width: 70%;"></span>
+					<div class="skel-row skel-row-container">
+						<span class="skel-cell"><span class="skel-pill"></span></span>
+						<span class="skel-cell skel-cell-stack">
+							<span class="skel-bar" style="width: 62%"></span>
+							<span class="skel-bar skel-bar-sm" style="width: 88%"></span>
+						</span>
+						<span class="skel-cell skel-cell-stack">
+							<span class="skel-bar" style="width: 56%"></span>
+							<span class="skel-bar skel-bar-sm" style="width: 78%"></span>
+						</span>
+						<span class="skel-cell"><span class="skel-pill" style="width: 78px"></span></span>
+						<span class="skel-cell"><span class="skel-spark"></span></span>
+						<span class="skel-cell"><span class="skel-spark"></span></span>
+						<span class="skel-cell"><span class="skel-spark"></span></span>
+						<span class="skel-cell"><span class="skel-bar" style="width: 60%"></span></span>
+						<span class="skel-cell"><span class="skel-bar" style="width: 70%"></span></span>
+						<span class="skel-cell skel-cell-actions">
+							<span class="skel-btn"></span>
+							<span class="skel-btn"></span>
+						</span>
 					</div>
 				{/each}
 			</div>
@@ -1397,18 +1406,24 @@ KPI — 컨테이너·요청·자원 합계
 		</section>
 
 		{#if loading && requests.length === 0}
-			<div class="skel-table" aria-busy="true" aria-label="요청 이력 불러오는 중">
+			<div class="skel-table" style={historyColsStyle} aria-busy="true" aria-label="요청 이력 불러오는 중">
 				{#each Array(8) as _, i (i)}
-					<div class="skel-row">
-						<span class="skel-bar" style="width: 40%;"></span>
-						<span class="skel-bar" style="width: 80%;"></span>
-						<span class="skel-bar" style="width: 55%;"></span>
-						<span class="skel-bar" style="width: 70%;"></span>
-						<span class="skel-bar" style="width: 50%;"></span>
-						<span class="skel-bar" style="width: 35%;"></span>
-						<span class="skel-bar" style="width: 50%;"></span>
-						<span class="skel-bar" style="width: 60%;"></span>
-						<span class="skel-bar" style="width: 30%;"></span>
+					<div class="skel-row skel-row-history">
+						<span class="skel-cell"><span class="skel-pill" style="width: 44px"></span></span>
+						<span class="skel-cell"><span class="skel-bar" style="width: 70%"></span></span>
+						<span class="skel-cell"><span class="skel-pill"></span></span>
+						<span class="skel-cell"><span class="skel-bar" style="width: 65%"></span></span>
+						<span class="skel-cell"><span class="skel-bar" style="width: 55%"></span></span>
+						<span class="skel-cell"><span class="skel-chip"></span></span>
+						<span class="skel-cell"><span class="skel-bar" style="width: 60%"></span></span>
+						<span class="skel-cell skel-cell-stack">
+							<span class="skel-bar" style="width: 75%"></span>
+							<span class="skel-bar skel-bar-sm" style="width: 45%"></span>
+						</span>
+						<span class="skel-cell skel-cell-actions">
+							<span class="skel-btn"></span>
+							<span class="skel-btn"></span>
+						</span>
 					</div>
 				{/each}
 			</div>
@@ -2415,21 +2430,51 @@ KPI — 컨테이너·요청·자원 합계
 	}
 
 	.skel-row {
-		display: flex;
-		gap: 14px;
+		display: grid;
+		gap: 10px;
 		align-items: center;
-		padding: 14px 16px;
+		padding: 12px 14px;
 		border-top: 1px solid rgba(100, 116, 139, 0.10);
+		min-height: 48px;
+	}
+
+	.skel-row-container {
+		grid-template-columns: var(--ct-cols);
+	}
+
+	.skel-row-history {
+		grid-template-columns: var(--hist-cols);
 	}
 
 	.skel-row:first-child {
 		border-top: none;
 	}
 
-	.skel-bar {
+	.skel-cell {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+		overflow: hidden;
+	}
+
+	.skel-cell-stack {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 5px;
+	}
+
+	.skel-cell-actions {
+		justify-content: center;
+		gap: 6px;
+	}
+
+	.skel-bar,
+	.skel-pill,
+	.skel-spark,
+	.skel-chip,
+	.skel-btn {
 		display: block;
-		height: 12px;
-		border-radius: 4px;
 		background: rgba(100, 116, 139, 0.12);
 		background-image: linear-gradient(
 			90deg,
@@ -2440,6 +2485,39 @@ KPI — 컨테이너·요청·자원 합계
 		background-size: 220% 100%;
 		animation: skelShimmer 1.4s ease-in-out infinite;
 		flex-shrink: 0;
+	}
+
+	.skel-bar {
+		height: 12px;
+		border-radius: 4px;
+	}
+
+	.skel-bar-sm {
+		height: 9px;
+	}
+
+	.skel-pill {
+		height: 26px;
+		width: 70px;
+		border-radius: 6px;
+	}
+
+	.skel-chip {
+		height: 22px;
+		width: 38px;
+		border-radius: 4px;
+	}
+
+	.skel-spark {
+		height: 14px;
+		width: 60px;
+		border-radius: 3px;
+	}
+
+	.skel-btn {
+		height: 26px;
+		width: 78px;
+		border-radius: 6px;
 	}
 
 	@keyframes skelShimmer {
