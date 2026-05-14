@@ -836,12 +836,6 @@ KPI — 컨테이너·요청·자원 합계
 		Math.max(0, Math.min(MIN_VISUAL_ROWS, Math.floor(historyListHeight / ROW_HEIGHT)) - filteredHistory.length),
 	);
 
-	let sidePanelEmpty = $derived(activeRequests.length === 0 && liveEvents.length === 0);
-	let sidePanelUserShown = $state<boolean | null>(null);
-	let sidePanelOpen = $derived(
-		sidePanelUserShown !== null ? sidePanelUserShown : !sidePanelEmpty,
-	);
-
 	let chordKey = '';
 	let chordTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -905,18 +899,6 @@ KPI — 컨테이너·요청·자원 합계
 			chordTimer = setTimeout(() => { chordKey = ''; }, 900);
 			e.preventDefault();
 			return;
-		}
-	}
-
-	function toggleSidePanel() {
-		const next = !sidePanelOpen;
-		sidePanelUserShown = next;
-		if (browser) {
-			try {
-				localStorage.setItem('hc_user_side', next ? '1' : '0');
-			} catch {
-				/* ignore */
-			}
 		}
 	}
 
@@ -985,9 +967,6 @@ KPI — 컨테이너·요청·자원 합계
 			setTimeout(() => { focusedRequestId = ''; }, 4000);
 		}
 		try {
-			const raw = localStorage.getItem('hc_user_side');
-			if (raw === '1') sidePanelUserShown = true;
-			else if (raw === '0') sidePanelUserShown = false;
 			const cc = localStorage.getItem('hc_user_cont_cols');
 			if (cc) {
 				const arr = JSON.parse(cc);
@@ -1073,16 +1052,7 @@ KPI — 컨테이너·요청·자원 합계
 		</button>
 	</nav>
 
-	<div class="main-grid" class:no-side={!sidePanelOpen}>
-		<button
-			class="side-toggle"
-			class:side-toggle-collapsed={!sidePanelOpen}
-			onclick={toggleSidePanel}
-			aria-label={sidePanelOpen ? '사이드 패널 숨기기' : '사이드 패널 보이기'}
-			title={sidePanelOpen ? '사이드 패널 숨기기' : '사이드 패널 보이기'}
-		>
-			{sidePanelOpen ? '›' : '‹'}
-		</button>
+	<div class="main-grid">
 		<section class="main-content">
 
 	{#if activeTab === 'containers'}
@@ -1735,47 +1705,6 @@ KPI — 컨테이너·요청·자원 합계
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) clamp(260px, 22vw, 340px);
 		gap: clamp(8px, 0.6vw, 14px);
-	}
-
-	.main-grid.no-side {
-		grid-template-columns: minmax(0, 1fr);
-	}
-
-	.main-grid.no-side .side-panel {
-		display: none;
-	}
-
-	.side-toggle {
-		position: absolute;
-		top: 10px;
-		right: 2px;
-		z-index: 5;
-		width: 20px;
-		height: 42px;
-		border-radius: 5px;
-		border: 1px solid rgba(77, 191, 179, 0.22);
-		background: linear-gradient(135deg, rgba(21, 28, 39, 0.96), rgba(13, 17, 23, 0.94));
-		color: var(--accent);
-		font-size: 15px;
-		font-weight: 700;
-		line-height: 1;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		cursor: pointer;
-		padding: 0;
-		transition: background 0.15s, color 0.15s, border-color 0.15s, width 0.15s;
-	}
-
-	.side-toggle:hover {
-		background: linear-gradient(135deg, rgba(77, 191, 179, 0.12), rgba(13, 17, 23, 0.94));
-		color: var(--accent);
-		border-color: rgba(77, 191, 179, 0.55);
-		width: 24px;
-	}
-
-	.main-grid:not(.no-side) .side-toggle {
-		right: calc(clamp(260px, 22vw, 340px) + 1px);
 	}
 
 	.main-content {
@@ -3280,12 +3209,7 @@ KPI — 컨테이너·요청·자원 합계
 			display: none;
 		}
 
-		.side-toggle {
-			display: none;
-		}
-
-		.main-grid,
-		.main-grid.no-side {
+		.main-grid {
 			grid-template-columns: minmax(0, 1fr);
 		}
 
