@@ -201,6 +201,18 @@
 		ctxMenu = { x, y, container: c };
 	}
 
+	function onRowMoreClick(e: MouseEvent, c: MyContainer) {
+		e.preventDefault();
+		e.stopPropagation();
+		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		const menuW = 200;
+		const menuH = 200;
+		const margin = 8;
+		const x = Math.min(rect.right - menuW, window.innerWidth - menuW - margin);
+		const y = Math.min(rect.bottom + 4, window.innerHeight - menuH - margin);
+		ctxMenu = { x: Math.max(margin, x), y, container: c };
+	}
+
 	function closeCtxMenu() {
 		ctxMenu = null;
 	}
@@ -803,21 +815,23 @@ KPI — 컨테이너·요청·자원 합계
 				<InfoTooltip text={pageHelp} label="페이지 도움말" placement="bottom-start" maxWidth={420} />
 			</div>
 			<div class="kpi-inline">
-				<span class="kpi-pill" title="실행 중 / 전체 컨테이너">
+				<span class="kpi-pill kpi-container" class:on={runningCount > 0} title="실행 중 / 전체 컨테이너">
 					<span class="kpi-pill-dot running"></span>
 					<span class="kpi-pill-num">{runningCount} / {totalCount}</span>
 					<span class="kpi-pill-label">컨테이너</span>
 				</span>
-				<span class="kpi-pill" title="대기·승인·배포 중 요청">
+				<span class="kpi-pill kpi-request" class:on={activeRequests.length > 0} title="대기·승인·배포 중 요청">
 					<span class="kpi-pill-dot" class:warn={activeRequests.length > 0}></span>
 					<span class="kpi-pill-num">{activeRequests.length}</span>
 					<span class="kpi-pill-label">진행 요청</span>
 				</span>
-				<span class="kpi-pill" title="GPU 슬라이스 합계">
+				<span class="kpi-pill kpi-gpu" class:on={gpuSliceCount > 0} title="GPU 슬라이스 합계">
+					<span class="kpi-pill-dot gpu"></span>
 					<span class="kpi-pill-num">{gpuSliceCount}</span>
 					<span class="kpi-pill-label">GPU</span>
 				</span>
-				<span class="kpi-pill" title="활성화된 워크스페이스">
+				<span class="kpi-pill kpi-workspace" class:on={workspaceCount > 0} title="활성화된 워크스페이스">
+					<span class="kpi-pill-dot ws"></span>
 					<span class="kpi-pill-num">{workspaceCount}</span>
 					<span class="kpi-pill-label">워크스페이스</span>
 				</span>
@@ -1028,6 +1042,12 @@ KPI — 컨테이너·요청·자원 합계
 								{:else}
 									<span class="row-action-placeholder" aria-hidden="true"></span>
 								{/if}
+								<button
+									class="row-action-more"
+									onclick={(e) => onRowMoreClick(e, c)}
+									title="더 보기 (우클릭과 동일)"
+									aria-label="더 많은 액션"
+								>⋯</button>
 							</div>
 						</li>
 					{/each}
@@ -1369,13 +1389,43 @@ KPI — 컨테이너·요청·자원 합계
 
 	.kpi-pill-dot.running {
 		background: #6dc090;
-		box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.18);
+		box-shadow: 0 0 0 2px rgba(95, 186, 133, 0.18);
 	}
 
 	.kpi-pill-dot.warn {
-		background: #fbbf24;
-		box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.18);
+		background: #d4a25b;
+		box-shadow: 0 0 0 2px rgba(212, 162, 91, 0.22);
 		animation: kpiPulse 1.6s ease-in-out infinite;
+	}
+
+	.kpi-pill-dot.gpu {
+		background: #a087d9;
+		box-shadow: 0 0 0 2px rgba(160, 135, 217, 0.18);
+	}
+
+	.kpi-pill-dot.ws {
+		background: #6c9bd0;
+		box-shadow: 0 0 0 2px rgba(108, 155, 208, 0.18);
+	}
+
+	.kpi-pill.on.kpi-container {
+		border-color: rgba(95, 186, 133, 0.42);
+		background: linear-gradient(135deg, rgba(95, 186, 133, 0.10), rgba(13, 17, 23, 0.55));
+	}
+
+	.kpi-pill.on.kpi-request {
+		border-color: rgba(212, 162, 91, 0.42);
+		background: linear-gradient(135deg, rgba(212, 162, 91, 0.10), rgba(13, 17, 23, 0.55));
+	}
+
+	.kpi-pill.on.kpi-gpu {
+		border-color: rgba(160, 135, 217, 0.42);
+		background: linear-gradient(135deg, rgba(160, 135, 217, 0.10), rgba(13, 17, 23, 0.55));
+	}
+
+	.kpi-pill.on.kpi-workspace {
+		border-color: rgba(108, 155, 208, 0.42);
+		background: linear-gradient(135deg, rgba(108, 155, 208, 0.10), rgba(13, 17, 23, 0.55));
 	}
 
 	@keyframes kpiPulse {
@@ -2302,10 +2352,37 @@ KPI — 컨테이너·요청·자원 합계
 
 	.row-actions {
 		display: grid !important;
-		grid-template-columns: 1fr 1fr;
+		grid-template-columns: 1fr 1fr 22px;
 		gap: 6px;
 		width: 100%;
 		align-items: center !important;
+	}
+
+	.row-action-more {
+		width: 22px;
+		height: 26px;
+		padding: 0;
+		font-size: 16px;
+		font-weight: 800;
+		line-height: 1;
+		background: transparent;
+		border: 1px solid transparent;
+		border-radius: 5px;
+		color: var(--text-muted);
+		cursor: pointer;
+		opacity: 0;
+		transition: opacity 0.12s, background 0.12s, color 0.12s, border-color 0.12s;
+	}
+
+	.container-row:hover .row-action-more,
+	.row-action-more:focus-visible {
+		opacity: 1;
+	}
+
+	.row-action-more:hover {
+		background: rgba(77, 191, 179, 0.12);
+		border-color: rgba(77, 191, 179, 0.32);
+		color: var(--accent);
 	}
 
 	.row-action {
