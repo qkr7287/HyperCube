@@ -18,12 +18,15 @@
 		id: string;
 		action: string;
 		status: string;
+		template?: string | null;
 		template_name?: string | null;
+		target_agent?: string | null;
 		target_agent_hostname?: string | null;
 		target_container?: string | null;
 		target_container_name?: string | null;
 		target_container_snapshot_name?: string | null;
 		custom_name?: string;
+		selected_image?: string;
 		progress_message?: string;
 		progress_percent?: number | null;
 		review_note?: string;
@@ -69,6 +72,36 @@
 	let loading = $state(true);
 	let refreshing = $state(false);
 	let newModalOpen = $state(false);
+	let newModalPrefill = $state<null | {
+		templateId?: string | null;
+		agentId?: string | null;
+		customName?: string | null;
+		selectedImage?: string | null;
+	}>(null);
+
+	function scrollFocusedIntoView(which: 'container' | 'history') {
+		const id = which === 'container' ? focusedContainerId : focusedRequestId;
+		if (!id) return;
+		const root = which === 'container' ? containerListEl : historyListEl;
+		if (!root) return;
+		const el = root.querySelector(`[data-focus-id="${CSS.escape(id)}"]`) as HTMLElement | null;
+		if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+	}
+
+	function openNewRequest(prefill: typeof newModalPrefill = null) {
+		newModalPrefill = prefill;
+		newModalOpen = true;
+	}
+
+	function reRequest(r: RequestRow) {
+		if (r.action !== 'create') return;
+		openNewRequest({
+			templateId: r.template ?? null,
+			agentId: r.target_agent ?? null,
+			customName: r.custom_name ? `${r.custom_name}-재` : null,
+			selectedImage: r.selected_image ?? null,
+		});
+	}
 	let openingId = $state('');
 	let errorMsg = $state('');
 	let username = $state('');
@@ -121,6 +154,8 @@
 	let memHistory = $state<Record<string, number[]>>({});
 	let metricsFetched = false;
 	let recentlyChanged = $state<Record<string, number>>({});
+	let focusedContainerId = $state('');
+	let focusedRequestId = $state('');
 	const REQ_PAGE_SIZE = 50;
 	let requestPage = $state(1);
 	let requestHasMore = $state(false);
@@ -199,6 +234,65 @@
 		const x = Math.min(e.clientX, window.innerWidth - menuW - margin);
 		const y = Math.min(e.clientY, window.innerHeight - menuH - margin);
 		ctxMenu = { x, y, container: c };
+	}
+
+	function csvEscape(v: unknown): string {
+		const s = String(v ?? '');
+		if (/[",\n\r]/.test(s)) {
+			return '"' + s.replace(/"/g, '""') + '"';
+		}
+		return s;
+	}
+
+	function downloadCsv(filename: string, headers: string[], rows: (string | number | null | undefined)[][]) {
+		const lines = [headers.map(csvEscape).join(',')];
+		for (const r of rows) lines.push(r.map(csvEscape).join(','));
+		const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = filename;
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		setTimeout(() => URL.revokeObjectURL(url), 1000);
+	}
+
+	function tsSuffix(): string {
+		const d = new Date();
+		const pad = (n: number) => String(n).padStart(2, '0');
+		return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+	}
+
+	function exportContainersCsv() {
+		const headers = ['상태', '이름', '이미지', '서버', '템플릿', 'GPU 슬라이스', '워크스페이스 포트', '최근 활동'];
+		const rows = filteredContainers.map((c) => [
+			statusLabel(c.status),
+			c.name,
+			c.image,
+			c.agent_hostname ?? '',
+			c.template_name ?? '',
+			c.allocated_gpu_slice_ids?.length ?? 0,
+			c.workspace_host_port ?? '',
+			c.last_seen,
+		]);
+		downloadCsv(`hypercube-containers-${tsSuffix()}.csv`, headers, rows);
+		pushToast('success', `컨테이너 ${rows.length}건을 CSV로 내보냈습니다.`);
+	}
+
+	function exportHistoryCsv() {
+		const headers = ['유형', '이름', '상태', '템플릿', '서버', '검토 메모', '요청 시각'];
+		const rows = filteredHistory.map((r) => [
+			r.action === 'create' ? '생성' : r.action === 'delete' ? '삭제' : r.action,
+			requestDisplayName(r),
+			statusLabel(r.status),
+			r.template_name ?? '',
+			r.target_agent_hostname ?? '',
+			r.review_note ?? '',
+			r.created_at,
+		]);
+		downloadCsv(`hypercube-requests-${tsSuffix()}.csv`, headers, rows);
+		pushToast('success', `요청 ${rows.length}건을 CSV로 내보냈습니다.`);
 	}
 
 	function onRowMoreClick(e: MouseEvent, c: MyContainer) {
@@ -684,7 +778,7 @@ KPI — 컨테이너·요청·자원 합계
 		}
 
 		if (e.key === 'n' || e.key === 'N') {
-			newModalOpen = true;
+			openNewRequest(null);
 			e.preventDefault();
 			return;
 		}
@@ -767,6 +861,20 @@ KPI — 컨테이너·요청·자원 합계
 		if (hist === 'deployed' || hist === 'rejected' || hist === 'others') {
 			historyFilter = hist;
 		}
+		const focusContainer = u.searchParams.get('focus');
+		if (focusContainer) {
+			focusedContainerId = focusContainer;
+			activeTab = 'containers';
+			setTimeout(() => scrollFocusedIntoView('container'), 400);
+			setTimeout(() => { focusedContainerId = ''; }, 4000);
+		}
+		const focusRequest = u.searchParams.get('req');
+		if (focusRequest) {
+			focusedRequestId = focusRequest;
+			activeTab = 'history';
+			setTimeout(() => scrollFocusedIntoView('history'), 400);
+			setTimeout(() => { focusedRequestId = ''; }, 4000);
+		}
 		try {
 			const raw = localStorage.getItem('hc_user_side');
 			if (raw === '1') sidePanelUserShown = true;
@@ -842,7 +950,7 @@ KPI — 컨테이너·요청·자원 합계
 				<span class="btn-spinner" class:spinning={refreshing}></span>
 				{refreshing ? '갱신 중…' : '새로고침'}
 			</button>
-			<button class="new-btn" onclick={() => (newModalOpen = true)}>+ 새 요청</button>
+			<button class="new-btn" onclick={() => openNewRequest(null)}>+ 새 요청</button>
 		</div>
 	</section>
 
@@ -876,11 +984,14 @@ KPI — 컨테이너·요청·자원 합계
 				<button class:active={containerFilter === 'workspace'} onclick={() => setContainerFilter('workspace')}>워크스페이스 <span class="chip-num">{workspaceCount}</span></button>
 				<button class:active={containerFilter === 'stopped'} onclick={() => setContainerFilter('stopped')}>중지됨 <span class="chip-num">{stoppedCount}</span></button>
 			</div>
-			<div class="search-wrap">
-				<input class="search-input" bind:this={searchInputEl} bind:value={search} type="text" placeholder="이름·이미지·서버·템플릿 검색 ( / )" />
-				{#if search}
-					<button class="search-clear" onclick={() => { search = ''; debouncedSearch = ''; searchInputEl?.focus(); }} aria-label="검색 초기화" title="검색 초기화 (Esc)">×</button>
-				{/if}
+			<div class="toolbar-right">
+				<button class="toolbar-btn" onclick={exportContainersCsv} disabled={filteredContainers.length === 0} title="현재 보이는 컨테이너 CSV 내보내기">CSV</button>
+				<div class="search-wrap">
+					<input class="search-input" bind:this={searchInputEl} bind:value={search} type="text" placeholder="이름·이미지·서버·템플릿 검색 ( / )" />
+					{#if search}
+						<button class="search-clear" onclick={() => { search = ''; debouncedSearch = ''; searchInputEl?.focus(); }} aria-label="검색 초기화" title="검색 초기화 (Esc)">×</button>
+					{/if}
+				</div>
 			</div>
 		</section>
 
@@ -904,7 +1015,7 @@ KPI — 컨테이너·요청·자원 합계
 				{#if containers.length === 0}
 					<h3>아직 컨테이너가 없습니다</h3>
 					<p>아래에서 시작해 보세요.</p>
-					<button class="new-btn" onclick={() => (newModalOpen = true)}>+ 새 요청 만들기 <kbd>n</kbd></button>
+					<button class="new-btn" onclick={() => openNewRequest(null)}>+ 새 요청 만들기 <kbd>n</kbd></button>
 					<div class="empty-hints">
 						<div class="hint-card">
 							<strong>워크스페이스</strong>
@@ -957,7 +1068,7 @@ KPI — 컨테이너·요청·자원 합계
 				</div>
 				<ul class="container-list" bind:this={containerListEl}>
 					{#each filteredContainers as c (c.container_id + ':' + (recentlyChanged[c.container_id] ?? 0))}
-						<li class="container-row" class:row-changed={!!recentlyChanged[c.container_id]} onclick={() => openContainer(c.container_id)} oncontextmenu={(e) => onRowContextMenu(e, c)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && openContainer(c.container_id)}>
+						<li class="container-row" class:row-changed={!!recentlyChanged[c.container_id]} class:row-focused={c.container_id === focusedContainerId} data-focus-id={c.container_id} onclick={() => openContainer(c.container_id)} oncontextmenu={(e) => onRowContextMenu(e, c)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && openContainer(c.container_id)}>
 							<span class="row-status">
 								<Pill status={c.status} dot size="md" minWidth="76px">{statusLabel(c.status)}</Pill>
 							</span>
@@ -1067,11 +1178,14 @@ KPI — 컨테이너·요청·자원 합계
 				<button class:active={historyFilter === 'rejected'} onclick={() => setHistoryFilter('rejected')}>반려 <span class="chip-num">{historyCounts.rejected}</span></button>
 				<button class:active={historyFilter === 'others'} onclick={() => setHistoryFilter('others')}>기타 <span class="chip-num">{historyCounts.others}</span></button>
 			</div>
-			<div class="search-wrap">
-				<input class="search-input" bind:this={historySearchInputEl} bind:value={historySearch} type="text" placeholder="이름·템플릿·서버·검토 메모 검색 ( / )" />
-				{#if historySearch}
-					<button class="search-clear" onclick={() => { historySearch = ''; debouncedHistorySearch = ''; historySearchInputEl?.focus(); }} aria-label="검색 초기화" title="검색 초기화 (Esc)">×</button>
-				{/if}
+			<div class="toolbar-right">
+				<button class="toolbar-btn" onclick={exportHistoryCsv} disabled={filteredHistory.length === 0} title="현재 보이는 요청 이력 CSV 내보내기">CSV</button>
+				<div class="search-wrap">
+					<input class="search-input" bind:this={historySearchInputEl} bind:value={historySearch} type="text" placeholder="이름·템플릿·서버·검토 메모 검색 ( / )" />
+					{#if historySearch}
+						<button class="search-clear" onclick={() => { historySearch = ''; debouncedHistorySearch = ''; historySearchInputEl?.focus(); }} aria-label="검색 초기화" title="검색 초기화 (Esc)">×</button>
+					{/if}
+				</div>
 			</div>
 		</section>
 
@@ -1127,7 +1241,7 @@ KPI — 컨테이너·요청·자원 합계
 				</div>
 				<ul class="history-list" bind:this={historyListEl}>
 					{#each filteredHistory as r (r.id)}
-						<li class="history-row">
+						<li class="history-row" class:row-focused={r.id === focusedRequestId} data-focus-id={r.id}>
 							<span class="h-action-cell">
 								<Pill
 									kind={r.action === 'create' ? 'success' : r.action === 'delete' ? 'danger' : 'neutral'}
@@ -1154,11 +1268,14 @@ KPI — 컨테이너·요청·자원 합계
 								<span>{formatDateTime(r.created_at)}</span>
 								<span class="h-time-rel">{formatRelativeTime(r.created_at)}</span>
 							</time>
-							{#if r.status === 'deployed' && r.target_container}
-								<button class="link-btn" onclick={() => openContainer(r.target_container!)}>열기 →</button>
-							{:else}
-								<span></span>
-							{/if}
+							<div class="h-actions">
+								{#if r.status === 'deployed' && r.target_container}
+									<button class="link-btn" onclick={() => openContainer(r.target_container!)}>열기 →</button>
+								{/if}
+								{#if r.action === 'create' && r.template}
+									<button class="row-action-more h-redo" onclick={() => reRequest(r)} title="이 요청과 같은 설정으로 새 요청 만들기" aria-label="다시 요청">↻</button>
+								{/if}
+							</div>
 						</li>
 					{/each}
 					{#if requestHasMore}
@@ -1278,8 +1395,10 @@ KPI — 컨테이너·요청·자원 합계
 
 <NewRequestModal
 	open={newModalOpen}
-	onClose={() => (newModalOpen = false)}
+	prefill={newModalPrefill}
+	onClose={() => { newModalOpen = false; newModalPrefill = null; }}
 	onSubmitted={() => {
+		newModalPrefill = null;
 		pushToast('success', '새 요청이 제출되었습니다. 승인 대기 중입니다.');
 		load();
 	}}
@@ -1972,6 +2091,37 @@ KPI — 컨테이너·요청·자원 합계
 		color: var(--accent);
 	}
 
+	.toolbar-right {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.toolbar-btn {
+		height: 34px;
+		padding: 0 12px;
+		font-size: 12px;
+		font-weight: 800;
+		letter-spacing: 0.03em;
+		color: var(--text-secondary);
+		background: var(--bg-card);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		cursor: pointer;
+		transition: color 0.12s, border-color 0.12s, background 0.12s;
+	}
+
+	.toolbar-btn:hover:not(:disabled) {
+		color: var(--accent);
+		border-color: rgba(77, 191, 179, 0.45);
+		background: rgba(77, 191, 179, 0.06);
+	}
+
+	.toolbar-btn:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
+
 	.search-wrap {
 		position: relative;
 		display: inline-flex;
@@ -2221,6 +2371,18 @@ KPI — 컨테이너·요청·자원 합계
 
 	.container-row.row-changed {
 		animation: rowFlash 2.2s ease-out 1;
+	}
+
+	.container-row.row-focused,
+	.history-row.row-focused {
+		background: rgba(77, 191, 179, 0.10);
+		box-shadow: inset 3px 0 0 var(--accent);
+		animation: rowFocusPulse 1.8s ease-out 2;
+	}
+
+	@keyframes rowFocusPulse {
+		0% { background: rgba(77, 191, 179, 0.28); }
+		100% { background: rgba(77, 191, 179, 0.10); }
 	}
 
 	@keyframes rowFlash {
@@ -2646,6 +2808,44 @@ KPI — 컨테이너·요청·자원 합계
 		color: var(--text-muted);
 	}
 
+	.h-actions {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		justify-content: flex-end;
+		width: 100%;
+	}
+
+	.h-redo {
+		opacity: 0;
+		width: 26px;
+		height: 26px;
+		padding: 0;
+		font-size: 14px;
+		font-weight: 800;
+		line-height: 1;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		background: transparent;
+		border: 1px solid transparent;
+		border-radius: 5px;
+		color: var(--text-muted);
+		cursor: pointer;
+		transition: opacity 0.12s, background 0.12s, color 0.12s, border-color 0.12s;
+	}
+
+	.history-row:hover .h-redo,
+	.h-redo:focus-visible {
+		opacity: 1;
+	}
+
+	.h-redo:hover {
+		background: rgba(77, 191, 179, 0.12);
+		border-color: rgba(77, 191, 179, 0.32);
+		color: var(--accent);
+	}
+
 	.history-loadmore {
 		list-style: none;
 		border-top: 1px solid rgba(100, 116, 139, 0.18);
@@ -2893,6 +3093,10 @@ KPI — 컨테이너·요청·자원 합계
 	}
 
 	@media (max-width: 900px) {
+		.title-suffix {
+			display: none;
+		}
+
 		.hero {
 			flex-direction: column;
 			align-items: stretch;

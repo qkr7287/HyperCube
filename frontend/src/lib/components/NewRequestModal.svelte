@@ -2,12 +2,21 @@
 	import { browser } from '$app/environment';
 	import { base } from '$app/paths';
 
+	type Prefill = {
+		templateId?: string | null;
+		agentId?: string | null;
+		customName?: string | null;
+		selectedImage?: string | null;
+	} | null;
+
 	let {
 		open = false,
+		prefill = null as Prefill,
 		onClose = () => {},
 		onSubmitted = () => {},
 	}: {
 		open?: boolean;
+		prefill?: Prefill;
 		onClose?: () => void;
 		onSubmitted?: () => void;
 	} = $props();
@@ -136,8 +145,20 @@
 	$effect(() => {
 		if (!open) return;
 		resetForm();
-		loadData();
+		loadData().then(() => {
+			if (prefill) applyPrefill(prefill);
+		});
 	});
+
+	function applyPrefill(p: Exclude<Prefill, null>) {
+		if (p.agentId) selectedAgent = p.agentId;
+		if (p.templateId) {
+			const tpl = templates.find((t) => t.id === p.templateId);
+			if (tpl) selectTemplate(tpl);
+		}
+		if (p.customName) customName = p.customName;
+		if (p.selectedImage) selectedImage = p.selectedImage;
+	}
 
 	$effect(() => {
 		if (!open || !selectedAgent || selectedAgent === lastGpuAgent) return;
