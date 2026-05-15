@@ -187,6 +187,8 @@ The following items are still not proven end-to-end on `server_63_dev`:
 
 ## Next Agent-Side Gate
 
+Tracking issue: <https://github.com/qkr7287/HyperCube-agent/issues/16>
+
 Before declaring the whole initiative complete, deploy an agent build that
 implements `docs/agent-integration-lvm-thin-spec.ko.html` sections 3, 4, 5, and
 6, then rerun the 8-step scenario above.
