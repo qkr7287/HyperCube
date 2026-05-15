@@ -196,7 +196,7 @@
 	}
 	function formatBytesShort(v: number | null): string {
 		if (v === null) return '—';
-		return compactBytes(v);
+		return compactBytes(v).replace(/\.0([BKMGTP])$/, '$1');
 	}
 	function formatCoreLimit(v: number): string {
 		return Number.isInteger(v) ? `${v} cores` : `${v.toFixed(1)} cores`;
