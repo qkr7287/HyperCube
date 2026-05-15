@@ -17,6 +17,7 @@ Implementation baseline:
 Latest implementation/audit commits before this progress refresh:
 
 ```text
+cf9780d docs(agent): record disabled lvm acceptance gate
 7e0bcc3 docs(agent): refresh lvm handoff head
 d8b7221 docs(containers): add final lvm gate audit
 cfda1df docs(containers): refresh lvm validation progress
@@ -48,10 +49,17 @@ Latest re-audit evidence:
   `docs/container-resource-limits-기획.ko.html` and
   `docs/agent-integration-lvm-thin-spec.ko.html`.
 - GitHub compare verified HyperCube `dev` was identical to
-  `7e0bcc3dd6abe039c492ea3e47fba31f96231a0f` before this progress refresh.
+  `cf9780d9cdf981e93abfdde05880cd59e90b55f3` before this progress refresh.
 - `docs/agent-lvm-thin-handoff.md` now points agent-side work at the current
-  final gate audit, preflight script, host setup runbook, and full-validation
-  runbook instead of an older core HEAD.
+  final gate audit, preflight script, host setup runbook, full-validation
+  runbook, and the option-3 disabled-LVM acceptance rule.
+- Local HyperCube-agent read-only audit found LVM/capacity code scaffolding and
+  passing self-tests (`self-test:lvm-workspace`, `self-test:network-policy`,
+  `self-test:gpu-per-container`) but identified one agent-side acceptance item:
+  `LVM_WORKSPACE_ENABLED=false` must force `disk.lvm.available=false` without
+  probing `lvs`.
+- HyperCube-agent issue #16 comment `4461477025` records that local agent code
+  audit note, recommended patch shape, and required self-test.
 - `docs/test-reports/2026-05-16-container-resource-limits-final-gate-audit.md`
   records the prompt-to-artifact checklist and confirms the remaining blocked
   gates are external server-63/agent LVM runtime requirements.
@@ -150,6 +158,9 @@ Remaining blocker:
 - Current Agent rows report `lvm_pool_size_gb=None`, so backend stays in legacy
   mode and omits LVM `workspace` payloads for those agents.
 - HyperCube-agent issue #16 still has no `PERMISSION_OPTION=<1|2|3>` reply.
+- HyperCube-agent still needs the disabled-LVM acceptance patch before option 3
+  can be considered fully safe on a host where LVM exists but is intentionally
+  disabled.
 
 Next completion gate:
 
@@ -157,12 +168,14 @@ Next completion gate:
 2. Implement/deploy the selected HyperCube-agent permission path.
 3. Confirm `capacity_report` includes `disk.lvm.available=true` and
    `thinPoolSizeGb`, or explicitly choose `PERMISSION_OPTION=3` legacy mode.
-4. Re-run `docs/runbooks/lvm-thin-workspace-preflight.sh` until it exits 0, or
+4. If choosing `PERMISSION_OPTION=3`, confirm `LVM_WORKSPACE_ENABLED=false`
+   forces `disk.lvm.available=false` without probing `lvs`.
+5. Re-run `docs/runbooks/lvm-thin-workspace-preflight.sh` until it exits 0, or
    confirm the explicit legacy-mode path.
-5. Run `docs/runbooks/lvm-thin-workspace-full-validation.md` for the real LVM
+6. Run `docs/runbooks/lvm-thin-workspace-full-validation.md` for the real LVM
    8-step validation path.
-6. Submit a new PyTorch Jupyter request and confirm backend sends
+7. Submit a new PyTorch Jupyter request and confirm backend sends
    `hostConfig`, `workspace`, and `sharedMounts` when LVM is available.
-7. Confirm agent creates/mounts the LVM thin volume.
-8. Confirm backend stores `Container.workspace_device`.
-9. Confirm container `df /workspace` shows the requested workspace quota.
+8. Confirm agent creates/mounts the LVM thin volume.
+9. Confirm backend stores `Container.workspace_device`.
+10. Confirm container `df /workspace` shows the requested workspace quota.
