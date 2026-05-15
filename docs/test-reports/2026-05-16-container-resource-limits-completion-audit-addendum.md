@@ -79,6 +79,9 @@ Observed result:
 
 ```text
 PREFLIGHT_EXIT:1
+FAIL host command 'lvcreate' is missing
+FAIL host command 'lvs' is missing
+FAIL host command 'lvremove' is missing
 FAIL /mnt/datasets is missing
 FAIL /mnt/models is missing
 FAIL /var/lib/hypercube/workspaces is missing
@@ -91,6 +94,7 @@ OK   agent command 'mount' -> /usr/bin/mount
 OK   agent command 'umount' -> /usr/bin/umount
 FAIL agent command 'lvremove' is missing
 FAIL agent lvs command failed
+sh: 1: lvs: not found
 backend Agent rows still show lvm_pool_size_gb=None for server_16_dev and server_63_dev
 ```
 
