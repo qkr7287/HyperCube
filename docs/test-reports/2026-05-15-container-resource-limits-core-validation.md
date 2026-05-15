@@ -13,13 +13,14 @@ Full LVM thin workspace creation is not yet end-to-end verified because the
 currently deployed `hypercube-agent-dev-63` runtime does not expose LVM tooling
 or LVM thin capacity.
 
-Remote `dev` HEAD verified by GitHub API:
+Remote `dev` evidence chain verified by GitHub API. Re-check the current HEAD
+when resuming:
 
-```text
-9319a0c1541ff77c11b689765b262571f50b8bfc
+```bash
+gh api repos/qkr7287/HyperCube/git/ref/heads/dev --jq '.object.sha'
 ```
 
-Commits:
+Audited commits:
 
 ```text
 7454fdd feat(containers): add resource limits and workspace quotas
@@ -30,6 +31,11 @@ c0bb50f docs(containers): link agent lvm follow-up issue
 4249c22 docs(agent): add lvm thin resource limits handoff
 ec0818e docs(progress): record resource limits integration status
 9319a0c docs(agent): clarify lvm permission handoff status
+eca6f4a docs(agent): update lvm host preflight blocker
+5881763 docs(containers): add resource limits completion audit
+e780421 docs(ops): add lvm thin host setup runbook
+f224513 docs(ops): add lvm thin preflight script
+557cdf8 docs(agent): link lvm preflight script
 ```
 
 ## Core Validation
