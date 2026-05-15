@@ -12,7 +12,7 @@ the agent/ops runtime gate below is resolved.
 Current verified core HEAD before this handoff refresh:
 
 ```text
-0f637d00312c246efbe16415ec27b78c7da82e8d docs(containers): link final lvm gate audit in progress
+688a5eb2ca268a7c8c343dd5e4b0e1e35aa2b87f docs(containers): record refreshed lvm agent handoff
 ```
 
 Core implementation baseline:
@@ -97,6 +97,44 @@ validation is still blocked until the host has `lvm2`, a configured thin pool,
 the shared dataset/model mounts, workspace root, and a chosen agent permission
 option.
 
+## Local Agent Code Audit
+
+The local `C:\Users\agics\Desktop\workspace\01. git\HyperCube-agent` checkout
+was inspected from the core session. It is a dirty worktree, so do not treat it
+as deployed state, but these local self-tests passed:
+
+```text
+npm run self-test:lvm-workspace -> passed
+npm run self-test:network-policy -> passed
+npm run self-test:gpu-per-container -> passed
+```
+
+One option-3 acceptance item remains for the agent code:
+
+```text
+If LVM_WORKSPACE_ENABLED=false, capacity_report.data.disk.lvm.available must be false without probing lvs.
+```
+
+Patch expectation in `src/workspace-lvm.ts`:
+
+```ts
+if (!config.enabled) {
+  return {
+    available: false,
+    vg: config.volumeGroup,
+    thinPool: config.thinPool,
+    thinPoolSizeGb: null,
+    thinPoolUsedGb: null,
+    usedPct: null,
+    alert: null,
+  };
+}
+```
+
+Add a self-test next to `assertCapacityReportGracefulLvmFallback()` that proves
+`LVM_WORKSPACE_ENABLED=false` wins even if a fake runner would otherwise return
+a valid `lvs` result.
+
 ## Required Agent Work
 
 ### 1. capacity_report
@@ -140,9 +178,11 @@ Required shape:
 }
 ```
 
-Fallback rule:
+Fallback rules:
 
 - If LVM tools or pool are unavailable, send `disk.lvm.available=false`.
+- If LVM is intentionally disabled by config, send `disk.lvm.available=false`
+  even if `lvs` would succeed.
 - Do not fabricate `thinPoolSizeGb`; backend treats missing LVM capacity as
   legacy mode and omits LVM `workspace` fields from create payloads.
 
@@ -320,6 +360,8 @@ backend mypy: not applicable; no mypy config/dependency and hc-backend has no my
   `params.workspace.mountTarget` must keep working.
 - Existing Jupyter workspace metadata in `params.workspace` must keep working.
 - Existing hosts without LVM capacity must stay in legacy mode.
+- If `LVM_WORKSPACE_ENABLED=false`, capacity reporting must stay in legacy mode
+  and not advertise LVM availability.
 - Existing `update_container` / `update-limits` behavior must keep working.
 - Existing GPU allocation, model mount, network policy, logs, exec, and metrics
   behavior must not regress.
