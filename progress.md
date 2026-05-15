@@ -14,9 +14,13 @@ Implementation baseline:
 7454fdd feat(containers): add resource limits and workspace quotas
 ```
 
-Latest checked core commits:
+Latest checked core commits before this progress refresh:
 
 ```text
+3e97028 docs(containers): refresh lvm audit head evidence
+ea9c259 docs(containers): link 2026-05-16 audit addendum
+c7fec88 docs(containers): add 2026-05-16 completion audit addendum
+8e81883 docs(containers): record 2026-05-16 lvm blocker recheck
 bf30668 chore(containers): normalize workspace service line endings
 e9e8394 fix(containers): clear unenforced legacy workspace quota
 1f12568 docs(containers): clarify template model path in audit
