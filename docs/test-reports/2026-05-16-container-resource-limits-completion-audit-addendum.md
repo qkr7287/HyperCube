@@ -62,6 +62,7 @@ ea9c259 docs(containers): link 2026-05-16 audit addendum
 | PR 5 chart denominator labels | Existing audit maps `UserMetricChart.svelte`, `EChartLine.svelte`, and container detail route props | Done |
 | Legacy no-LVM compatibility | `docs/test-reports/2026-05-15-container-resource-limits-legacy-workspace-quota-fix.md` records the no-unenforced-quota follow-up; progress records 111 backend tests | Done |
 | Backend tests | `progress.md` records `python manage.py test -> 111 tests OK`; prior targeted follow-up recorded 2 tests OK | Done |
+| Backend mypy if present | Checked repo configs/requirements and `hc-backend`; no mypy config/dependency found and `python -m mypy --version` returns `No module named mypy` | Not applicable |
 | Frontend tests/check/E2E | `progress.md` records 57 unit tests, `npm run check` 0 errors/193 warnings, and E2E 3 passed | Done |
 | Migrations on server 63 | `progress.md` records `agents.0008`, `containers.0010`, `containers.0011` applied | Done |
 | Commit and push | GitHub compare checked `dev` at `ea9c25952d02fca1c88c5f55100eb79f463fb493` before the docs-only evidence refresh; implementation and audit docs are committed on `dev` | Done |
@@ -95,6 +96,15 @@ test_apply_metadata_clears_unreported_workspace_limit ... ok
 test_create_response_without_lvm_does_not_persist_unenforced_workspace_limit ... ok
 Ran 5 tests in 4.769s
 OK
+```
+
+Backend mypy check status:
+
+```text
+repo: no mypy.ini/pyproject.toml/setup.cfg/tox.ini mypy config found
+backend requirements: no mypy/django-stubs/djangorestframework-stubs dependency
+server 63: docker exec hc-backend python -m mypy --version
+result: /usr/local/bin/python: No module named mypy
 ```
 
 Additional live DB dry-run on server 63 used the existing `server_63_dev` Agent
