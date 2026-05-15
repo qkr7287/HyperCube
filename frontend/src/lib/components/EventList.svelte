@@ -62,6 +62,30 @@
 	}
 
 	let displayed = $derived([...events].reverse()); // 시간 내림차순 (최신이 위)
+
+	// 최근 24h 운영 요약 — panel 하단 footer 에 항상 표시.
+	// 이벤트가 1~2건이라 list 가 휑할 때도 "지금 안정 상태인가" 한 줄 직관 제공.
+	const SUMMARY_WINDOW_MS = 24 * 60 * 60 * 1000;
+	type Summary = { restart: number; exit: number; oom: number; unhealthy: number };
+	let summary = $derived.by<Summary>(() => {
+		const cutoff = Date.now() - SUMMARY_WINDOW_MS;
+		const out: Summary = { restart: 0, exit: 0, oom: 0, unhealthy: 0 };
+		for (const ev of events) {
+			const ts = new Date(ev.ts).getTime();
+			if (!Number.isFinite(ts) || ts < cutoff) continue;
+			if (ev.kind === 'restart') out.restart += 1;
+			else if (ev.kind === 'oom') out.oom += 1;
+			else if (ev.kind === 'die' && typeof ev.exit_code === 'number' && ev.exit_code !== 0) out.exit += 1;
+			else if (ev.kind === 'kill') out.exit += 1;
+			else if (ev.kind === 'health_status' && ev.health_status === 'unhealthy') out.unhealthy += 1;
+		}
+		return out;
+	});
+	let summaryTone = $derived.by<'ok' | 'warn' | 'danger'>(() => {
+		if (summary.oom > 0 || summary.unhealthy > 0) return 'danger';
+		if (summary.restart > 0 || summary.exit > 0) return 'warn';
+		return 'ok';
+	});
 </script>
 
 <section class="panel">
@@ -95,6 +119,21 @@
 			{/each}
 		</ul>
 	{/if}
+
+	<!-- 운영 요약 footer — 최근 24h 의 restart/exit/oom/unhealthy 집계.
+	     이벤트 목록이 짧아도 "지금 안정한가" 한눈에. -->
+	<div class="summary" data-tone={summaryTone} aria-label="최근 24시간 운영 요약">
+		<span class="summary-window">최근 24h</span>
+		<span class="summary-counts">
+			<span><b>{summary.restart}</b>재시작</span>
+			<span><b>{summary.exit}</b>비정상 종료</span>
+			<span><b>{summary.oom}</b>OOM</span>
+			<span><b>{summary.unhealthy}</b>unhealthy</span>
+		</span>
+		<span class="summary-verdict">
+			{#if summaryTone === 'ok'}안정{:else if summaryTone === 'warn'}주의{:else}위험{/if}
+		</span>
+	</div>
 </section>
 
 <style>
@@ -261,5 +300,101 @@
 		color: var(--text-muted);
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
+	}
+
+	/* 운영 요약 footer — list 가 짧을 때도 "지금 안정 상태" 한눈 제공.
+	   tone 별 좌측 stripe + verdict pill. */
+	.summary {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 9px;
+		margin-top: auto;
+		padding: 7px 10px 7px 14px;
+		border-radius: 8px;
+		background: rgba(2, 6, 12, 0.4);
+		border: 1px solid rgba(100, 116, 139, 0.16);
+		position: relative;
+		overflow: hidden;
+	}
+	.summary::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		top: 6px;
+		bottom: 6px;
+		width: 3px;
+		border-radius: 2px;
+		background: rgba(148, 163, 184, 0.55);
+	}
+	.summary-window {
+		color: var(--text-muted);
+		font-size: 9.5px;
+		font-weight: 900;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		white-space: nowrap;
+	}
+	.summary-counts {
+		display: inline-flex;
+		flex-wrap: wrap;
+		gap: 4px 10px;
+		color: var(--text-secondary);
+		font-size: 10.5px;
+		font-weight: 750;
+		font-variant-numeric: tabular-nums;
+	}
+	.summary-counts span {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 3px;
+	}
+	.summary-counts b {
+		color: var(--text-primary);
+		font-weight: 900;
+	}
+	.summary-verdict {
+		font-size: 10.5px;
+		font-weight: 900;
+		letter-spacing: 0.02em;
+		padding: 3px 9px;
+		border-radius: 999px;
+		background: rgba(13, 17, 23, 0.6);
+		border: 1px solid rgba(100, 116, 139, 0.22);
+		color: var(--text-secondary);
+		white-space: nowrap;
+	}
+	.summary[data-tone='ok']::before {
+		background: #34d399;
+		box-shadow: 0 0 8px rgba(52, 211, 153, 0.5);
+	}
+	.summary[data-tone='ok'] .summary-verdict {
+		color: #6ee7b7;
+		border-color: rgba(16, 185, 129, 0.36);
+		background: rgba(16, 185, 129, 0.08);
+	}
+	.summary[data-tone='warn']::before {
+		background: #fbbf24;
+		box-shadow: 0 0 8px rgba(251, 191, 36, 0.5);
+	}
+	.summary[data-tone='warn'] .summary-verdict {
+		color: #fde68a;
+		border-color: rgba(251, 191, 36, 0.4);
+		background: rgba(251, 191, 36, 0.1);
+	}
+	.summary[data-tone='warn'] .summary-counts b {
+		color: #fde68a;
+	}
+	.summary[data-tone='danger']::before {
+		background: #f87171;
+		box-shadow: 0 0 8px rgba(248, 113, 113, 0.5);
+	}
+	.summary[data-tone='danger'] .summary-verdict {
+		color: #fca5a5;
+		border-color: rgba(239, 68, 68, 0.4);
+		background: rgba(239, 68, 68, 0.1);
+	}
+	.summary[data-tone='danger'] .summary-counts b {
+		color: #fca5a5;
 	}
 </style>

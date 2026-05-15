@@ -614,17 +614,21 @@
 	}
 	.value {
 		color: var(--text-primary);
-		font-size: clamp(19px, 1.16vw, 23px);
-		font-weight: 850;
-		line-height: 1.08;
+		font-size: clamp(22px, 1.4vw, 28px);
+		font-weight: 900;
+		line-height: 1.0;
+		letter-spacing: -0.02em;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		font-variant-numeric: tabular-nums;
 	}
 	.value.net {
-		font-size: clamp(15px, 0.9vw, 18px);
+		font-size: clamp(16px, 1.0vw, 20px);
 	}
+	/* severity 시 value 자체에도 색조 부여 — 한 카드 안 시각 정보 응집. */
+	.kpi[data-level='warn'] .value { color: #fde68a; }
+	.kpi[data-level='danger'] .value { color: #fca5a5; }
 	.hero-note {
 		max-width: 100%;
 		color: var(--text-muted);
@@ -640,12 +644,13 @@
 	.meter,
 	.split-meter {
 		position: relative;
-		height: 14px;
+		height: 16px;
 		border-radius: 999px;
-		background: rgba(2, 6, 12, 0.58);
-		border: 1px solid rgba(100, 116, 139, 0.18);
+		background: rgba(2, 6, 12, 0.62);
+		border: 1px solid rgba(100, 116, 139, 0.2);
 		overflow: visible;
 		outline: none;
+		box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.32);
 	}
 	.meter::before {
 		content: '';
@@ -660,30 +665,38 @@
 		inset: 0 auto 0 0;
 		width: var(--value, 0%);
 		border-radius: inherit;
-		background: linear-gradient(90deg, rgba(48, 213, 200, 0.86), rgba(96, 165, 250, 0.82));
+		background: linear-gradient(90deg, rgba(48, 213, 200, 0.92), rgba(96, 165, 250, 0.88));
+		box-shadow: 0 0 8px rgba(48, 213, 200, 0.45);
 	}
 	.meter.memory .meter-fill {
-		background: linear-gradient(90deg, rgba(96, 165, 250, 0.9), rgba(129, 140, 248, 0.82));
+		background: linear-gradient(90deg, rgba(96, 165, 250, 0.94), rgba(129, 140, 248, 0.86));
+		box-shadow: 0 0 8px rgba(96, 165, 250, 0.45);
 	}
 	.meter.gpu .meter-fill {
-		background: linear-gradient(90deg, rgba(244, 114, 182, 0.88), rgba(168, 85, 247, 0.78));
+		background: linear-gradient(90deg, rgba(244, 114, 182, 0.92), rgba(168, 85, 247, 0.82));
+		box-shadow: 0 0 8px rgba(244, 114, 182, 0.45);
+	}
+	.meter.gpu-mem .meter-fill {
+		background: linear-gradient(90deg, rgba(167, 139, 250, 0.92), rgba(129, 140, 248, 0.82));
+		box-shadow: 0 0 8px rgba(167, 139, 250, 0.45);
 	}
 	.meter-marker {
 		position: absolute;
 		top: -5px;
 		width: 2.5px;
-		height: 24px;
+		height: 26px;
 		border-radius: 999px;
-		background: rgba(255, 255, 255, 0.78);
-		box-shadow: 0 0 0 1px rgba(2, 6, 12, 0.78);
+		background: rgba(255, 255, 255, 0.82);
+		box-shadow: 0 0 0 1px rgba(2, 6, 12, 0.82), 0 0 4px rgba(255, 255, 255, 0.3);
 	}
 	.meter-marker.avg {
 		left: var(--avg, 0%);
-		opacity: 0.62;
+		opacity: 0.7;
 	}
 	.meter-marker.peak {
 		left: var(--peak, 0%);
-		background: rgba(251, 191, 36, 0.94);
+		background: rgba(251, 191, 36, 0.96);
+		box-shadow: 0 0 0 1px rgba(2, 6, 12, 0.82), 0 0 8px rgba(251, 191, 36, 0.55);
 	}
 
 	.meter:focus-visible,

@@ -850,16 +850,25 @@
 					</div>
 					<div class="hero-vitals" aria-label="컨테이너 핵심 상태">
 						<span class="vital-chip" title="컨테이너 가동 시간">
-							<b>가동</b>
-							<strong>{uptimeText || '—'}</strong>
+							<i class="vital-icon" aria-hidden="true">⏱</i>
+							<span class="vital-body">
+								<b>가동</b>
+								<strong>{uptimeText || '—'}</strong>
+							</span>
 						</span>
 						<span class="vital-chip" data-tone={runtimeRestartCount >= 3 ? 'danger' : runtimeRestartCount >= 1 ? 'warn' : 'ok'} title="누적 재시작 횟수 (inspect.restartCount)">
-							<b>재시작</b>
-							<strong>{runtimeRestartCount}회</strong>
+							<i class="vital-icon" aria-hidden="true">↻</i>
+							<span class="vital-body">
+								<b>재시작</b>
+								<strong>{runtimeRestartCount}회</strong>
+							</span>
 						</span>
 						<span class="vital-chip" data-tone={runtimeHealthTone} title="컨테이너 헬스 / 런타임 상태">
-							<b>Health</b>
-							<strong>{runtimeHealthText}</strong>
+							<i class="vital-icon" aria-hidden="true">♥</i>
+							<span class="vital-body">
+								<b>Health</b>
+								<strong>{runtimeHealthText}</strong>
+							</span>
 						</span>
 					</div>
 					{#if recentRestarts >= 1 || isOomKilled || (lastExit && typeof lastExit?.exit_code === 'number' && lastExit.exit_code !== 0) || healthStatus}
@@ -1429,14 +1438,19 @@
 
 	h1 {
 		min-width: 0;
-		font-size: clamp(20px, 1.45vw, 25px);
-		line-height: 1.05;
+		font-size: clamp(21px, 1.55vw, 27px);
+		line-height: 1.02;
 		font-weight: 900;
-		letter-spacing: -0.015em;
-		color: var(--text-primary);
+		letter-spacing: -0.018em;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+		/* 컨테이너 정체성 — 밝은-회색 톤 다운 그라데이션 + 미세한 글로우. */
+		background: linear-gradient(180deg, #fafcff 0%, #c9d2e0 100%);
+		-webkit-background-clip: text;
+		background-clip: text;
+		color: transparent;
+		filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
 	}
 
 	.hero-subline {
@@ -1551,25 +1565,50 @@
 	}
 	.vital-chip {
 		min-width: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 1px;
-		padding: 5px 8px 5px 10px;
-		border-radius: 8px;
-		background: rgba(2, 6, 12, 0.4);
-		border: 1px solid rgba(100, 116, 139, 0.18);
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
+		align-items: center;
+		gap: 8px;
+		padding: 6px 9px 6px 11px;
+		border-radius: 9px;
+		background: linear-gradient(180deg, rgba(13, 17, 23, 0.55), rgba(2, 6, 12, 0.45));
+		border: 1px solid rgba(100, 116, 139, 0.2);
 		position: relative;
 		overflow: hidden;
+		transition: border-color var(--ease-fast), background-color var(--ease-fast);
+	}
+	.vital-chip:hover {
+		border-color: rgba(48, 213, 200, 0.32);
 	}
 	.vital-chip::before {
 		content: '';
 		position: absolute;
 		left: 0;
-		top: 5px;
-		bottom: 5px;
+		top: 6px;
+		bottom: 6px;
 		width: 2px;
 		border-radius: 2px;
 		background: rgba(148, 163, 184, 0.55);
+	}
+	.vital-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 22px;
+		height: 22px;
+		border-radius: 7px;
+		background: rgba(13, 17, 23, 0.5);
+		color: rgba(148, 163, 184, 0.85);
+		font-size: 13px;
+		font-style: normal;
+		line-height: 1;
+		flex: 0 0 auto;
+	}
+	.vital-body {
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
 	}
 	.vital-chip b {
 		color: var(--text-muted);
@@ -1582,13 +1621,26 @@
 	.vital-chip strong {
 		min-width: 0;
 		color: var(--text-primary);
-		font-size: 12.5px;
+		font-size: 13px;
 		font-weight: 850;
 		line-height: 1.15;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		font-variant-numeric: tabular-nums;
+	}
+	.vital-chip[data-tone='success'] .vital-icon,
+	.vital-chip[data-tone='ok'] .vital-icon {
+		background: rgba(16, 185, 129, 0.12);
+		color: #6ee7b7;
+	}
+	.vital-chip[data-tone='warn'] .vital-icon {
+		background: rgba(251, 191, 36, 0.12);
+		color: #fde68a;
+	}
+	.vital-chip[data-tone='danger'] .vital-icon {
+		background: rgba(239, 68, 68, 0.14);
+		color: #fca5a5;
 	}
 	.vital-chip[data-tone='success']::before,
 	.vital-chip[data-tone='ok']::before {
@@ -1646,23 +1698,34 @@
 	.status-pill {
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
-		padding: 3px 9px 3px 8px;
+		gap: 7px;
+		padding: 4px 11px 4px 10px;
 		border-radius: 999px;
-		font-size: 11px;
-		font-weight: 800;
-		letter-spacing: 0.02em;
+		font-size: 12px;
+		font-weight: 850;
+		letter-spacing: 0.04em;
 		color: white;
-		box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+		box-shadow:
+			0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+			0 2px 10px rgba(0, 0, 0, 0.18);
+		text-shadow: 0 1px 1px rgba(0, 0, 0, 0.32);
 	}
 	.status-pill::before {
 		content: '';
 		display: inline-block;
-		width: 6px;
-		height: 6px;
+		width: 8px;
+		height: 8px;
 		border-radius: 50%;
 		background: currentColor;
-		box-shadow: 0 0 8px currentColor;
+		box-shadow: 0 0 10px currentColor;
+	}
+	/* running 상태는 살아 있다는 신호로 dot 부드러운 펄스. 다른 상태는 정적. */
+	.hero[data-status='running'] .status-pill::before {
+		animation: pulse-running 1.8s ease-in-out infinite;
+	}
+	@keyframes pulse-running {
+		0%, 100% { opacity: 1; transform: scale(1); }
+		50% { opacity: 0.65; transform: scale(0.86); }
 	}
 
 	/* hero 운영 utility 묶음 — 일시정지·새로고침·주기. 외곽 pill 로 그룹감을 주고
