@@ -22,7 +22,8 @@ end-to-end gate is still blocked by external agent/ops runtime setup:
 During this audit refresh, GitHub compare showed remote HyperCube `dev`
 identical to `ea9c25952d02fca1c88c5f55100eb79f463fb493` before the
 follow-up docs-only evidence refresh commits.
-The latest implementation/audit chain includes:
+The latest implementation/audit chain before this live dry-run evidence refresh
+includes:
 
 ```text
 7454fdd feat(containers): add resource limits and workspace quotas
@@ -32,6 +33,8 @@ bf30668 chore(containers): normalize workspace service line endings
 8e81883 docs(containers): record 2026-05-16 lvm blocker recheck
 c7fec88 docs(containers): add 2026-05-16 completion audit addendum
 ea9c259 docs(containers): link 2026-05-16 audit addendum
+385a53c docs(containers): record no-lvm hostconfig validation
+867f87d docs(containers): record no-lvm hostconfig progress
 ```
 
 ## Prompt-to-Artifact Checklist
@@ -49,6 +52,7 @@ ea9c259 docs(containers): link 2026-05-16 audit addendum
 | PR 3 agent `hostConfig` payload | Existing audit maps `backend/apps/containers/services/deployment.py` and `test_deployment.py` | Done |
 | PR 3 LVM `workspace`/`sharedMounts` payload | Existing audit maps conditional LVM payload emission based on Agent LVM capacity | Core done |
 | PR 3 no-LVM legacy payload path | 2026-05-16 targeted 63 test run covered `hostConfig` retained while LVM `sizeGb`/`mountTarget`/`sharedMounts` are omitted for no-LVM agents | Done |
+| PR 3 live server-63 no-LVM dry-run | 2026-05-16 live DB dry-run with `server_63_dev` + `PyTorch Jupyter GPU Workspace` produced `hostConfig` and omitted LVM `sizeGb`/`mountTarget`/`sharedMounts` because `Agent.lvm_pool_size_gb=None` | Done |
 | PR 3 create result workspace persistence | Existing audit maps `backend/apps/common/consumers.py`, `services/workspace.py`, and consumer tests | Done |
 | PR 3 workspace metrics to KPI API | Existing audit maps `backend/apps/containers/viewsets.py` Redis/DB merge | Done |
 | PR 3 docs sync | Existing audit maps `docs/api.md`, `docs/agent-protocol.md`, and `docs/agent-payload-contract.md` | Done |
@@ -91,6 +95,20 @@ test_apply_metadata_clears_unreported_workspace_limit ... ok
 test_create_response_without_lvm_does_not_persist_unenforced_workspace_limit ... ok
 Ran 5 tests in 4.769s
 OK
+```
+
+Additional live DB dry-run on server 63 used the existing `server_63_dev` Agent
+and `PyTorch Jupyter GPU Workspace` template without saving a request. Observed:
+
+```text
+LIVE_PAYLOAD_DRY_RUN
+agent server_63_dev lvm_pool_size_gb None
+template PyTorch Jupyter GPU Workspace workspace_enabled True
+has_hostConfig True {'memory': 4294967296, 'memorySwap': 4294967296, 'cpuQuota': 200000, 'cpuPeriod': 100000, 'oomKillDisable': False}
+has_workspace True {'kind': 'jupyter', 'token': 'dryrun-token', 'port': 8888, 'baseUrl': '/workspace/b13685cd-c2df-45ae-8bda-c791908f57c9/', 'workdir': '/workspace'}
+has_lvm_sizeGb False
+has_lvm_mountTarget False
+has_sharedMounts False None
 ```
 
 Command run from `/home/agics/ts/HyperCube` on server 63:
