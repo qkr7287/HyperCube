@@ -1,5 +1,6 @@
 from django.test import TestCase
 
+from apps.containers.models import ContainerTemplate
 from apps.containers.services.deployment import build_agent_payload
 
 from .factories import create_agent, create_request, create_template, create_user
@@ -63,4 +64,34 @@ class AgentCreatePayloadTests(TestCase):
 
         self.assertIn("hostConfig", params)
         self.assertNotIn("workspace", params)
+        self.assertNotIn("sharedMounts", params)
+
+    def test_workspace_metadata_is_preserved_without_lvm_workspace_payload(self):
+        agent = create_agent(hostname="payload-workspace-legacy-agent", lvm_pool_size_gb=None)
+        template = create_template(
+            created_by=self.admin,
+            workspace_enabled=True,
+            workspace_kind=ContainerTemplate.WorkspaceKind.JUPYTER,
+            workspace_port=8888,
+            default_workdir="/home/jovyan",
+        )
+        request = create_request(
+            requester=self.user,
+            template=template,
+            target_agent=agent,
+            cpu_percent=200,
+            memory_mb=4096,
+            workspace_gb=50,
+            workspace_enabled_snapshot=True,
+            workspace_kind_snapshot=ContainerTemplate.WorkspaceKind.JUPYTER,
+        )
+
+        params = build_agent_payload(request)["params"]
+
+        self.assertIn("hostConfig", params)
+        self.assertEqual(params["workspace"]["kind"], "jupyter")
+        self.assertEqual(params["workspace"]["port"], 8888)
+        self.assertEqual(params["workspace"]["workdir"], "/home/jovyan")
+        self.assertNotIn("sizeGb", params["workspace"])
+        self.assertNotIn("mountTarget", params["workspace"])
         self.assertNotIn("sharedMounts", params)
