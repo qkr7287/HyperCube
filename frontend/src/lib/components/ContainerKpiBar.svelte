@@ -257,7 +257,7 @@
 			</div>
 			<div class="foot-row delta" data-tone={deltaTone(opts.delta)} title="현재값 − {rangeLabel} 평균">
 				<i class="dot dot-delta" aria-hidden="true"></i>
-				<b><span class="ab">DIFF</span><span class="ko">평소 대비</span></b>
+				<b><span class="ab">DIFF</span><span class="ko">대비</span></b>
 				<em>{formatDelta(opts.delta)}</em>
 				{#if opts.deltaRaw}<span class="raw">{opts.deltaRaw}</span>{:else}<span class="raw"></span>{/if}
 			</div>
@@ -337,7 +337,7 @@
 			</div>
 			<div class="foot-row delta" data-tone={opts.deltaTotal > 0 ? 'up' : 'flat'} title="{rangeLabel} 증가">
 				<i class="dot dot-delta" aria-hidden="true"></i>
-				<b><span class="ab">DIFF</span><span class="ko">{rangeLabel} 증가</span></b>
+				<b><span class="ab">DIFF</span><span class="ko">증가</span></b>
 				<em>{opts.deltaTotal > 0 ? `+${compactBytes(opts.deltaTotal)}` : '—'}</em>
 				<span class="raw"></span>
 			</div>
@@ -504,11 +504,10 @@
 		content: '';
 		position: absolute;
 		left: 0;
-		top: 10px;
-		bottom: 10px;
-		width: 2.5px;
-		border-radius: 0 3px 3px 0;
-		background: rgba(48, 213, 200, 0.55);
+		top: 8px;
+		bottom: 8px;
+		width: 3px;
+		background: rgba(48, 213, 200, 0.7);
 	}
 	.kpi[data-level='warn']::before { background: #fbbf24; }
 	.kpi[data-level='danger']::before { background: #f87171; }
