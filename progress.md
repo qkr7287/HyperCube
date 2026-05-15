@@ -17,6 +17,7 @@ Implementation baseline:
 Latest checked core commits before this progress refresh:
 
 ```text
+867f87d docs(containers): record no-lvm hostconfig progress
 385a53c docs(containers): record no-lvm hostconfig validation
 a1b033c docs(containers): expand lvm progress preflight evidence
 93f439a docs(containers): expand latest lvm preflight evidence
@@ -45,6 +46,8 @@ Implemented core scope:
 - Legacy no-LVM create responses keep CPU/memory limits but do not persist an
   unenforced `workspace_gb_limit` unless the agent returns concrete workspace
   metadata.
+- Live server-63 dry-run confirms `server_63_dev` keeps `hostConfig` but omits
+  LVM `sizeGb`, `mountTarget`, and `sharedMounts` while `lvm_pool_size_gb=None`.
 - Request modal resource-limit UI and recommendation prefill.
 - KPI cards and trend charts with quota/denominator display.
 - API, agent protocol, and payload contract docs.
