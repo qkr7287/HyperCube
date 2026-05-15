@@ -17,6 +17,7 @@ Implementation baseline:
 Latest implementation/audit commits before this progress refresh:
 
 ```text
+ea6c7aa docs(agent): add remote pr brief for lvm resource limits
 37b6a36 docs(agent): record disabled lvm temp verification
 a9abb5a docs(agent): add remote dev audit for lvm gate
 cf9780d docs(agent): record disabled lvm acceptance gate
@@ -62,6 +63,11 @@ Latest re-audit evidence:
   are still missing on remote `dev`, and remote `src/handlers/create-container.ts`
   does not consume backend `params.hostConfig`, LVM `workspace.sizeGb` /
   `mountTarget`, or `sharedMounts` yet.
+- `docs/agent-resource-limits-remote-pr-brief.md` is the current paste-ready
+  implementation brief for the HyperCube-agent PR. It lists the remote `dev`
+  gaps, minimum file set, required `capacity_report`, `hostConfig`, LVM
+  workspace, `sharedMounts`, workspace metrics behavior, disabled-LVM guard,
+  and validation commands.
 - `docs/agent-lvm-thin-handoff.md` now points agent-side work at the current
   final gate audit, preflight script, host setup runbook, full-validation
   runbook, and the option-3 disabled-LVM acceptance rule.
@@ -156,6 +162,7 @@ Core references:
 - `docs/test-reports/2026-05-16-container-resource-limits-final-gate-audit.md`
 - `docs/test-reports/2026-05-16-hypercube-agent-remote-dev-audit.md`
 - `docs/test-reports/2026-05-16-agent-disabled-lvm-guard-temp-verification.md`
+- `docs/agent-resource-limits-remote-pr-brief.md`
 - `docs/agent-lvm-thin-handoff.md`
 - `docs/runbooks/lvm-thin-workspace-host-setup.md`
 - `docs/runbooks/lvm-thin-workspace-preflight.sh`
