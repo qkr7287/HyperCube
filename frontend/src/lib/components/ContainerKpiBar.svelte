@@ -255,9 +255,9 @@
 				<em class="pct">{formatPercent(opts.peak, 1)}</em>
 				<span class="raw">{opts.peakRawText}</span>
 			</div>
-			<div class="foot-row delta" data-tone={deltaTone(opts.delta)} title="현재 − {rangeLabel} 평균">
+			<div class="foot-row delta" data-tone={deltaTone(opts.delta)} title="현재값 − {rangeLabel} 평균">
 				<i class="dot dot-delta" aria-hidden="true"></i>
-				<b><span class="ab">Δ</span><span class="ko">평소 대비</span></b>
+				<b><span class="ab">DIFF</span><span class="ko">평소 대비</span></b>
 				<em>{formatDelta(opts.delta)}</em>
 				{#if opts.deltaRaw}<span class="raw">{opts.deltaRaw}</span>{:else}<span class="raw"></span>{/if}
 			</div>
@@ -337,7 +337,7 @@
 			</div>
 			<div class="foot-row delta" data-tone={opts.deltaTotal > 0 ? 'up' : 'flat'} title="{rangeLabel} 증가">
 				<i class="dot dot-delta" aria-hidden="true"></i>
-				<b><span class="ab">Δ</span><span class="ko">{rangeLabel} 증가</span></b>
+				<b><span class="ab">DIFF</span><span class="ko">{rangeLabel} 증가</span></b>
 				<em>{opts.deltaTotal > 0 ? `+${compactBytes(opts.deltaTotal)}` : '—'}</em>
 				<span class="raw"></span>
 			</div>
@@ -530,21 +530,22 @@
 		align-items: center;
 		gap: 5px;
 		color: var(--text-mid);
-		font-size: 11px;
+		font-size: 12px;
 		font-weight: 700;
-		letter-spacing: 0.02em;
+		letter-spacing: 0.015em;
 		white-space: nowrap;
 	}
 	.kpi-chip {
 		display: inline-flex;
 		align-items: center;
-		padding: 2px 7px;
-		border-radius: 999px;
-		font-size: 9.5px;
+		padding: 2.5px 9px;
+		/* 박스형 chip — meter 트랙과 시각 통일 */
+		border-radius: 4px;
+		font-size: 10.5px;
 		font-weight: 800;
 		letter-spacing: 0.04em;
 		color: var(--text-faint);
-		background: rgba(2, 6, 12, 0.4);
+		background: rgba(2, 6, 12, 0.42);
 		border: 1px solid var(--border-soft);
 		white-space: nowrap;
 	}
@@ -626,9 +627,10 @@
 	.split-meter {
 		position: relative;
 		height: 16px;
-		border-radius: 999px;
+		/* 박스 형태 — sharp 한 사각 트랙 (dashboard 톤). 둥근 모서리 없음. */
+		border-radius: 0;
 		background: rgba(2, 6, 12, 0.62);
-		border: 1px solid rgba(100, 116, 139, 0.2);
+		border: 1px solid rgba(100, 116, 139, 0.24);
 		overflow: visible;
 		outline: none;
 		box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.32);
@@ -672,7 +674,8 @@
 		top: -5px;
 		width: 2.5px;
 		height: 26px;
-		border-radius: 999px;
+		/* sharp 사각 marker — 박스형 트랙과 시각 통일 */
+		border-radius: 0;
 		background: rgba(255, 255, 255, 0.78);
 		box-shadow:
 			0 0 0 1px rgba(2, 6, 12, 0.78),
@@ -718,7 +721,7 @@
 	.split-a,
 	.split-b {
 		min-width: 4px;
-		border-radius: 999px;
+		border-radius: 0;
 	}
 	.split-a {
 		width: var(--a, 0%);
