@@ -14,9 +14,12 @@ Implementation baseline:
 7454fdd feat(containers): add resource limits and workspace quotas
 ```
 
-Latest checked core commits before this progress refresh:
+Latest implementation/audit commits before this progress refresh:
 
 ```text
+af5f3c3 docs(containers): add lvm full validation runbook
+bc26acd docs(agent): refresh lvm handoff validation status
+bd8c3ce docs(containers): record final blocker re-audit evidence
 e04738c docs(containers): record backend mypy status in progress
 1165c24 docs(containers): record backend mypy status
 b678469 docs(containers): record live no-lvm payload progress
@@ -41,9 +44,10 @@ Latest re-audit evidence:
 - Required planning specs were rechecked from GitHub `dev` via file API:
   `docs/container-resource-limits-기획.ko.html` and
   `docs/agent-integration-lvm-thin-spec.ko.html`.
-- HyperCube-agent issue #16 comment `4460168692` was refreshed with current
-  core HEAD `e04738cbbdba06722d33292fb9253226d109cdc4`, current no-LVM
-  validation status, and the still-failing LVM preflight output.
+- GitHub compare verified HyperCube `dev` was identical to
+  `af5f3c3c44f6e83afb0e1652c465d52447540b60` before this progress refresh.
+- `docs/runbooks/lvm-thin-workspace-full-validation.md` now records the gated
+  8-step end-to-end proof path to run after the agent/ops LVM blocker is fixed.
 - Server 63 targeted backend recheck:
   `python manage.py test apps.containers.tests.test_recommend
   apps.containers.tests.test_deployment.AgentCreatePayloadTests
@@ -122,6 +126,7 @@ Core references:
 - `docs/agent-lvm-thin-handoff.md`
 - `docs/runbooks/lvm-thin-workspace-host-setup.md`
 - `docs/runbooks/lvm-thin-workspace-preflight.sh`
+- `docs/runbooks/lvm-thin-workspace-full-validation.md`
 - HyperCube-agent tracking issue: `qkr7287/HyperCube-agent#16`
 
 Remaining blocker:
@@ -142,8 +147,12 @@ Next completion gate:
 2. Implement/deploy the selected HyperCube-agent permission path.
 3. Confirm `capacity_report` includes `disk.lvm.available=true` and
    `thinPoolSizeGb`, or explicitly choose `PERMISSION_OPTION=3` legacy mode.
-4. Submit a new PyTorch Jupyter request and confirm backend sends
+4. Re-run `docs/runbooks/lvm-thin-workspace-preflight.sh` until it exits 0, or
+   confirm the explicit legacy-mode path.
+5. Run `docs/runbooks/lvm-thin-workspace-full-validation.md` for the real LVM
+   8-step validation path.
+6. Submit a new PyTorch Jupyter request and confirm backend sends
    `hostConfig`, `workspace`, and `sharedMounts` when LVM is available.
-5. Confirm agent creates/mounts the LVM thin volume.
-6. Confirm backend stores `Container.workspace_device`.
-7. Confirm container `df /workspace` shows the requested workspace quota.
+7. Confirm agent creates/mounts the LVM thin volume.
+8. Confirm backend stores `Container.workspace_device`.
+9. Confirm container `df /workspace` shows the requested workspace quota.
