@@ -49,6 +49,16 @@
 | inspect 안 불러와짐 | `$effect` 타이밍 | `Promise.allSettled` + 순차 |
 | sparkline 안 그려짐 | `history.length < 2` 조건 | 1개도 수평선 |
 | 로그 0줄 표시 | 과도한 파싱 | raw string 그대로 |
+| `chordTimer is not defined` 런타임 폭발 | 단축키 변수 지우고 `onDestroy` cleanup 한 줄 누락 | lifecycle 변수 제거 시 grep 으로 사용처 전수 확인 |
+| Chrome MCP `Cannot access chrome-extension://` | 다른 확장(password manager 등) popup 이 활성 탭 점유 | curl 로 token 받아 `localStorage.setItem('hc_access_token', ...)` + reload 우회 |
+
+## 자동 테스트 (2026-05-15 추가, 총 56건)
+
+- **Frontend unit/component**: `cd frontend && npm test` — Vitest. utils 30 + ContainerKpiBar 12 + FleetAgentCard 7 = 49건. `npm run test:watch` 도 있음.
+- **Backend**: `ssh hc-dev-63 "docker exec hc-backend python manage.py test apps.metrics.tests.test_viewsets.ContainerBucketsContractTest"` — 4건. `cpu_max` % 단위 contract.
+- **E2E**: `cd frontend && E2E_USER=user1 E2E_PASS='agics12!@' E2E_CONTAINER_ID=05eddec05865 npm run e2e` — Playwright. 3건. admin 으로 돌리면 컨테이너 owner 아니라 graceful skip.
+- **타입 체크**: `cd frontend && npm run check` (svelte-check) — 회귀 lifecycle / 타입 오류.
+- **변경 후 권장 사이클**: 코드 → `npm test` (3-7초) → 필요시 `npm run check` → commit → push.
 
 ## 환경 정보 (자주 쓰이는 값만)
 
