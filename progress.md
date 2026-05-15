@@ -17,6 +17,7 @@ Implementation baseline:
 Latest implementation/audit commits before this progress refresh:
 
 ```text
+7e0bcc3 docs(agent): refresh lvm handoff head
 d8b7221 docs(containers): add final lvm gate audit
 cfda1df docs(containers): refresh lvm validation progress
 af5f3c3 docs(containers): add lvm full validation runbook
@@ -47,7 +48,10 @@ Latest re-audit evidence:
   `docs/container-resource-limits-기획.ko.html` and
   `docs/agent-integration-lvm-thin-spec.ko.html`.
 - GitHub compare verified HyperCube `dev` was identical to
-  `d8b72210c79f96b7c781e72692411ccc09c136fc` before this progress refresh.
+  `7e0bcc3dd6abe039c492ea3e47fba31f96231a0f` before this progress refresh.
+- `docs/agent-lvm-thin-handoff.md` now points agent-side work at the current
+  final gate audit, preflight script, host setup runbook, and full-validation
+  runbook instead of an older core HEAD.
 - `docs/test-reports/2026-05-16-container-resource-limits-final-gate-audit.md`
   records the prompt-to-artifact checklist and confirms the remaining blocked
   gates are external server-63/agent LVM runtime requirements.
