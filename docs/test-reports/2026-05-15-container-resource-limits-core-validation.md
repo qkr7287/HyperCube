@@ -37,6 +37,11 @@ e780421 docs(ops): add lvm thin host setup runbook
 f224513 docs(ops): add lvm thin preflight script
 557cdf8 docs(agent): link lvm preflight script
 58dd250 test(containers): cover legacy workspace payload without lvm
+1fa5c7 docs(containers): refresh resource limits audit status
+86c7b96 docs(containers): refresh resource limits audit status
+b25f5a8 docs(containers): refresh resource limits audit status
+f4875a2 docs(containers): correct resource limits audit head reference
+7f2ca42 docs(containers): record recommend route resolver evidence
 ```
 
 ## Core Validation
