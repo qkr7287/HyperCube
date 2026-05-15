@@ -5,12 +5,14 @@ Scope: `qkr7287/HyperCube-agent`
 Core counterpart: HyperCube container resource limits PR 1-5
 Tracking issue: https://github.com/qkr7287/HyperCube-agent/issues/16
 
-Core backend/frontend is ready on HyperCube `dev`.
+Core backend/frontend is ready on HyperCube `dev` for the current no-LVM
+compatibility path. Full LVM thin workspace completion is still blocked until
+the agent/ops runtime gate below is resolved.
 
-Current verified core HEAD:
+Current verified core HEAD before this handoff refresh:
 
 ```text
-bd8c3ce22745b028e165dd9c280f6cc442f77501 docs(containers): record final blocker re-audit evidence
+0f637d00312c246efbe16415ec27b78c7da82e8d docs(containers): link final lvm gate audit in progress
 ```
 
 Core implementation baseline:
@@ -25,11 +27,15 @@ Check the current HyperCube core HEAD before validating:
 gh api repos/qkr7287/HyperCube/git/ref/heads/dev --jq '.object.sha'
 ```
 
-Core validation reports:
+Core validation and gate reports:
 
 ```text
 docs/test-reports/2026-05-15-container-resource-limits-core-validation.md
 docs/test-reports/2026-05-16-container-resource-limits-completion-audit-addendum.md
+docs/test-reports/2026-05-16-container-resource-limits-final-gate-audit.md
+docs/runbooks/lvm-thin-workspace-preflight.sh
+docs/runbooks/lvm-thin-workspace-host-setup.md
+docs/runbooks/lvm-thin-workspace-full-validation.md
 progress.md
 ```
 
@@ -56,36 +62,24 @@ server_16_dev cpu_cores=12 ram_total_mb=39760 lvm_pool_size_gb=None capacity_upd
 server_63_dev cpu_cores=12 ram_total_mb=15897 lvm_pool_size_gb=None capacity_updated_at=2026-05-15T16:03:41.076664+00:00
 ```
 
-Runtime evidence on `hypercube-agent-dev-63`:
+Latest server_63_dev preflight rerun:
 
 ```bash
-docker exec hypercube-agent-dev-63 sh -lc 'command -v lvcreate || true; command -v lvs || true; lvs 2>&1 | head -20 || true'
+cd /home/agics/ts/HyperCube
+bash docs/runbooks/lvm-thin-workspace-preflight.sh hypercube-agent-dev-63 hc-backend
 ```
 
-Observed:
+Observed blocker evidence:
 
 ```text
-sh: 1: lvs: not found
-```
-
-Latest host preflight on `server_63_dev`:
-
-```text
+exit code: 1
 FAIL host command 'lvcreate' is missing
 FAIL host command 'lvs' is missing
 FAIL host command 'lvremove' is missing
-OK   host command 'mkfs.ext4' -> /usr/sbin/mkfs.ext4
-OK   host command 'mount' -> /usr/bin/mount
-OK   host command 'umount' -> /usr/bin/umount
 FAIL /mnt/datasets is missing
 FAIL /mnt/models is missing
 FAIL /var/lib/hypercube/workspaces is missing
 FAIL host lvs unavailable; cannot inspect thin pool
-```
-
-Latest agent-runtime preflight:
-
-```text
 OK   agent container 'hypercube-agent-dev-63' exists
 FAIL agent command 'lvcreate' is missing
 FAIL agent command 'lvs' is missing
@@ -95,6 +89,7 @@ OK   agent command 'umount' -> /usr/bin/umount
 FAIL agent command 'lvremove' is missing
 FAIL agent lvs command failed
 sh: 1: lvs: not found
+server_63_dev 12 15897 None 2026-05-15 16:03:41.076664+00:00
 ```
 
 `/home/agics/ts/agent-dev/src` has LVM workspace scaffolding, but full
