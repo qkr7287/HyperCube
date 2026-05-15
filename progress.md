@@ -17,6 +17,10 @@ Implementation baseline:
 Latest checked core commits before this progress refresh:
 
 ```text
+e04738c docs(containers): record backend mypy status in progress
+1165c24 docs(containers): record backend mypy status
+b678469 docs(containers): record live no-lvm payload progress
+1c03ff9 docs(containers): record live no-lvm payload dry-run
 867f87d docs(containers): record no-lvm hostconfig progress
 385a53c docs(containers): record no-lvm hostconfig validation
 a1b033c docs(containers): expand lvm progress preflight evidence
@@ -31,6 +35,20 @@ bf30668 chore(containers): normalize workspace service line endings
 e9e8394 fix(containers): clear unenforced legacy workspace quota
 1f12568 docs(containers): clarify template model path in audit
 ```
+
+Latest re-audit evidence:
+
+- Required planning specs were rechecked from GitHub `dev` via file API:
+  `docs/container-resource-limits-기획.ko.html` and
+  `docs/agent-integration-lvm-thin-spec.ko.html`.
+- HyperCube-agent issue #16 comment `4460168692` was refreshed with current
+  core HEAD `e04738cbbdba06722d33292fb9253226d109cdc4`, current no-LVM
+  validation status, and the still-failing LVM preflight output.
+- Server 63 targeted backend recheck:
+  `python manage.py test apps.containers.tests.test_recommend
+  apps.containers.tests.test_deployment.AgentCreatePayloadTests
+  apps.common.tests.test_legacy_workspace_limits.LegacyWorkspaceLimitConsumerTests
+  --verbosity 1` -> 7 tests OK.
 
 Implemented core scope:
 
@@ -58,6 +76,7 @@ Validation on `server_63_dev`:
 backend: python manage.py test -> 111 tests OK
 backend targeted: apps.containers.tests.test_workspace_limit_metadata apps.common.tests.test_legacy_workspace_limits -> 2 tests OK
 backend targeted PR3 legacy/no-LVM hostConfig path -> 5 tests OK
+backend targeted re-audit: apps.containers.tests.test_recommend apps.containers.tests.test_deployment.AgentCreatePayloadTests apps.common.tests.test_legacy_workspace_limits.LegacyWorkspaceLimitConsumerTests -> 7 tests OK
 backend mypy: not applicable; no mypy config/dependency and hc-backend has no mypy module
 frontend: npm test -- --run -> 57 tests passed
 frontend: npm run check -> 0 errors, 193 warnings
