@@ -17,6 +17,7 @@ Implementation baseline:
 Latest implementation/audit commits before this progress refresh:
 
 ```text
+a9abb5a docs(agent): add remote dev audit for lvm gate
 cf9780d docs(agent): record disabled lvm acceptance gate
 7e0bcc3 docs(agent): refresh lvm handoff head
 d8b7221 docs(containers): add final lvm gate audit
@@ -49,7 +50,11 @@ Latest re-audit evidence:
   `docs/container-resource-limits-기획.ko.html` and
   `docs/agent-integration-lvm-thin-spec.ko.html`.
 - GitHub compare verified HyperCube `dev` was identical to
-  `cf9780d9cdf981e93abfdde05880cd59e90b55f3` before this progress refresh.
+  `a9abb5aa0904ded70c1dddf7fd9cb6f0fc980208` before this progress refresh.
+- `docs/test-reports/2026-05-16-hypercube-agent-remote-dev-audit.md` records
+  that local HyperCube-agent has LVM/capacity scaffolding and passing self-tests,
+  but remote `qkr7287/HyperCube-agent` `dev` returned 404 for
+  `src/workspace-lvm.ts`; local dirty code must not be treated as deployed.
 - `docs/agent-lvm-thin-handoff.md` now points agent-side work at the current
   final gate audit, preflight script, host setup runbook, full-validation
   runbook, and the option-3 disabled-LVM acceptance rule.
@@ -141,6 +146,7 @@ Core references:
 - `docs/test-reports/2026-05-15-container-resource-limits-legacy-workspace-quota-fix.md`
 - `docs/test-reports/2026-05-16-container-resource-limits-completion-audit-addendum.md`
 - `docs/test-reports/2026-05-16-container-resource-limits-final-gate-audit.md`
+- `docs/test-reports/2026-05-16-hypercube-agent-remote-dev-audit.md`
 - `docs/agent-lvm-thin-handoff.md`
 - `docs/runbooks/lvm-thin-workspace-host-setup.md`
 - `docs/runbooks/lvm-thin-workspace-preflight.sh`
@@ -158,6 +164,8 @@ Remaining blocker:
 - Current Agent rows report `lvm_pool_size_gb=None`, so backend stays in legacy
   mode and omits LVM `workspace` payloads for those agents.
 - HyperCube-agent issue #16 still has no `PERMISSION_OPTION=<1|2|3>` reply.
+- Remote `qkr7287/HyperCube-agent` `dev` does not yet contain the local
+  LVM workspace implementation observed in the dirty Windows checkout.
 - HyperCube-agent still needs the disabled-LVM acceptance patch before option 3
   can be considered fully safe on a host where LVM exists but is intentionally
   disabled.
@@ -165,7 +173,7 @@ Remaining blocker:
 Next completion gate:
 
 1. Agent/ops replies on HyperCube-agent #16 with `PERMISSION_OPTION=<1|2|3>`.
-2. Implement/deploy the selected HyperCube-agent permission path.
+2. Commit/push/deploy the selected HyperCube-agent implementation path.
 3. Confirm `capacity_report` includes `disk.lvm.available=true` and
    `thinPoolSizeGb`, or explicitly choose `PERMISSION_OPTION=3` legacy mode.
 4. If choosing `PERMISSION_OPTION=3`, confirm `LVM_WORKSPACE_ENABLED=false`
