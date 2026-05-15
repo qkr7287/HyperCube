@@ -23,6 +23,7 @@ Audited evidence chain includes:
 ```text
 7454fdd feat(containers): add resource limits and workspace quotas
 557cdf8 docs(agent): link lvm preflight script
+58dd250 test(containers): cover legacy workspace payload without lvm
 ```
 
 ## Prompt-to-Artifact Checklist
@@ -48,8 +49,9 @@ Audited evidence chain includes:
 | PR 4: backend recommend endpoint | `backend/apps/containers/viewsets.py`; route is documented in `docs/api.md`; `test_viewsets.py` covers authenticated endpoint access | Done |
 | PR 5: KPI limit chips and workspace card | `frontend/src/lib/components/ContainerKpiBar.svelte`; tests check `limit 4 cores`, `limit 16 GB`, `limit 100 GB`, and `unlimited` | Done |
 | PR 5: chart denominator labels | `frontend/src/lib/components/UserMetricChart.svelte`, `charts/EChartLine.svelte`, and `routes/user/containers/[containerId]/+page.svelte` pass CPU/memory denominator labels | Done |
-| Backward compatibility for legacy containers | Backend omits LVM `workspace` when `agent.lvm_pool_size_gb` is absent; E2E target `05eddec05865` passes with legacy/unlimited path | Done |
-| Backend tests | On `server_63_dev`, `docker exec hc-backend python manage.py test` ran 108 tests: OK | Done |
+| Backward compatibility for legacy containers | Backend omits LVM `workspace` / `sharedMounts` when `agent.lvm_pool_size_gb` is absent; E2E target `05eddec05865` passes with legacy/unlimited path | Done |
+| Backward compatibility for legacy Jupyter workspaces | `backend/apps/containers/tests/test_deployment.py` verifies existing Jupyter workspace metadata is preserved while only LVM `sizeGb` / `mountTarget` / `sharedMounts` are omitted for no-LVM agents | Done |
+| Backend tests | On `server_63_dev`, `docker exec hc-backend python manage.py test` ran 109 tests: OK | Done |
 | Frontend unit tests | On `server_63_dev`, `docker exec hc-frontend-dev npm test -- --run` ran 57 tests: passed | Done |
 | Frontend check | On `server_63_dev`, `docker exec hc-frontend-dev npm run check`: 0 errors, 193 warnings | Done |
 | E2E | On `server_63_dev`, `docker exec -e E2E_USER=user1 -e E2E_PASS='agics12!@' -e E2E_CONTAINER_ID=05eddec05865 hc-frontend-dev npm run e2e`: 3 passed | Done |
