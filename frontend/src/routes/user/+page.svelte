@@ -1125,7 +1125,7 @@ KPI — 컨테이너·요청·자원 합계
 			<div class="toolbar-right">
 				<button class="toolbar-btn" onclick={exportContainersCsv} disabled={filteredContainers.length === 0} title="현재 보이는 컨테이너 CSV 내보내기">CSV</button>
 				<div class="search-wrap">
-					<input class="search-input" bind:this={searchInputEl} bind:value={search} type="text" placeholder="이름·이미지·서버·템플릿 검색 ( / )" />
+					<input class="search-input" bind:this={searchInputEl} bind:value={search} type="text" placeholder="이름·이미지·서버·템플릿 검색" />
 					{#if search}
 						<button class="search-clear" onclick={() => { search = ''; debouncedSearch = ''; searchInputEl?.focus(); }} aria-label="검색 초기화" title="검색 초기화 (Esc)">×</button>
 					{/if}
@@ -1393,7 +1393,7 @@ KPI — 컨테이너·요청·자원 합계
 			<div class="toolbar-right">
 				<button class="toolbar-btn" onclick={exportHistoryCsv} disabled={filteredHistory.length === 0} title="현재 보이는 요청 이력 CSV 내보내기">CSV</button>
 				<div class="search-wrap">
-					<input class="search-input" bind:this={historySearchInputEl} bind:value={historySearch} type="text" placeholder="이름·템플릿·서버·검토 메모 검색 ( / )" />
+					<input class="search-input" bind:this={historySearchInputEl} bind:value={historySearch} type="text" placeholder="이름·템플릿·서버·검토 메모 검색" />
 					{#if historySearch}
 						<button class="search-clear" onclick={() => { historySearch = ''; debouncedHistorySearch = ''; historySearchInputEl?.focus(); }} aria-label="검색 초기화" title="검색 초기화 (Esc)">×</button>
 					{/if}
