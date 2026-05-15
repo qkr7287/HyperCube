@@ -19,8 +19,8 @@ end-to-end gate is still blocked by external agent/ops runtime setup:
 
 ## Current Remote Evidence
 
-Remote HyperCube `dev` was checked after commit
-`8e81883 docs(containers): record 2026-05-16 lvm blocker recheck`.
+GitHub compare shows remote HyperCube `dev` is currently identical to
+`ea9c25952d02fca1c88c5f55100eb79f463fb493`.
 The latest implementation/audit chain includes:
 
 ```text
@@ -29,6 +29,8 @@ The latest implementation/audit chain includes:
 e9e8394 fix(containers): clear unenforced legacy workspace quota
 bf30668 chore(containers): normalize workspace service line endings
 8e81883 docs(containers): record 2026-05-16 lvm blocker recheck
+c7fec88 docs(containers): add 2026-05-16 completion audit addendum
+ea9c259 docs(containers): link 2026-05-16 audit addendum
 ```
 
 ## Prompt-to-Artifact Checklist
@@ -56,7 +58,7 @@ bf30668 chore(containers): normalize workspace service line endings
 | Backend tests | `progress.md` records `python manage.py test -> 111 tests OK`; prior targeted follow-up recorded 2 tests OK | Done |
 | Frontend tests/check/E2E | `progress.md` records 57 unit tests, `npm run check` 0 errors/193 warnings, and E2E 3 passed | Done |
 | Migrations on server 63 | `progress.md` records `agents.0008`, `containers.0010`, `containers.0011` applied | Done |
-| Commit and push | GitHub compare showed `dev` at `8e81883` before this addendum; this addendum is committed on `dev` | Done |
+| Commit and push | GitHub compare shows `dev` is identical to `ea9c25952d02fca1c88c5f55100eb79f463fb493`; implementation and audit docs are committed on `dev` | Done |
 | Agent permission option chosen | HyperCube-agent issue #16 comments were fetched on 2026-05-16; no `PERMISSION_OPTION=<1|2|3>` reply exists | Blocked |
 | server-63 host LVM tools | 2026-05-16 preflight output: host `lvs` unavailable; cannot inspect thin pool | Blocked |
 | agent runtime LVM tools | 2026-05-16 preflight output: agent `lvcreate`, `lvs`, and `lvremove` missing; `lvs: not found` | Blocked |
