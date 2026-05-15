@@ -27,6 +27,11 @@ Audited implementation evidence chain includes:
 7f2ca42 docs(containers): record recommend route resolver evidence
 ```
 
+Path note: the prompt names `backend/apps/templates/models.py`, but this repo
+does not have a `backend/apps/templates` app. The actual template model is
+`backend/apps/containers/models.py::ContainerTemplate` (`db_table =
+"container_templates"`), so the template weight work is implemented there.
+
 ## Prompt-to-Artifact Checklist
 
 | Requirement | Evidence | Status |
