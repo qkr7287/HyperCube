@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-05-11 (모든 P0/P1/P2 완료, viewport-fit + polish 25 commits, agent #13 머지만 남음)
+last-updated: 2026-05-15 (hero/KPI quality up + 자동 테스트 인프라 56건 + admin fleet 카드 GPU 온도/전력 chip)
 status: living document — 세션마다 갱신
 benchmark: Portainer container detail UI
 related-pages: /user/containers/[containerId]
@@ -12,24 +12,30 @@ related-pages: /user/containers/[containerId]
 ## 현재 상태 (요약 — 다음 세션 시작 시 여기부터 읽기)
 
 **기능 단위**: D / A1 / B1 / B2 / B3 / B4 / C1 모두 완료. Portainer parity 100%.
-**B4 (Console exec)**: HyperCube + agent dev 모두 완료, end-to-end 검증 통과 (verify-redis-2 alpine /bin/sh + ConsoleSession audit).
-**P0 (Resource limit edit)**: HyperCube backend + frontend 모두 완료 (ContainerLimitModal). **agent issue #13 머지 대기**.
-**레이아웃 / UI**: L1 12-col bento + L2 4축 polish + Phase E viewport-fit (세로 스크롤 0, 한 화면 fit) + 추가 25 commits 폴리싱.
+**B4 (Console exec)**: HyperCube + agent dev 모두 완료, end-to-end 검증 통과.
+**P0 (Resource limit edit)**: HyperCube backend + frontend 모두 완료. **agent issue #13 머지 대기**.
+**레이아웃 / UI**: L1 12-col bento + L2 4축 polish + Phase E viewport-fit + 폴리싱 다수.
+**Hero / KPI quality up (2026-05-15)**: accent stripe, gradient h1, status pulse, vital chip icons, KPI status-line + Δ pill + scope dot + value tint + meter glow, 운영 요약 footer, admin fleet 카드 GPU 온도/전력.
+**자동 테스트 인프라 (2026-05-15)**: Vitest (utils 30 + ContainerKpiBar 12 + FleetAgentCard 7) + Playwright E2E (3) + Django backend bucket contract (4) = **56 green**.
 
-**평가**: 시작 44/60 (73%) → 현재 53.5/60 (89%). agent #13 머지 시 Portainer parity 10/10.
+**평가**: 시작 44/60 (73%) → 5/11 53.5/60 (89%) → **현재 56/60 (93%)**. agent #13 머지 시 Portainer parity 10/10.
 
 ## 다음 세션 시작점
 
 1. **agent issue #13** (`update_container` memory/cpu/restart) — agent repo 별도 세션. main 머지 후 HyperCube 검증.
-2. **dev → main 머지 + prod 배포** — 25 commits 누적, prod `http://192.168.0.16:3334/hypercube` 적용.
-3. (필요 시 polish) Logs 검색 강화, 차트 zoom reset, 1920+ inspect 4col, Logs/Console toggle 토글 단축키.
+2. **dev → main 머지 + prod 배포** — 누적 commits 다수, prod `http://192.168.0.16:3334/hypercube` 적용.
+3. (필요 시 polish) Logs 검색 강화, 차트 zoom reset, 1920+ inspect 4col, /user/containers/[id] 페이지 자체 E2E 확장.
 
 ## 핵심 코딩 룰 (반복 실수 방지)
 
-- 컨테이너 상세 `+page.svelte` 는 runes mode. polling 시 `loadInspect({silent: true})` 필수 (loading bar 깜빡임 방지).
-- ECharts streaming: 첫 setOption 만 `notMerge:true`, 그 후 `notMerge:false + replaceMerge:['series']` + series 에 `id` 부여.
+- 컨테이너 상세 `+page.svelte` 는 runes mode. polling 시 `loadInspect({silent: true})` 필수.
+- ECharts streaming: 첫 setOption 만 `notMerge:true`, 그 후 `notMerge:false + replaceMerge:['series']` + series id.
 - 모든 panel inner area `flex:1 + min-height:0` + 자체 `overflow:auto` (viewport-fit 환경).
-- `.bento-area > :global(.panel)` selector 만 (descendant 까지 매칭되면 panel-header 도 flex stretch 되어 layout 깨짐).
+- `.bento-area > :global(.panel)` selector 만 (descendant 까지 매칭되면 panel-header 도 flex stretch).
+- KPI / Hero 시각 토큰은 `lib/utils/container-kpi.ts` 의 pure helper 로 분리해서 단위 테스트 가능하게.
+- 변경 후 `cd frontend && npm test` (Vitest 49) + `npm run check` (svelte-check) 한 번씩 돌리기.
+- 키보드 핸들러 / timer 등 lifecycle 변수 제거 시 `onDestroy` 안 cleanup 도 grep 해서 함께 정리 (예: chordTimer 사례).
+- E2E 실행: `E2E_USER=user1 E2E_PASS='agics12!@' E2E_CONTAINER_ID=05eddec05865 npm run e2e` (admin 은 owner 아님 → graceful skip).
 
 ## L2. 4축 UI 폴리싱  (✅ 완료 2026-05-11)
 
