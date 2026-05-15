@@ -17,6 +17,8 @@ Implementation baseline:
 Latest implementation/audit commits before this progress refresh:
 
 ```text
+d8b7221 docs(containers): add final lvm gate audit
+cfda1df docs(containers): refresh lvm validation progress
 af5f3c3 docs(containers): add lvm full validation runbook
 bc26acd docs(agent): refresh lvm handoff validation status
 bd8c3ce docs(containers): record final blocker re-audit evidence
@@ -45,8 +47,11 @@ Latest re-audit evidence:
   `docs/container-resource-limits-기획.ko.html` and
   `docs/agent-integration-lvm-thin-spec.ko.html`.
 - GitHub compare verified HyperCube `dev` was identical to
-  `af5f3c3c44f6e83afb0e1652c465d52447540b60` before this progress refresh.
-- `docs/runbooks/lvm-thin-workspace-full-validation.md` now records the gated
+  `d8b72210c79f96b7c781e72692411ccc09c136fc` before this progress refresh.
+- `docs/test-reports/2026-05-16-container-resource-limits-final-gate-audit.md`
+  records the prompt-to-artifact checklist and confirms the remaining blocked
+  gates are external server-63/agent LVM runtime requirements.
+- `docs/runbooks/lvm-thin-workspace-full-validation.md` records the gated
   8-step end-to-end proof path to run after the agent/ops LVM blocker is fixed.
 - Server 63 targeted backend recheck:
   `python manage.py test apps.containers.tests.test_recommend
@@ -123,6 +128,7 @@ Core references:
 - `docs/test-reports/2026-05-15-container-resource-limits-completion-audit.md`
 - `docs/test-reports/2026-05-15-container-resource-limits-legacy-workspace-quota-fix.md`
 - `docs/test-reports/2026-05-16-container-resource-limits-completion-audit-addendum.md`
+- `docs/test-reports/2026-05-16-container-resource-limits-final-gate-audit.md`
 - `docs/agent-lvm-thin-handoff.md`
 - `docs/runbooks/lvm-thin-workspace-host-setup.md`
 - `docs/runbooks/lvm-thin-workspace-preflight.sh`
