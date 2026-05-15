@@ -245,18 +245,19 @@
 		<footer class="kpi-foot">
 			<div class="foot-row">
 				<i class="dot dot-avg" aria-hidden="true"></i>
-				<b>AVG</b>
+				<b><span class="ab">AVG</span><span class="ko">평균</span></b>
 				<em class="pct">{formatPercent(opts.avg, 1)}</em>
 				<span class="raw">{opts.avgRawText}</span>
 			</div>
 			<div class="foot-row">
 				<i class="dot dot-peak" aria-hidden="true"></i>
-				<b>PEAK</b>
+				<b><span class="ab">PEAK</span><span class="ko">피크</span></b>
 				<em class="pct">{formatPercent(opts.peak, 1)}</em>
 				<span class="raw">{opts.peakRawText}</span>
 			</div>
 			<div class="foot-row delta" data-tone={deltaTone(opts.delta)} title="현재 − {rangeLabel} 평균">
-				<b>Δ</b><em>{formatDelta(opts.delta)}</em>
+				<b><span class="ab">Δ</span><span class="ko">평소 대비</span></b>
+				<em>{formatDelta(opts.delta)}</em>
 				{#if opts.deltaRaw}<span class="raw">{opts.deltaRaw}</span>{/if}
 			</div>
 		</footer>
@@ -273,6 +274,8 @@
 	bShare: number;
 	aLabel: string;
 	bLabel: string;
+	aLabelKo: string;
+	bLabelKo: string;
 	aBytes: number;
 	bBytes: number;
 	deltaTotal: number;
@@ -323,16 +326,16 @@
 		<footer class="kpi-foot">
 			<div class="foot-row">
 				<i class="dot dot-flow-a" aria-hidden="true"></i>
-				<b>{opts.aLabel}</b>
+				<b><span class="ab">{opts.aLabel}</span><span class="ko">{opts.aLabelKo}</span></b>
 				<em class="pct">{compactBytes(opts.aBytes)}</em>
 			</div>
 			<div class="foot-row">
 				<i class="dot dot-flow-b" aria-hidden="true"></i>
-				<b>{opts.bLabel}</b>
+				<b><span class="ab">{opts.bLabel}</span><span class="ko">{opts.bLabelKo}</span></b>
 				<em class="pct">{compactBytes(opts.bBytes)}</em>
 			</div>
 			<div class="foot-row delta" data-tone={opts.deltaTotal > 0 ? 'up' : 'flat'} title="{rangeLabel} 증가">
-				<b>Δ</b>
+				<b><span class="ab">Δ</span><span class="ko">{rangeLabel} 증가</span></b>
 				<em>{opts.deltaTotal > 0 ? `+${compactBytes(opts.deltaTotal)}` : '—'}</em>
 			</div>
 		</footer>
@@ -384,6 +387,8 @@
 		bShare: netTxShare,
 		aLabel: 'RX',
 		bLabel: 'TX',
+		aLabelKo: '수신',
+		bLabelKo: '송신',
 		aBytes: netRx,
 		bBytes: netTx,
 		deltaTotal: netDeltaTotal,
@@ -400,8 +405,10 @@
 		totalRaw: diskTotal,
 		aShare: diskReadShare,
 		bShare: diskWriteShare,
-		aLabel: 'Read',
-		bLabel: 'Write',
+		aLabel: 'READ',
+		bLabel: 'WRITE',
+		aLabelKo: '읽기',
+		bLabelKo: '쓰기',
 		aBytes: diskRead,
 		bBytes: diskWrite,
 		deltaTotal: diskDeltaTotal,
@@ -822,12 +829,29 @@
 		color: var(--text-mid);
 		white-space: nowrap;
 	}
+	/* 라벨 — 영문 약자(.ab) + 한글 부연(.ko). 약자는 mono uppercase, 한글은
+	   system-ui muted 작은 글씨. 두 톤을 줄 맞춰 보여줌. */
 	.foot-row b {
-		color: var(--text-faint);
+		display: inline-flex;
+		align-items: baseline;
+		gap: 4px;
+		min-width: 0;
+	}
+	.foot-row b .ab {
+		font-family: var(--font-mono);
 		font-size: 10.5px;
-		font-weight: 700;
-		letter-spacing: 0.06em;
+		font-weight: 800;
+		letter-spacing: 0.05em;
+		color: var(--text-mid);
 		text-transform: uppercase;
+	}
+	.foot-row b .ko {
+		font-family: system-ui, -apple-system, 'Segoe UI', 'Malgun Gothic', sans-serif;
+		font-size: 9.5px;
+		font-weight: 500;
+		color: var(--text-faint);
+		letter-spacing: 0;
+		white-space: nowrap;
 	}
 	.foot-row .pct {
 		font-style: normal;
