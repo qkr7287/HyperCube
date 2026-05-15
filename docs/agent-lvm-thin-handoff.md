@@ -7,10 +7,17 @@ Tracking issue: https://github.com/qkr7287/HyperCube-agent/issues/16
 
 Core backend/frontend is ready on HyperCube `dev`.
 
-Core commit verified:
+Core implementation baseline:
 
 ```text
-c0bb50f2839d21022197ebcf7861cdbc17388050
+7454fdd feat(containers): add resource limits and workspace quotas
+```
+
+Later `dev` commits add UI/test/doc follow-up. Check the current HyperCube core
+HEAD before validating:
+
+```bash
+gh api repos/qkr7287/HyperCube/git/ref/heads/dev --jq '.object.sha'
 ```
 
 Core validation report:

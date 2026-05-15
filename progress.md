@@ -6,10 +6,17 @@
 
 Core repo status: implemented, validated, committed, and pushed to `dev`.
 
-Remote `dev` HEAD verified:
+Implementation baseline:
 
 ```text
-4249c220f3fcfd3a413562ca981210e3e42f17f5
+7454fdd feat(containers): add resource limits and workspace quotas
+```
+
+Later `dev` commits add UI/test/doc follow-up. Check the current remote HEAD
+when resuming:
+
+```bash
+gh api repos/qkr7287/HyperCube/git/ref/heads/dev --jq '.object.sha'
 ```
 
 Implemented core scope:
