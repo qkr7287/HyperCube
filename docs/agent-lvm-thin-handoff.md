@@ -238,7 +238,17 @@ Core UI already displays workspace quota and usage when this arrives.
 
 ## Validation Required on server_63_dev
 
-Minimum preflight:
+Minimum read-only preflight from the HyperCube core checkout:
+
+```bash
+bash docs/runbooks/lvm-thin-workspace-preflight.sh hypercube-agent-dev-63 hc-backend
+```
+
+This script checks host LVM tools, shared mount roots, agent-runtime LVM tools,
+`lvs --units g`, and backend Agent capacity rows. It exits non-zero until the
+host and agent runtime are ready for LVM mode.
+
+Manual equivalent:
 
 ```bash
 command -v lvcreate
