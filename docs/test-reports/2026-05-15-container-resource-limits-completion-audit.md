@@ -24,6 +24,7 @@ Audited evidence chain includes:
 7454fdd feat(containers): add resource limits and workspace quotas
 557cdf8 docs(agent): link lvm preflight script
 58dd250 test(containers): cover legacy workspace payload without lvm
+7f2ca42 docs(containers): record recommend route resolver evidence
 ```
 
 ## Prompt-to-Artifact Checklist
@@ -56,7 +57,7 @@ Audited evidence chain includes:
 | Frontend check | On `server_63_dev`, `docker exec hc-frontend-dev npm run check`: 0 errors, 193 warnings | Done |
 | E2E | On `server_63_dev`, `docker exec -e E2E_USER=user1 -e E2E_PASS='agics12!@' -e E2E_CONTAINER_ID=05eddec05865 hc-frontend-dev npm run e2e`: 3 passed | Done |
 | Migrations applied on server-63 | `showmigrations agents containers` shows `[X] 0008_agent_capacity`, `[X] 0010_template_weights`, `[X] 0011_container_resource_limits` | Done |
-| Commit and push | Remote `dev` evidence chain verified through `b25f5a8`; re-check current HEAD with `gh api repos/qkr7287/HyperCube/git/ref/heads/dev --jq '.object.sha'` | Done |
+| Commit and push | Remote `dev` evidence chain verified through `7f2ca42168e4ed1219f3478c5b425298de00fa96`; GitHub compare reported `dev` identical to that commit | Done |
 | Repeatable LVM preflight | `docs/runbooks/lvm-thin-workspace-preflight.sh` is a read-only host/agent/backend capacity check; syntax passed with `bash -n` | Done |
 | Agent permission option chosen | HyperCube-agent issue #16 remains open and has no reply with `PERMISSION_OPTION=<1|2|3>` | Blocked |
 | Agent reports LVM thin capacity | Backend Agent rows show `server_63_dev lvm_pool_size_gb=None` and `server_16_dev lvm_pool_size_gb=None` | Blocked |
