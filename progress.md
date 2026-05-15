@@ -30,6 +30,9 @@ Implemented core scope:
 - Workspace metadata persistence from create result.
 - Legacy no-LVM mode keeps existing Jupyter workspace metadata while omitting
   only LVM `sizeGb`, `mountTarget`, and `sharedMounts`.
+- Legacy no-LVM create responses keep CPU/memory limits but do not persist an
+  unenforced `workspace_gb_limit` unless the agent returns concrete workspace
+  metadata.
 - Request modal resource-limit UI and recommendation prefill.
 - KPI cards and trend charts with quota/denominator display.
 - API, agent protocol, and payload contract docs.
@@ -37,7 +40,7 @@ Implemented core scope:
 Validation on `server_63_dev`:
 
 ```text
-backend: python manage.py test -> 109 tests OK
+backend: python manage.py test -> 111 tests OK
 frontend: npm test -- --run -> 57 tests passed
 frontend: npm run check -> 0 errors, 193 warnings
 frontend: npm run e2e -> 3 passed
@@ -48,6 +51,7 @@ Core references:
 
 - `docs/test-reports/2026-05-15-container-resource-limits-core-validation.md`
 - `docs/test-reports/2026-05-15-container-resource-limits-completion-audit.md`
+- `docs/test-reports/2026-05-15-container-resource-limits-legacy-workspace-quota-fix.md`
 - `docs/agent-lvm-thin-handoff.md`
 - `docs/runbooks/lvm-thin-workspace-host-setup.md`
 - `docs/runbooks/lvm-thin-workspace-preflight.sh`

@@ -178,6 +178,10 @@ def apply_workspace_metadata_from_response(
     template = request.template
     response_workspace = response_workspace or {}
     limit_fields = _workspace_limit_fields_from_response(container, response_workspace, now)
+    if not response_workspace:
+        limit_fields.extend(
+            field for field in _clear_unreported_workspace_limit(container) if field not in limit_fields
+        )
     if not request.workspace_enabled_snapshot:
         if limit_fields:
             container.save(update_fields=limit_fields)
@@ -247,6 +251,17 @@ def _workspace_limit_fields_from_response(
 
     if update_fields:
         update_fields.append("last_seen")
+    return update_fields
+
+
+def _clear_unreported_workspace_limit(container: Container) -> list[str]:
+    update_fields: list[str] = []
+    if container.workspace_gb_limit is not None:
+        container.workspace_gb_limit = None
+        update_fields.append("workspace_gb_limit")
+    if container.workspace_device:
+        container.workspace_device = None
+        update_fields.append("workspace_device")
     return update_fields
 
 
