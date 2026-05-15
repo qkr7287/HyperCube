@@ -36,6 +36,7 @@ eca6f4a docs(agent): update lvm host preflight blocker
 e780421 docs(ops): add lvm thin host setup runbook
 f224513 docs(ops): add lvm thin preflight script
 557cdf8 docs(agent): link lvm preflight script
+58dd250 test(containers): cover legacy workspace payload without lvm
 ```
 
 ## Core Validation
@@ -51,9 +52,9 @@ ssh hc-dev-63 "docker exec hc-backend python manage.py test"
 Observed:
 
 ```text
-Found 108 test(s).
+Found 109 test(s).
 System check identified no issues (0 silenced).
-Ran 108 tests in 83.414s
+Ran 109 tests in 82.538s
 OK
 ```
 
@@ -129,6 +130,8 @@ Observed:
   `backend/apps/containers/migrations/0011_container_resource_limits.py`
 - Agent create payload `hostConfig`, LVM workspace, and shared mounts:
   `backend/apps/containers/services/deployment.py`
+- Legacy no-LVM workspace payload regression coverage:
+  `backend/apps/containers/tests/test_deployment.py`
 - Workspace result persistence:
   `backend/apps/containers/services/workspace.py`,
   `backend/apps/common/consumers.py`
