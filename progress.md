@@ -81,6 +81,7 @@ Core references:
 - `docs/test-reports/2026-05-15-container-resource-limits-core-validation.md`
 - `docs/test-reports/2026-05-15-container-resource-limits-completion-audit.md`
 - `docs/test-reports/2026-05-15-container-resource-limits-legacy-workspace-quota-fix.md`
+- `docs/test-reports/2026-05-16-container-resource-limits-completion-audit-addendum.md`
 - `docs/agent-lvm-thin-handoff.md`
 - `docs/runbooks/lvm-thin-workspace-host-setup.md`
 - `docs/runbooks/lvm-thin-workspace-preflight.sh`
