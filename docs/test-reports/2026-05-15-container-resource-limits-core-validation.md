@@ -16,7 +16,7 @@ or LVM thin capacity.
 Remote `dev` HEAD verified by GitHub API:
 
 ```text
-2ed75bcfb06a9dfa90bf6be81fff47eb969d3597
+9319a0c1541ff77c11b689765b262571f50b8bfc
 ```
 
 Commits:
@@ -25,6 +25,11 @@ Commits:
 7454fdd feat(containers): add resource limits and workspace quotas
 5580b11 fix(ui): trim integer quota byte labels
 2ed75bc test(e2e): align container KPI selectors
+27f05e2 docs(containers): record resource limits core validation
+c0bb50f docs(containers): link agent lvm follow-up issue
+4249c22 docs(agent): add lvm thin resource limits handoff
+ec0818e docs(progress): record resource limits integration status
+9319a0c docs(agent): clarify lvm permission handoff status
 ```
 
 ## Core Validation
@@ -151,14 +156,30 @@ docker exec hypercube-agent-dev-63 sh -lc "command -v lvcreate || true; command 
 bash: line 1: lvs: command not found
 ```
 
-Agent source scan on `server_63_dev` did not find LVM/resource-limit contract
-implementation:
+Follow-up preflight shows the blocker is also present on the host, not only in
+the agent container:
 
-```bash
-grep -R "capacity_report\\|hostConfig\\|sharedMounts\\|lvcreate\\|workspaceDevice\\|thinPool" -n /home/agics/ts/agent-dev/src
+```text
+host command -v lvcreate -> <empty>
+host command -v lvs -> <empty>
+host command -v mkfs.ext4 -> /usr/sbin/mkfs.ext4
+host command -v mount -> /usr/bin/mount
+host lvs --units g -> bash: line 1: lvs: command not found
 ```
 
-Observed: no matches.
+Storage and shared mount preflight:
+
+```text
+/dev/sda2 ext4 mounted at /
+/dev/sdb2 vfat mounted at /media/agics/ARCHIVE
+/mnt/datasets -> missing
+/mnt/models -> missing
+```
+
+Agent source status on `server_63_dev`: `/home/agics/ts/agent-dev/src` now has
+LVM workspace scaffolding such as `workspace-lvm.ts`, but the deployed
+`hypercube-agent-dev-63` runtime still lacks the host LVM tools needed for the
+8-step scenario and backend Agent rows still report `lvm_pool_size_gb=None`.
 
 The agent container is privileged, but only these binds are present:
 

@@ -60,14 +60,26 @@ Observed:
 bash: line 1: lvs: command not found
 ```
 
-Source scan on `server_63_dev` currently finds no LVM/resource-limit contract
-implementation:
+Additional host preflight on `server_63_dev`:
 
-```bash
-grep -R "capacity_report\|hostConfig\|sharedMounts\|lvcreate\|workspaceDevice\|thinPool" -n /home/agics/ts/agent-dev/src
+```text
+command -v lvcreate -> <empty>
+command -v lvs -> <empty>
+command -v mkfs.ext4 -> /usr/sbin/mkfs.ext4
+command -v mount -> /usr/bin/mount
+lvs --units g -> bash: line 1: lvs: command not found
 ```
 
-Observed: no matches.
+Shared NFS mount preflight:
+
+```text
+/mnt/datasets -> missing
+/mnt/models -> missing
+```
+
+`/home/agics/ts/agent-dev/src` has LVM workspace scaffolding, but full
+validation is still blocked until the host has `lvm2`, a configured thin pool,
+the shared dataset/model mounts, and a chosen agent permission option.
 
 ## Required Agent Work
 
@@ -229,14 +241,21 @@ Core UI already displays workspace quota and usage when this arrives.
 Minimum preflight:
 
 ```bash
+command -v lvcreate
+command -v lvs
+lvs --units g
 docker exec hypercube-agent-dev-63 sh -lc 'command -v lvcreate; command -v lvs'
 docker exec hypercube-agent-dev-63 sh -lc 'lvs --units g'
+test -d /mnt/datasets
+test -d /mnt/models
 ```
 
 Expected before backend LVM mode can be verified:
 
 ```text
-lvcreate and lvs exist
+lvcreate and lvs exist on the host and in the agent runtime
+lvs --units g shows the configured thin pool
+shared NFS mount roots exist
 capacity_report includes disk.lvm.available=true and thinPoolSizeGb
 ```
 

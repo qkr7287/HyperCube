@@ -51,7 +51,10 @@ Core references:
 Remaining blocker:
 
 - Full LVM thin workspace creation is not yet proven end-to-end.
-- Current `hypercube-agent-dev-63` lacks `lvs/lvcreate`.
+- Current `server_63_dev` host and `hypercube-agent-dev-63` both lack
+  `lvs/lvcreate`; `lvm2`/thin pool setup is not present.
+- `/mnt/datasets` and `/mnt/models` are not present on `server_63_dev`, so the
+  NFS shared-mount part of the agent payload cannot be validated yet.
 - Current Agent rows report `lvm_pool_size_gb=None`, so backend stays in legacy
   mode and omits LVM `workspace` payloads for those agents.
 
