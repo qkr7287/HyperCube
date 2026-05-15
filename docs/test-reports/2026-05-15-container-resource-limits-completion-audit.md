@@ -46,7 +46,7 @@ Audited evidence chain includes:
 | PR 3: docs sync | `docs/api.md`, `docs/agent-protocol.md`, `docs/agent-payload-contract.md` include resource limit, `hostConfig`, workspace, `sharedMounts`, and result schema changes | Done |
 | PR 4: UI form component | `frontend/src/lib/components/ResourceLimitForm.svelte`; component tests cover recommendation values, host share labels, and warnings | Done |
 | PR 4: request flow prefill and submit | `frontend/src/lib/components/NewRequestModal.svelte` fetches `/api/containers/recommend/?template=...&agent=...` and submits `cpu_percent`, `memory_mb`, `workspace_gb` | Done |
-| PR 4: backend recommend endpoint | `backend/apps/containers/viewsets.py`; route is documented in `docs/api.md`; `test_viewsets.py` covers authenticated endpoint access | Done |
+| PR 4: backend recommend endpoint | `backend/apps/containers/viewsets.py`; route is documented in `docs/api.md`; `test_viewsets.py` covers authenticated endpoint access; Django resolver maps both `/api/containers/recommend/` and `/api/v1/containers/recommend/` to `ContainerViewSet.recommend` | Done |
 | PR 5: KPI limit chips and workspace card | `frontend/src/lib/components/ContainerKpiBar.svelte`; tests check `limit 4 cores`, `limit 16 GB`, `limit 100 GB`, and `unlimited` | Done |
 | PR 5: chart denominator labels | `frontend/src/lib/components/UserMetricChart.svelte`, `charts/EChartLine.svelte`, and `routes/user/containers/[containerId]/+page.svelte` pass CPU/memory denominator labels | Done |
 | Backward compatibility for legacy containers | Backend omits LVM `workspace` / `sharedMounts` when `agent.lvm_pool_size_gb` is absent; E2E target `05eddec05865` passes with legacy/unlimited path | Done |
