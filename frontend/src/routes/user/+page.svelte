@@ -1053,7 +1053,6 @@ KPI — 컨테이너·요청·자원 합계
 		if (urlSyncTimer) clearTimeout(urlSyncTimer);
 		if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
 		if (historySearchDebounceTimer) clearTimeout(historySearchDebounceTimer);
-		if (chordTimer) clearTimeout(chordTimer);
 		if (browser) {
 			window.removeEventListener('keydown', handleGlobalKeydown);
 			window.removeEventListener('click', handleWindowClick);
