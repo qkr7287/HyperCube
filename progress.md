@@ -17,6 +17,9 @@ Implementation baseline:
 Latest checked core commits before this progress refresh:
 
 ```text
+93f439a docs(containers): expand latest lvm preflight evidence
+e4e9e9a docs(containers): clarify lvm audit compare baseline
+fce24b1 docs(containers): refresh lvm progress head evidence
 3e97028 docs(containers): refresh lvm audit head evidence
 ea9c259 docs(containers): link 2026-05-16 audit addendum
 c7fec88 docs(containers): add 2026-05-16 completion audit addendum
@@ -65,6 +68,9 @@ Current result:
 
 ```text
 PREFLIGHT_EXIT:1
+FAIL host command 'lvcreate' is missing
+FAIL host command 'lvs' is missing
+FAIL host command 'lvremove' is missing
 FAIL /mnt/datasets is missing
 FAIL /mnt/models is missing
 FAIL /var/lib/hypercube/workspaces is missing
@@ -77,6 +83,7 @@ OK   agent command 'mount' -> /usr/bin/mount
 OK   agent command 'umount' -> /usr/bin/umount
 FAIL agent command 'lvremove' is missing
 FAIL agent lvs command failed
+sh: 1: lvs: not found
 backend Agent rows still show lvm_pool_size_gb=None for server_16_dev and server_63_dev
 ```
 
