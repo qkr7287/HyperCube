@@ -19,6 +19,7 @@ from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 from apps.common import command_router
 from apps.common.permissions import IsAdmin
 from apps.common.redis_client import get_redis_client
+from apps.agents.models import Agent
 from apps.metrics.models import ContainerMetricsHistory
 from apps.metrics.serializers import ContainerMetricsHistorySerializer
 from apps.models_catalog.prepare import (
@@ -34,6 +35,7 @@ from .services.gpu_allocation import (
 )
 from .services.deployment import dispatch_request_to_agent
 from .services.policy import enforce_approval_policy
+from .services.recommend import recommend_resource_limits
 from .services.workspace import (
     apply_workspace_metadata_from_response,
     build_workspace_open_url,
@@ -83,6 +85,47 @@ class ContainerViewSet(ModelViewSet):
     search_fields = ["name", "image"]
     ordering_fields = ["name", "status", "last_seen"]
     permission_classes = [IsAdmin]
+
+    @extend_schema(
+        summary="컨테이너 자원 한도 추천",
+        description=(
+            "template weight와 agent capacity를 조합해 CPU/메모리/workspace 추천값을 반환합니다. "
+            "query: ?template=<uuid>&agent=<uuid>."
+        ),
+    )
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="recommend",
+        permission_classes=[IsAuthenticated],
+    )
+    def recommend(self, request):
+        template_id = request.query_params.get("template")
+        agent_id = request.query_params.get("agent")
+        if not template_id or not agent_id:
+            return Response(
+                {"detail": "template and agent query parameters are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            template = ContainerTemplate.objects.get(id=template_id)
+        except (ContainerTemplate.DoesNotExist, ValueError):
+            return Response({"detail": "template not found"}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            agent = Agent.objects.get(id=agent_id)
+        except (Agent.DoesNotExist, ValueError):
+            return Response({"detail": "agent not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        recommendation = recommend_resource_limits(agent, template)
+        payload = recommendation.as_dict()
+        payload.update({
+            "template": str(template.id),
+            "agent": str(agent.id),
+            "min_cpu_percent": template.min_cpu_percent,
+            "min_memory_mb": template.min_memory_mb,
+            "min_workspace_gb": template.min_workspace_gb,
+        })
+        return Response(payload)
 
 
 @extend_schema_view(
@@ -157,13 +200,15 @@ class MyContainerViewSet(ReadOnlyModelViewSet):
                     "memory": None,
                     "network": None,
                     "disk": None,
+                    "workspace": _container_workspace_snapshot(container),
                     "network_stats": [],
                 }
             )
 
-        body = payload.get("data") or {}
+        body = dict(payload.get("data") or {})
         body["timestamp"] = payload.get("timestamp")
         body["containerId"] = body.get("containerId") or container.container_id
+        body["workspace"] = _merge_workspace_snapshot(body.get("workspace"), container)
         return Response(body)
 
     @extend_schema(
@@ -439,6 +484,17 @@ class MyContainerViewSet(ReadOnlyModelViewSet):
             command="update_container",
             params=params,
         )
+        if resp.get("success"):
+            limit_updates = {}
+            if "cpu_percent" in params:
+                limit_updates["cpu_percent_limit"] = params["cpu_percent"]
+            if "memory_mb" in params:
+                limit_updates["memory_mb_limit"] = params["memory_mb"]
+            if limit_updates:
+                for field, value in limit_updates.items():
+                    setattr(container, field, value)
+                container.limit_updated_at = timezone.now()
+                container.save(update_fields=[*limit_updates.keys(), "limit_updated_at"])
         return self._agent_resp_to_http(resp)
 
     @extend_schema(
@@ -790,3 +846,21 @@ class ContainerRequestViewSet(ModelViewSet):
         req_obj.save(update_fields=["status", "reviewer", "reviewed_at", "review_note", "updated_at"])
 
         return Response(self.get_serializer(req_obj).data)
+
+
+def _container_workspace_snapshot(container: Container) -> dict | None:
+    workspace = {}
+    if container.workspace_device:
+        workspace["device"] = container.workspace_device
+    if container.workspace_gb_limit:
+        workspace["sizeGb"] = container.workspace_gb_limit
+    return workspace or None
+
+
+def _merge_workspace_snapshot(metrics_workspace, container: Container) -> dict | None:
+    workspace = dict(metrics_workspace) if isinstance(metrics_workspace, dict) else {}
+    if container.workspace_device and not workspace.get("device"):
+        workspace["device"] = container.workspace_device
+    if container.workspace_gb_limit and not workspace.get("sizeGb"):
+        workspace["sizeGb"] = container.workspace_gb_limit
+    return workspace or None

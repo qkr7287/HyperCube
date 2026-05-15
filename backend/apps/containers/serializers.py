@@ -7,6 +7,7 @@ from apps.agents.models import GpuSlice
 from apps.models_catalog.models import ModelAsset, ModelVersion
 
 from .services.policy import request_payload_policy_errors
+from .services.recommend import min_limit_errors, recommend_resource_limits
 from .models import (
     ConsoleSession,
     Container,
@@ -77,6 +78,11 @@ class ContainerSerializer(serializers.ModelSerializer):
             "workspace_max_runtime_hours",
             "workspace_runtime_expires_at",
             "workspace_token_expires_at",
+            "cpu_percent_limit",
+            "memory_mb_limit",
+            "workspace_gb_limit",
+            "workspace_device",
+            "limit_updated_at",
         ]
         read_only_fields = [
             "last_seen",
@@ -93,6 +99,11 @@ class ContainerSerializer(serializers.ModelSerializer):
             "workspace_max_runtime_hours",
             "workspace_runtime_expires_at",
             "workspace_token_expires_at",
+            "cpu_percent_limit",
+            "memory_mb_limit",
+            "workspace_gb_limit",
+            "workspace_device",
+            "limit_updated_at",
         ]
 
     def get_mounted_model_versions(self, obj):
@@ -179,6 +190,12 @@ class ContainerTemplateSerializer(serializers.ModelSerializer):
             "default_workdir",
             "network_policy",
             "default_max_runtime_hours",
+            "cpu_weight",
+            "ram_weight",
+            "disk_weight",
+            "min_cpu_percent",
+            "min_memory_mb",
+            "min_workspace_gb",
             "image",
             "image_options",
             "env_schema",
@@ -230,6 +247,14 @@ class ContainerTemplateSerializer(serializers.ModelSerializer):
 class ContainerRequestSerializer(serializers.ModelSerializer):
     """사용자가 제출하는 컨테이너 요청 (생성/삭제)."""
 
+    cpu_percent = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=0,
+        max_value=10000,
+    )
+    memory_mb = serializers.IntegerField(required=False, allow_null=True, min_value=0)
+    workspace_gb = serializers.IntegerField(required=False, allow_null=True, min_value=0)
     requester_username = serializers.CharField(
         source="requester.username", read_only=True, default=None, allow_null=True
     )
@@ -279,6 +304,9 @@ class ContainerRequestSerializer(serializers.ModelSerializer):
             "workspace_enabled_snapshot",
             "workspace_kind_snapshot",
             "requested_max_runtime_hours",
+            "cpu_percent",
+            "memory_mb",
+            "workspace_gb",
             "prepare_job_ids",
             "deployment_phase",
             "workspace_token_expires_at",
@@ -365,8 +393,9 @@ class ContainerRequestSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"target_agent": "create 요청은 target_agent를 지정해야 합니다."}
                 )
+            target_agent = attrs.get("target_agent") or (self.instance and self.instance.target_agent)
+            self._apply_resource_limit_defaults(attrs, template, target_agent)
             if gpu_slice_ids is not None:
-                target_agent = attrs.get("target_agent") or (self.instance and self.instance.target_agent)
                 normalized_ids = _normalize_gpu_slice_ids(gpu_slice_ids)
                 slices = list(GpuSlice.objects.select_related("gpu").filter(id__in=normalized_ids))
                 if len(slices) != len(normalized_ids):
@@ -437,6 +466,24 @@ class ContainerRequestSerializer(serializers.ModelSerializer):
         data["workspace_kind_snapshot"] = template.workspace_kind if template.workspace_enabled else ""
         if data.get("requested_max_runtime_hours") is None and template.default_max_runtime_hours:
             data["requested_max_runtime_hours"] = template.default_max_runtime_hours
+
+    def _apply_resource_limit_defaults(self, data, template, target_agent):
+        recommendation = recommend_resource_limits(target_agent, template)
+        if data.get("cpu_percent") is None:
+            data["cpu_percent"] = recommendation.cpu_percent
+        if data.get("memory_mb") is None:
+            data["memory_mb"] = recommendation.memory_mb
+        if data.get("workspace_gb") is None:
+            data["workspace_gb"] = recommendation.workspace_gb
+
+        errors = min_limit_errors(
+            template,
+            cpu_percent=data.get("cpu_percent"),
+            memory_mb=data.get("memory_mb"),
+            workspace_gb=data.get("workspace_gb"),
+        )
+        if errors:
+            raise serializers.ValidationError(errors)
 
     def _set_gpu_slice_selections(self, request, gpu_slice_ids):
         ContainerRequestGpuSlice.objects.filter(request=request).delete()

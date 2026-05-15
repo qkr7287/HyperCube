@@ -13,7 +13,18 @@ from .models import (
 
 @admin.register(Container)
 class ContainerAdmin(ModelAdmin):
-    list_display = ("name", "short_id", "image", "agent", "colored_status", "workspace_enabled", "last_seen")
+    list_display = (
+        "name",
+        "short_id",
+        "image",
+        "agent",
+        "colored_status",
+        "cpu_percent_limit",
+        "memory_mb_limit",
+        "workspace_gb_limit",
+        "workspace_enabled",
+        "last_seen",
+    )
     list_filter = ("status", "agent", "workspace_enabled", "workspace_kind")
     search_fields = ("name", "container_id", "image")
 
@@ -42,7 +53,19 @@ class ContainerAdmin(ModelAdmin):
 
 @admin.register(ContainerTemplate)
 class ContainerTemplateAdmin(ModelAdmin):
-    list_display = ("name", "kind", "category", "requires_gpu", "workspace_enabled", "image", "created_by", "updated_at")
+    list_display = (
+        "name",
+        "kind",
+        "category",
+        "requires_gpu",
+        "workspace_enabled",
+        "cpu_weight",
+        "ram_weight",
+        "disk_weight",
+        "image",
+        "created_by",
+        "updated_at",
+    )
     list_filter = ("kind", "category", "requires_gpu", "workspace_enabled", "workspace_kind")
     search_fields = ("name", "description", "image")
     readonly_fields = ("id", "created_at", "updated_at")
@@ -50,7 +73,19 @@ class ContainerTemplateAdmin(ModelAdmin):
 
 @admin.register(ContainerRequest)
 class ContainerRequestAdmin(ModelAdmin):
-    list_display = ("short_id", "requester", "action", "colored_status", "template", "target_agent", "workspace_enabled_snapshot", "created_at")
+    list_display = (
+        "short_id",
+        "requester",
+        "action",
+        "colored_status",
+        "template",
+        "target_agent",
+        "cpu_percent",
+        "memory_mb",
+        "workspace_gb",
+        "workspace_enabled_snapshot",
+        "created_at",
+    )
     list_filter = ("action", "status", "target_agent", "workspace_enabled_snapshot", "workspace_kind_snapshot")
     search_fields = ("custom_name", "requester__username")
     readonly_fields = (

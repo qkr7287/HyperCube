@@ -27,6 +27,16 @@ class AgentSerializer(serializers.ModelSerializer):
             "approved_at",
             "last_seen_at",
             "archived_at",
+            "cpu_cores",
+            "cpu_model",
+            "ram_total_mb",
+            "disk_total_gb",
+            "lvm_pool_size_gb",
+            "nic_speed_mbps",
+            "filesystem",
+            "target_users",
+            "safety_margin",
+            "capacity_updated_at",
             "is_active",
             "container_count",
         ]
@@ -40,6 +50,7 @@ class AgentSerializer(serializers.ModelSerializer):
             "approved_at",
             "last_seen_at",
             "archived_at",
+            "capacity_updated_at",
         ]
 
     def get_is_active(self, obj: Agent) -> bool:

@@ -11,7 +11,17 @@ admin.site.index_title = "Dashboard"
 
 @admin.register(Agent)
 class AgentAdmin(ModelAdmin):
-    list_display = ("hostname", "ip_address", "colored_status", "registered_at", "approved_at")
+    list_display = (
+        "hostname",
+        "ip_address",
+        "colored_status",
+        "cpu_cores",
+        "ram_total_mb",
+        "lvm_pool_size_gb",
+        "capacity_updated_at",
+        "registered_at",
+        "approved_at",
+    )
     list_filter = ("status",)
     search_fields = ("hostname", "ip_address")
     readonly_fields = ("id", "registered_at")

@@ -74,6 +74,16 @@ class Agent(models.Model):
     approved_at = models.DateTimeField(null=True, blank=True)
     last_seen_at = models.DateTimeField(null=True, blank=True, db_index=True)
     archived_at = models.DateTimeField(null=True, blank=True)
+    cpu_cores = models.PositiveIntegerField(null=True, blank=True)
+    cpu_model = models.CharField(max_length=255, blank=True, default="")
+    ram_total_mb = models.PositiveIntegerField(null=True, blank=True)
+    disk_total_gb = models.PositiveIntegerField(null=True, blank=True)
+    lvm_pool_size_gb = models.PositiveIntegerField(null=True, blank=True)
+    nic_speed_mbps = models.PositiveIntegerField(null=True, blank=True)
+    filesystem = models.CharField(max_length=64, blank=True, default="")
+    target_users = models.PositiveIntegerField(default=4)
+    safety_margin = models.FloatField(default=0.8)
+    capacity_updated_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "agents"

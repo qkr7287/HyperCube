@@ -32,6 +32,7 @@ urlpatterns = [
     # App APIs
     path("api/", include("apps.agents.urls")),
     path("api/", include("apps.containers.urls")),
+    path("api/v1/", include("apps.containers.urls")),
     path("api/", include("apps.models_catalog.urls")),
     path("api/", include("apps.users.urls")),
     path("api/", include("apps.metrics.urls")),

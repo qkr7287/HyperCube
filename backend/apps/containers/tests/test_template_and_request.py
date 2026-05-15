@@ -119,6 +119,60 @@ class ContainerRequestAPITest(APITestCase):
         data = res.json()["data"]
         self.assertEqual(data["status"], "pending")
         self.assertEqual(data["requester_username"], "user1")
+        self.assertEqual(data["cpu_percent"], self.template.min_cpu_percent)
+        self.assertEqual(data["memory_mb"], self.template.min_memory_mb)
+        self.assertEqual(data["workspace_gb"], self.template.min_workspace_gb)
+
+    def test_create_request_defaults_resource_limits_from_recommendation(self):
+        self.agent.cpu_cores = 24
+        self.agent.ram_total_mb = 262144
+        self.agent.lvm_pool_size_gb = 3000
+        self.agent.target_users = 4
+        self.agent.safety_margin = 0.8
+        self.agent.save(update_fields=[
+            "cpu_cores",
+            "ram_total_mb",
+            "lvm_pool_size_gb",
+            "target_users",
+            "safety_margin",
+        ])
+        self.client.force_authenticate(user=self.user)
+
+        res = self.client.post("/api/requests/", self._create_payload(), format="json")
+
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.json())
+        data = res.json()["data"]
+        self.assertEqual(data["cpu_percent"], 500)
+        self.assertEqual(data["memory_mb"], 51 * 1024)
+        self.assertEqual(data["workspace_gb"], 600)
+        request = ContainerRequest.objects.get(id=data["id"])
+        self.assertEqual(request.cpu_percent, 500)
+        self.assertEqual(request.memory_mb, 51 * 1024)
+        self.assertEqual(request.workspace_gb, 600)
+
+    def test_create_request_rejects_values_below_template_floor(self):
+        self.template.min_cpu_percent = 200
+        self.template.min_memory_mb = 4096
+        self.template.min_workspace_gb = 20
+        self.template.save(update_fields=[
+            "min_cpu_percent",
+            "min_memory_mb",
+            "min_workspace_gb",
+            "updated_at",
+        ])
+        self.client.force_authenticate(user=self.user)
+
+        res = self.client.post(
+            "/api/requests/",
+            self._create_payload(cpu_percent=100, memory_mb=2048, workspace_gb=10),
+            format="json",
+        )
+
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        error_body = res.json().get("error") or {}
+        self.assertIn("cpu_percent", error_body)
+        self.assertIn("memory_mb", error_body)
+        self.assertIn("workspace_gb", error_body)
 
     def test_create_request_needs_template_and_target(self):
         self.client.force_authenticate(user=self.user)
@@ -176,7 +230,8 @@ class ContainerRequestAPITest(APITestCase):
             format="json",
         )
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("target_agent", res.json()["errors"])
+        error_body = res.json().get("error") or res.json().get("errors") or {}
+        self.assertIn("target_agent", error_body)
 
     # ---- 조회 격리 ----
     def test_user_sees_only_own_requests(self):

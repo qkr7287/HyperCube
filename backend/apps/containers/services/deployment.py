@@ -16,6 +16,13 @@ from .workspace import (
 
 logger = logging.getLogger(__name__)
 
+CPU_PERIOD_US = 100_000
+BYTES_PER_MB = 1024 * 1024
+DEFAULT_SHARED_MOUNTS = [
+    {"source": "/mnt/datasets", "target": "/datasets", "readOnly": True},
+    {"source": "/mnt/models", "target": "/models", "readOnly": True},
+]
+
 
 def dispatch_request_to_agent(req_obj: ContainerRequest, workspace_secret=None) -> bool:
     agent_channel = command_router.get_agent_channel(str(req_obj.target_agent_id))
@@ -102,15 +109,32 @@ def _build_create_payload(req_obj: ContainerRequest, workspace_secret=None) -> d
         "gpus": gpu_payload_for_request(req_obj),
     }
 
+    host_config = _host_config_payload(req_obj)
+    if host_config:
+        params["hostConfig"] = host_config
+
     model_mounts = _model_mounts_payload(req_obj)
     if model_mounts:
         params["modelMounts"] = model_mounts
 
+    lvm_workspace = _lvm_workspace_payload(req_obj)
+    workspace_meta = None
     if req_obj.workspace_enabled_snapshot:
         if workspace_secret is None:
             workspace_secret = prepare_workspace_secret_for_request(req_obj)
-        params["workspace"] = workspace_payload_for_request(req_obj, workspace_secret)
+        workspace_meta = workspace_payload_for_request(req_obj, workspace_secret)
         params["networkPolicy"] = tpl.network_policy if tpl else "none"
+
+    if workspace_meta or lvm_workspace:
+        workspace_payload = {}
+        if workspace_meta:
+            workspace_payload.update(workspace_meta)
+        if lvm_workspace:
+            workspace_payload.update(lvm_workspace)
+        params["workspace"] = workspace_payload
+
+    if lvm_workspace:
+        params["sharedMounts"] = list(DEFAULT_SHARED_MOUNTS)
 
     return {
         "type": "command",
@@ -126,3 +150,29 @@ def _model_mounts_payload(req_obj: ContainerRequest) -> list[dict]:
     from apps.models_catalog.prepare import model_mounts_payload_for_request
 
     return model_mounts_payload_for_request(req_obj)
+
+
+def _host_config_payload(req_obj: ContainerRequest) -> dict:
+    payload = {}
+    if req_obj.memory_mb is not None:
+        memory_bytes = int(req_obj.memory_mb) * BYTES_PER_MB
+        payload["memory"] = memory_bytes
+        payload["memorySwap"] = memory_bytes
+    if req_obj.cpu_percent is not None:
+        payload["cpuQuota"] = int(req_obj.cpu_percent) * 1000
+        payload["cpuPeriod"] = CPU_PERIOD_US
+    if payload:
+        payload["oomKillDisable"] = False
+    return payload
+
+
+def _lvm_workspace_payload(req_obj: ContainerRequest) -> dict | None:
+    if not req_obj.workspace_gb:
+        return None
+    agent = req_obj.target_agent
+    if not agent or not agent.lvm_pool_size_gb:
+        return None
+    return {
+        "sizeGb": int(req_obj.workspace_gb),
+        "mountTarget": "/workspace",
+    }

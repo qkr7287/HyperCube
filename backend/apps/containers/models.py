@@ -57,6 +57,12 @@ class ContainerTemplate(models.Model):
         default=NetworkPolicy.INTERNAL_ONLY,
     )
     default_max_runtime_hours = models.PositiveIntegerField(null=True, blank=True)
+    cpu_weight = models.FloatField(default=1.0)
+    ram_weight = models.FloatField(default=1.0)
+    disk_weight = models.FloatField(default=1.0)
+    min_cpu_percent = models.PositiveIntegerField(default=100)
+    min_memory_mb = models.PositiveIntegerField(default=2048)
+    min_workspace_gb = models.PositiveIntegerField(default=10)
 
     # simple 전용
     image = models.CharField(max_length=255, blank=True, default="")
@@ -140,6 +146,11 @@ class Container(models.Model):
     workspace_runtime_expires_at = models.DateTimeField(null=True, blank=True)
     workspace_token_ref = models.CharField(max_length=64, blank=True, default="")
     workspace_token_expires_at = models.DateTimeField(null=True, blank=True)
+    cpu_percent_limit = models.PositiveIntegerField(null=True, blank=True)
+    memory_mb_limit = models.PositiveIntegerField(null=True, blank=True)
+    workspace_gb_limit = models.PositiveIntegerField(null=True, blank=True)
+    workspace_device = models.CharField(max_length=120, null=True, blank=True)
+    limit_updated_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "containers"
@@ -260,6 +271,9 @@ class ContainerRequest(models.Model):
     workspace_enabled_snapshot = models.BooleanField(default=False)
     workspace_kind_snapshot = models.CharField(max_length=32, blank=True, default="")
     requested_max_runtime_hours = models.PositiveIntegerField(null=True, blank=True)
+    cpu_percent = models.PositiveIntegerField(null=True, blank=True)
+    memory_mb = models.PositiveIntegerField(null=True, blank=True)
+    workspace_gb = models.PositiveIntegerField(null=True, blank=True)
     prepare_job_ids = models.JSONField(default=list, blank=True)
     deployment_phase = models.CharField(max_length=32, blank=True, default="")
     workspace_token_ref = models.CharField(max_length=64, blank=True, default="")

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { base } from '$app/paths';
+	import ResourceLimitForm from './ResourceLimitForm.svelte';
 
 	type Prefill = {
 		templateId?: string | null;
@@ -35,6 +36,9 @@
 		workspace_enabled?: boolean;
 		workspace_kind?: string;
 		default_max_runtime_hours?: number | null;
+		min_cpu_percent?: number;
+		min_memory_mb?: number;
+		min_workspace_gb?: number;
 	};
 
 	type Agent = {
@@ -42,6 +46,18 @@
 		hostname: string;
 		ip_address: string;
 		is_active: boolean;
+		cpu_cores?: number | null;
+		ram_total_mb?: number | null;
+		lvm_pool_size_gb?: number | null;
+		target_users?: number;
+		safety_margin?: number;
+	};
+
+	type ResourceRecommendation = {
+		cpu_percent: number;
+		memory_mb: number;
+		workspace_gb: number;
+		capacity_complete?: boolean;
 	};
 
 	type GpuSlice = {
@@ -105,6 +121,12 @@
 	let envValues = $state<Record<string, string>>({});
 	let portValues = $state<Record<number, number>>({});
 	let requestedMaxRuntimeHours = $state<number | null>(null);
+	let cpuPercent = $state(100);
+	let memoryMb = $state(2048);
+	let workspaceGb = $state(10);
+	let useResourceRecommendation = $state(true);
+	let resourceRecommendation = $state<ResourceRecommendation | null>(null);
+	let resourceLoading = $state(false);
 	let templateTab = $state<'ml' | 'general'>('ml');
 	let busy = $state(false);
 	let loading = $state(false);
@@ -113,6 +135,7 @@
 	let errorMsg = $state('');
 	let lastGpuAgent = '';
 	let lastCacheKey = '';
+	let lastRecommendationKey = '';
 
 	let visibleTemplates = $derived(
 		templates.filter((tpl) => (templateTab === 'ml' ? tpl.category === 'ml' : tpl.category !== 'ml')),
@@ -129,10 +152,18 @@
 	);
 	let selectedGpuSlice = $derived(gpuSlices.find((slice) => selectedGpuSliceIds.includes(slice.id)) ?? null);
 	let selectedGpuCanShare = $derived(Boolean(selectedGpuSlice?.allow_shared));
+	let selectedAgentInfo = $derived(agents.find((agent) => agent.id === selectedAgent) ?? null);
+	let resourceLimitsValid = $derived(
+		!selectedTemplate ||
+			(cpuPercent >= (selectedTemplate.min_cpu_percent ?? 100) &&
+				memoryMb >= (selectedTemplate.min_memory_mb ?? 2048) &&
+				workspaceGb >= (selectedTemplate.min_workspace_gb ?? 10)),
+	);
 
 	let canSubmit = $derived(
 		!!selectedTemplate &&
 			!!selectedAgent &&
+			resourceLimitsValid &&
 			(!selectedTemplate.requires_gpu || selectedGpuSliceIds.length > 0) &&
 			!busy,
 	);
@@ -179,6 +210,13 @@
 		loadCacheStatus();
 	});
 
+	$effect(() => {
+		const key = `${selectedTemplate?.id ?? ''}:${selectedAgent}`;
+		if (!open || !selectedTemplate || !selectedAgent || key === lastRecommendationKey) return;
+		lastRecommendationKey = key;
+		loadResourceRecommendation(selectedTemplate.id, selectedAgent);
+	});
+
 	function resetForm() {
 		selectedTemplate = null;
 		selectedAgent = '';
@@ -190,12 +228,18 @@
 		envValues = {};
 		portValues = {};
 		requestedMaxRuntimeHours = null;
+		cpuPercent = 100;
+		memoryMb = 2048;
+		workspaceGb = 10;
+		useResourceRecommendation = true;
+		resourceRecommendation = null;
 		templateTab = 'ml';
 		gpuDevices = [];
 		cacheStatuses = {};
 		errorMsg = '';
 		lastGpuAgent = '';
 		lastCacheKey = '';
+		lastRecommendationKey = '';
 	}
 
 	async function loadData() {
@@ -271,16 +315,56 @@
 		}
 	}
 
+	async function loadResourceRecommendation(templateId: string, agentId: string) {
+		const t = token();
+		if (!t) return;
+		resourceLoading = true;
+		try {
+			const res = await fetch(`${base}/api/containers/recommend/?template=${templateId}&agent=${agentId}`, {
+				headers: { Authorization: `Bearer ${t}` },
+			});
+			const json = await res.json().catch(() => ({}));
+			if (!res.ok) throw new Error(humanizeError(json, `자원 추천값 요청 실패 (${res.status})`));
+			const data = json.data ?? {};
+			resourceRecommendation = {
+				cpu_percent: Number(data.cpu_percent ?? selectedTemplate?.min_cpu_percent ?? 100),
+				memory_mb: Number(data.memory_mb ?? selectedTemplate?.min_memory_mb ?? 2048),
+				workspace_gb: Number(data.workspace_gb ?? selectedTemplate?.min_workspace_gb ?? 10),
+				capacity_complete: Boolean(data.capacity_complete),
+			};
+			if (useResourceRecommendation) {
+				cpuPercent = resourceRecommendation.cpu_percent;
+				memoryMb = resourceRecommendation.memory_mb;
+				workspaceGb = resourceRecommendation.workspace_gb;
+			}
+		} catch (error: any) {
+			errorMsg = error?.message || '자원 추천값을 불러오지 못했습니다.';
+			applyTemplateMinimums();
+		} finally {
+			resourceLoading = false;
+		}
+	}
+
 	function selectTemplate(tpl: Template) {
 		selectedTemplate = tpl;
 		selectedImage = tpl.image || (tpl.image_options?.[0]?.image ?? '');
 		requestedMaxRuntimeHours = tpl.default_max_runtime_hours ?? null;
+		useResourceRecommendation = true;
+		resourceRecommendation = null;
+		applyTemplateMinimums(tpl);
+		lastRecommendationKey = '';
 		envValues = {};
 		portValues = {};
 		selectedGpuSliceIds = [];
 		gpuShareOk = false;
 		for (const env of tpl.env_schema ?? []) envValues[env.key] = env.default ?? '';
 		for (const port of tpl.port_schema ?? []) portValues[port.internal] = port.host_default ?? port.internal;
+	}
+
+	function applyTemplateMinimums(tpl = selectedTemplate) {
+		cpuPercent = tpl?.min_cpu_percent ?? 100;
+		memoryMb = tpl?.min_memory_mb ?? 2048;
+		workspaceGb = tpl?.min_workspace_gb ?? 10;
 	}
 
 	function selectGpuSlice(sliceId: number) {
@@ -319,6 +403,9 @@
 			selected_image: selectedImage,
 			custom_env: envValues,
 			custom_ports: customPorts,
+			cpu_percent: cpuPercent,
+			memory_mb: memoryMb,
+			workspace_gb: workspaceGb,
 			gpu_slice_ids: selectedGpuSliceIds,
 			gpu_share_ok: gpuShareOk,
 			model_version_ids: selectedModelVersionIds,
@@ -501,7 +588,7 @@
 						</section>
 
 						<section>
-							<h3>2. GPU</h3>
+							<h3>3. GPU</h3>
 							{#if selectedTemplate.requires_gpu}
 								{#if !selectedAgent}
 									<div class="empty compact">먼저 배치 서버를 선택하세요.</div>
@@ -550,8 +637,25 @@
 						</section>
 					</div>
 
+					<ResourceLimitForm
+						bind:cpuPercent
+						bind:memoryMb
+						bind:workspaceGb
+						bind:useRecommendation={useResourceRecommendation}
+						recommendedCpuPercent={resourceRecommendation?.cpu_percent ?? selectedTemplate.min_cpu_percent ?? 100}
+						recommendedMemoryMb={resourceRecommendation?.memory_mb ?? selectedTemplate.min_memory_mb ?? 2048}
+						recommendedWorkspaceGb={resourceRecommendation?.workspace_gb ?? selectedTemplate.min_workspace_gb ?? 10}
+						minCpuPercent={selectedTemplate.min_cpu_percent ?? 100}
+						minMemoryMb={selectedTemplate.min_memory_mb ?? 2048}
+						minWorkspaceGb={selectedTemplate.min_workspace_gb ?? 10}
+						hostCpuCores={selectedAgentInfo?.cpu_cores ?? null}
+						hostMemoryMb={selectedAgentInfo?.ram_total_mb ?? null}
+						hostLvmPoolGb={selectedAgentInfo?.lvm_pool_size_gb ?? null}
+						loading={resourceLoading}
+					/>
+
 					<section>
-						<h3>3. 모델 자산</h3>
+						<h3>4. 모델 자산</h3>
 						{#if modelVersions.length === 0}
 							<div class="empty compact">등록된 모델 버전이 없습니다.</div>
 						{:else}
@@ -579,7 +683,7 @@
 
 					{#if selectedTemplate.env_schema?.length > 0 || selectedTemplate.port_schema?.length > 0}
 						<section>
-							<h3>4. 환경/포트</h3>
+							<h3>5. 환경/포트</h3>
 							<div class="two-col">
 								<div class="stack">
 									{#each selectedTemplate.env_schema ?? [] as env}
