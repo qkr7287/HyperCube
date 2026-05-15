@@ -1,10 +1,12 @@
 # HyperCube Progress
 
-## Current Work - 2026-05-15
+## Current Work - 2026-05-16
 
 ### Container Resource Limits / LVM Thin Workspace
 
 Core repo status: implemented, validated, committed, and pushed to `dev`.
+Full LVM thin workspace end-to-end validation is still blocked by server 63
+host/agent runtime setup and the missing agent-side permission decision.
 
 Implementation baseline:
 
@@ -12,11 +14,12 @@ Implementation baseline:
 7454fdd feat(containers): add resource limits and workspace quotas
 ```
 
-Later `dev` commits add UI/test/doc follow-up. Check the current remote HEAD
-when resuming:
+Latest checked core commits:
 
-```bash
-gh api repos/qkr7287/HyperCube/git/ref/heads/dev --jq '.object.sha'
+```text
+bf30668 chore(containers): normalize workspace service line endings
+e9e8394 fix(containers): clear unenforced legacy workspace quota
+1f12568 docs(containers): clarify template model path in audit
 ```
 
 Implemented core scope:
@@ -41,10 +44,36 @@ Validation on `server_63_dev`:
 
 ```text
 backend: python manage.py test -> 111 tests OK
+backend targeted: apps.containers.tests.test_workspace_limit_metadata apps.common.tests.test_legacy_workspace_limits -> 2 tests OK
 frontend: npm test -- --run -> 57 tests passed
 frontend: npm run check -> 0 errors, 193 warnings
 frontend: npm run e2e -> 3 passed
 migrations: agents.0008, containers.0010, containers.0011 applied
+```
+
+2026-05-16 LVM preflight from `/home/agics/ts/HyperCube`:
+
+```bash
+bash docs/runbooks/lvm-thin-workspace-preflight.sh hypercube-agent-dev-63 hc-backend
+```
+
+Current result:
+
+```text
+PREFLIGHT_EXIT:1
+FAIL /mnt/datasets is missing
+FAIL /mnt/models is missing
+FAIL /var/lib/hypercube/workspaces is missing
+FAIL host lvs unavailable; cannot inspect thin pool
+OK   agent container 'hypercube-agent-dev-63' exists
+FAIL agent command 'lvcreate' is missing
+FAIL agent command 'lvs' is missing
+OK   agent command 'mkfs.ext4' -> /usr/sbin/mkfs.ext4
+OK   agent command 'mount' -> /usr/bin/mount
+OK   agent command 'umount' -> /usr/bin/umount
+FAIL agent command 'lvremove' is missing
+FAIL agent lvs command failed
+backend Agent rows still show lvm_pool_size_gb=None for server_16_dev and server_63_dev
 ```
 
 Core references:
@@ -61,19 +90,22 @@ Remaining blocker:
 
 - Full LVM thin workspace creation is not yet proven end-to-end.
 - Current `server_63_dev` host and `hypercube-agent-dev-63` both lack
-  `lvs/lvcreate`; `lvm2`/thin pool setup is not present.
-- `/mnt/datasets` and `/mnt/models` are not present on `server_63_dev`, so the
-  NFS shared-mount part of the agent payload cannot be validated yet.
+  `lvs/lvcreate/lvremove`; `lvm2`/thin pool setup is not present.
+- `/mnt/datasets`, `/mnt/models`, and `/var/lib/hypercube/workspaces` are not
+  present on `server_63_dev`, so the shared-mount/workspace-root part cannot be
+  validated yet.
 - Current Agent rows report `lvm_pool_size_gb=None`, so backend stays in legacy
   mode and omits LVM `workspace` payloads for those agents.
+- HyperCube-agent issue #16 still has no `PERMISSION_OPTION=<1|2|3>` reply.
 
 Next completion gate:
 
-1. Implement and deploy HyperCube-agent #16.
-2. Confirm `capacity_report` includes `disk.lvm.available=true` and
-   `thinPoolSizeGb`.
-3. Submit a new PyTorch Jupyter request and confirm backend sends
-   `hostConfig`, `workspace`, and `sharedMounts`.
-4. Confirm agent creates/mounts the LVM thin volume.
-5. Confirm backend stores `Container.workspace_device`.
-6. Confirm container `df /workspace` shows the requested workspace quota.
+1. Agent/ops replies on HyperCube-agent #16 with `PERMISSION_OPTION=<1|2|3>`.
+2. Implement/deploy the selected HyperCube-agent permission path.
+3. Confirm `capacity_report` includes `disk.lvm.available=true` and
+   `thinPoolSizeGb`, or explicitly choose `PERMISSION_OPTION=3` legacy mode.
+4. Submit a new PyTorch Jupyter request and confirm backend sends
+   `hostConfig`, `workspace`, and `sharedMounts` when LVM is available.
+5. Confirm agent creates/mounts the LVM thin volume.
+6. Confirm backend stores `Container.workspace_device`.
+7. Confirm container `df /workspace` shows the requested workspace quota.
