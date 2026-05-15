@@ -58,6 +58,7 @@ Validation on `server_63_dev`:
 backend: python manage.py test -> 111 tests OK
 backend targeted: apps.containers.tests.test_workspace_limit_metadata apps.common.tests.test_legacy_workspace_limits -> 2 tests OK
 backend targeted PR3 legacy/no-LVM hostConfig path -> 5 tests OK
+backend mypy: not applicable; no mypy config/dependency and hc-backend has no mypy module
 frontend: npm test -- --run -> 57 tests passed
 frontend: npm run check -> 0 errors, 193 warnings
 frontend: npm run e2e -> 3 passed
