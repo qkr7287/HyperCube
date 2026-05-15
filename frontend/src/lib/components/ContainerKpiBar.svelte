@@ -245,13 +245,13 @@
 		<footer class="kpi-foot">
 			<div class="foot-row">
 				<i class="dot dot-avg" aria-hidden="true"></i>
-				<b>평균</b>
+				<b>AVG</b>
 				<em class="pct">{formatPercent(opts.avg, 1)}</em>
 				<span class="raw">{opts.avgRawText}</span>
 			</div>
 			<div class="foot-row">
 				<i class="dot dot-peak" aria-hidden="true"></i>
-				<b>피크</b>
+				<b>PEAK</b>
 				<em class="pct">{formatPercent(opts.peak, 1)}</em>
 				<span class="raw">{opts.peakRawText}</span>
 			</div>

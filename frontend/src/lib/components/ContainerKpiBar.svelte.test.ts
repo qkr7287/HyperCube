@@ -161,8 +161,8 @@ describe('ContainerKpiBar', () => {
 		const { container } = render(ContainerKpiBar, { props: baseProps });
 		const memCard = container.querySelectorAll('.kpi')[1] as HTMLElement;
 		const foot = memCard.querySelector('.kpi-foot')?.textContent ?? '';
-		expect(foot).toMatch(/평균/);
-		expect(foot).toMatch(/피크/);
+		expect(foot).toMatch(/AVG/);
+		expect(foot).toMatch(/PEAK/);
 		// memAvgPct=5, memLimit=4GB → 200MB → "200M" raw
 		expect(foot).toMatch(/M/);
 	});
