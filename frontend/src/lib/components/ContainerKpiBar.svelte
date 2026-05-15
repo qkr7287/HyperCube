@@ -256,9 +256,10 @@
 				<span class="raw">{opts.peakRawText}</span>
 			</div>
 			<div class="foot-row delta" data-tone={deltaTone(opts.delta)} title="현재 − {rangeLabel} 평균">
+				<i class="dot dot-delta" aria-hidden="true"></i>
 				<b><span class="ab">Δ</span><span class="ko">평소 대비</span></b>
 				<em>{formatDelta(opts.delta)}</em>
-				{#if opts.deltaRaw}<span class="raw">{opts.deltaRaw}</span>{/if}
+				{#if opts.deltaRaw}<span class="raw">{opts.deltaRaw}</span>{:else}<span class="raw"></span>{/if}
 			</div>
 		</footer>
 	</div>
@@ -335,8 +336,10 @@
 				<em class="pct">{compactBytes(opts.bBytes)}</em>
 			</div>
 			<div class="foot-row delta" data-tone={opts.deltaTotal > 0 ? 'up' : 'flat'} title="{rangeLabel} 증가">
+				<i class="dot dot-delta" aria-hidden="true"></i>
 				<b><span class="ab">Δ</span><span class="ko">{rangeLabel} 증가</span></b>
 				<em>{opts.deltaTotal > 0 ? `+${compactBytes(opts.deltaTotal)}` : '—'}</em>
+				<span class="raw"></span>
 			</div>
 		</footer>
 	</div>
@@ -649,20 +652,20 @@
 		inset: 0 auto 0 0;
 		width: var(--value, 0%);
 		border-radius: inherit;
-		background: linear-gradient(90deg, rgba(48, 213, 200, 0.92), rgba(96, 165, 250, 0.88));
-		box-shadow: 0 0 8px rgba(48, 213, 200, 0.45);
+		background: linear-gradient(90deg, rgba(48, 213, 200, 0.9), rgba(96, 165, 250, 0.85));
+		box-shadow: 0 0 5px rgba(48, 213, 200, 0.28);
 	}
 	.meter.memory .meter-fill {
-		background: linear-gradient(90deg, rgba(96, 165, 250, 0.94), rgba(129, 140, 248, 0.86));
-		box-shadow: 0 0 8px rgba(96, 165, 250, 0.45);
+		background: linear-gradient(90deg, rgba(96, 165, 250, 0.9), rgba(129, 140, 248, 0.82));
+		box-shadow: 0 0 5px rgba(96, 165, 250, 0.28);
 	}
 	.meter.gpu .meter-fill {
-		background: linear-gradient(90deg, rgba(244, 114, 182, 0.92), rgba(168, 85, 247, 0.82));
-		box-shadow: 0 0 8px rgba(244, 114, 182, 0.45);
+		background: linear-gradient(90deg, rgba(244, 114, 182, 0.9), rgba(168, 85, 247, 0.8));
+		box-shadow: 0 0 5px rgba(244, 114, 182, 0.28);
 	}
 	.meter.gpu-mem .meter-fill {
-		background: linear-gradient(90deg, rgba(167, 139, 250, 0.92), rgba(129, 140, 248, 0.82));
-		box-shadow: 0 0 8px rgba(167, 139, 250, 0.45);
+		background: linear-gradient(90deg, rgba(167, 139, 250, 0.9), rgba(129, 140, 248, 0.8));
+		box-shadow: 0 0 5px rgba(167, 139, 250, 0.28);
 	}
 	.meter-marker {
 		position: absolute;
@@ -670,23 +673,23 @@
 		width: 2.5px;
 		height: 26px;
 		border-radius: 999px;
-		background: rgba(255, 255, 255, 0.82);
+		background: rgba(255, 255, 255, 0.78);
 		box-shadow:
-			0 0 0 1px rgba(2, 6, 12, 0.82),
-			0 0 4px rgba(255, 255, 255, 0.3);
+			0 0 0 1px rgba(2, 6, 12, 0.78),
+			0 0 2px rgba(255, 255, 255, 0.18);
 	}
 	.meter-marker.avg {
 		left: var(--avg, 0%);
-		opacity: 0.7;
+		opacity: 0.65;
 	}
 	.meter-marker.peak {
 		left: var(--peak, 0%);
-		background: rgba(251, 191, 36, 0.96);
+		background: rgba(251, 191, 36, 0.9);
 		box-shadow:
-			0 0 0 1px rgba(2, 6, 12, 0.82),
-			0 0 8px rgba(251, 191, 36, 0.55);
+			0 0 0 1px rgba(2, 6, 12, 0.78),
+			0 0 4px rgba(251, 191, 36, 0.3);
 	}
-	/* peak marker 위 ▼ caret — 피크 위치 sharp 한 시각 cue */
+	/* peak marker 위 ▼ caret — 피크 위치 sharp 한 시각 cue. glow 줄임 */
 	.meter-marker.peak::before {
 		content: '';
 		position: absolute;
@@ -697,8 +700,7 @@
 		height: 0;
 		border-left: 4px solid transparent;
 		border-right: 4px solid transparent;
-		border-top: 5px solid rgba(251, 191, 36, 0.96);
-		filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.55));
+		border-top: 5px solid rgba(251, 191, 36, 0.9);
 	}
 
 	.meter:focus-visible,
@@ -820,9 +822,11 @@
 	}
 	.foot-row {
 		display: grid;
-		grid-template-columns: 9px auto minmax(0, 1fr) minmax(0, auto);
+		/* 카드 안 row 정렬 일관성 — dot 9px / label 64px 고정 / pct 가변 / raw 우측.
+		   label 너비 고정으로 모든 row 의 pct 시작점이 동일해진다. */
+		grid-template-columns: 9px 64px minmax(0, 1fr) minmax(0, auto);
 		align-items: center;
-		gap: 8px;
+		gap: 7px;
 		min-width: 0;
 		font-size: clamp(11.5px, 0.7vw, 13px);
 		font-weight: 600;
@@ -884,12 +888,14 @@
 	.flow[data-color-b='blue'] .dot-flow-b { background: rgba(96, 165, 250, 0.95); }
 
 	/* Δ row — tone 색조 */
-	.foot-row.delta {
-		grid-template-columns: 9px auto minmax(0, 1fr) minmax(0, auto);
-	}
 	.foot-row.delta em {
 		font-size: 1.02em;
 	}
+	/* Δ row 의 dot — tone 별 색조 (flat=muted, up=amber, up-warn=red, down=green) */
+	.dot-delta { background: rgba(148, 163, 184, 0.45); }
+	.foot-row.delta[data-tone='up'] .dot-delta { background: rgba(251, 191, 36, 0.85); }
+	.foot-row.delta[data-tone='up-warn'] .dot-delta { background: rgba(248, 113, 113, 0.9); }
+	.foot-row.delta[data-tone='down'] .dot-delta { background: rgba(110, 231, 183, 0.85); }
 	.foot-row.delta b { color: var(--text-faint); }
 	.foot-row.delta em {
 		font-style: normal;
