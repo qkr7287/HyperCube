@@ -61,6 +61,19 @@ Permission options:
 
 ## Non-Destructive Preflight
 
+Preferred check:
+
+```bash
+bash docs/runbooks/lvm-thin-workspace-preflight.sh \
+  hypercube-agent-dev-63 \
+  hc-backend
+```
+
+The script is read-only. It checks host tools, shared mount roots, LVM
+visibility, agent-runtime tools, `lvs --units g`, and current backend Agent
+capacity rows. It exits non-zero until the host and agent runtime are ready for
+LVM mode.
+
 Run on the host:
 
 ```bash

@@ -48,6 +48,7 @@ Core references:
 - `docs/test-reports/2026-05-15-container-resource-limits-completion-audit.md`
 - `docs/agent-lvm-thin-handoff.md`
 - `docs/runbooks/lvm-thin-workspace-host-setup.md`
+- `docs/runbooks/lvm-thin-workspace-preflight.sh`
 - HyperCube-agent tracking issue: `qkr7287/HyperCube-agent#16`
 
 Remaining blocker:

@@ -436,6 +436,12 @@ HyperCube core, but per-container `/workspace` LVM thin isolation requires a
 host/agent runtime gate before it can be called complete on server 63.
 
 Use `docs/runbooks/lvm-thin-workspace-host-setup.md` before enabling LVM mode.
+The read-only smoke command is:
+
+```bash
+bash docs/runbooks/lvm-thin-workspace-preflight.sh hypercube-agent-dev-63 hc-backend
+```
+
 At minimum, the host and chosen agent permission path must expose `lvcreate`,
 `lvs`, `mkfs.ext4`, `mount`, `umount`, and `lvremove`; `lvs --units g` must show
 the configured thin pool; `/mnt/datasets` and `/mnt/models` must exist or the

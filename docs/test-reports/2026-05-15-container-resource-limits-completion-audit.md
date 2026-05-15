@@ -47,6 +47,7 @@ eca6f4a32cc799420f964f97d365002ba9a117fc
 | E2E | On `server_63_dev`, `docker exec -e E2E_USER=user1 -e E2E_PASS='agics12!@' -e E2E_CONTAINER_ID=05eddec05865 hc-frontend-dev npm run e2e`: 3 passed | Done |
 | Migrations applied on server-63 | `showmigrations agents containers` shows `[X] 0008_agent_capacity`, `[X] 0010_template_weights`, `[X] 0011_container_resource_limits` | Done |
 | Commit and push | Remote `dev` HEAD verified as `eca6f4a32cc799420f964f97d365002ba9a117fc` | Done |
+| Repeatable LVM preflight | `docs/runbooks/lvm-thin-workspace-preflight.sh` is a read-only host/agent/backend capacity check; syntax passed with `bash -n` | Done |
 | Agent permission option chosen | HyperCube-agent issue #16 remains open and has no reply with `PERMISSION_OPTION=<1|2|3>` | Blocked |
 | Agent reports LVM thin capacity | Backend Agent rows show `server_63_dev lvm_pool_size_gb=None` and `server_16_dev lvm_pool_size_gb=None` | Blocked |
 | server-63 LVM host preflight | Host `command -v lvcreate` and `command -v lvs` are empty; `lvs --units g` returns `lvs: command not found` | Blocked |
@@ -74,6 +75,29 @@ datasets:missing
 models:missing
 AGENT
 lvs: not found
+```
+
+Read-only scripted preflight:
+
+```text
+bash docs/runbooks/lvm-thin-workspace-preflight.sh hypercube-agent-dev-63 hc-backend
+PREFLIGHT_EXIT:1
+```
+
+Key failures observed:
+
+```text
+host command 'lvcreate' is missing
+host command 'lvs' is missing
+host command 'lvremove' is missing
+/mnt/datasets is missing
+/mnt/models is missing
+/var/lib/hypercube/workspaces is missing
+agent command 'lvcreate' is missing
+agent command 'lvs' is missing
+agent command 'lvremove' is missing
+agent lvs command failed
+server_63_dev 12 15897 None 2026-05-15 10:03:40.980780+00:00
 ```
 
 The core implementation is intentionally in legacy mode for those agents until
