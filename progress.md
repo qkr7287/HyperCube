@@ -45,7 +45,9 @@ migrations: agents.0008, containers.0010, containers.0011 applied
 Core references:
 
 - `docs/test-reports/2026-05-15-container-resource-limits-core-validation.md`
+- `docs/test-reports/2026-05-15-container-resource-limits-completion-audit.md`
 - `docs/agent-lvm-thin-handoff.md`
+- `docs/runbooks/lvm-thin-workspace-host-setup.md`
 - HyperCube-agent tracking issue: `qkr7287/HyperCube-agent#16`
 
 Remaining blocker:

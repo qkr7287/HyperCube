@@ -6,24 +6,24 @@ Deployment state, day-2 procedures, and recovery notes.
 
 ## Live deployments (as of 2026-04-21)
 
-### Server 16 — 192.168.0.16 — HyperCube production
+### Server 16 ? 192.168.0.16 ? HyperCube production
 - Public URL: `http://192.168.0.16:3334/`
 - Deploy folder: `/home/agics-ai/docker/hypercube`
 - Image tag pinned in `.env`: currently `sha-a92ed89`
   (override to `latest` to track main automatically)
 - Container names: `hc-nginx`, `hc-backend`, `hc-celery-worker`, `hc-celery-beat`, `hc-postgres`, `hc-redis`
 - SPA mounts at root `/`. Django admin at `/django-admin/`.
-- Port 7003 on the host is **owned by `agdevblog_frontend`** (unrelated project) — do not touch.
+- Port 7003 on the host is **owned by `agdevblog_frontend`** (unrelated project) ? do not touch.
 - Former DCMTool stack at `/home/agics-ai/docker/DCMTool` is stopped via `docker compose down` (volumes preserved). Restart with `docker compose up -d` from that directory if you need to roll all the way back to the pre-HyperCube world.
-- DCMTool self-hosted runner (`actions.runner.dev-agics-DCMTool.agicsai-desktop`) is **stopped + disabled** — nothing auto-redeploys the old DCMTool image.
+- DCMTool self-hosted runner (`actions.runner.dev-agics-DCMTool.agicsai-desktop`) is **stopped + disabled** ? nothing auto-redeploys the old DCMTool image.
 
-### Server 41 — 192.168.0.41 — production agent
+### Server 41 ? 192.168.0.41 ? production agent
 - Container: `hypercube-agent-prod-agent-1` (running the fixed build `ac0daaf` with WS response queue)
 - Config: `BACKEND_URL=ws://192.168.0.16:3334`, `AGENT_HOSTNAME=server_41_prod`
 - SSH: `root@192.168.0.41:2022` (password auth)
 - Also has a stray local-test agent `hypercube-agent-agent-1` that tries to reach `192.168.0.47:8000`. Ignore unless told otherwise.
 
-### Server 63 — agent presence (partial)
+### Server 63 ? agent presence (partial)
 - Reports as registered; operational status to be confirmed when needed.
 
 ---
@@ -33,17 +33,17 @@ Deployment state, day-2 procedures, and recovery notes.
 ```
 HyperCube (private)
     main push
-       │
-       ├── build-push-images.yml   → ghcr.io/qkr7287/hypercube-{backend,nginx} (public)
-       ├── publish-deploy-bundle.yml → qkr7287/hypercube-deploy (public)
-       └── sync-to-dcmtool.yml     → legacy DCMTool/dev mirror (no longer acted on)
+       ?
+       ??? build-push-images.yml   ? ghcr.io/qkr7287/hypercube-{backend,nginx} (public)
+       ??? publish-deploy-bundle.yml ? qkr7287/hypercube-deploy (public)
+       ??? sync-to-dcmtool.yml     ? legacy DCMTool/dev mirror (no longer acted on)
 
 hypercube-deploy/main
-    (stopping point for now — future: hypercube-deploy push
+    (stopping point for now ? future: hypercube-deploy push
      triggers self-hosted runner on server 16 to pull + up)
 ```
 
-- Images: **public** (repo stays private). If images ever flip back to private, toggle via Profile → Packages → `hypercube-*` → Package settings → Visibility → Public.
+- Images: **public** (repo stays private). If images ever flip back to private, toggle via Profile ? Packages ? `hypercube-*` ? Package settings ? Visibility ? Public.
 - Bundle sync currently needs secret `DEPLOY_BUNDLE_PAT` on `qkr7287/HyperCube`. Until that secret is set the bundle workflow is a no-op and you have to copy `deploy/docker-compose.yml` + `deploy/.env.example` manually.
 
 ---
@@ -56,7 +56,7 @@ ssh -i ~/.ssh/dcmtool_sync -p 2022 root@192.168.0.16
 cd /home/agics-ai/docker/hypercube
 docker compose pull
 docker compose up -d
-docker compose logs -f backend   # optional — watch the migrate + startup
+docker compose logs -f backend   # optional ? watch the migrate + startup
 ```
 Migrations run automatically on container start. No extra steps for ordinary releases.
 
@@ -100,7 +100,7 @@ docker compose up -d                   # bring old stack back (data intact)
 systemctl enable --now actions.runner.dev-agics-DCMTool.agicsai-desktop
 ```
 
-### Full DB wipe (dev only — production lose data!)
+### Full DB wipe (dev only ? production lose data!)
 ```bash
 docker compose down -v                 # -v deletes volumes
 docker compose up -d                   # fresh DB, fresh migrations
@@ -119,7 +119,7 @@ editor, git, and browser stay local.
   Mutagen pushes writes up to the server within ~100 ms.
 - Docker compose + containers live entirely on `192.168.0.63`. Nothing
   in your PC's RAM beyond the editor + terminal + browser.
-- Source is visible on the server at `/home/agics/ts/HyperCube/` — the
+- Source is visible on the server at `/home/agics/ts/HyperCube/` ? the
   same bind mounts as pure-local dev.
 
 **Port plan on server 63**
@@ -134,7 +134,7 @@ Override any of these via `.env.dev` (`FE_PORT`, `BE_PORT`, `DB_PORT`, `REDIS_PO
 
 ### One-time setup (on your Windows PC)
 
-1. Install Mutagen (CLI only — not Mutagen Compose):
+1. Install Mutagen (CLI only ? not Mutagen Compose):
    ```powershell
    winget install Mutagen.Mutagen
    ```
@@ -222,7 +222,7 @@ ssh hc-dev-63 -L 3000:localhost:3000 -N &
 
 ### Day-to-day
 
-- Save a file locally → Mutagen pushes within ~100 ms → Vite / uvicorn
+- Save a file locally ? Mutagen pushes within ~100 ms ? Vite / uvicorn
   `--reload` picks it up and the browser refreshes.
 - `git` stays on your PC. You commit as usual; the server never talks
   to GitHub for dev.
@@ -236,7 +236,7 @@ ssh hc-dev-63 -L 3000:localhost:3000 -N &
 - `agics` is in the `docker` group on 63, so `docker compose` runs
   without `sudo`.
 - Anything you mutate inside the running containers writes back to the
-  bind-mounted filesystem (and then up into your local checkout) —
+  bind-mounted filesystem (and then up into your local checkout) ?
   great for migrations, dangerous for accidental `python manage.py startapp`.
   Stay aware of it.
 
@@ -244,9 +244,9 @@ ssh hc-dev-63 -L 3000:localhost:3000 -N &
 
 ## Agent network mode (run on host network)
 
-**Policy — production + dev on Linux hosts**: the HyperCube agent must
+**Policy ? production + dev on Linux hosts**: the HyperCube agent must
 be launched with `network_mode: host` in its docker-compose. This is
-not a Docker quirk — it's a deliberate choice aligned with standard
+not a Docker quirk ? it's a deliberate choice aligned with standard
 host-monitoring agents (Datadog, Prometheus node_exporter, cAdvisor).
 
 ### Why
@@ -292,7 +292,7 @@ Things to remove when migrating to host mode:
   stack)
 
 ### Fallback for Docker Desktop (Windows / macOS)
-`network_mode: host` is unreliable on Docker Desktop — the "host" is
+`network_mode: host` is unreliable on Docker Desktop ? the "host" is
 the Linux VM, not the developer's Mac/Windows machine. Developer
 workstations running the agent should skip host mode and instead set
 an explicit env override:
@@ -309,7 +309,7 @@ Agent implementations should honor `AGENT_ADVERTISE_IP` when present and
 forward it through whatever channel the backend expects (currently:
 noop, since backend trusts observed IP). For Docker Desktop use, the
 operator either accepts "IP shown = backend's observation" or wires the
-advertised value through. This is a rare case — Linux servers are the
+advertised value through. This is a rare case ? Linux servers are the
 norm.
 
 ### Backend side (no change required)
@@ -341,7 +341,7 @@ rather than the real client.
 
 When an agent migrates to `network_mode: host`, verify all three:
 
-1. **Same-host (Linux)** — deploy the agent on the same host that runs
+1. **Same-host (Linux)** ? deploy the agent on the same host that runs
    the backend (e.g. both on server 63). Restart the agent container;
    inspect the DB:
    ```bash
@@ -350,9 +350,9 @@ When an agent migrates to `network_mode: host`, verify all three:
       a = Agent.objects.get(hostname='server_63_dev'); \
       print(a.ip_address)"
    ```
-   → expect `192.168.0.63`, not `172.x.x.x`.
+   ? expect `192.168.0.63`, not `172.x.x.x`.
 
-2. **Cross-host (no regression)** — agent on server 41, backend on
+2. **Cross-host (no regression)** ? agent on server 41, backend on
    server 16. After re-register:
    ```bash
    # on the backend host
@@ -361,10 +361,10 @@ When an agent migrates to `network_mode: host`, verify all three:
       a = Agent.objects.get(hostname='server_41_prod'); \
       print(a.ip_address)"
    ```
-   → expect `192.168.0.41` (regression check — host-mode must not
+   ? expect `192.168.0.41` (regression check ? host-mode must not
    break cross-host registration).
 
-3. **Frontend sidebar** — log into the UI, select each server in turn,
+3. **Frontend sidebar** ? log into the UI, select each server in turn,
    confirm the `IP` row shows the correct LAN IP (`192.168.0.x`) and
    never a Docker bridge range (`172.x`, `192.168.192.x`).
 
@@ -428,6 +428,23 @@ recreate/startup.
 Plaintext Jupyter tokens are stored only in Redis with
 `WORKSPACE_TOKEN_TTL_SECONDS`; Postgres stores only `workspace_token_ref` and
 expiry metadata.
+
+### LVM thin workspace host gate
+
+Container resource limits and quota-aware KPI display are implemented in
+HyperCube core, but per-container `/workspace` LVM thin isolation requires a
+host/agent runtime gate before it can be called complete on server 63.
+
+Use `docs/runbooks/lvm-thin-workspace-host-setup.md` before enabling LVM mode.
+At minimum, the host and chosen agent permission path must expose `lvcreate`,
+`lvs`, `mkfs.ext4`, `mount`, `umount`, and `lvremove`; `lvs --units g` must show
+the configured thin pool; `/mnt/datasets` and `/mnt/models` must exist or the
+shared-mount policy must be explicitly changed.
+
+As of the 2026-05-15 audit, `server_63_dev` and `hypercube-agent-dev-63` both
+lack `lvcreate/lvs`, `/mnt/datasets` and `/mnt/models` are missing, and backend
+Agent rows still have `lvm_pool_size_gb=None`. In that state the backend
+correctly stays in legacy mode and omits `params.workspace`.
 
 ### Model asset local storage
 
@@ -497,7 +514,7 @@ rotate existing agent tokens after that migration.
 
 | Area | Quirk | Impact |
 |---|---|---|
-| `/user/containers` time series | `7d` range actually returns the **last ~2 h** because `limit=240` is hard-capped. No downsampling yet. | Graphs for long ranges look truncated — visual only, no data loss. |
+| `/user/containers` time series | `7d` range actually returns the **last ~2 h** because `limit=240` is hard-capped. No downsampling yet. | Graphs for long ranges look truncated ? visual only, no data loss. |
 | Port validation | Neither frontend nor backend pre-checks whether the requested host port is free on the target agent. | Collisions surface as `failed` requests with the Docker error in `progress_message`. Fix needs agent-side netstat. |
 | Agent WS response delivery | Prior to `ac0daaf` a disconnect mid-`compose_up` would strand the request in `deploying`. Fixed with an outbound queue + reconnect drain. Safety net on the server side (auto-heal stuck requests) is **not** implemented. | If you see `deploying` stuck >5 min, check agent logs; otherwise the queue fix handles it. |
 | Legacy agent on 41 | `hypercube-agent-agent-1` keeps retrying an old `192.168.0.47:8000` backend. Harmless, but noisy in logs. | Skip, or remove if you want clean logs. |
@@ -508,10 +525,10 @@ rotate existing agent tokens after that migration.
 
 | Host port | Service |
 |---|---|
-| 3334 | HyperCube production (nginx → backend) |
+| 3334 | HyperCube production (nginx ? backend) |
 | 7003 | `agdevblog_frontend` (unrelated) |
 | 5432 | `release-notes-db-1` Postgres (unrelated) |
-| (others) | many third-party stacks — see `docker ps` |
+| (others) | many third-party stacks ? see `docker ps` |
 
 Any new HyperCube dev stack on server 16 should pick non-conflicting ports (e.g. `3000`, `8000`, `15432`, `16379`).
 
