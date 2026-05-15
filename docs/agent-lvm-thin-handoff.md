@@ -1,11 +1,17 @@
 # HyperCube-agent Handoff: Resource Limits and LVM Thin Workspace
 
-Date: 2026-05-15
+Date: 2026-05-16
 Scope: `qkr7287/HyperCube-agent`
 Core counterpart: HyperCube container resource limits PR 1-5
 Tracking issue: https://github.com/qkr7287/HyperCube-agent/issues/16
 
 Core backend/frontend is ready on HyperCube `dev`.
+
+Current verified core HEAD:
+
+```text
+bd8c3ce22745b028e165dd9c280f6cc442f77501 docs(containers): record final blocker re-audit evidence
+```
 
 Core implementation baseline:
 
@@ -13,17 +19,18 @@ Core implementation baseline:
 7454fdd feat(containers): add resource limits and workspace quotas
 ```
 
-Later `dev` commits add UI/test/doc follow-up. Check the current HyperCube core
-HEAD before validating:
+Check the current HyperCube core HEAD before validating:
 
 ```bash
 gh api repos/qkr7287/HyperCube/git/ref/heads/dev --jq '.object.sha'
 ```
 
-Core validation report:
+Core validation reports:
 
 ```text
 docs/test-reports/2026-05-15-container-resource-limits-core-validation.md
+docs/test-reports/2026-05-16-container-resource-limits-completion-audit-addendum.md
+progress.md
 ```
 
 Spec documents in the core repo:
@@ -44,8 +51,9 @@ Backend is accepting capacity reports, but the currently deployed agents report
 no LVM thin pool:
 
 ```text
-server_63_dev cpu_cores=12 ram_total_mb=15897 lvm_pool_size_gb=None capacity_updated_at=2026-05-15T09:12:49Z
-server_16_dev cpu_cores=12 ram_total_mb=39760 lvm_pool_size_gb=None capacity_updated_at=2026-05-15T09:03:40Z
+agent-register-smoke-after-migrate cpu_cores=None ram_total_mb=None lvm_pool_size_gb=None capacity_updated_at=None
+server_16_dev cpu_cores=12 ram_total_mb=39760 lvm_pool_size_gb=None capacity_updated_at=2026-05-15T16:03:40.813793+00:00
+server_63_dev cpu_cores=12 ram_total_mb=15897 lvm_pool_size_gb=None capacity_updated_at=2026-05-15T16:03:41.076664+00:00
 ```
 
 Runtime evidence on `hypercube-agent-dev-63`:
@@ -57,29 +65,42 @@ docker exec hypercube-agent-dev-63 sh -lc 'command -v lvcreate || true; command 
 Observed:
 
 ```text
-bash: line 1: lvs: command not found
+sh: 1: lvs: not found
 ```
 
-Additional host preflight on `server_63_dev`:
+Latest host preflight on `server_63_dev`:
 
 ```text
-command -v lvcreate -> <empty>
-command -v lvs -> <empty>
-command -v mkfs.ext4 -> /usr/sbin/mkfs.ext4
-command -v mount -> /usr/bin/mount
-lvs --units g -> bash: line 1: lvs: command not found
+FAIL host command 'lvcreate' is missing
+FAIL host command 'lvs' is missing
+FAIL host command 'lvremove' is missing
+OK   host command 'mkfs.ext4' -> /usr/sbin/mkfs.ext4
+OK   host command 'mount' -> /usr/bin/mount
+OK   host command 'umount' -> /usr/bin/umount
+FAIL /mnt/datasets is missing
+FAIL /mnt/models is missing
+FAIL /var/lib/hypercube/workspaces is missing
+FAIL host lvs unavailable; cannot inspect thin pool
 ```
 
-Shared NFS mount preflight:
+Latest agent-runtime preflight:
 
 ```text
-/mnt/datasets -> missing
-/mnt/models -> missing
+OK   agent container 'hypercube-agent-dev-63' exists
+FAIL agent command 'lvcreate' is missing
+FAIL agent command 'lvs' is missing
+OK   agent command 'mkfs.ext4' -> /usr/sbin/mkfs.ext4
+OK   agent command 'mount' -> /usr/bin/mount
+OK   agent command 'umount' -> /usr/bin/umount
+FAIL agent command 'lvremove' is missing
+FAIL agent lvs command failed
+sh: 1: lvs: not found
 ```
 
 `/home/agics/ts/agent-dev/src` has LVM workspace scaffolding, but full
 validation is still blocked until the host has `lvm2`, a configured thin pool,
-the shared dataset/model mounts, and a chosen agent permission option.
+the shared dataset/model mounts, workspace root, and a chosen agent permission
+option.
 
 ## Required Agent Work
 
@@ -128,7 +149,7 @@ Fallback rule:
 
 - If LVM tools or pool are unavailable, send `disk.lvm.available=false`.
 - Do not fabricate `thinPoolSizeGb`; backend treats missing LVM capacity as
-  legacy mode and omits `workspace` from create payloads.
+  legacy mode and omits LVM `workspace` fields from create payloads.
 
 ### 2. create_container HostConfig
 
@@ -164,10 +185,10 @@ const hostConfig = {
 
 ### 3. LVM Thin Workspace
 
-When backend sends `params.workspace`, allocate a per-container thin volume and
-mount it into the container at `/workspace`.
+When backend sends LVM fields in `params.workspace`, allocate a per-container
+thin volume and mount it into the container at `/workspace`.
 
-Backend shape:
+Backend shape when LVM is available:
 
 ```json
 {
@@ -181,6 +202,10 @@ Backend shape:
   ]
 }
 ```
+
+Compatibility note: existing Jupyter workspace metadata may also be present in
+`params.workspace` (`kind`, `token`, `port`, `baseUrl`, `workdir`). Do not drop
+that metadata when adding the LVM bind mount.
 
 Expected agent behavior:
 
@@ -258,6 +283,7 @@ docker exec hypercube-agent-dev-63 sh -lc 'command -v lvcreate; command -v lvs'
 docker exec hypercube-agent-dev-63 sh -lc 'lvs --units g'
 test -d /mnt/datasets
 test -d /mnt/models
+test -d /var/lib/hypercube/workspaces
 ```
 
 Expected before backend LVM mode can be verified:
@@ -266,6 +292,7 @@ Expected before backend LVM mode can be verified:
 lvcreate and lvs exist on the host and in the agent runtime
 lvs --units g shows the configured thin pool
 shared NFS mount roots exist
+workspace root exists
 capacity_report includes disk.lvm.available=true and thinPoolSizeGb
 ```
 
@@ -274,8 +301,8 @@ Full 8-step integration gate:
 1. Agent sends `capacity_report` with `disk.lvm.available=true`.
 2. Backend Agent row updates `lvm_pool_size_gb`.
 3. User creates PyTorch Jupyter request with resource recommendation prefill.
-4. Backend sends `create_container` with `hostConfig`, `workspace`, and
-   `sharedMounts`.
+4. Backend sends `create_container` with `hostConfig`, LVM `workspace.sizeGb`,
+   LVM `workspace.mountTarget`, and `sharedMounts`.
 5. Agent runs `lvcreate`, `mkfs`, and `mount`.
 6. Agent reports `create_container_result.workspace.device`.
 7. Backend stores `Container.workspace_device`.
@@ -284,16 +311,19 @@ Full 8-step integration gate:
 Core-side tests already green:
 
 ```text
-backend: 108 tests OK
+backend full suite: 111 tests OK
+backend targeted re-audit: 7 tests OK
 frontend vitest: 57 passed
-frontend svelte-check: 0 errors
+frontend svelte-check: 0 errors, 193 existing warnings
 frontend e2e: 3 passed
+backend mypy: not applicable; no mypy config/dependency and hc-backend has no mypy module
 ```
 
 ## Regression Rules
 
-- Existing `create_container` requests without `params.workspace` must keep
-  working.
+- Existing `create_container` requests without LVM `params.workspace.sizeGb` and
+  `params.workspace.mountTarget` must keep working.
+- Existing Jupyter workspace metadata in `params.workspace` must keep working.
 - Existing hosts without LVM capacity must stay in legacy mode.
 - Existing `update_container` / `update-limits` behavior must keep working.
 - Existing GPU allocation, model mount, network policy, logs, exec, and metrics
