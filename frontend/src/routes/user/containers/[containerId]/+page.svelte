@@ -219,14 +219,21 @@
 		return 'cold';
 	});
 	let runtimeRestartCount = $derived(Number(inspectData?.restartCount ?? 0));
+	// healthcheck 정의된 컨테이너 → Healthy/Unhealthy/Starting.
+	// healthcheck 없으면 status pill 과 단어 중복("실행 중") 을 피해 더 운영적 문구로.
 	let runtimeHealthText = $derived.by<string>(() => {
 		if (isOomKilled) return 'OOM Killed';
 		if (healthStatus === 'healthy') return 'Healthy';
 		if (healthStatus === 'unhealthy') return 'Unhealthy';
 		if (healthStatus === 'starting') return 'Starting';
-		if (inspectData?.state?.running) return '실행 중';
+		if (inspectData?.state?.dead) return '종료';
+		if (inspectData?.state?.paused) return '일시정지';
+		if (inspectData?.state?.restarting) return '재시작 중';
+		if (inspectData?.state?.running) return '정상';
 		return inspectData?.state?.status || '정보 없음';
 	});
+	// healthcheck 가 정의되어 있을 때만 "Health" 라벨, 아니면 "런타임" 으로 분리.
+	let runtimeHealthLabel = $derived<string>(healthStatus ? 'Health' : '런타임');
 	let runtimeHealthTone = $derived.by<string>(() => {
 		if (isOomKilled || healthStatus === 'unhealthy' || inspectData?.state?.dead) return 'danger';
 		if (healthStatus === 'starting' || inspectData?.state?.restarting || inspectData?.state?.paused) return 'warn';
@@ -863,10 +870,10 @@
 								<strong>{runtimeRestartCount}회</strong>
 							</span>
 						</span>
-						<span class="vital-chip" data-tone={runtimeHealthTone} title="컨테이너 헬스 / 런타임 상태">
+						<span class="vital-chip" data-tone={runtimeHealthTone} title={healthStatus ? 'Docker healthcheck 결과' : '컨테이너 런타임 상태'}>
 							<i class="vital-icon" aria-hidden="true">♥</i>
 							<span class="vital-body">
-								<b>Health</b>
+								<b>{runtimeHealthLabel}</b>
 								<strong>{runtimeHealthText}</strong>
 							</span>
 						</span>

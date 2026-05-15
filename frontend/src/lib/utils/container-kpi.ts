@@ -39,6 +39,17 @@ export function levelLabel(level: Severity): string {
 	return '정상';
 }
 
+/**
+ * "15.9 MB" 같은 byte 표기를 [숫자, '단위'] 로 분리.
+ * value typography 안에서 unit 을 시각적으로 더 약하게 표현하기 위한 helper.
+ * 매칭 안 되면 unit 빈문자 + 원본 그대로 num 에 넣어 안전 fallback.
+ */
+export function splitBytesLabel(s: string): { num: string; unit: string } {
+	const m = s.match(/^([\d.,\s−-]+?)\s*([A-Za-z]+)$/);
+	if (!m) return { num: s, unit: '' };
+	return { num: m[1].trim(), unit: m[2] };
+}
+
 const COMPACT_UNITS = ['B', 'K', 'M', 'G', 'T'];
 
 /**
@@ -98,9 +109,16 @@ export function deltaTone(value: number, warnAt = 5): DeltaTone {
  * status-line 자연어. severity 임계 정보 + 현재 위치를 한 줄로 요약.
  * 본문 차트의 markLine 과 의미 일치. 좁은 KPI 카드(135~150px) 에 들어가도록
  * 단어 압축 — 정상에선 raw 임계값만, 경보 시엔 등급 라벨 + 임계.
+ *
+ * avg 가 주어지면 정상 상태 메시지에 운영적 컨텍스트 추가:
+ *   normal + avg → "안정 · 평균 X.X%"  (현재가 평소대로라는 신호)
+ * 없으면 기존 임계 임계 표기 유지.
  */
-export function pctRangeStatus(level: Severity, warn: number, crit: number): string {
+export function pctRangeStatus(level: Severity, warn: number, crit: number, avg?: number): string {
 	if (level === 'danger') return `위험 · ≥ ${crit}%`;
 	if (level === 'warn') return `주의 · ≥ ${warn}%`;
+	if (avg !== undefined && Number.isFinite(avg)) {
+		return `안정 · 평균 ${avg.toFixed(1)}%`;
+	}
 	return `정상 · 임계 ${warn}/${crit}%`;
 }
