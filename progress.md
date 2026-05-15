@@ -28,6 +28,8 @@ Implemented core scope:
 - Container CPU/memory/workspace limit snapshots and workspace device fields.
 - Agent create payload `hostConfig`, LVM `workspace`, and `sharedMounts`.
 - Workspace metadata persistence from create result.
+- Legacy no-LVM mode keeps existing Jupyter workspace metadata while omitting
+  only LVM `sizeGb`, `mountTarget`, and `sharedMounts`.
 - Request modal resource-limit UI and recommendation prefill.
 - KPI cards and trend charts with quota/denominator display.
 - API, agent protocol, and payload contract docs.
@@ -35,7 +37,7 @@ Implemented core scope:
 Validation on `server_63_dev`:
 
 ```text
-backend: python manage.py test -> 108 tests OK
+backend: python manage.py test -> 109 tests OK
 frontend: npm test -- --run -> 57 tests passed
 frontend: npm run check -> 0 errors, 193 warnings
 frontend: npm run e2e -> 3 passed
