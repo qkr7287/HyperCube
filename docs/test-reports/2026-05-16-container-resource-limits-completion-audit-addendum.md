@@ -48,6 +48,7 @@ ea9c259 docs(containers): link 2026-05-16 audit addendum
 | PR 2 update-limits regression | Existing audit maps `backend/apps/containers/viewsets.py` and `test_viewsets.py` | Done |
 | PR 3 agent `hostConfig` payload | Existing audit maps `backend/apps/containers/services/deployment.py` and `test_deployment.py` | Done |
 | PR 3 LVM `workspace`/`sharedMounts` payload | Existing audit maps conditional LVM payload emission based on Agent LVM capacity | Core done |
+| PR 3 no-LVM legacy payload path | 2026-05-16 targeted 63 test run covered `hostConfig` retained while LVM `sizeGb`/`mountTarget`/`sharedMounts` are omitted for no-LVM agents | Done |
 | PR 3 create result workspace persistence | Existing audit maps `backend/apps/common/consumers.py`, `services/workspace.py`, and consumer tests | Done |
 | PR 3 workspace metrics to KPI API | Existing audit maps `backend/apps/containers/viewsets.py` Redis/DB merge | Done |
 | PR 3 docs sync | Existing audit maps `docs/api.md`, `docs/agent-protocol.md`, and `docs/agent-payload-contract.md` | Done |
@@ -68,6 +69,29 @@ ea9c259 docs(containers): link 2026-05-16 audit addendum
 | full 8-step LVM scenario | Cannot execute until the blocked LVM/agent/ops gates above are resolved | Blocked |
 
 ## 2026-05-16 Preflight Evidence
+
+Additional no-LVM PR3 legacy-path validation on server 63:
+
+```bash
+docker exec hc-backend python manage.py test \
+  apps.containers.tests.test_deployment.AgentCreatePayloadTests \
+  apps.containers.tests.test_workspace_limit_metadata.WorkspaceLimitMetadataTests \
+  apps.common.tests.test_legacy_workspace_limits.LegacyWorkspaceLimitConsumerTests \
+  --verbosity 2
+```
+
+Observed result:
+
+```text
+Found 5 test(s).
+test_create_payload_includes_host_config_lvm_workspace_and_shared_mounts ... ok
+test_lvm_workspace_is_omitted_when_agent_has_no_lvm_capacity ... ok
+test_workspace_metadata_is_preserved_without_lvm_workspace_payload ... ok
+test_apply_metadata_clears_unreported_workspace_limit ... ok
+test_create_response_without_lvm_does_not_persist_unenforced_workspace_limit ... ok
+Ran 5 tests in 4.769s
+OK
+```
 
 Command run from `/home/agics/ts/HyperCube` on server 63:
 
