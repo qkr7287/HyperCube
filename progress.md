@@ -17,6 +17,8 @@ Implementation baseline:
 Latest checked core commits before this progress refresh:
 
 ```text
+385a53c docs(containers): record no-lvm hostconfig validation
+a1b033c docs(containers): expand lvm progress preflight evidence
 93f439a docs(containers): expand latest lvm preflight evidence
 e4e9e9a docs(containers): clarify lvm audit compare baseline
 fce24b1 docs(containers): refresh lvm progress head evidence
@@ -52,6 +54,7 @@ Validation on `server_63_dev`:
 ```text
 backend: python manage.py test -> 111 tests OK
 backend targeted: apps.containers.tests.test_workspace_limit_metadata apps.common.tests.test_legacy_workspace_limits -> 2 tests OK
+backend targeted PR3 legacy/no-LVM hostConfig path -> 5 tests OK
 frontend: npm test -- --run -> 57 tests passed
 frontend: npm run check -> 0 errors, 193 warnings
 frontend: npm run e2e -> 3 passed
