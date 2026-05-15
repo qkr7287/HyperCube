@@ -119,10 +119,9 @@ test('컨테이너 상세 페이지 — hero + KPI 6 카드 렌더', async ({ pa
 	// 각 KPI 카드: 라벨, value(non-empty), status-line, insight-row pills
 	for (let i = 0; i < kpiCount; i++) {
 		const card = kpiCards.nth(i);
-		await expect(card.locator('.metric-hero .value')).toHaveText(/\S+/);
-		await expect(card.locator('.status-line')).toHaveText(/\S+/);
-		const pills = card.locator('.insight-row > span, .flow-grid > span');
-		await expect(pills.first()).toBeVisible();
+		await expect(card.locator('.kpi-hero')).toHaveText(/\S+/);
+		await expect(card.locator('.kpi-chip')).toHaveText(/\S+/);
+		await expect(card.locator('.kpi-foot .foot-row').first()).toBeVisible();
 	}
 });
 
