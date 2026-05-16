@@ -14,27 +14,43 @@ Backend/frontend support is already implemented in HyperCube core:
 - Agent create payload: `hostConfig`, LVM `workspace`, `sharedMounts`.
 - KPI/chart quota display.
 
-This runbook covers only the host/agent runtime prerequisites required before
-the full LVM end-to-end scenario can be declared complete.
+HyperCube-agent PR #17 contains the deployable agent-side implementation and has
+passed the non-destructive server-63 runtime sync checks. This runbook covers the
+remaining host/agent runtime prerequisites required before the real LVM
+end-to-end scenario can be declared complete.
 
 ## Current server_63_dev State
 
-Observed on 2026-05-15:
+Observed on 2026-05-16 after PR #17 runtime sync:
 
 ```text
-host command -v lvcreate -> <empty>
-host command -v lvs -> <empty>
-host command -v mkfs.ext4 -> /usr/sbin/mkfs.ext4
-host command -v mount -> /usr/bin/mount
-host lvs --units g -> bash: line 1: lvs: command not found
+HyperCube-agent PR #17: open draft, mergeable, CI passed
+server-63 runtime path: /home/agics/ts/agent-dev
+agent container: hypercube-agent-dev-63
+runtime backup: /home/agics/ts/agent-dev-pr17-sync-backup-20260516T010102Z.tgz
+runtime self-test: build + resource-limits-lvm + network-policy passed
+
+host command 'lvcreate' -> missing
+host command 'lvs' -> missing
+host command 'mkfs.ext4' -> /usr/sbin/mkfs.ext4
+host command 'mount' -> /usr/bin/mount
+host command 'umount' -> /usr/bin/umount
+host command 'lvremove' -> missing
 
 /dev/sda2 ext4 mounted at /
 /dev/sdb2 vfat mounted at /media/agics/ARCHIVE
 /mnt/datasets -> missing
 /mnt/models -> missing
+/var/lib/hypercube/workspaces -> missing
 
-hypercube-agent-dev-63 command -v lvcreate -> <empty>
-hypercube-agent-dev-63 command -v lvs -> <empty>
+hypercube-agent-dev-63 command 'lvcreate' -> missing
+hypercube-agent-dev-63 command 'lvs' -> missing
+hypercube-agent-dev-63 command 'mkfs.ext4' -> /usr/sbin/mkfs.ext4
+hypercube-agent-dev-63 command 'mount' -> /usr/bin/mount
+hypercube-agent-dev-63 command 'umount' -> /usr/bin/umount
+hypercube-agent-dev-63 command 'lvremove' -> missing
+
+backend server_63_dev capacity: cpu_cores=12 ram_total_mb=15897 lvm_pool_size_gb=None capacity_updated_at=2026-05-16 01:04:44.080208+00:00
 ```
 
 Do not use `/dev/sdb` or `/dev/sdb2` for LVM unless an operator explicitly
@@ -89,7 +105,7 @@ command -v lvremove || true
 
 echo "[storage]"
 lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT
-df -hT / /var/lib/docker /mnt/datasets /mnt/models 2>&1 || true
+df -hT / /var/lib/docker /mnt/datasets /mnt/models /var/lib/hypercube/workspaces 2>&1 || true
 
 echo "[lvm]"
 lvs --units g 2>&1 || true
@@ -119,6 +135,8 @@ model needs them
 lvs --units g shows vg0/thin_pool or the configured equivalent
 /mnt/datasets and /mnt/models exist, or sharedMounts are explicitly disabled or
 changed in the backend-agent contract
+/var/lib/hypercube/workspaces exists and is writable through the selected agent
+permission path
 ```
 
 ## Host Package Gate
@@ -184,6 +202,15 @@ findmnt /mnt/datasets
 findmnt /mnt/models
 ```
 
+Prepare the workspace root after the permission option is chosen:
+
+```bash
+sudo mkdir -p /var/lib/hypercube/workspaces
+sudo chown root:root /var/lib/hypercube/workspaces
+sudo chmod 0755 /var/lib/hypercube/workspaces
+findmnt /var/lib/hypercube/workspaces || true
+```
+
 ## Agent Runtime Gate
 
 After host setup, ensure the agent can use the chosen permission model.
@@ -207,7 +234,8 @@ For option `2`, run the same host preflight plus the helper-specific smoke test
 defined by the agent implementation. The helper must own rollback for failed
 `lvcreate`, `mkfs.ext4`, `mount`, `umount`, and `lvremove` operations.
 
-For option `3`, do not send `workspace` from backend. The agent must report:
+For option `3`, do not send LVM `workspace.sizeGb`, LVM
+`workspace.mountTarget`, or `sharedMounts` from backend. The agent must report:
 
 ```json
 {
@@ -218,6 +246,25 @@ For option `3`, do not send `workspace` from backend. The agent must report:
   }
 }
 ```
+
+Option `3` smoke check:
+
+```bash
+docker exec hc-backend python manage.py shell -c "
+from apps.agents.models import Agent
+agent = Agent.objects.get(hostname='server_63_dev')
+print(agent.hostname, agent.cpu_cores, agent.ram_total_mb, agent.lvm_pool_size_gb, agent.capacity_updated_at)
+"
+```
+
+Expected option `3` backend state:
+
+```text
+server_63_dev <cpu> <ram> None <recent timestamp>
+```
+
+That is a valid legacy/no-LVM state, but it does not complete the real LVM thin
+workspace objective.
 
 ## Backend Readiness Check
 
