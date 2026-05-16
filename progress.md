@@ -38,12 +38,20 @@ Full validation runbook: `docs/runbooks/workspace-quota-full-validation.md`.
    Re-mount survives only the current boot; fstab line not yet added
    (operator chose to skip the optional reboot-survival entry).
 
-2. **HyperCube-agent PR rework** — paste
-   `docs/agent-workspace-quota-handoff.md` verbatim to the agent
-   developer. Either force-push #17 or open a fresh PR; close #16 only
-   after the full-validation runbook has every PASS marker filled in.
-   Until then, agent capacity rows continue to land via the legacy LVM
-   wire and `Agent.workspace_pool_total_gb` stays NULL.
+2. **HyperCube-agent PR #17 — REWORK PARTIALLY DEPLOYED (2026-05-16
+   17:30 KST) but blocked on setquota unit bug.** Agent dev pushed
+   head `024028e` and refreshed `hypercube-agent-dev-63` + `dev-16`
+   containers with `xfsprogs + quota`. Backend capacity row, recommend
+   API, create_container payload, hostConfig CPU/memory mapping,
+   workspace bind mount, project id assignment, prjquota mount state,
+   and Enforcement=ON all verified by core.
+   **Open blocker**: setquota is called with bytes where it expects
+   1 KiB blocks, so `workspace_gb=10` enforces `10 TiB` instead of
+   `10 GiB` (exactly 1024×). dd 10 GB succeeds without ENOSPC; manual
+   `xfs_quota -x -c "limit -p bhard=10g ${pid}"` immediately fixes
+   the report and produces clean ENOSPC at 10737418240 bytes. Reported
+   to agent dev in `qkr7287/HyperCube-agent#16` comment 4466315428.
+   Full sign-off blocked until a re-deploy with corrected unit math.
 
 ### Live evidence — host-side hard enforcement (2026-05-16)
 
@@ -57,20 +65,27 @@ Recorded on server-63 (`/dev/loop18` -> `/var/lib/hypercube/workspaces`,
 - Post-run `xfs_quota report -h` confirms `1001: 100M/100M` and
   `1002: 150M/200M`. Cleanup trap restored both projects to `bhard=0`.
 
-### Remaining acceptance (deferred — needs PR #17 rework)
+### Live evidence — full slice (2026-05-16 17:30 KST)
 
-- `df /workspace` inside a real HyperCube container equals requested
-  `hardGb` (needs agent to set the project id on the workspace bind
-  mount).
-- `dd ... bs=1M count=$((hardGb*1024+1))` fails with `ENOSPC` from
-  inside the container.
-- A neighbour HyperCube container on the same host is unaffected.
-- `workspace-quota-preflight.sh` exits 0 — currently FAIL on `[agent
-  runtime can drive xfs_quota]` (no `xfs_quota` binary in
-  `hypercube-agent-dev-63`, no bind mount of `/var/lib/hypercube/
-  workspaces` into the agent container) and on `[backend Agent capacity
-  row]` (column exists post-migration, but the row is NULL until the
-  agent ships the quota wire).
+After agent PR #17 rework deploy on server-63 (`hypercube-agent-dev-63`
+container refreshed with `xfsprogs + quota`, bind mount of
+`/var/lib/hypercube/workspaces`):
+
+- Backend Agent rows:
+  - `server_63_dev`: pool_total=200, free=199, mount=`/var/lib/hypercube/workspaces`, hard_enforcement=true
+  - `server_16_dev` (no host setup, legacy mode): pool fields NULL, hard_enforcement=false  ✓ regression rule satisfied (no agent crash, available=false correctly signalled)
+- Request `a1ee6632-618d-4960-a0a7-3c8cf3f22cdb` (Redis template, workspace_gb=10) submitted via core POST + admin approve → deployed to container `70106824ba37` in <5s.
+- Backend `Container` row populated: `workspace_device=/var/lib/hypercube/workspaces/e22020af450e`, `workspace_project_id=1340189`, `workspace_gb_limit=10`.
+- Docker inspect: HostConfig.Memory=2147483648, CpuQuota=100000, CpuPeriod=100000; mount `e22020af450e -> /workspace` present.
+- `lsattr` shows project flag `1340189 -------------------P--` on the workspace dir.
+- `xfs_quota state -p`: Accounting ON, Enforcement ON.
+
+### Remaining acceptance (blocked on agent unit fix)
+
+- `xfs_quota report` for new project equals `hardGb` (currently `1024 × hardGb`).
+- `dd ... bs=1M count=$((hardGb*1024+1))` inside container ENOSPC at requested limit. **Mechanism proven manually**: after `xfs_quota -x -c "limit -p bhard=10g 1340189"`, dd 11 GB stopped at 10737418240 bytes ENOSPC.
+- Neighbour container on same host unaffected (host-side smoke test on 1001/1002 already proved this; needs a second deployed quota container after fix to repeat in-container).
+- `workspace-quota-preflight.sh` exits 0 — currently still FAIL on `[backend Agent capacity row]` because the script's check expects all rows to have non-null pool, but `server_16_dev` is legacy. **Preflight script needs a host-scoped variant** or the check should be agent-name-filtered. Track as a minor follow-up after agent fix.
 
 ### Earlier LVM-thin work (superseded — kept for history)
 
