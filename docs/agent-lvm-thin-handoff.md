@@ -5,7 +5,13 @@ Scope: `qkr7287/HyperCube-agent`
 Core counterpart: HyperCube container resource limits PR 1-5
 Tracking issue: https://github.com/qkr7287/HyperCube-agent/issues/16
 Agent draft PR: https://github.com/qkr7287/HyperCube-agent/pull/17
-Latest core report: `docs/test-reports/2026-05-16-agent-pr17-server63-runtime-sync.md`
+Latest core reports:
+
+```text
+docs/test-reports/2026-05-16-container-resource-limits-final-gate-audit.md
+docs/test-reports/2026-05-16-agent-pr17-file-audit.md
+docs/test-reports/2026-05-16-agent-pr17-server63-runtime-sync.md
+```
 
 Core backend/frontend is ready on HyperCube `dev` for the current no-LVM
 compatibility path. HyperCube-agent PR #17 exists as the deployable agent-side
@@ -25,6 +31,7 @@ state: open draft
 mergeable: true
 changed files: 21
 GitHub Actions: CI run 21 passed
+tracking issue #16: open; no PERMISSION_OPTION=<1|2|3> reply in fetched comments
 ```
 
 PR #17 implements:
@@ -37,6 +44,22 @@ PR #17 implements:
 - LVM thin-pool system/capacity metrics.
 - `LVM_WORKSPACE_ENABLED=false` no-probe legacy guard.
 - Existing GPU per-container multi-source contract preservation.
+
+Remote PR-head file audit:
+
+```text
+report: docs/test-reports/2026-05-16-agent-pr17-file-audit.md
+head: 8d55d46855a0d51e123c0f0c2256face7dcd1e99
+CI run 25948355854 / run 21: completed, success
+job 76281100630 Type check & build: success
+fetched files: src/collectors/docker.ts, src/sync/delta.ts, src/config.ts,
+src/workspace-recovery.ts, src/collectors/system.ts,
+src/self-tests/resource-limits-lvm.ts, package.json, src/index.ts
+```
+
+The file audit confirms the PR head contains workspace metrics, system LVM
+metrics, capacity-report wiring, disabled-LVM no-probe behavior, recovery
+wiring, and self-test coverage.
 
 Validation run from the remote-safe temp agent workspace:
 
@@ -100,7 +123,9 @@ docs/agent-protocol.md
 docs/runbooks/lvm-thin-workspace-host-setup.md
 docs/runbooks/lvm-thin-workspace-preflight.sh
 docs/runbooks/lvm-thin-workspace-full-validation.md
+docs/test-reports/2026-05-16-container-resource-limits-final-gate-audit.md
 docs/test-reports/2026-05-16-agent-pr17-draft-status.md
+docs/test-reports/2026-05-16-agent-pr17-file-audit.md
 docs/test-reports/2026-05-16-agent-pr17-server63-runtime-sync.md
 progress.md
 ```
