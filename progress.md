@@ -1,10 +1,11 @@
 # HyperCube Progress
 
-## Workspace quota slice — SIGNED OFF 2026-05-16T09:40Z
+## Workspace quota slice — CLOSED 2026-05-16T10:35Z
 
-All 6 steps of `docs/runbooks/workspace-quota-full-validation.md` PASS
-with inline evidence. PR `qkr7287/HyperCube-agent#17` head `1e5e722`
-ready for review. Tracking issue `qkr7287/HyperCube-agent#16` closed.
+Slice signed off 2026-05-16T09:40Z. All 6 steps of
+`docs/runbooks/workspace-quota-full-validation.md` PASS with inline
+evidence. PR `qkr7287/HyperCube-agent#17` head `1e5e722` ready for
+review. Tracking issue `qkr7287/HyperCube-agent#16` closed.
 
 End-to-end live evidence (server-63, fresh deploy `cf4909eefb39` /
 project `13024536` / workspace_gb=10):
@@ -16,8 +17,27 @@ project `13024536` / workspace_gb=10):
 
 Earlier 1024× setquota unit bug in head `024028e` resolved in `1e5e722`
 by switching to `xfs_quota -x -c "limit -p bsoft=Ng bhard=Ng <id>"`
-across create / teardown / rollback. Handoff doc snippet updated to
-prevent regression.
+across create / teardown / rollback.
+
+### Post-sign-off UI polish (commits 8c58bca, f1d11bb)
+
+- NewRequestModal: defensive `?.` on `selectedTemplate.*` inside the
+  `:else` branch — fixes `Cannot read properties of null (reading
+  'kind')` console error during back-to-template transition.
+- ContainerKpiBar Workspace footer: drop `/ Y GB` from AVG/PEAK rows
+  (denominator already in hero). Matches CPU/Memory pattern.
+- ContainerKpiBar CPU `formatCores` floor lowered to 0.005 — AVG no
+  longer shows "0 cores" when value is `0.016 cores`.
+- ContainerKpiBar grid: `clamp(140px, 7.5vw, 180px)` so all 6 metrics
+  (GPU containers) fit on a single 992px row at 1920px viewport.
+- `.hero-raw`: smaller font + ellipsis overflow as future-proofing.
+
+### Slice clean-up (this commit)
+
+Removed agent-facing handoff md and LVM-era archived runbooks that
+were superseded by the sign-off. Kept active spec + runbook + test
+reports + memory pointer. Git history holds the deleted files if
+needed.
 
 ## Current Work - 2026-05-16 (workspace quota slice)
 
