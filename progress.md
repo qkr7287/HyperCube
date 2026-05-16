@@ -17,6 +17,8 @@ Core implementation baseline:
 Latest docs/status commits:
 
 ```text
+3b48784 docs: refresh lvm host setup runbook for pr17 gate
+cca0ab6 docs: update progress with final gate audit refresh
 d7675f6 docs: refresh final gate audit after agent runtime sync
 2ae54c6 docs: refresh agent lvm handoff after runtime sync
 112fdd9 docs: update resource limit progress after agent runtime sync
