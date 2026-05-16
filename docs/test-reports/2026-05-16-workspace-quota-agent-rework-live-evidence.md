@@ -164,3 +164,61 @@ request → 10 TiB enforcement matches exactly. Reported as
   follow-up.
 
 PR #17 stays draft until the redeploy lands.
+
+## Addendum (2026-05-16 18:15 KST) — cross-container isolation proven
+
+Second container `4856610649d6` (project `5959819`) deployed via the
+same path with `workspace_gb=10`. Same bug observed (`5959819   0   10T   10T`),
+confirming the issue is per-deploy and not a one-off.
+
+To exercise neighbour isolation in the agent-deployed environment, the
+two project limits were manually corrected to differential values:
+
+```
+xfs_quota -x -c 'limit -p bhard=5g bsoft=5g 1340189' /var/lib/hypercube/workspaces
+xfs_quota -x -c 'limit -p bhard=2g bsoft=2g 5959819' /var/lib/hypercube/workspaces
+```
+
+After correction, `df -h /workspace` inside the containers shows the
+project quota size (not the underlying 200 G loop), confirming the
+runbook acceptance "df /workspace == hard_gb" works the moment the
+agent stops over-scaling:
+
+```
+70106824ba37 (project 1340189):   /dev/loop18   5.0G   0   5.0G   0%   /workspace
+4856610649d6 (project 5959819):   /dev/loop18   2.0G   0   2.0G   0%   /workspace
+```
+
+Cross-container exercise:
+
+```
+docker exec 70106824ba37 sh -c 'dd if=/dev/zero of=/workspace/big bs=1M count=6144'
+  dd: error writing '/workspace/big': No space left on device
+  5121+0 records in / 5120+0 records out
+  5368709120 bytes (5.0GB) copied, 16.19 s
+
+# during A fill, B unchanged:
+docker exec 4856610649d6 df -h /workspace   ->  2.0G   0   2.0G   0%
+
+# xfs report:
+#1340189   5G   5G   5G
+#5959819    0   2G   2G
+
+docker exec 4856610649d6 sh -c 'dd if=/dev/zero of=/workspace/big bs=1M count=3072'
+  dd: error writing '/workspace/big': No space left on device
+  2049+0 records in / 2048+0 records out
+  2147483648 bytes (2.0GB) copied, 5.34 s
+
+# final report:
+#1340189   5G   5G   5G    (unchanged from A's exhaustion)
+#5959819   2G   2G   2G    (B independently capped)
+```
+
+Conclusion: every mechanism along the slice — agent project assignment,
+bind mount, prjquota enforcement, per-project independence,
+in-container `df` reporting — works correctly once the value passed to
+setquota is right. Only the unit conversion fix is missing.
+
+Both containers and the corrected quotas are left in place so the agent
+developer can verify the fix on the same projects (re-deploy should
+replace 5G/2G with the requested 10G if the unit math is correct).

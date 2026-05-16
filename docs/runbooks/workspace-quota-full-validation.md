@@ -52,12 +52,14 @@ touched. The loop file lives on the existing root (`/`) ext4 filesystem.
 Evidence to paste back here:
 
 ```text
-PASS host setup: <operator initials> <UTC timestamp>
+PASS host setup: agics (operator) 2026-05-16T05:32Z
+  (sized to 200G to fit / 297G free; fstab line not yet added — mount survives only current boot)
 mount output:
-    /var/lib/hypercube/workspaces.img on /var/lib/hypercube/workspaces type xfs (rw,loop=...,prjquota)
-xfs_quota -x -c "state" /var/lib/hypercube/workspaces:
-    Project quota state on /var/lib/hypercube/workspaces (/dev/loopN)
-      Accounting: ON
+    /var/lib/hypercube/workspaces.img on /var/lib/hypercube/workspaces type xfs
+        (rw,relatime,attr2,inode64,logbufs=8,logbsize=32k,prjquota)
+xfs_quota -x -c "state -p" /var/lib/hypercube/workspaces:
+    Project quota state on /var/lib/hypercube/workspaces (/dev/loop18)
+      Accounting:  ON
       Enforcement: ON
 ```
 
@@ -79,8 +81,13 @@ If any check fails the script prints the offending command output and
 exits non-zero. Fix the failing check and re-run; do not move to step 3.
 
 ```text
-PASS preflight: <UTC timestamp>
-exit code: 0
+PARTIAL preflight: 2026-05-16T08:24Z exit=1
+  PASS host xfsprogs / quota tooling x3
+  PASS workspace loop file + mount x3 (incl. prjquota)
+  PASS agent runtime can drive xfs_quota x3 (post agent rework deploy)
+  FAIL [backend Agent capacity row] — script treats server_16_dev (legacy mode) as
+       a fleet-wide failure; needs hostname filter or mixed-mode-aware check.
+       Track as minor follow-up; not a slice blocker.
 ```
 
 ## 3. Agent rework deploy
@@ -101,9 +108,14 @@ Acceptance for this step:
   (rename of `resource-limits-lvm.ts`) returns ok.
 
 ```text
-PASS agent deploy: <UTC timestamp>
-agent image: <digest>
-self-test stdout:
+PASS agent deploy (partial): 2026-05-16T05:58Z head 024028e on hypercube-agent-dev-63 + dev-16
+  capacity_report, recommend, create_container payload, hostConfig mapping, workspace bind,
+  project assignment, prjquota Enforcement=ON all verified by core.
+OPEN BUG: setquota value 1024× over-scaled (workspace_gb=10 -> 10T). See
+  qkr7287/HyperCube-agent#16 comment 4466315428 and
+  docs/test-reports/2026-05-16-workspace-quota-agent-rework-live-evidence.md.
+  Self-test pass on agent side; this is a unit-conversion regression caught only by
+  in-container dd evidence (step 5 below).
 ```
 
 ## 4. Backend / browser verification
@@ -139,9 +151,18 @@ Browser (hc-dev-63 isolated context, user1 / agics12!@):
    `hard_gb`.
 
 ```text
-PASS backend tests: <commit hash> <UTC timestamp> Ran N tests OK
-PASS frontend tests: <UTC timestamp>
-PASS browser flow: <container_id> <UTC timestamp>
+PASS backend tests: d03e046 2026-05-16T08:18Z Ran 100 tests in 80.679s OK
+PASS frontend tests: 2026-05-16T08:18Z Vitest 58/58 + svelte-check 0 errors / 193 warnings
+PASS browser flow: 70106824ba37 2026-05-16T08:24Z
+  prefill: cpu_percent=200 memory_mb=3072 workspace_gb=40
+  recommend response includes workspace_pool_total_gb=200, workspace_pool_free_gb=199,
+    workspace_hard_enforcement=true
+  "host의 X% 점유 · hard enforced" label rendered on Workspace slider for server_63_dev
+  request a1ee6632 -> approved -> deployed (<5s)
+  Container row: workspace_device=/var/lib/hypercube/workspaces/e22020af450e
+                 workspace_project_id=1340189 workspace_gb_limit=10
+  Docker inspect: HostConfig.Memory=2147483648 CpuQuota=100000 CpuPeriod=100000
+                  Bind mount e22020af450e -> /workspace present
 ```
 
 ## 5. In-container hard enforcement evidence
@@ -164,12 +185,26 @@ docker exec <other-container> df -h /workspace
 ```
 
 ```text
-PASS df /workspace == hard_gb: <UTC timestamp>
-    df output: ...
-PASS dd over limit -> ENOSPC: <UTC timestamp>
-    dd stderr: dd: error writing '/workspace/big': No space left on device
-PASS neighbour container unaffected: <other_container_id>
-    df output: ...
+PARTIAL df /workspace == hard_gb: 2026-05-16T09:10Z
+    With as-shipped agent: df shows 199G (limit was 10T due to setquota unit bug).
+    With manual `xfs_quota -x -c "limit -p bhard=5g 1340189"`: df shows 5.0G as expected.
+    Mechanism proven; awaiting agent fix to remove the manual step.
+
+PASS dd over limit -> ENOSPC: 2026-05-16T09:13Z
+    Container 70106824ba37 (project 1340189, manual bhard=5g):
+      dd if=/dev/zero of=/workspace/big bs=1M count=6144
+      dd: error writing '/workspace/big': No space left on device
+      5121+0 records in / 5120+0 records out
+      5368709120 bytes (5.0GB) copied, 16.19 s
+    xfs report: #1340189   5G   5G   5G
+
+PASS neighbour container unaffected: 4856610649d6 (project 5959819, manual bhard=2g)
+    Before A's dd:   df  2.0G   0   2.0G   0%
+    During A's dd:   df  2.0G   0   2.0G   0%  (unchanged)
+    After:           dd 3G -> ENOSPC at 2147483648 bytes; xfs report 5959819 2G/2G,
+                     1340189 still at 5G/5G (each project independent).
+    Container 70106824ba37 and 4856610649d6 are left in place with cleaned files
+    and corrected quotas (5G/2G) for the agent dev to verify the fix in-place.
 ```
 
 ## 6. Sign-off
@@ -177,3 +212,13 @@ PASS neighbour container unaffected: <other_container_id>
 The slice is complete when every PASS marker above is filled in and
 the agent self-test stays green for 24 h. Update `progress.md` with
 the sign-off timestamp and close `HyperCube-agent#16`.
+
+**Sign-off status (2026-05-16T09:15Z): BLOCKED on agent setquota unit
+fix.** Steps 1, 2 (host portion), 3 (deploy portion), 4 are all PASS.
+Step 5 mechanism is PROVEN with manual quota correction but the
+as-shipped agent over-scales the limit by 1024×, so the runbook's
+acceptance ("df /workspace == hard_gb out of the box") is not yet met.
+Once the agent re-deploys with the correct unit math (and projects
+1340189, 5959819 self-correct to 10G/10G on next reconcile), this
+runbook flips to full PASS; PR #17 to ready-for-review;
+`HyperCube-agent#16` close.
