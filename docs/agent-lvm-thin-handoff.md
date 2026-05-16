@@ -5,16 +5,16 @@ Scope: `qkr7287/HyperCube-agent`
 Core counterpart: HyperCube container resource limits PR 1-5
 Tracking issue: https://github.com/qkr7287/HyperCube-agent/issues/16
 Agent draft PR: https://github.com/qkr7287/HyperCube-agent/pull/17
+Latest core report: `docs/test-reports/2026-05-16-agent-pr17-server63-runtime-sync.md`
 
 Core backend/frontend is ready on HyperCube `dev` for the current no-LVM
-compatibility path. Full LVM thin workspace completion is still blocked until
-HyperCube-agent PR #17 is reviewed/deployed and the server-63 host/runtime LVM
-gate is resolved.
+compatibility path. HyperCube-agent PR #17 exists as the deployable agent-side
+implementation and has been synced into the server-63 dev bind-mounted runtime
+for non-destructive validation. Full LVM thin workspace completion is still
+blocked until the server-63 host/runtime LVM gate is resolved and the full
+8-step `/workspace` validation passes.
 
 ## Current State
-
-HyperCube core is implemented, validated, committed, and pushed to `dev`.
-Agent-side deployable work now exists as draft PR #17:
 
 ```text
 repo: qkr7287/HyperCube-agent
@@ -24,6 +24,7 @@ head: 8d55d46855a0d51e123c0f0c2256face7dcd1e99
 state: open draft
 mergeable: true
 changed files: 21
+GitHub Actions: CI run 21 passed
 ```
 
 PR #17 implements:
@@ -47,6 +48,48 @@ npm run self-test:network-policy
 
 Observed result: all passed.
 
+Server-63 runtime sync has also been validated inside the dev agent container:
+
+```bash
+docker exec hypercube-agent-dev-63 sh -lc 'cd /app && npm run build && node dist/self-tests/resource-limits-lvm.js && node dist/self-tests/create-container-network-policy.js'
+```
+
+Observed result: build passed, `resource limits and LVM workspace self-test
+passed`, and `create_container networkPolicy self-test passed`.
+
+Runtime sync details:
+
+```text
+host: hc-dev-63
+runtime path: /home/agics/ts/agent-dev
+agent container: hypercube-agent-dev-63
+backup: /home/agics/ts/agent-dev-pr17-sync-backup-20260516T010102Z.tgz
+stale GPU collector backup: src/collectors/gpu-per-container.ts.pre-pr17-20260516T010343Z
+stale GPU self-test backup: src/self-tests/gpu-per-container.ts.pre-pr17-stale-20260516T010420Z
+```
+
+After restart, backend Agent capacity for `server_63_dev` updated:
+
+```json
+{
+  "hostname": "server_63_dev",
+  "cpu_cores": 12,
+  "cpu_model": "Intel(R) Core(TM) i5-10400 CPU @ 2.90GHz",
+  "ram_total_mb": 15897,
+  "disk_total_gb": 457,
+  "lvm_pool_size_gb": null,
+  "nic_speed_mbps": null,
+  "filesystem": "overlay",
+  "target_users": 4,
+  "safety_margin": 0.8,
+  "capacity_updated_at": "2026-05-16 01:04:44.080208+00:00"
+}
+```
+
+This confirms capacity reporting works in the synced runtime. It also confirms
+server 63 remains in legacy/no-LVM mode because `lvm_pool_size_gb` is still
+`null`.
+
 ## Core References
 
 ```text
@@ -58,6 +101,7 @@ docs/runbooks/lvm-thin-workspace-host-setup.md
 docs/runbooks/lvm-thin-workspace-preflight.sh
 docs/runbooks/lvm-thin-workspace-full-validation.md
 docs/test-reports/2026-05-16-agent-pr17-draft-status.md
+docs/test-reports/2026-05-16-agent-pr17-server63-runtime-sync.md
 progress.md
 ```
 
@@ -66,15 +110,6 @@ contract proves impossible. Core-side contract, docs, migrations, backend tests,
 frontend tests, and Playwright E2E are already pushed.
 
 ## Current Blocker
-
-Backend is accepting capacity reports, but the currently deployed agents still
-report no LVM thin pool:
-
-```text
-agent-register-smoke-after-migrate None None None None
-server_16_dev 12 39760 None 2026-05-16 00:03:40.815470+00:00
-server_63_dev 12 15897 None 2026-05-16 00:03:41.014804+00:00
-```
 
 Latest server_63_dev preflight command:
 
