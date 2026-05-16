@@ -581,7 +581,7 @@
 		--border-soft: rgba(100, 116, 139, 0.18);
 		--font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(clamp(160px, 9vw, 200px), 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(clamp(140px, 7.5vw, 180px), 1fr));
 		grid-template-rows: auto auto auto auto;
 		column-gap: clamp(4px, 0.3vw, 6px);
 		row-gap: 8px;
@@ -715,6 +715,13 @@
 		font-weight: 700;
 		line-height: 1;
 		letter-spacing: -0.02em;
+	}
+	.hero-raw {
+		font-size: clamp(13px, 0.85vw, 17px);
+		flex: 1 1 auto;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.hero-pct .num,
 	.hero-raw .num {
