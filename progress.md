@@ -14,6 +14,14 @@ Core implementation baseline:
 7454fdd feat(containers): add resource limits and workspace quotas
 ```
 
+Latest docs/status commits:
+
+```text
+73963b4 docs: record agent pr17 server63 runtime sync
+c9ffca7 docs: update resource limit progress with agent pr status
+710aa4c docs: add agent pr17 to lvm thin handoff
+```
+
 Latest agent-side status:
 
 ```text
@@ -24,6 +32,7 @@ head: 8d55d46855a0d51e123c0f0c2256face7dcd1e99
 base: qkr7287/HyperCube-agent:dev @ 10d14ab225d296e458a77a2ab166f8e0a89adfe7
 mergeable: true
 changed files: 21
+GitHub Actions: CI run 21 passed for PR #17 head
 ```
 
 PR #17 implements the previously missing agent-side deployable contract:
@@ -45,8 +54,19 @@ node dist/self-tests/resource-limits-lvm.js
 npm run self-test:network-policy
 ```
 
-Observed result: all passed. GitHub status checks were not present at the time
-of this update.
+Observed result: all passed.
+
+Server-63 runtime sync status:
+
+```text
+runtime path: /home/agics/ts/agent-dev
+agent container: hypercube-agent-dev-63
+backup: /home/agics/ts/agent-dev-pr17-sync-backup-20260516T010102Z.tgz
+latest runtime validation: build + resource-limits-lvm self-test + network-policy self-test passed
+agent restart: reconnected to backend
+capacity_updated_at: 2026-05-16 01:04:44.080208+00:00
+lvm_pool_size_gb: None
+```
 
 Implemented core scope:
 
@@ -80,6 +100,8 @@ frontend: npm test -- --run -> 57 tests passed
 frontend: npm run check -> 0 errors, 193 warnings
 frontend: npm run e2e -> 3 passed
 migrations: agents.0008, containers.0010, containers.0011 applied
+agent PR #17 CI: passed
+server-63 agent runtime sync: build + resource-limits-lvm self-test + network-policy self-test passed
 ```
 
 Latest LVM preflight from `/home/agics/ts/HyperCube`:
@@ -109,8 +131,9 @@ FAIL agent command 'lvremove' is missing
 FAIL agent lvs command failed
 sh: 1: lvs: not found
 agent-register-smoke-after-migrate None None None None
-server_16_dev 12 39760 None 2026-05-16 00:03:40.815470+00:00
-server_63_dev 12 15897 None 2026-05-16 00:03:41.014804+00:00
+server_16_dev 12 39760 None 2026-05-16 01:03:45.206653+00:00
+server_63_dev 12 15897 None 2026-05-16 01:04:44.080208+00:00
+FAIL LVM thin workspace host preflight failed
 ```
 
 Core references:
@@ -123,6 +146,7 @@ Core references:
 - `docs/test-reports/2026-05-16-hypercube-agent-remote-dev-audit.md`
 - `docs/test-reports/2026-05-16-agent-disabled-lvm-guard-temp-verification.md`
 - `docs/test-reports/2026-05-16-agent-pr17-draft-status.md`
+- `docs/test-reports/2026-05-16-agent-pr17-server63-runtime-sync.md`
 - `docs/agent-resource-limits-remote-pr-brief.md`
 - `docs/agent-lvm-thin-handoff.md`
 - `docs/runbooks/lvm-thin-workspace-host-setup.md`
@@ -134,7 +158,8 @@ Core references:
 Remaining blocker:
 
 - Full LVM thin workspace creation is not yet proven end-to-end.
-- HyperCube-agent PR #17 is open as draft and not deployed to server 63.
+- HyperCube-agent PR #17 is open as draft; server-63 runtime has been synced and
+  self-tested, but the PR is not merged.
 - Current `server_63_dev` host and `hypercube-agent-dev-63` both lack
   `lvs/lvcreate/lvremove`; `lvm2`/thin pool setup is not present.
 - `/mnt/datasets`, `/mnt/models`, and `/var/lib/hypercube/workspaces` are not
@@ -146,8 +171,8 @@ Remaining blocker:
 
 Next completion gate:
 
-1. Review/merge/deploy HyperCube-agent PR #17, or keep it draft until the
-   permission option is chosen.
+1. Review/merge HyperCube-agent PR #17, or keep it draft until the permission
+   option is chosen.
 2. Agent/ops replies on HyperCube-agent #16 with `PERMISSION_OPTION=<1|2|3>`.
 3. If LVM mode is selected, prepare server 63 with `lvm2`, an approved thin
    pool, `/mnt/datasets`, `/mnt/models`, and `/var/lib/hypercube/workspaces`.
