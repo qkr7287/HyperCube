@@ -76,12 +76,20 @@ Recommended: first 6 hex chars of `sha256(shortId)` → integer in
 `setQuota` runs:
 
 ```bash
-setquota -P <projectId> <hardBytes> <hardBytes> 0 0 /var/lib/hypercube/workspaces
+xfs_quota -x -c "limit -p bsoft=${hardGb}g bhard=${hardGb}g <projectId>" /var/lib/hypercube/workspaces
 ```
 
-Both `bsoft` and `bhard` are set to `hardGb * 1024**3` so a single
-threshold blocks writes — matches user expectation that the limit is a
-hard cap.
+Both `bsoft` and `bhard` are set to the same `${hardGb}g` value so a
+single threshold blocks writes — matches user expectation that the
+limit is a hard cap.
+
+**Do NOT use `setquota -P <id> <hardBytes> <hardBytes> 0 0 <mount>`.**
+The `block-soft` / `block-hard` arguments of `setquota` are 1 KiB
+blocks, not bytes. Passing `hardGb * 1024**3` (bytes) directly is
+interpreted as KiB and silently inflates the cap by 1024× (a
+10 GB request became 10 TiB in PR #17's first cut — see
+`qkr7287/HyperCube-agent#16`). Always prefer the `xfs_quota -x -c
+"limit -p ..."` form with explicit `g` / `m` suffix.
 
 Teardown (called from `delete_container`):
 

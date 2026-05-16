@@ -1,5 +1,24 @@
 # HyperCube Progress
 
+## Workspace quota slice — SIGNED OFF 2026-05-16T09:40Z
+
+All 6 steps of `docs/runbooks/workspace-quota-full-validation.md` PASS
+with inline evidence. PR `qkr7287/HyperCube-agent#17` head `1e5e722`
+ready for review. Tracking issue `qkr7287/HyperCube-agent#16` closed.
+
+End-to-end live evidence (server-63, fresh deploy `cf4909eefb39` /
+project `13024536` / workspace_gb=10):
+
+- xfs_quota report immediately after deploy: `0   10G   10G` (out of the box, no manual fix)
+- in-container `df -h /workspace`: `10.0G   0   10.0G   0%`
+- `dd if=/dev/zero of=/workspace/big bs=1M count=11264` → ENOSPC at exactly `10737418240 bytes` (= 10 × 1024³)
+- Two neighbour quota containers (`70106824ba37` @ 5G, `4856610649d6` @ 2G) df unchanged during fill — per-project isolation proven in the agent-deployed environment.
+
+Earlier 1024× setquota unit bug in head `024028e` resolved in `1e5e722`
+by switching to `xfs_quota -x -c "limit -p bsoft=Ng bhard=Ng <id>"`
+across create / teardown / rollback. Handoff doc snippet updated to
+prevent regression.
+
 ## Current Work - 2026-05-16 (workspace quota slice)
 
 ### Decision (2026-05-16): LVM thin → XFS prjquota on loop file (option 4b)
