@@ -154,6 +154,16 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
                 await self._update_request_from_response(data)
             return
 
+        if msg_type == "create_container_result":
+            response = _command_response_from_create_result(data)
+            if response.get("requestId"):
+                handled = await self._route_command_response(response)
+                if not handled:
+                    await self._update_request_from_response(response)
+            else:
+                await self._update_container_workspace_from_create_result(data)
+            return
+
         if msg_type == "command_progress":
             await self._route_command_progress(data)
             return
@@ -171,6 +181,15 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
             # 같은 메시지를 group broadcast 도 — admin/소유자 viewer 가
             # 실시간 이벤트를 받을 수 있게 (현 단계는 frontend 가 REST polling
             # 하지만 향후 WS push 전환 대비).
+            data["server_id"] = self.server_id
+            await self.channel_layer.group_send(
+                self.group_name,
+                {"type": "server_message", "data": data},
+            )
+            return
+
+        if msg_type == "capacity_report":
+            await self._handle_capacity_report(data)
             data["server_id"] = self.server_id
             await self.channel_layer.group_send(
                 self.group_name,
@@ -588,6 +607,8 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def _update_request_from_response(self, data: dict):
         """command_response (최종 결과) → ContainerRequest + Container DB 갱신."""
+        from django.utils import timezone
+
         from apps.containers.models import Container, ContainerRequest
         from apps.containers.services.gpu_allocation import (
             activate_gpu_allocations_for_request,
@@ -618,6 +639,7 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
             req.status = "deployed"
             req.progress_percent = 100
             req.progress_message = "완료"
+            limit_defaults = _container_limit_defaults_from_request(req, timezone.now())
 
             # Container row 생성 (create 요청인 경우)
             # Agent의 container sync는 12자 short ID를 사용하므로 동일 기준으로 정규화
@@ -635,6 +657,7 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
                             "status": resp_data.get("state", "running"),
                             "requester": req.requester,
                             "created_via_request": req,
+                            **limit_defaults,
                         },
                     )
                     req.target_container = obj
@@ -652,6 +675,7 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
                                 "status": c.get("state", "running"),
                                 "requester": req.requester,
                                 "created_via_request": req,
+                                **limit_defaults,
                             },
                         )
                         if first_obj is None:
@@ -751,6 +775,116 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
 
         if rows:
             ContainerEvent.objects.bulk_create(rows, ignore_conflicts=False)
+
+    @database_sync_to_async
+    def _update_container_workspace_from_create_result(self, data: dict) -> None:
+        from django.utils import timezone
+
+        from apps.containers.models import Container
+
+        resp_data = data.get("data") or {}
+        container_id = _short_cid(resp_data.get("containerId", ""))
+        workspace = resp_data.get("workspace") if isinstance(resp_data.get("workspace"), dict) else {}
+        if not container_id or not workspace:
+            return
+        try:
+            container = Container.objects.get(container_id=container_id)
+        except Container.DoesNotExist:
+            logger.warning("[ws] create_container_result without requestId has unknown container %s", container_id)
+            return
+
+        update_fields = []
+        # New wire (`path`) supersedes the legacy `device` / `mountPoint`
+        # the LVM-thin agent shipped. Both land in `workspace_device`.
+        device = (
+            workspace.get("path")
+            or workspace.get("mountPoint")
+            or workspace.get("device")
+            or workspace.get("workspaceDevice")
+        )
+        if device:
+            container.workspace_device = str(device)[:255]
+            update_fields.append("workspace_device")
+        project_id = _positive_int_or_none(
+            workspace.get("projectId") or workspace.get("project_id")
+        )
+        if project_id:
+            container.workspace_project_id = project_id
+            update_fields.append("workspace_project_id")
+        hard_gb = _positive_int_or_none(
+            workspace.get("hardGb")
+            or workspace.get("sizeGb")
+            or workspace.get("size_gb")
+        )
+        if hard_gb and not container.workspace_gb_limit:
+            container.workspace_gb_limit = hard_gb
+            container.limit_updated_at = timezone.now()
+            update_fields.extend(["workspace_gb_limit", "limit_updated_at"])
+        if update_fields:
+            update_fields.append("last_seen")
+            container.save(update_fields=update_fields)
+
+    @database_sync_to_async
+    def _handle_capacity_report(self, data: dict) -> None:
+        from django.utils import timezone
+
+        from apps.agents.models import Agent
+
+        try:
+            agent = Agent.objects.get(id=self.server_id)
+        except Agent.DoesNotExist:
+            logger.warning("[ws] Agent %s not found for capacity_report", self.server_id)
+            return
+
+        body = data.get("data") or {}
+        cpu = body.get("cpu") if isinstance(body.get("cpu"), dict) else {}
+        memory = body.get("memory") if isinstance(body.get("memory"), dict) else {}
+        disk = body.get("disk") if isinstance(body.get("disk"), dict) else {}
+        quota = (
+            disk.get("workspaceQuota")
+            if isinstance(disk.get("workspaceQuota"), dict)
+            else {}
+        )
+        # Backward compat: agents pre-quota-rework still ship `disk.lvm`.
+        # We map the legacy thinPoolSizeGb into the new pool total when the
+        # new field is absent so a partial fleet upgrade keeps capacity
+        # rows populated until every agent ships the workspace-quota build.
+        legacy_lvm = disk.get("lvm") if isinstance(disk.get("lvm"), dict) else {}
+        network = body.get("network") if isinstance(body.get("network"), dict) else {}
+
+        updates = {}
+        _set_if_int(updates, "cpu_cores", cpu.get("cores"))
+        _set_if_str(updates, "cpu_model", cpu.get("model"), max_length=255)
+        _set_if_int(updates, "ram_total_mb", memory.get("totalMb"))
+        _set_if_int(updates, "disk_total_gb", disk.get("rootTotalGb"))
+        _set_if_str(updates, "filesystem", disk.get("filesystem"), max_length=64)
+        _set_if_int(updates, "nic_speed_mbps", network.get("speedMbps"))
+
+        quota_available = quota.get("available")
+        legacy_available = legacy_lvm.get("available")
+        if quota_available is False or (
+            quota_available is None and legacy_available is False
+        ):
+            updates["workspace_pool_total_gb"] = None
+            updates["workspace_pool_free_gb"] = None
+            updates["workspace_pool_mount"] = ""
+            updates["workspace_hard_enforcement"] = False
+        else:
+            total_gb = quota.get("totalGb")
+            if total_gb is None:
+                total_gb = legacy_lvm.get("thinPoolSizeGb")
+            _set_if_int(updates, "workspace_pool_total_gb", total_gb)
+            _set_if_int(updates, "workspace_pool_free_gb", quota.get("freeGb"))
+            _set_if_str(
+                updates, "workspace_pool_mount", quota.get("mountPath"), max_length=255
+            )
+            if "hardEnforced" in quota:
+                updates["workspace_hard_enforcement"] = bool(quota.get("hardEnforced"))
+
+        updates["capacity_updated_at"] = timezone.now()
+        for field, value in updates.items():
+            setattr(agent, field, value)
+        agent.save(update_fields=list(updates))
 
     async def _cache_to_redis(self, msg_type, data):
         """수신 데이터를 Redis에 merge 저장. Delta Sync로 부분 데이터만 올 수 있으므로
@@ -866,6 +1000,71 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
         # 보고에서 빠진 컨테이너는 exited로 마킹
         if seen_ids:
             agent.containers.exclude(container_id__in=seen_ids).update(status="exited")
+
+
+def _set_if_int(updates: dict, field: str, value) -> None:
+    if value is None:
+        return
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return
+    if parsed < 0:
+        return
+    updates[field] = parsed
+
+
+def _set_if_str(updates: dict, field: str, value, *, max_length: int) -> None:
+    if value is None:
+        return
+    updates[field] = str(value)[:max_length]
+
+
+def _positive_int_or_none(value) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _container_limit_defaults_from_request(req, updated_at) -> dict:
+    defaults = {
+        "cpu_percent_limit": req.cpu_percent,
+        "memory_mb_limit": req.memory_mb,
+    }
+    target_agent = getattr(req, "target_agent", None)
+    # Only persist the per-container workspace quota when the agent host
+    # actually enforces it. Without quota the limit would be a label that
+    # nothing checks at runtime, which is worse than not showing one.
+    if _agent_supports_workspace_quota(target_agent):
+        defaults["workspace_gb_limit"] = req.workspace_gb
+    if any(value is not None for value in defaults.values()):
+        defaults["limit_updated_at"] = updated_at
+    return defaults
+
+
+def _agent_supports_workspace_quota(agent) -> bool:
+    if agent is None:
+        return False
+    return bool(getattr(agent, "workspace_pool_total_gb", None))
+
+
+def _command_response_from_create_result(data: dict) -> dict:
+    resp_data = data.get("data") or {}
+    success = data.get("success")
+    if success is None:
+        success = bool(resp_data.get("ok"))
+    request_id = data.get("requestId") or resp_data.get("requestId")
+    response = {
+        "type": "command_response",
+        "requestId": request_id,
+        "success": success,
+        "data": resp_data,
+    }
+    if data.get("error"):
+        response["error"] = data.get("error")
+    return response
 
 
 def _normalize_status(state: str) -> str:

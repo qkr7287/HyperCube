@@ -88,6 +88,10 @@
 		custom_ports?: Array<{ host?: number; container?: number; protocol?: string }>;
 		selected_image?: string;
 		allocated_gpu_slice_ids?: (string | number)[];
+		cpu_percent_limit?: number | null;
+		memory_mb_limit?: number | null;
+		workspace_gb_limit?: number | null;
+		workspace_device?: string | null;
 	};
 
 	type MetricsSnapshot = {
@@ -97,7 +101,20 @@
 		memory?: { usage?: number; limit?: number; percent?: number };
 		network?: { rx?: number; tx?: number };
 		disk?: { read?: number; write?: number };
-		gpu?: Array<{ usage?: number | null }> | { usage?: number | null } | null;
+		workspace?: {
+			path?: string;
+			device?: string;
+			projectId?: number;
+			hardGb?: number;
+			sizeGb?: number;
+			usedGb?: number;
+			availableGb?: number;
+			usedPct?: number;
+		} | null;
+		gpu?:
+			| Array<{ usage?: number | null; memoryUsed?: number | null; memoryTotal?: number | null }>
+			| { usage?: number | null; memoryUsed?: number | null; memoryTotal?: number | null }
+			| null;
 	};
 
 	type MetricsHistoryRow = {
@@ -303,14 +320,17 @@
 			{
 				recorded_at: snapshot.timestamp,
 				cpu_usage: snapshot.cpu?.usage ?? 0,
+				cpu_usage_max: snapshot.cpu?.usage ?? 0,
 				memory_usage: snapshot.memory?.usage ?? 0,
 				memory_limit: snapshot.memory?.limit ?? 0,
 				memory_percent: snapshot.memory?.percent ?? 0,
+				memory_percent_max: snapshot.memory?.percent ?? 0,
 				network_rx: snapshot.network?.rx ?? 0,
 				network_tx: snapshot.network?.tx ?? 0,
 				disk_read: snapshot.disk?.read ?? 0,
 				disk_write: snapshot.disk?.write ?? 0,
 				gpu_usage: snapshotGpu(snapshot),
+				gpu_usage_max: snapshotGpu(snapshot),
 			},
 		];
 	}
@@ -543,7 +563,7 @@
 
 	function shouldShowDateOnAxis(rows: MetricsHistoryRow[]): boolean {
 		if (rows.length === 0) return false;
-		if (selectedRange === '24h' || selectedRange === '7d') return true;
+		if (selectedRange === '24h') return true;
 
 		const first = new Date(rows[0].recorded_at);
 		const last = new Date(rows[rows.length - 1].recorded_at);
@@ -560,6 +580,24 @@
 	);
 	let rangeLabel = $derived(RANGE_OPTIONS.find((o) => o.key === selectedRange)?.label ?? '');
 	let chartGroup = $derived(`hc-container-${containerId}`);
+	let cpuQuotaCores = $derived(container?.cpu_percent_limit ? container.cpu_percent_limit / 100 : null);
+	let cpuAxisLabel = $derived(cpuQuotaCores ? `CPU % (of ${formatCoreLimit(cpuQuotaCores)} quota)` : 'CPU % (of host 전체)');
+	let cpuDenominatorText = $derived(
+		cpuQuotaCores
+			? `분모: cpu_quota = ${container?.cpu_percent_limit} (= ${formatCoreLimit(cpuQuotaCores)})`
+			: '분모: host 전체',
+	);
+	let memoryQuotaGb = $derived(container?.memory_mb_limit ? container.memory_mb_limit / 1024 : null);
+	let memoryAxisLabel = $derived(memoryQuotaGb ? `Memory % (of ${formatGb(memoryQuotaGb)} GB quota)` : 'Memory % (of host 전체)');
+	let memoryDenominatorText = $derived(memoryQuotaGb ? `분모: memory_limit = ${formatGb(memoryQuotaGb)} GB` : '분모: host 전체');
+
+	function formatCoreLimit(value: number): string {
+		return Number.isInteger(value) ? `${value} cores` : `${value.toFixed(1)} cores`;
+	}
+
+	function formatGb(value: number): string {
+		return Number.isInteger(value) ? String(value) : value.toFixed(1);
+	}
 
 	function maskEnvValue(value: string): string {
 		if (!value) return '-';
@@ -608,6 +646,7 @@
 		const last = gpuMemPctSeries.length ? gpuMemPctSeries[gpuMemPctSeries.length - 1] : 0;
 		return last > 0 ? last : null;
 	});
+	let hasGpuAllocated = $derived((container?.allocated_gpu_slice_ids?.length ?? 0) > 0);
 	let hasGpuMemHistory = $derived(hasGpuAllocated || gpuMemValid.length > 0);
 	let historyShowsDateOnAxis = $derived(shouldShowDateOnAxis(history));
 	let historyLabels = $derived(
@@ -736,7 +775,6 @@
 		...THRESHOLD_LINES,
 	]);
 
-	let hasGpuAllocated = $derived((container?.allocated_gpu_slice_ids?.length ?? 0) > 0);
 	let hasGpuHistory = $derived(
 		hasGpuAllocated || history.some((row) => typeof row.gpu_usage === 'number'),
 	);
@@ -962,6 +1000,10 @@
 					{memoryHelp}
 					{networkHelp}
 					{diskHelp}
+					workspaceHelp="컨테이너별 /workspace XFS project quota 사용량입니다. 분모는 요청 시 승인된 workspace quota(hard limit)입니다."
+					cpuPercentLimit={container.cpu_percent_limit}
+					memoryMbLimit={container.memory_mb_limit}
+					workspaceGbLimit={container.workspace_gb_limit}
 				/>
 			</section>
 
@@ -1064,13 +1106,13 @@
 					<div class="chart-head">
 						<h3>CPU 사용률</h3>
 					</div>
-					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} datasets={cpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
+					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} datasets={cpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} yAxisLabel={cpuAxisLabel} denominatorText={cpuDenominatorText} />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
 						<h3>메모리 사용률</h3>
 					</div>
-					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} datasets={memoryDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
+					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} datasets={memoryDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} yAxisLabel={memoryAxisLabel} denominatorText={memoryDenominatorText} />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">

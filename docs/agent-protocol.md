@@ -13,6 +13,14 @@ Bidirectional command routing over WebSocket. 명령은 두 출처에서 발행�
 
 응답은 `command_response` (최종 결과) 또는 `command_progress` (진행률, 장기 명령 한정). 자세한 envelope과 routing 동작은 `agent-payload-contract.md` 참조.
 
+Agent가 backend에 직접 push하는 telemetry 메시지 중 `capacity_report`는
+command 응답이 아니다. `MonitoringConsumer`가 수신 즉시 `Agent.cpu_cores`,
+`ram_total_mb`, `disk_total_gb`, `workspace_pool_total_gb`,
+`workspace_pool_free_gb`, `workspace_pool_mount`,
+`workspace_hard_enforcement`, `nic_speed_mbps`, `filesystem`,
+`capacity_updated_at`을 갱신한다. 전체 schema는
+`agent-payload-contract.md`의 `type: capacity_report`를 따른다.
+
 ## Envelope
 
 ```
@@ -580,6 +588,35 @@ agent 구현: `Memory = memory_mb * 1024 * 1024`, `CpuPeriod = 100000`,
 
 `create_container.params.workspace` is optional. Existing agents must preserve
 the old behavior when it is absent.
+
+Resource-limit create requests also include `params.hostConfig`:
+
+```json
+{
+  "hostConfig": {
+    "memory": 17179869184,
+    "memorySwap": 17179869184,
+    "cpuQuota": 400000,
+    "cpuPeriod": 100000,
+    "oomKillDisable": false
+  },
+  "workspace": {
+    "hardGb": 100,
+    "mountTarget": "/workspace"
+  },
+  "sharedMounts": [
+    {"source": "/mnt/datasets", "target": "/datasets", "readOnly": true},
+    {"source": "/mnt/models", "target": "/models", "readOnly": true}
+  ]
+}
+```
+
+`workspace.hardGb` and `sharedMounts` are omitted when the target Agent has no
+workspace quota pool (`workspace_pool_total_gb` null). The backend accepts both
+legacy `command_response` and the agent sprint message `create_container_result`.
+Include `requestId` whenever possible; if it is absent, backend only updates an
+already-known `Container` by `containerId` and `data.workspace.path`
+(`data.workspace.device` is still accepted as a legacy alias).
 
 ```json
 {

@@ -174,11 +174,18 @@ def apply_workspace_metadata_from_response(
     *,
     now=None,
 ) -> None:
-    if not request.workspace_enabled_snapshot:
-        return
     now = now or timezone.now()
     template = request.template
     response_workspace = response_workspace or {}
+    limit_fields = _workspace_limit_fields_from_response(container, response_workspace, now)
+    if not response_workspace:
+        limit_fields.extend(
+            field for field in _clear_unreported_workspace_limit(container) if field not in limit_fields
+        )
+    if not request.workspace_enabled_snapshot:
+        if limit_fields:
+            container.save(update_fields=limit_fields)
+        return
     max_hours = request.requested_max_runtime_hours or (
         template.default_max_runtime_hours if template else None
     )
@@ -208,7 +215,7 @@ def apply_workspace_metadata_from_response(
     container.workspace_runtime_expires_at = runtime_expires_at
     container.workspace_token_ref = request.workspace_token_ref
     container.workspace_token_expires_at = request.workspace_token_expires_at
-    container.save(update_fields=[
+    update_fields = [
         "workspace_enabled",
         "workspace_kind",
         "workspace_internal_port",
@@ -220,7 +227,65 @@ def apply_workspace_metadata_from_response(
         "workspace_token_ref",
         "workspace_token_expires_at",
         "last_seen",
-    ])
+    ]
+    update_fields.extend(field for field in limit_fields if field not in update_fields)
+    container.save(update_fields=update_fields)
+
+
+def _workspace_limit_fields_from_response(
+    container: Container,
+    response_workspace: dict,
+    now,
+) -> list[str]:
+    update_fields: list[str] = []
+    # `path` is the new wire (mount path under /var/lib/hypercube/workspaces);
+    # `device` / `mountPoint` are still accepted so a pre-rework agent push
+    # does not blank the column during a partial fleet upgrade.
+    device = (
+        response_workspace.get("path")
+        or response_workspace.get("mountPoint")
+        or response_workspace.get("device")
+        or response_workspace.get("workspaceDevice")
+    )
+    if device:
+        container.workspace_device = str(device)[:255]
+        update_fields.append("workspace_device")
+
+    project_id = _positive_int(
+        response_workspace.get("projectId")
+        or response_workspace.get("project_id")
+    )
+    if project_id:
+        container.workspace_project_id = project_id
+        update_fields.append("workspace_project_id")
+
+    hard_gb = _positive_int(
+        response_workspace.get("hardGb")
+        or response_workspace.get("sizeGb")
+        or response_workspace.get("size_gb")
+    )
+    if hard_gb and not container.workspace_gb_limit:
+        container.workspace_gb_limit = hard_gb
+        container.limit_updated_at = now
+        update_fields.extend(["workspace_gb_limit", "limit_updated_at"])
+
+    if update_fields:
+        update_fields.append("last_seen")
+    return update_fields
+
+
+def _clear_unreported_workspace_limit(container: Container) -> list[str]:
+    update_fields: list[str] = []
+    if container.workspace_gb_limit is not None:
+        container.workspace_gb_limit = None
+        update_fields.append("workspace_gb_limit")
+    if container.workspace_device:
+        container.workspace_device = None
+        update_fields.append("workspace_device")
+    if container.workspace_project_id is not None:
+        container.workspace_project_id = None
+        update_fields.append("workspace_project_id")
+    return update_fields
 
 
 def delete_workspace_token_ref(token_ref: str) -> None:

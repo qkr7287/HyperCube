@@ -43,6 +43,7 @@ records before dispatching `create_container.gpus`.
 | `/__debug__/` | — | DEBUG only | django-debug-toolbar |
 
 App APIs는 `/api/` 아래에 mount: `apps.agents.urls`, `apps.containers.urls`, `apps.users.urls`, `apps.metrics.urls`.
+Container APIs are also mounted under `/api/v1/` for the resource-limit rollout contract.
 
 ## Authentication
 
@@ -76,6 +77,13 @@ POST /api/auth/token/
 
 **자동 승인 동작 주의**: `POST /api/agents/`는 hostname 중복 시 기존 Agent의 token을 그대로 반환. 새 Agent면 즉시 `status=approved`, `approved_at=now`, token 발급. IP는 백엔드가 관측한 nginx peer (X-Real-IP > REMOTE_ADDR > X-Forwarded-For)로 강제.
 
+Agent 응답에는 host capacity/report 상태도 포함된다:
+`cpu_cores`, `cpu_model`, `ram_total_mb`, `disk_total_gb`,
+`workspace_pool_total_gb`, `workspace_pool_free_gb`, `workspace_pool_mount`,
+`workspace_hard_enforcement`, `nic_speed_mbps`, `filesystem`, `target_users`,
+`safety_margin`, `capacity_updated_at`. `capacity_report` WebSocket 메시지가
+도착하면 backend가 이 필드를 갱신한다.
+
 ## Containers — admin 전용
 
 `apps.containers.viewsets.ContainerViewSet` (ModelViewSet, IsAdmin).
@@ -83,6 +91,8 @@ POST /api/auth/token/
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/containers/` | GET / POST | 전체 컨테이너 CRUD (admin) |
+| `/api/containers/recommend/?template=<uuid>&agent=<uuid>` | GET | 인증 사용자용 자원 한도 추천. template weight + agent capacity 기반으로 `cpu_percent`, `memory_mb`, `workspace_gb` 반환 |
+| `/api/v1/containers/recommend/?template=<uuid>&agent=<uuid>` | GET | Same recommendation endpoint exposed at the sprint contract path. |
 | `/api/containers/{id}/` | GET / PATCH / DELETE | |
 
 **필터**: `?agent=<uuid>`, `?status=`, `?requester=<uuid>`, `?search=name|image`.
@@ -95,7 +105,7 @@ POST /api/auth/token/
 |----------|--------|-------------|
 | `/api/my-containers/` | GET | 자기 컨테이너 목록 |
 | `/api/my-containers/{id}/` | GET | 상세 |
-| `/api/my-containers/{id}/current-metrics/` | GET | Redis 캐시에서 실시간 cpu/memory/network/disk |
+| `/api/my-containers/{id}/current-metrics/` | GET | Redis 캐시에서 실시간 cpu/memory/network/disk/workspace |
 | `/api/my-containers/{id}/metrics-history/?range=1h&limit=240` | GET | DB에서 시계열 (range: `1m/5m/1h/6h/24h/7d`, limit max 500) |
 | `/api/my-containers/{id}/inspect/` | GET | Agent에 inspect 명령을 보내고 응답까지 동기 대기 (최대 15s). state.health, mounts, networkSettings 등 포함 |
 | `/api/my-containers/{id}/control/` | POST | 라이프사이클 제어. body `{"action": "start\|stop\|restart\|pause\|unpause\|kill"}`. remove 는 `/api/requests/` (action=delete) 로 분리. |
@@ -103,6 +113,18 @@ POST /api/auth/token/
 | `/api/my-containers/{id}/processes/?sortBy=cpu&limit=20` | GET | 컨테이너 내부 process top-N. agent `container_processes` 명령 dispatch + 동기 대기 (15s). sortBy: `cpu` \| `mem`, limit 1~100. minimal image 도 동작 (호스트 관찰). |
 | `/api/my-containers/{id}/console-sessions/?limit=50` | GET | B4 Console exec audit 조회. 세션 레벨만 (user / cmd / opened_at / closed_at / duration_seconds / exit_code / close_reason). 키스트로크 미기록. limit max 200. |
 | `/api/my-containers/{id}/update-limits/` | POST | P0 자원 한도 / 재시작 정책 수정. body `{memory_mb?, cpu_percent?, restart_policy?, restart_max_retry?}`. agent `update_container` 명령 dispatch + 동기 대기. 한 필드만 보내도 그것만 갱신. |
+
+Container 응답에는 현재 limit snapshot 필드가 포함된다:
+`cpu_percent_limit`, `memory_mb_limit`, `workspace_gb_limit`,
+`workspace_device` (mount path), `workspace_project_id` (XFS project id),
+`limit_updated_at`. `cpu_percent_limit`은 100 = 1 core quota 기준이다.
+생성 요청의 resource limit 값은 Agent 성공 응답으로 Container row가
+만들어질 때 이 snapshot으로 복사된다. `update-limits` 성공 시
+CPU/메모리 snapshot과 `limit_updated_at`도 갱신된다.
+`current-metrics`는 agent가 보낸 `workspace.usedGb`, `workspace.hardGb`
+(legacy `sizeGb` 도 fallback), `workspace.usedPct`를 그대로 반환하고,
+DB의 `workspace_gb_limit` / `workspace_device` / `workspace_project_id`
+를 보조 분모로 merge한다.
 
 ## Workspaces — `/api/workspaces/`
 
@@ -141,7 +163,14 @@ Airgap model storage. No external URL import path is exposed.
   "cpu": { "usage": 605.2, "cores_quota": 8, "usage_pct": 75.65 },
   "memory": { "usage": 1073741824, "limit": 4294967296, "percent": 25.0 },
   "network": { "rx": 12345, "tx": 6789 },
-  "disk": { "read": 12698, "write": 4194304 }
+  "disk": { "read": 12698, "write": 4194304 },
+  "workspace": {
+    "device": "/dev/vg0/cid_abc123def456",
+    "sizeGb": 100,
+    "usedGb": 12,
+    "availableGb": 88,
+    "usedPct": 12.0
+  }
 }
 ```
 캐시 미스 시 모든 값 null.
@@ -163,6 +192,11 @@ Airgap model storage. No external URL import path is exposed.
 
 **Filter**: `?kind=` (`compose` | `image`), `?search=name|description`.
 
+Template payload에는 자원 추천/하한 필드가 포함된다:
+`cpu_weight`, `ram_weight`, `disk_weight`, `min_cpu_percent`,
+`min_memory_mb`, `min_workspace_gb`. 추천 helper는 Agent capacity와 이 weight를
+조합하고, 요청값 검증은 min floor 아래 값을 거부한다.
+
 ## Requests — `/api/requests/`
 
 컨테이너 생성/삭제 요청. `apps.containers.viewsets.ContainerRequestViewSet`.
@@ -175,6 +209,12 @@ Airgap model storage. No external URL import path is exposed.
 | `/api/requests/{id}/` | DELETE | Authenticated | pending/rejected/failed 상태만 삭제 가능 |
 | `/api/requests/{id}/approve/` | POST | **IsAdmin** | 승인 + Agent에 명령 발송 (compose_up / create_container / delete_container) |
 | `/api/requests/{id}/reject/` | POST | **IsAdmin** | 반려 |
+
+`action=create` 요청은 resource limit 필드를 받을 수 있다:
+`cpu_percent`, `memory_mb`, `workspace_gb`. 모두 optional이며 누락 시
+backend가 `target_agent` capacity와 template weight로 추천값을 계산해 저장한다.
+Template의 `min_cpu_percent`, `min_memory_mb`, `min_workspace_gb`보다 작은 값은
+`400 Bad Request`로 거부된다.
 
 approve 시 dispatch 흐름은 `agent-protocol.md` 참조. requestId = ContainerRequest.id로 사용되며, Agent의 `command_response`/`command_progress`가 같은 requestId로 라우팅된다.
 

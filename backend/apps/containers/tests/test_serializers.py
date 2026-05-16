@@ -32,6 +32,12 @@ class ContainerSerializerTest(TestCase):
             "workspace_max_runtime_hours",
             "workspace_runtime_expires_at",
             "workspace_token_expires_at",
+            "cpu_percent_limit",
+            "memory_mb_limit",
+            "workspace_gb_limit",
+            "workspace_device",
+            "workspace_project_id",
+            "limit_updated_at",
         }
         self.assertEqual(set(serializer.data.keys()), expected)
 

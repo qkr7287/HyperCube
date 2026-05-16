@@ -17,6 +17,8 @@
 		enableZoom = false,
 		markLines = [],
 		height = 200,
+		yAxisLabel = '',
+		denominatorText = '',
 	}: {
 		labels?: string[];
 		tooltipLabels?: string[];
@@ -26,11 +28,19 @@
 		enableZoom?: boolean;
 		markLines?: MarkLineEntry[];
 		height?: number;
+		yAxisLabel?: string;
+		denominatorText?: string;
 	} = $props();
 </script>
 
 <div class="chart-shell" style="--chart-h: {height}px">
-	<EChartLine {labels} {tooltipLabels} series={datasets} {yFormat} height="100%" {group} {enableZoom} {markLines} />
+	{#if yAxisLabel || denominatorText}
+		<div class="chart-denominator">
+			{#if yAxisLabel}<span>{yAxisLabel}</span>{/if}
+			{#if denominatorText}<em>{denominatorText}</em>{/if}
+		</div>
+	{/if}
+	<EChartLine {labels} {tooltipLabels} series={datasets} {yFormat} height="100%" {group} {enableZoom} {markLines} yAxisName={yAxisLabel} />
 </div>
 
 <style>
@@ -43,5 +53,29 @@
 		min-height: 0;
 		height: clamp(100px, 11vh, var(--chart-h, 180px));
 		overflow: hidden;
+	}
+	.chart-denominator {
+		position: absolute;
+		top: 0;
+		right: 0;
+		z-index: 2;
+		display: inline-flex;
+		align-items: baseline;
+		gap: 8px;
+		max-width: 100%;
+		padding: 1px 2px 3px 8px;
+		background: linear-gradient(90deg, rgba(18, 23, 32, 0), rgba(18, 23, 32, 0.96) 18%);
+		color: rgba(203, 213, 225, 0.86);
+		font-size: 10.5px;
+		font-weight: 800;
+		white-space: nowrap;
+		pointer-events: none;
+	}
+	.chart-denominator em {
+		color: rgba(148, 163, 184, 0.82);
+		font-style: normal;
+		font-weight: 700;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 </style>

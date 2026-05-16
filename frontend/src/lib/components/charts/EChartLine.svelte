@@ -26,6 +26,7 @@
 		group,
 		enableZoom = false,
 		markLines = [],
+		yAxisName = '',
 	}: {
 		labels?: string[];
 		tooltipLabels?: string[];
@@ -40,10 +41,11 @@
 		enableZoom?: boolean;
 		// 이벤트 시각을 차트 위 vertical line 으로 표시 (MarkLineComponent 사용)
 		markLines?: MarkLineEntry[];
+		yAxisName?: string;
 	} = $props();
 
 	let option = $derived<EChartsOption>(
-		buildOption(labels, tooltipLabels, series, yFormat, showLegend, enableZoom, markLines),
+		buildOption(labels, tooltipLabels, series, yFormat, showLegend, enableZoom, markLines, yAxisName),
 	);
 
 	function percentDecimals(seriesList: LineSeries[]): number {
@@ -97,6 +99,7 @@
 		legend: boolean | undefined,
 		zoom: boolean,
 		marks: MarkLineEntry[],
+		axisName: string,
 	): EChartsOption {
 		const decimals = percentDecimals(seriesList);
 		const showLegendResolved = legend ?? seriesList.length > 1;
@@ -108,7 +111,7 @@
 			animationEasingUpdate: 'cubicInOut',
 			grid: {
 				top: showLegendResolved ? 28 : 6,
-				left: 4,
+				left: axisName ? 34 : 4,
 				right: 6,
 				bottom: hasDateLabels ? 24 : 18,
 				containLabel: true,
@@ -176,6 +179,10 @@
 			yAxis: {
 				type: 'value',
 				min: 0,
+				name: axisName || undefined,
+				nameLocation: 'middle',
+				nameGap: 28,
+				nameTextStyle: { color: '#94a3b8', fontSize: 10, fontWeight: 700 },
 				// percent 차트는 항상 0~100 범위 강제. 임계 markLine (80/90 등) 이
 				// 데이터 max 보다 위에 있어도 화면 안에 보이도록. 작은 값일 때 그래프가
 				// 바닥에 깔리는 트레이드오프는 capacity 시야 우위로 수용.

@@ -47,6 +47,7 @@ HyperCube WebSocket payload 스펙. Agent / Backend / Frontend 세 layer 가 같
 | `type` | 방향 | 빈도 | 용도 | Backend 처리 |
 |--------|------|------|------|--------------|
 | `system_metrics` | Agent → Backend | 5~15s | 호스트 메트릭 (Delta Sync) | Redis 캐시 merge + Browser broadcast + Celery → PG |
+| `capacity_report` | Agent → Backend | agent start / capacity change | host 정적 capacity와 workspace quota pool 상태 | `Agent` capacity columns 갱신 + server group broadcast |
 | `container_metrics` | Agent → Backend | stats stream | 컨테이너 메트릭 | 동일 (per-container 캐시) |
 | `containers` | Agent → Backend | 60s snapshot | 컨테이너 목록 sync | Redis (10분 TTL) + Container 모델 update_or_create |
 | `command` | Browser → Backend → Agent | on-demand | 명령 발행 | requestId pending map 등록 후 Agent 채널로 forward |
@@ -64,6 +65,80 @@ HyperCube WebSocket payload 스펙. Agent / Backend / Frontend 세 layer 가 같
 WS path:
 - `/ws/server/{server_id}/` → `MonitoringConsumer` (Agent + 그 서버 보는 Browser)
 - `/ws/global/` → `GlobalEventsConsumer` (모든 인증 Browser, global 이벤트만)
+
+## type: `capacity_report`
+
+Agent가 host capacity를 정적 snapshot으로 보고한다. 일부 collector 실패는
+nullable로 허용하며, backend는 도착한 필드만 `Agent` 모델에 반영한다.
+`disk.workspaceQuota.available=false`이면 pool 컬럼을 모두 비워 workspace
+quota 기능을 legacy mode로 취급한다. Pre-quota agent (LVM thin 시절 빌드) 는
+아직 `disk.lvm.*` 만 보낼 수 있는데, backend 는 `lvm.thinPoolSizeGb` 를
+`workspace_pool_total_gb` 로 fallback 해서 받는다 (전체 fleet 가 quota 빌드로
+넘어갈 때까지의 transition shim).
+
+```jsonc
+{
+  "type": "capacity_report",
+  "agentId": "<agent_uuid>",
+  "timestamp": "2026-05-16T15:00:00Z",
+  "data": {
+    "cpu": {
+      "cores": 24,
+      "model": "Intel Xeon Gold 6248 @ 2.50GHz",
+      "architecture": "x64"
+    },
+    "memory": { "totalMb": 262144 },
+    "disk": {
+      "rootTotalGb": 3700,
+      "rootUsedGb": 120,
+      "filesystem": "ext4",
+      "workspaceQuota": {
+        "available": true,
+        "mountPath": "/var/lib/hypercube/workspaces",
+        "totalGb": 2000,
+        "freeGb": 1850,
+        "hardEnforced": true
+      }
+    },
+    "network": {
+      "primaryInterface": "eth0",
+      "speedMbps": 10000
+    }
+  }
+}
+```
+
+Backend mapping:
+- `cpu.cores` → `Agent.cpu_cores`
+- `cpu.model` → `Agent.cpu_model`
+- `memory.totalMb` → `Agent.ram_total_mb`
+- `disk.rootTotalGb` → `Agent.disk_total_gb`
+- `disk.filesystem` → `Agent.filesystem`
+- `disk.workspaceQuota.totalGb` → `Agent.workspace_pool_total_gb`
+- `disk.workspaceQuota.freeGb` → `Agent.workspace_pool_free_gb`
+- `disk.workspaceQuota.mountPath` → `Agent.workspace_pool_mount`
+- `disk.workspaceQuota.hardEnforced` → `Agent.workspace_hard_enforcement`
+- `network.speedMbps` → `Agent.nic_speed_mbps`
+- receive time → `Agent.capacity_updated_at`
+
+Legacy fallback (LVM 빌드 agent): `disk.lvm.thinPoolSizeGb` →
+`Agent.workspace_pool_total_gb` (그 외 quota 컬럼은 null/false).
+
+## Backend limit snapshot state
+
+`ContainerRequest` stores the user's requested or backend-recommended
+`cpu_percent`, `memory_mb`, and `workspace_gb` while the request is pending.
+After a successful `create_container` `command_response`, backend copies those
+values to `Container.cpu_percent_limit`, `memory_mb_limit`, and
+`workspace_gb_limit`, then sets `limit_updated_at`. `update_container` success
+from `/api/my-containers/{id}/update-limits/` refreshes the CPU/memory snapshot.
+
+Backend-agent `create_container.params.hostConfig`, workspace quota
+`workspace`, and `sharedMounts` payload extension is now active for new create
+requests. When the target Agent reports a workspace quota pool
+(`workspace_pool_total_gb` present), backend also sends
+`params.workspace.hardGb`, `params.workspace.mountTarget`, and read-only NFS
+`sharedMounts`.
 
 ## type: `system_metrics`
 
@@ -202,6 +277,15 @@ Docker container 단위. Agent 가 stats stream 으로 모음.
     "disk": {
       "read": 12698,                           // 누적
       "write": 4194304
+    },
+
+    "workspace": {
+      "path": "/var/lib/hypercube/workspaces/abc123def456",
+      "projectId": 100456,
+      "hardGb": 100,
+      "usedGb": 12,
+      "availableGb": 88,
+      "usedPct": 12.0
     },
 
     "gpu": {                                    // optional, 컨테이너에 GPU 할당된 경우만
@@ -485,6 +569,68 @@ Agent online ↔ offline 전환 시 `GlobalEventsConsumer` group으로 broadcast
 - 2026-04-29 (`7f82ff8`): `containers` / `command_progress` / `heartbeat` / `connection` /
   `agent_status_change` 메시지 카탈로그에 추가. 기존 system/container metrics 변경 없음.
 - 2026-04-27: 초안. memory.available + gpu 배열 표준화 명시.
+## `create_container` resource limit payload
+
+Backend sends resource limits under `command=create_container`,
+`params.hostConfig`. Field names are lower camel case in the backend-agent
+contract; the agent maps them to Docker `HostConfig` keys.
+
+```json
+{
+  "type": "command",
+  "command": "create_container",
+  "requestId": "<container-request-id>",
+  "params": {
+    "hostConfig": {
+      "memory": 17179869184,
+      "memorySwap": 17179869184,
+      "cpuQuota": 400000,
+      "cpuPeriod": 100000,
+      "oomKillDisable": false
+    },
+    "workspace": {
+      "hardGb": 100,
+      "mountTarget": "/workspace"
+    },
+    "sharedMounts": [
+      {"source": "/mnt/datasets", "target": "/datasets", "readOnly": true},
+      {"source": "/mnt/models", "target": "/models", "readOnly": true}
+    ]
+  }
+}
+```
+
+`workspace.hardGb` and `sharedMounts` are included only when the target Agent
+reports a workspace quota pool (`workspace_pool_total_gb` present). Existing
+workspace/Jupyter metadata (`kind`, `token`, `port`, `baseUrl`, `workdir`) is
+merged into the same `params.workspace` object.
+
+Agent reports the realised workspace metadata in either `command_response` or
+`create_container_result`. `requestId` is preferred; without it, backend only
+updates an already-known `Container` by `containerId`:
+
+```json
+{
+  "type": "create_container_result",
+  "requestId": "<container-request-id>",
+  "data": {
+    "ok": true,
+    "containerId": "05eddec05865...",
+    "workspace": {
+      "path": "/var/lib/hypercube/workspaces/05eddec05865",
+      "projectId": 100789,
+      "hardGb": 100
+    }
+  }
+}
+```
+
+Backend stores `workspace.path` on `Container.workspace_device`,
+`workspace.projectId` on `Container.workspace_project_id`, and
+`workspace.hardGb` on `Container.workspace_gb_limit`. Legacy wire names
+(`device` / `mountPoint` / `sizeGb`) are still accepted so a partially
+upgraded fleet keeps populating the columns during the rollout.
+
 ## Optional workspace payload
 
 When a template enables ML workspace access, backend `create_container` includes

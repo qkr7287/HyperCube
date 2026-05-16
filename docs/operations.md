@@ -429,6 +429,34 @@ Plaintext Jupyter tokens are stored only in Redis with
 `WORKSPACE_TOKEN_TTL_SECONDS`; Postgres stores only `workspace_token_ref` and
 expiry metadata.
 
+### Workspace quota host gate (XFS prjquota on loop file)
+
+Container resource limits and quota-aware KPI display are implemented in
+HyperCube core, but per-container `/workspace` hard isolation requires a
+host/agent runtime gate before it can be called complete on server 63.
+
+The deployment plan moved from LVM thin to XFS project quota on a
+loop-mounted file (option 4b) on 2026-05-16 — see `progress.md` for the
+decision record. The earlier LVM runbooks have been moved to
+`docs/runbooks/archived/lvm-thin-workspace-*` and are superseded.
+
+Use `docs/runbooks/workspace-quota-preflight.sh` before enabling quota mode.
+The read-only smoke command is:
+
+```bash
+bash docs/runbooks/workspace-quota-preflight.sh hypercube-agent-dev-63 hc-backend
+```
+
+At minimum the host must expose `xfs_quota` and `xfsprogs`, the loop-mounted
+xfs file at `/var/lib/hypercube/workspaces` must be mounted with the `prjquota`
+option, and the agent runtime must be able to invoke `xfs_quota -x -c` against
+it. The backend Agent row must show `workspace_pool_total_gb` non-null.
+
+The operator runs the host setup once (five commands — see
+`docs/runbooks/workspace-quota-full-validation.md` §1). In a state where the
+host has no loop file mounted with prjquota, backend correctly stays in legacy
+mode and omits `params.workspace.hardGb` / `sharedMounts`.
+
 ### Model asset local storage
 
 Track 4a stores uploaded model files on the HyperCube backend host under

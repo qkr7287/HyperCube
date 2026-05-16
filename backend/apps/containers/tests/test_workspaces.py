@@ -8,6 +8,7 @@ from rest_framework.test import APITestCase
 
 from apps.containers.models import ContainerRequest, ContainerTemplate
 from apps.containers.services.workspace import (
+    apply_workspace_metadata_from_response,
     consume_workspace_ticket,
     issue_workspace_open_ticket,
     workspace_upstream_endpoint,
@@ -158,6 +159,43 @@ class WorkspaceAPITest(APITestCase):
         self.assertEqual(first_payload["cid"], self.container.container_id)
         with self.assertRaises(PermissionDenied):
             consume_workspace_ticket(ticket, self.container)
+
+    def test_apply_metadata_clears_unreported_workspace_limit(self):
+        self.container.workspace_gb_limit = 50
+        self.container.workspace_device = "/var/lib/hypercube/workspaces/wsabc1234567"
+        self.container.workspace_project_id = 100777
+        self.container.save(update_fields=[
+            "workspace_gb_limit",
+            "workspace_device",
+            "workspace_project_id",
+            "last_seen",
+        ])
+
+        apply_workspace_metadata_from_response(self.request, self.container, None)
+
+        self.container.refresh_from_db()
+        self.assertIsNone(self.container.workspace_gb_limit)
+        self.assertIsNone(self.container.workspace_device)
+        self.assertIsNone(self.container.workspace_project_id)
+
+    def test_apply_metadata_with_quota_response_stores_path_and_project_id(self):
+        apply_workspace_metadata_from_response(
+            self.request,
+            self.container,
+            {
+                "path": "/var/lib/hypercube/workspaces/wsabc1234567",
+                "projectId": 100888,
+                "hardGb": 75,
+            },
+        )
+
+        self.container.refresh_from_db()
+        self.assertEqual(
+            self.container.workspace_device,
+            "/var/lib/hypercube/workspaces/wsabc1234567",
+        )
+        self.assertEqual(self.container.workspace_project_id, 100888)
+        self.assertEqual(self.container.workspace_gb_limit, 75)
 
     @patch("apps.containers.services.deployment.command_router.get_agent_channel", return_value="agent-channel")
     @patch("apps.containers.services.deployment.command_router.record_pending")

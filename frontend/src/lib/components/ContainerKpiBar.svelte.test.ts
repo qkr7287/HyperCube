@@ -157,6 +157,60 @@ describe('ContainerKpiBar', () => {
 		expect(hero.textContent).toMatch(/M/);
 	});
 
+	it('shows quota limit chips and used over limit raw text', () => {
+		const { container } = render(ContainerKpiBar, {
+			props: {
+				...baseProps,
+				cpuPercentLimit: 400,
+				memoryMbLimit: 16 * 1024
+			}
+		});
+		const cpuCard = container.querySelectorAll('.kpi')[0] as HTMLElement;
+		const memCard = container.querySelectorAll('.kpi')[1] as HTMLElement;
+		expect(cpuCard.querySelector('.limit-chip')?.textContent).toContain('limit 4 cores');
+		expect(memCard.querySelector('.limit-chip')?.textContent).toContain('limit 16 GB');
+		expect(cpuCard.querySelector('.kpi-hero')?.textContent).toContain('/ 4 cores');
+		expect(memCard.querySelector('.kpi-hero')?.textContent).toContain('/ 16G');
+	});
+
+	it('shows unlimited when container limit fields are missing', () => {
+		const { container } = render(ContainerKpiBar, { props: baseProps });
+		const cpuCard = container.querySelectorAll('.kpi')[0] as HTMLElement;
+		expect(cpuCard.querySelector('.limit-chip')?.textContent).toContain('unlimited');
+	});
+
+	it('adds workspace disk card when workspace quota or metric exists', () => {
+		const { container } = render(ContainerKpiBar, {
+			props: {
+				...baseProps,
+				workspaceGbLimit: 100,
+				currentMetrics: {
+					...baseProps.currentMetrics,
+					workspace: { hardGb: 100, usedGb: 12, usedPct: 12, path: '/var/lib/hypercube/workspaces/abc' }
+				}
+			}
+		});
+		const cards = container.querySelectorAll('.kpi');
+		expect(cards.length).toBe(5);
+		expect(screen.getByText('Workspace')).toBeInTheDocument();
+		expect([...container.querySelectorAll('.limit-chip')].some((el) => el.textContent?.includes('limit 100 GB'))).toBe(true);
+	});
+
+	it('falls back to legacy sizeGb wire from a pre-rework agent', () => {
+		const { container } = render(ContainerKpiBar, {
+			props: {
+				...baseProps,
+				workspaceGbLimit: null,
+				currentMetrics: {
+					...baseProps.currentMetrics,
+					workspace: { sizeGb: 80, usedGb: 8, usedPct: 10, device: '/dev/vg0/cid_legacy' }
+				}
+			}
+		});
+		const cards = container.querySelectorAll('.kpi');
+		expect(cards.length).toBe(5);
+	});
+
 	it('memory foot rows show raw bytes alongside %', () => {
 		const { container } = render(ContainerKpiBar, { props: baseProps });
 		const memCard = container.querySelectorAll('.kpi')[1] as HTMLElement;

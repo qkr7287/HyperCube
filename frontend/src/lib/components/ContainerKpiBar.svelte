@@ -31,13 +31,24 @@
 		memory?: { usage?: number; limit?: number; percent?: number };
 		network?: { rx?: number; tx?: number };
 		disk?: { read?: number; write?: number };
+		workspace?: {
+			path?: string;
+			device?: string;
+			projectId?: number;
+			hardGb?: number;
+			sizeGb?: number;
+			usedGb?: number;
+			availableGb?: number;
+			usedPct?: number;
+		} | null;
 		gpu?:
 			| {
-					usage?: number;
-					memoryUsed?: number;
-					memoryTotal?: number;
+					usage?: number | null;
+					memoryUsed?: number | null;
+					memoryTotal?: number | null;
 			  }
-			| Array<{ usage?: number; memoryUsed?: number; memoryTotal?: number }>;
+			| Array<{ usage?: number | null; memoryUsed?: number | null; memoryTotal?: number | null }>
+			| null;
 	};
 
 	type MetricsHistoryRow = {
@@ -79,6 +90,10 @@
 		memoryHelp = '',
 		networkHelp = '',
 		diskHelp = '',
+		workspaceHelp = '',
+		cpuPercentLimit = null,
+		memoryMbLimit = null,
+		workspaceGbLimit = null,
 	}: {
 		currentMetrics: MetricsSnapshot | null;
 		history: MetricsHistoryRow[];
@@ -103,6 +118,10 @@
 		memoryHelp?: string;
 		networkHelp?: string;
 		diskHelp?: string;
+		workspaceHelp?: string;
+		cpuPercentLimit?: number | null;
+		memoryMbLimit?: number | null;
+		workspaceGbLimit?: number | null;
 	} = $props();
 
 	// --- 현재 스냅샷 값 -------------------------------------------------
@@ -111,6 +130,26 @@
 	let memNow = $derived(asNumber(currentMetrics?.memory?.percent));
 	let memUsed = $derived(asNumber(currentMetrics?.memory?.usage));
 	let memLimit = $derived(asNumber(currentMetrics?.memory?.limit));
+	let workspace = $derived(currentMetrics?.workspace ?? null);
+	let memoryQuotaBytes = $derived(memoryMbLimit ? memoryMbLimit * 1024 * 1024 : memLimit);
+	let cpuQuotaCores = $derived(cpuPercentLimit ? cpuPercentLimit / 100 : null);
+	let cpuRawDenominatorCores = $derived(cpuQuotaCores ?? cpuCores);
+	// `hardGb` is the workspace-quota wire; `sizeGb` is the legacy LVM-era
+	// wire — keep both so a partially-upgraded fleet still renders the meter.
+	let workspaceSizeGb = $derived(
+		asNumber(workspace?.hardGb) || asNumber(workspace?.sizeGb) || (workspaceGbLimit ?? 0),
+	);
+	let workspaceUsedGb = $derived(asNumber(workspace?.usedGb));
+	let workspaceUsedPct = $derived(
+		asNumber(workspace?.usedPct) || (workspaceSizeGb > 0 ? (workspaceUsedGb / workspaceSizeGb) * 100 : 0),
+	);
+	let hasWorkspaceMetric = $derived(
+		workspaceSizeGb > 0
+			|| workspaceUsedGb > 0
+			|| Boolean(workspace?.path)
+			|| Boolean(workspace?.device)
+			|| Boolean(workspaceGbLimit),
+	);
 
 	let gpuFirst = $derived(
 		Array.isArray(currentMetrics?.gpu)
@@ -136,16 +175,18 @@
 
 	// --- raw 환산 (평균/피크) --------------------------------------------
 	// limit / cores / memoryTotal 이 0 일 때는 raw 환산이 무의미 → null 표시
-	let cpuAvgCores = $derived(cpuCores > 0 ? (cpuAvg * cpuCores) / 100 : null);
-	let cpuPeakCores = $derived(cpuCores > 0 ? (cpuPeak * cpuCores) / 100 : null);
-	let memAvgBytes = $derived(memLimit > 0 ? (memAvgPct * memLimit) / 100 : null);
-	let memPeakBytes = $derived(memLimit > 0 ? (memPeakPct * memLimit) / 100 : null);
+	let cpuNowCores = $derived(cpuRawDenominatorCores > 0 ? (cpuNow * cpuRawDenominatorCores) / 100 : null);
+	let cpuAvgCores = $derived(cpuRawDenominatorCores > 0 ? (cpuAvg * cpuRawDenominatorCores) / 100 : null);
+	let cpuPeakCores = $derived(cpuRawDenominatorCores > 0 ? (cpuPeak * cpuRawDenominatorCores) / 100 : null);
+	let memAvgBytes = $derived(memoryQuotaBytes > 0 ? (memAvgPct * memoryQuotaBytes) / 100 : null);
+	let memPeakBytes = $derived(memoryQuotaBytes > 0 ? (memPeakPct * memoryQuotaBytes) / 100 : null);
 	let vramAvgBytes = $derived(vramTotal > 0 ? (gpuMemAvg * vramTotal) / 100 : null);
 	let vramPeakBytes = $derived(vramTotal > 0 ? (gpuMemPeak * vramTotal) / 100 : null);
 
 	// --- severity / Δ ---------------------------------------------------
 	let cpuLevel = $derived(severity(cpuNow, 70, 90));
 	let memLevel = $derived(severity(memNow, 75, 90));
+	let workspaceLevel = $derived(severity(workspaceUsedPct, 80, 90));
 	let gpuLevel = $derived(severity(currentGpuUsage ?? 0, 80, 95));
 	let gpuMemLevel = $derived(severity(currentGpuMemPct ?? 0, 80, 95));
 
@@ -166,7 +207,35 @@
 	}
 	function formatBytesShort(v: number | null): string {
 		if (v === null) return '—';
-		return compactBytes(v);
+		return compactBytes(v).replace(/\.0([BKMGTP])$/, '$1');
+	}
+	function formatCoreLimit(v: number): string {
+		return Number.isInteger(v) ? `${v} cores` : `${v.toFixed(1)} cores`;
+	}
+	function formatGb(mb: number): string {
+		const gb = mb / 1024;
+		return Number.isInteger(gb) ? String(gb) : gb.toFixed(1);
+	}
+	function cpuLimitChip(): string {
+		return cpuPercentLimit ? `limit ${formatCoreLimit(cpuPercentLimit / 100)}` : 'unlimited ⚠';
+	}
+	function memoryLimitChip(): string {
+		return memoryMbLimit ? `limit ${formatGb(memoryMbLimit)} GB` : 'unlimited ⚠';
+	}
+	function workspaceLimitChip(): string {
+		return workspaceGbLimit ? `limit ${workspaceGbLimit} GB` : 'unlimited ⚠';
+	}
+	function cpuRawText(): string {
+		if (cpuQuotaCores) return `${formatCores(cpuNowCores)} / ${formatCoreLimit(cpuQuotaCores)}`;
+		return formatCores(cpuNowCores);
+	}
+	function memoryRawText(): string {
+		if (memoryQuotaBytes > 0) return `${formatBytesShort(memUsed)} / ${formatBytesShort(memoryQuotaBytes)}`;
+		return formatBytesShort(memUsed);
+	}
+	function workspaceRawText(): string {
+		if (workspaceSizeGb > 0) return `${workspaceUsedGb.toFixed(1)} GB / ${workspaceSizeGb} GB`;
+		return `${workspaceUsedGb.toFixed(1)} GB`;
 	}
 
 	// hover/focus 시 띄울 bar-tooltip key (예전 meter 의 detail tooltip 복원)
@@ -197,6 +266,8 @@
 	meterClass?: 'memory' | 'gpu' | 'gpu-mem';
 	tipKey: string;
 	tipTitle: string;
+	limitText?: string;
+	denominatorText?: string;
 })}
 	<div class="kpi" data-level={opts.level}>
 		<header class="kpi-head">
@@ -204,8 +275,13 @@
 				{opts.label}
 				{#if opts.help}<InfoTooltip text={opts.help} placement="bottom-start" />{/if}
 			</span>
-			<span class="kpi-chip" data-level={opts.level} title="상태 {levelLabel(opts.level)}">
-				{levelLabel(opts.level)}
+			<span class="chip-stack">
+				<span class="kpi-chip" data-level={opts.level} title="상태 {levelLabel(opts.level)}">
+					{levelLabel(opts.level)}
+				</span>
+				{#if opts.limitText}
+					<span class="limit-chip" title={opts.denominatorText || opts.limitText}>{opts.limitText}</span>
+				{/if}
 			</span>
 		</header>
 
@@ -238,6 +314,7 @@
 					<span><em>현재</em><b>{formatPercent(opts.value, 2)} · {opts.rawText}</b></span>
 					<span><em>{rangeLabel} 평균</em><b>{formatPercent(opts.avg, 1)} · {opts.avgRawText}</b></span>
 					<span><em>{rangeLabel} 피크</em><b>{formatPercent(opts.peak, 1)} · {opts.peakRawText}</b></span>
+					{#if opts.denominatorText}<span><em>분모</em><b>{opts.denominatorText}</b></span>{/if}
 				</span>
 			{/if}
 		</div>
@@ -350,7 +427,7 @@
 		label: 'CPU',
 		help: cpuHelp,
 		value: cpuNow,
-		rawText: formatCores(cpuCores > 0 ? (cpuNow * cpuCores) / 100 : null),
+		rawText: cpuRawText(),
 		avg: cpuAvg,
 		peak: cpuPeak,
 		avgRawText: formatCores(cpuAvgCores),
@@ -361,13 +438,15 @@
 		delta: cpuDelta,
 		tipKey: 'cpu',
 		tipTitle: 'CPU 사용률',
+		limitText: cpuLimitChip(),
+		denominatorText: cpuPercentLimit ? `${formatCoreLimit(cpuPercentLimit / 100)} quota` : 'host 전체',
 	})}
 
 	{@render pctCard({
 		label: '메모리',
 		help: memoryHelp,
 		value: memNow,
-		rawText: formatBytesShort(memUsed),
+		rawText: memoryRawText(),
 		avg: memAvgPct,
 		peak: memPeakPct,
 		avgRawText: formatBytesShort(memAvgBytes),
@@ -379,6 +458,8 @@
 		meterClass: 'memory',
 		tipKey: 'memory',
 		tipTitle: '메모리 사용량',
+		limitText: memoryLimitChip(),
+		denominatorText: memoryMbLimit ? `${formatGb(memoryMbLimit)} GB quota` : 'host 전체',
 	})}
 
 	{@render flowCard({
@@ -421,6 +502,28 @@
 		tipTitle: '디스크 누적',
 		splitClass: 'disk',
 	})}
+
+	{#if hasWorkspaceMetric}
+		{@render pctCard({
+			label: 'Workspace',
+			help: workspaceHelp,
+			value: workspaceUsedPct,
+			rawText: workspaceRawText(),
+			avg: workspaceUsedPct,
+			peak: workspaceUsedPct,
+			avgRawText: workspaceRawText(),
+			peakRawText: workspaceRawText(),
+			warn: 80,
+			crit: 90,
+			level: workspaceLevel,
+			delta: 0,
+			meterClass: 'memory',
+			tipKey: 'workspace',
+			tipTitle: 'Workspace disk',
+			limitText: workspaceLimitChip(),
+			denominatorText: workspaceGbLimit ? `${workspaceGbLimit} GB quota` : 'unlimited',
+		})}
+	{/if}
 
 	{#if hasGpu}
 		{@render pctCard({
@@ -547,6 +650,28 @@
 		background: rgba(2, 6, 12, 0.42);
 		border: 1px solid var(--border-soft);
 		white-space: nowrap;
+	}
+	.chip-stack {
+		display: inline-flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 4px;
+		min-width: 0;
+	}
+	.limit-chip {
+		display: inline-flex;
+		align-items: center;
+		max-width: 92px;
+		padding: 2.5px 7px;
+		border-radius: 4px;
+		background: rgba(48, 213, 200, 0.08);
+		border: 1px solid rgba(48, 213, 200, 0.24);
+		color: rgba(226, 232, 240, 0.9);
+		font-size: 10px;
+		font-weight: 800;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.kpi-chip[data-level='normal'] {
 		color: #6ee7b7;

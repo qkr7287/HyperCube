@@ -74,6 +74,25 @@ class Agent(models.Model):
     approved_at = models.DateTimeField(null=True, blank=True)
     last_seen_at = models.DateTimeField(null=True, blank=True, db_index=True)
     archived_at = models.DateTimeField(null=True, blank=True)
+    cpu_cores = models.PositiveIntegerField(null=True, blank=True)
+    cpu_model = models.CharField(max_length=255, blank=True, default="")
+    ram_total_mb = models.PositiveIntegerField(null=True, blank=True)
+    disk_total_gb = models.PositiveIntegerField(null=True, blank=True)
+    # Workspace quota pool (XFS project quota on a loop-mounted xfs file).
+    # Replaces the earlier LVM thin pool field; agent reports `xfs_quota`
+    # accounting against the mount that hosts per-container workspaces.
+    workspace_pool_total_gb = models.PositiveIntegerField(null=True, blank=True)
+    workspace_pool_free_gb = models.PositiveIntegerField(null=True, blank=True)
+    workspace_pool_mount = models.CharField(max_length=255, blank=True, default="")
+    # True only when agent verified `setquota` actually enforces (XFS quota
+    # mounted with prjquota). When False, backend treats workspace as soft
+    # and refuses to persist workspace_gb_limit per container.
+    workspace_hard_enforcement = models.BooleanField(default=False)
+    nic_speed_mbps = models.PositiveIntegerField(null=True, blank=True)
+    filesystem = models.CharField(max_length=64, blank=True, default="")
+    target_users = models.PositiveIntegerField(default=4)
+    safety_margin = models.FloatField(default=0.8)
+    capacity_updated_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "agents"
