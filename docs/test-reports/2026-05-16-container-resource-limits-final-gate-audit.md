@@ -34,6 +34,22 @@ changed files: 21
 GitHub Actions: CI run 21 passed
 ```
 
+HyperCube-agent PR #17 file-level audit:
+
+```text
+report: docs/test-reports/2026-05-16-agent-pr17-file-audit.md
+commit: 402f8dc010485e59f1305a49b18edd8c7d77e664
+CI run 25948355854 / run 21: completed, success
+job 76281100630 Type check & build: success
+inspected PR-head files: src/collectors/docker.ts, src/sync/delta.ts,
+src/config.ts, src/workspace-recovery.ts, src/collectors/system.ts,
+src/self-tests/resource-limits-lvm.ts, package.json, src/index.ts
+```
+
+The file audit confirms PR #17 contains workspace metrics, system LVM metrics,
+capacity-report wiring, disabled-LVM no-probe behavior, recovery wiring, and
+self-test coverage on the remote PR head.
+
 Server-63 agent runtime sync evidence:
 
 ```text
@@ -78,6 +94,7 @@ HyperCube-agent issue #16 status:
 Issue title refreshed: feat(lvm): complete server-63 LVM thin workspace runtime gate
 No PERMISSION_OPTION=<1|2|3> reply exists in fetched issue comments.
 The issue body now asks for PERMISSION_OPTION, LVM_DEVICE, NFS_DATASETS, and NFS_MODELS.
+Latest issue comment records the PR #17 file audit and current preflight blocker.
 ```
 
 Server-63 preflight command rerun for this audit:
@@ -144,8 +161,9 @@ FAIL LVM thin workspace host preflight failed
 | Backend tests | `progress.md` records 111 tests OK and targeted 7 tests OK on server 63 | Done |
 | Frontend tests/check/E2E | `progress.md` records 57 tests OK, `npm run check` 0 errors/193 warnings, E2E 3 passed | Done |
 | Backend mypy if present | `progress.md` records no mypy config/dependency/module | Not applicable |
-| Core commit and push | Core implementation/docs are present on GitHub `dev`; latest report update pushed by GitHub contents API | Done |
+| Core commit and push | Core implementation/docs are present on GitHub `dev`; latest progress update pushed by GitHub contents API | Done |
 | Agent PR exists | PR #17 open draft, mergeable, CI success | Done, draft |
+| Agent PR file-level audit | `docs/test-reports/2026-05-16-agent-pr17-file-audit.md`; PR-head files fetched from `8d55d46855a0d51e123c0f0c2256face7dcd1e99` | Done |
 | Agent server-63 non-destructive runtime validation | build + resource-limits-lvm self-test + network-policy self-test passed in `hypercube-agent-dev-63` | Done |
 | Agent/ops permission option | Issue #16 has no `PERMISSION_OPTION=<1|2|3>` answer | Blocked |
 | server-63 host LVM readiness | Current preflight shows host `lvcreate`, `lvs`, and `lvremove` missing | Blocked |
