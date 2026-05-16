@@ -4,65 +4,79 @@ Date: 2026-05-16
 Scope: `qkr7287/HyperCube-agent`
 Core counterpart: HyperCube container resource limits PR 1-5
 Tracking issue: https://github.com/qkr7287/HyperCube-agent/issues/16
+Agent draft PR: https://github.com/qkr7287/HyperCube-agent/pull/17
 
 Core backend/frontend is ready on HyperCube `dev` for the current no-LVM
 compatibility path. Full LVM thin workspace completion is still blocked until
-the agent/ops runtime gate below is resolved.
+HyperCube-agent PR #17 is reviewed/deployed and the server-63 host/runtime LVM
+gate is resolved.
 
-Current verified core HEAD before this handoff refresh:
+## Current State
 
-```text
-688a5eb2ca268a7c8c343dd5e4b0e1e35aa2b87f docs(containers): record refreshed lvm agent handoff
-```
-
-Core implementation baseline:
+HyperCube core is implemented, validated, committed, and pushed to `dev`.
+Agent-side deployable work now exists as draft PR #17:
 
 ```text
-7454fdd feat(containers): add resource limits and workspace quotas
+repo: qkr7287/HyperCube-agent
+branch: codex/resource-limits-lvm-agent
+base: dev
+head: 8d55d46855a0d51e123c0f0c2256face7dcd1e99
+state: open draft
+mergeable: true
+changed files: 21
 ```
 
-Check the current HyperCube core HEAD before validating:
+PR #17 implements:
+
+- `capacity_report` on startup/reconnect/periodic timer and `request_capacity`.
+- Docker `HostConfig` mapping for backend resource limits.
+- LVM thin workspace create/rollback/delete/recovery.
+- `sharedMounts` bind handling.
+- `container_metrics.workspace` reporting.
+- LVM thin-pool system/capacity metrics.
+- `LVM_WORKSPACE_ENABLED=false` no-probe legacy guard.
+- Existing GPU per-container multi-source contract preservation.
+
+Validation run from the remote-safe temp agent workspace:
 
 ```bash
-gh api repos/qkr7287/HyperCube/git/ref/heads/dev --jq '.object.sha'
+npm run build
+node dist/self-tests/resource-limits-lvm.js
+npm run self-test:network-policy
 ```
 
-Core validation and gate reports:
+Observed result: all passed.
+
+## Core References
 
 ```text
-docs/test-reports/2026-05-15-container-resource-limits-core-validation.md
-docs/test-reports/2026-05-16-container-resource-limits-completion-audit-addendum.md
-docs/test-reports/2026-05-16-container-resource-limits-final-gate-audit.md
-docs/runbooks/lvm-thin-workspace-preflight.sh
+docs/container-resource-limits-기획.ko.html
+docs/agent-integration-lvm-thin-spec.ko.html
+docs/agent-payload-contract.md
+docs/agent-protocol.md
 docs/runbooks/lvm-thin-workspace-host-setup.md
+docs/runbooks/lvm-thin-workspace-preflight.sh
 docs/runbooks/lvm-thin-workspace-full-validation.md
+docs/test-reports/2026-05-16-agent-pr17-draft-status.md
 progress.md
 ```
 
-Spec documents in the core repo:
-
-- Container resource limits plan:
-  `https://raw.githubusercontent.com/qkr7287/HyperCube/dev/docs/container-resource-limits-%EA%B8%B0%ED%9A%8D.ko.html`
-- `docs/agent-integration-lvm-thin-spec.ko.html`
-- `docs/agent-payload-contract.md`
-- `docs/agent-protocol.md`
-
-Do not change HyperCube core from this issue unless the backend-agent contract
-proves impossible. Core-side contract, docs, migrations, backend tests, frontend
-tests, and Playwright E2E are already pushed.
+Do not change HyperCube core from the agent issue unless the backend-agent
+contract proves impossible. Core-side contract, docs, migrations, backend tests,
+frontend tests, and Playwright E2E are already pushed.
 
 ## Current Blocker
 
-Backend is accepting capacity reports, but the currently deployed agents report
-no LVM thin pool:
+Backend is accepting capacity reports, but the currently deployed agents still
+report no LVM thin pool:
 
 ```text
-agent-register-smoke-after-migrate cpu_cores=None ram_total_mb=None lvm_pool_size_gb=None capacity_updated_at=None
-server_16_dev cpu_cores=12 ram_total_mb=39760 lvm_pool_size_gb=None capacity_updated_at=2026-05-15T16:03:40.813793+00:00
-server_63_dev cpu_cores=12 ram_total_mb=15897 lvm_pool_size_gb=None capacity_updated_at=2026-05-15T16:03:41.076664+00:00
+agent-register-smoke-after-migrate None None None None
+server_16_dev 12 39760 None 2026-05-16 00:03:40.815470+00:00
+server_63_dev 12 15897 None 2026-05-16 00:03:41.014804+00:00
 ```
 
-Latest server_63_dev preflight rerun:
+Latest server_63_dev preflight command:
 
 ```bash
 cd /home/agics/ts/HyperCube
@@ -89,75 +103,43 @@ OK   agent command 'umount' -> /usr/bin/umount
 FAIL agent command 'lvremove' is missing
 FAIL agent lvs command failed
 sh: 1: lvs: not found
-server_63_dev 12 15897 None 2026-05-15 16:03:41.076664+00:00
+server_63_dev lvm_pool_size_gb=None
 ```
 
-`/home/agics/ts/agent-dev/src` has LVM workspace scaffolding, but full
-validation is still blocked until the host has `lvm2`, a configured thin pool,
-the shared dataset/model mounts, workspace root, and a chosen agent permission
-option.
+## Required Agent/Operator Decisions
 
-## Local Agent Code Audit
-
-The local `C:\Users\agics\Desktop\workspace\01. git\HyperCube-agent` checkout
-was inspected from the core session. It is a dirty worktree, so do not treat it
-as deployed state, but these local self-tests passed:
+Record the chosen path in issue #16 before attempting full LVM validation:
 
 ```text
-npm run self-test:lvm-workspace -> passed
-npm run self-test:network-policy -> passed
-npm run self-test:gpu-per-container -> passed
+PERMISSION_OPTION=<1|2|3>
+LVM_DEVICE=<approved block device or existing vg/thin pool>
+NFS_DATASETS=<NFS export or explicit shared-mount policy change>
+NFS_MODELS=<NFS export or explicit shared-mount policy change>
 ```
 
-One option-3 acceptance item remains for the agent code:
+Permission options:
 
-```text
-If LVM_WORKSPACE_ENABLED=false, capacity_report.data.disk.lvm.available must be false without probing lvs.
-```
+- `1`: privileged agent container with host LVM tooling available in the agent runtime.
+- `2`: host-side helper/service invoked by the agent.
+- `3`: no LVM on this host yet; agent must report `disk.lvm.available=false`.
 
-Patch expectation in `src/workspace-lvm.ts`:
+Do not use `/dev/sdb` or `/dev/sdb2` for LVM unless an operator explicitly
+confirms that the existing ARCHIVE data may be destroyed or has been migrated.
 
-```ts
-if (!config.enabled) {
-  return {
-    available: false,
-    vg: config.volumeGroup,
-    thinPool: config.thinPool,
-    thinPoolSizeGb: null,
-    thinPoolUsedGb: null,
-    usedPct: null,
-    alert: null,
-  };
-}
-```
+## Contract Checklist
 
-Add a self-test next to `assertCapacityReportGracefulLvmFallback()` that proves
-`LVM_WORKSPACE_ENABLED=false` wins even if a fake runner would otherwise return
-a valid `lvs` result.
+### capacity_report
 
-## Required Agent Work
-
-### 1. capacity_report
-
-Implement agent -> backend host capacity telemetry per
-`docs/agent-integration-lvm-thin-spec.ko.html` section 3.
-
-Required shape:
+Agent must send:
 
 ```json
 {
   "type": "capacity_report",
-  "agentId": "053ce574-c2b3-474b-a8ca-a34ec43f9d52",
-  "timestamp": "2026-05-15T15:00:00Z",
+  "agentId": "...",
+  "timestamp": "...",
   "data": {
-    "cpu": {
-      "cores": 24,
-      "model": "Intel Xeon Gold 6248 @ 2.50GHz",
-      "architecture": "x64"
-    },
-    "memory": {
-      "totalMb": 262144
-    },
+    "cpu": { "cores": 24, "model": "...", "architecture": "x64" },
+    "memory": { "totalMb": 262144 },
     "disk": {
       "rootTotalGb": 3700,
       "rootUsedGb": 120,
@@ -167,30 +149,24 @@ Required shape:
         "vg": "vg0",
         "thinPool": "thin_pool",
         "thinPoolSizeGb": 3000,
-        "thinPoolUsedGb": 432
+        "thinPoolUsedGb": 432,
+        "usedPct": 14.4,
+        "alert": "ok"
       }
     },
-    "network": {
-      "primaryInterface": "eth0",
-      "speedMbps": 10000
-    }
+    "network": { "primaryInterface": "eth0", "speedMbps": 10000 }
   }
 }
 ```
 
 Fallback rules:
 
-- If LVM tools or pool are unavailable, send `disk.lvm.available=false`.
-- If LVM is intentionally disabled by config, send `disk.lvm.available=false`
-  even if `lvs` would succeed.
+- LVM missing/unavailable: `disk.lvm.available=false`.
+- `LVM_WORKSPACE_ENABLED=false`: `disk.lvm.available=false` without probing `lvs`.
 - Do not fabricate `thinPoolSizeGb`; backend treats missing LVM capacity as
   legacy mode and omits LVM `workspace` fields from create payloads.
 
-### 2. create_container HostConfig
-
-Read backend `create_container.params.hostConfig` and map it into Dockerode
-`HostConfig` while preserving existing network, GPU, restart, env, model mount,
-and workspace/Jupyter behavior.
+### create_container
 
 Backend sends lower camel case:
 
@@ -202,31 +178,7 @@ Backend sends lower camel case:
     "cpuQuota": 400000,
     "cpuPeriod": 100000,
     "oomKillDisable": false
-  }
-}
-```
-
-Agent maps to Docker names:
-
-```ts
-const hostConfig = {
-  Memory: params.hostConfig.memory,
-  MemorySwap: params.hostConfig.memorySwap,
-  CpuQuota: params.hostConfig.cpuQuota,
-  CpuPeriod: params.hostConfig.cpuPeriod,
-  OomKillDisable: params.hostConfig.oomKillDisable
-};
-```
-
-### 3. LVM Thin Workspace
-
-When backend sends LVM fields in `params.workspace`, allocate a per-container
-thin volume and mount it into the container at `/workspace`.
-
-Backend shape when LVM is available:
-
-```json
-{
+  },
   "workspace": {
     "sizeGb": 100,
     "mountTarget": "/workspace"
@@ -238,58 +190,40 @@ Backend shape when LVM is available:
 }
 ```
 
-Compatibility note: existing Jupyter workspace metadata may also be present in
-`params.workspace` (`kind`, `token`, `port`, `baseUrl`, `workdir`). Do not drop
-that metadata when adding the LVM bind mount.
+Agent maps these into Dockerode `HostConfig`, provisions the LVM thin volume,
+binds the mounted workspace to `/workspace`, and keeps existing Jupyter
+workspace metadata (`kind`, `token`, `port`, `baseUrl`, `workdir`) intact.
 
-Expected agent behavior:
+### create_container_result
 
-- Create thin LV: `lvcreate -V {sizeGb}G -T vg0/thin_pool -n cid_{shortId}`.
-- Format if needed: `mkfs.ext4 /dev/vg0/cid_{shortId}`.
-- Mount to host path: `/var/lib/hypercube/workspaces/{shortId}`.
-- Bind host workspace mount to container `params.workspace.mountTarget`.
-- Bind `sharedMounts` as read-only where `readOnly=true`.
-- Roll back LV, mount, and container if any create step fails.
-- On container remove, unmount and `lvremove` the corresponding volume when safe.
-
-### 4. create_container_result Workspace Metadata
-
-Return workspace metadata so core can persist `Container.workspace_device`.
+When LVM is used, agent returns workspace metadata so core can persist
+`Container.workspace_device`:
 
 ```json
 {
-  "type": "create_container_result",
-  "requestId": "request-uuid",
-  "data": {
-    "ok": true,
-    "containerId": "05eddec05865...",
-    "workspace": {
-      "device": "/dev/vg0/cid_05eddec05865",
-      "mountPoint": "/var/lib/hypercube/workspaces/05eddec05865",
-      "sizeGb": 100
-    }
+  "workspace": {
+    "id": "05eddec05865",
+    "device": "/dev/vg0/cid_05eddec05865",
+    "mountPoint": "/var/lib/hypercube/workspaces/05eddec05865",
+    "mountTarget": "/workspace",
+    "sizeGb": 100
   }
 }
 ```
 
-Core accepts both legacy `command_response` and `create_container_result`.
+### container_metrics
 
-### 5. container_metrics Workspace Field
-
-Extend per-container metrics with workspace usage.
+For LVM-managed containers, add:
 
 ```json
 {
-  "type": "container_metrics",
-  "data": {
-    "containerId": "05eddec05865",
-    "workspace": {
-      "device": "/dev/vg0/cid_05eddec05865",
-      "sizeGb": 100,
-      "usedGb": 12,
-      "availableGb": 88,
-      "usedPct": 12.0
-    }
+  "workspace": {
+    "device": "/dev/vg0/cid_05eddec05865",
+    "mountPoint": "/var/lib/hypercube/workspaces/05eddec05865",
+    "sizeGb": 100,
+    "usedGb": 2,
+    "availableGb": 98,
+    "usedPct": 2
   }
 }
 ```
@@ -307,19 +241,6 @@ bash docs/runbooks/lvm-thin-workspace-preflight.sh hypercube-agent-dev-63 hc-bac
 This script checks host LVM tools, shared mount roots, agent-runtime LVM tools,
 `lvs --units g`, and backend Agent capacity rows. It exits non-zero until the
 host and agent runtime are ready for LVM mode.
-
-Manual equivalent:
-
-```bash
-command -v lvcreate
-command -v lvs
-lvs --units g
-docker exec hypercube-agent-dev-63 sh -lc 'command -v lvcreate; command -v lvs'
-docker exec hypercube-agent-dev-63 sh -lc 'lvs --units g'
-test -d /mnt/datasets
-test -d /mnt/models
-test -d /var/lib/hypercube/workspaces
-```
 
 Expected before backend LVM mode can be verified:
 
