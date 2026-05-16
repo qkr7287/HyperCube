@@ -17,6 +17,7 @@ Core implementation baseline:
 Latest docs/status commits:
 
 ```text
+402f8dc docs: record agent pr17 file audit
 3b48784 docs: refresh lvm host setup runbook for pr17 gate
 cca0ab6 docs: update progress with final gate audit refresh
 d7675f6 docs: refresh final gate audit after agent runtime sync
@@ -37,6 +38,7 @@ mergeable: true
 changed files: 21
 GitHub Actions: CI run 21 passed for PR #17 head
 tracking issue: qkr7287/HyperCube-agent#16, title refreshed to server-63 runtime gate
+latest fetched comments: no PERMISSION_OPTION=<1|2|3> reply yet
 ```
 
 PR #17 implements the missing deployable agent-side contract:
@@ -59,6 +61,17 @@ npm run self-test:network-policy
 ```
 
 Observed result: all passed.
+
+Agent PR #17 file-level audit on the remote PR head:
+
+```text
+head: 8d55d46855a0d51e123c0f0c2256face7dcd1e99
+CI run 25948355854 / run 21: completed, success
+job 76281100630 Type check & build: success
+fetched files: src/collectors/docker.ts, src/sync/delta.ts, src/config.ts,
+src/workspace-recovery.ts, src/collectors/system.ts,
+src/self-tests/resource-limits-lvm.ts, package.json, src/index.ts
+```
 
 Server-63 runtime sync status:
 
@@ -151,6 +164,7 @@ Core references:
 - `docs/test-reports/2026-05-16-agent-disabled-lvm-guard-temp-verification.md`
 - `docs/test-reports/2026-05-16-agent-pr17-draft-status.md`
 - `docs/test-reports/2026-05-16-agent-pr17-server63-runtime-sync.md`
+- `docs/test-reports/2026-05-16-agent-pr17-file-audit.md`
 - `docs/agent-resource-limits-remote-pr-brief.md`
 - `docs/agent-lvm-thin-handoff.md`
 - `docs/runbooks/lvm-thin-workspace-host-setup.md`
