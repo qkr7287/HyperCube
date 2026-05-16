@@ -17,9 +17,10 @@ Core implementation baseline:
 Latest docs/status commits:
 
 ```text
+d7675f6 docs: refresh final gate audit after agent runtime sync
+2ae54c6 docs: refresh agent lvm handoff after runtime sync
+112fdd9 docs: update resource limit progress after agent runtime sync
 73963b4 docs: record agent pr17 server63 runtime sync
-c9ffca7 docs: update resource limit progress with agent pr status
-710aa4c docs: add agent pr17 to lvm thin handoff
 ```
 
 Latest agent-side status:
@@ -33,9 +34,10 @@ base: qkr7287/HyperCube-agent:dev @ 10d14ab225d296e458a77a2ab166f8e0a89adfe7
 mergeable: true
 changed files: 21
 GitHub Actions: CI run 21 passed for PR #17 head
+tracking issue: qkr7287/HyperCube-agent#16, title refreshed to server-63 runtime gate
 ```
 
-PR #17 implements the previously missing agent-side deployable contract:
+PR #17 implements the missing deployable agent-side contract:
 
 - `capacity_report` on startup/reconnect/periodic timer and `request_capacity`.
 - Docker `HostConfig` mapping for backend CPU/memory limits.
@@ -46,7 +48,7 @@ PR #17 implements the previously missing agent-side deployable contract:
 - `LVM_WORKSPACE_ENABLED=false` no-probe legacy guard.
 - Current GPU per-container multi-source contract preservation.
 
-Agent PR validation run from the remote-safe temp workspace:
+Agent PR validation from the remote-safe temp workspace:
 
 ```bash
 npm run build
@@ -160,6 +162,7 @@ Remaining blocker:
 - Full LVM thin workspace creation is not yet proven end-to-end.
 - HyperCube-agent PR #17 is open as draft; server-63 runtime has been synced and
   self-tested, but the PR is not merged.
+- HyperCube-agent issue #16 still has no `PERMISSION_OPTION=<1|2|3>` reply.
 - Current `server_63_dev` host and `hypercube-agent-dev-63` both lack
   `lvs/lvcreate/lvremove`; `lvm2`/thin pool setup is not present.
 - `/mnt/datasets`, `/mnt/models`, and `/var/lib/hypercube/workspaces` are not
@@ -167,16 +170,15 @@ Remaining blocker:
   validated yet.
 - Current Agent rows report `lvm_pool_size_gb=None`, so backend stays in legacy
   mode and omits LVM `workspace` payloads for those agents.
-- HyperCube-agent issue #16 still has no `PERMISSION_OPTION=<1|2|3>` reply.
 
 Next completion gate:
 
-1. Review/merge HyperCube-agent PR #17, or keep it draft until the permission
-   option is chosen.
-2. Agent/ops replies on HyperCube-agent #16 with `PERMISSION_OPTION=<1|2|3>`.
-3. If LVM mode is selected, prepare server 63 with `lvm2`, an approved thin
+1. Agent/ops replies on HyperCube-agent #16 with `PERMISSION_OPTION=<1|2|3>`,
+   `LVM_DEVICE`, `NFS_DATASETS`, and `NFS_MODELS`.
+2. If LVM mode is selected, prepare server 63 with `lvm2`, an approved thin
    pool, `/mnt/datasets`, `/mnt/models`, and `/var/lib/hypercube/workspaces`.
-4. Re-run `docs/runbooks/lvm-thin-workspace-preflight.sh` until it exits 0.
+3. Re-run `docs/runbooks/lvm-thin-workspace-preflight.sh` until it exits 0.
+4. Review/merge/deploy HyperCube-agent PR #17 through the chosen permission path.
 5. Run `docs/runbooks/lvm-thin-workspace-full-validation.md` for the real LVM
    8-step validation path.
 6. Submit a new PyTorch Jupyter request and confirm backend sends `hostConfig`,
