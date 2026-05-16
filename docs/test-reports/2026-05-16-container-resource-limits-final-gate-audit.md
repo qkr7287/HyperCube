@@ -5,37 +5,82 @@
 Deliver HyperCube backend/frontend support for container resource limits,
 host-capacity recommendations, an LVM thin workspace contract, and quota-aware
 KPI/chart display across PR 1 through PR 5. The goal also requires validation,
-commit, push, and a successful server-63 integration path with the HyperCube
+commit/push, and a successful server-63 integration path with the HyperCube
 agent.
 
 ## Current Decision
 
 Do not mark the goal complete.
 
-The core HyperCube backend/frontend implementation is on `dev` and the current
-no-LVM compatibility path is validated, but the required LVM thin workspace
-end-to-end gate is still blocked outside the core repo. The missing evidence is
-not a proxy signal problem: the concrete runtime commands and backend capacity
-rows still show that server 63 cannot run the LVM workspace scenario.
+The HyperCube core backend/frontend implementation is pushed to `dev`, and the
+server-63 no-LVM compatibility path is validated. HyperCube-agent PR #17 now
+contains the deployable agent-side implementation and has been synced into the
+server-63 dev bind-mounted runtime for non-destructive validation. However, the
+required real LVM thin `/workspace` end-to-end gate is still blocked by missing
+host/runtime prerequisites and a missing operator permission decision.
 
-## Current Remote Evidence
+## Current Evidence
 
-GitHub compare evidence collected during this audit:
-
-```text
-HyperCube dev == cfda1df37fe7ccc0dd90e71406af6a01367a6aa7
-cfda1df37fe7ccc0dd90e71406af6a01367a6aa7 docs(containers): refresh lvm validation progress
-```
-
-HyperCube-agent issue #16 evidence collected during this audit:
+HyperCube-agent PR state:
 
 ```text
-No PERMISSION_OPTION=<1|2|3> reply exists in the fetched issue comments.
-The latest tracking comment still asks agent/ops for PERMISSION_OPTION,
-LVM_PREFLIGHT, and CAPACITY_REPORT.
+PR: https://github.com/qkr7287/HyperCube-agent/pull/17
+state: open draft
+branch: codex/resource-limits-lvm-agent
+head: 8d55d46855a0d51e123c0f0c2256face7dcd1e99
+base: qkr7287/HyperCube-agent:dev @ 10d14ab225d296e458a77a2ab166f8e0a89adfe7
+mergeable: true
+changed files: 21
+GitHub Actions: CI run 21 passed
 ```
 
-Server 63 preflight command rerun during this audit:
+Server-63 agent runtime sync evidence:
+
+```text
+host: hc-dev-63
+runtime path: /home/agics/ts/agent-dev
+agent container: hypercube-agent-dev-63
+backup: /home/agics/ts/agent-dev-pr17-sync-backup-20260516T010102Z.tgz
+runtime validation: build + resource-limits-lvm self-test + network-policy self-test passed
+agent restart: reconnected to backend
+```
+
+Runtime command that passed inside `hypercube-agent-dev-63`:
+
+```bash
+cd /app
+npm run build
+node dist/self-tests/resource-limits-lvm.js
+node dist/self-tests/create-container-network-policy.js
+```
+
+Backend Agent row after runtime restart:
+
+```json
+{
+  "hostname": "server_63_dev",
+  "cpu_cores": 12,
+  "cpu_model": "Intel(R) Core(TM) i5-10400 CPU @ 2.90GHz",
+  "ram_total_mb": 15897,
+  "disk_total_gb": 457,
+  "lvm_pool_size_gb": null,
+  "nic_speed_mbps": null,
+  "filesystem": "overlay",
+  "target_users": 4,
+  "safety_margin": 0.8,
+  "capacity_updated_at": "2026-05-16 01:04:44.080208+00:00"
+}
+```
+
+HyperCube-agent issue #16 status:
+
+```text
+Issue title refreshed: feat(lvm): complete server-63 LVM thin workspace runtime gate
+No PERMISSION_OPTION=<1|2|3> reply exists in fetched issue comments.
+The issue body now asks for PERMISSION_OPTION, LVM_DEVICE, NFS_DATASETS, and NFS_MODELS.
+```
+
+Server-63 preflight command rerun for this audit:
 
 ```bash
 cd /home/agics/ts/HyperCube
@@ -48,6 +93,9 @@ Observed result:
 exit code: 1
 FAIL host command 'lvcreate' is missing
 FAIL host command 'lvs' is missing
+OK   host command 'mkfs.ext4' -> /usr/sbin/mkfs.ext4
+OK   host command 'mount' -> /usr/bin/mount
+OK   host command 'umount' -> /usr/bin/umount
 FAIL host command 'lvremove' is missing
 FAIL /mnt/datasets is missing
 FAIL /mnt/models is missing
@@ -64,8 +112,8 @@ FAIL agent lvs command failed
 sh: 1: lvs: not found
 backend Agent rows:
 agent-register-smoke-after-migrate None None None None
-server_16_dev 12 39760 None 2026-05-15 16:03:40.813793+00:00
-server_63_dev 12 15897 None 2026-05-15 16:03:41.076664+00:00
+server_16_dev 12 39760 None 2026-05-16 01:03:45.206653+00:00
+server_63_dev 12 15897 None 2026-05-16 01:04:44.080208+00:00
 FAIL LVM thin workspace host preflight failed
 ```
 
@@ -73,43 +121,47 @@ FAIL LVM thin workspace host preflight failed
 
 | Requirement / gate | Concrete artifact or evidence inspected | Status |
 | --- | --- | --- |
-| Required Korean resource-limit planning spec reviewed | Prior audit records inspection of `docs/container-resource-limits-기획.ko.html` from GitHub `dev` | Done |
-| Required agent LVM thin contract spec reviewed | Prior audit records inspection of `docs/agent-integration-lvm-thin-spec.ko.html` from GitHub `dev` | Done |
-| PR 1 template weights and min floors | Prior audit maps `ContainerTemplate` fields in `backend/apps/containers/models.py` and migration evidence | Done |
-| PR 1 Agent capacity model | Prior audit maps `backend/apps/agents/models.py` and migration evidence | Done |
-| PR 1 capacity_report handling | Prior audit maps `backend/apps/common/consumers.py` plus consumer tests | Done |
-| PR 1 recommendation helper | Prior audit maps `backend/apps/containers/services/recommend.py` plus recommendation tests | Done |
-| PR 2 ContainerRequest CPU/memory/workspace schema | Prior audit maps `backend/apps/containers/serializers.py` and `ContainerRequest` model fields | Done |
-| PR 2 min floor validation | Prior audit maps serializer validation and tests | Done |
-| PR 2 Container limit/device fields | Prior audit maps `Container` fields and migration evidence | Done |
-| PR 2 update-limits regression | Prior audit maps `backend/apps/containers/viewsets.py` and update-limit tests | Done |
-| PR 3 hostConfig payload | Prior audit maps `backend/apps/containers/services/deployment.py`; targeted server-63 tests passed | Done |
-| PR 3 LVM workspace and sharedMounts payload contract | Core payload builder has conditional LVM fields; live no-LVM dry-run omits them when `Agent.lvm_pool_size_gb=None` | Core done; live LVM path blocked |
-| PR 3 create_container_result workspace_device persistence | Prior audit maps `backend/apps/common/consumers.py` and workspace metadata tests | Core done; live LVM result blocked |
-| PR 3 workspace metrics to KPI API | Prior audit maps Redis/DB merge path in `backend/apps/containers/viewsets.py` | Core done; live LVM metric blocked |
-| PR 3 docs sync | Prior audit maps `docs/api.md`, `docs/agent-protocol.md`, and `docs/agent-payload-contract.md` | Done |
-| PR 4 ResourceLimitForm and request modal | Prior audit maps `frontend/src/lib/components/ResourceLimitForm.svelte` and `NewRequestModal.svelte` plus tests | Done |
-| PR 4 recommend endpoint | Prior audit maps `ContainerViewSet.recommend` and API docs | Done |
-| PR 5 KPI quota chips and unlimited state | Prior audit maps `ContainerKpiBar.svelte` and tests | Done |
-| PR 5 chart denominator labels | Prior audit maps `UserMetricChart.svelte`, `EChartLine.svelte`, and container detail props | Done |
-| Backend tests | Progress/audit evidence records 111 tests OK plus targeted 7 tests OK on server 63 | Done |
-| Frontend tests/check/E2E | Progress/audit evidence records 57 tests OK, `npm run check` 0 errors/193 warnings, E2E 3 passed | Done |
-| Backend mypy if present | Progress/audit evidence records no mypy config/dependency/module | Not applicable |
-| Commit and push | GitHub compare confirms remote `dev` at `cfda1df37fe7ccc0dd90e71406af6a01367a6aa7` before this report | Done |
-| Agent/ops permission option | HyperCube-agent issue #16 fetched during this audit; no `PERMISSION_OPTION=<1|2|3>` answer exists | Blocked |
-| server-63 host LVM readiness | Preflight rerun during this audit shows host `lvcreate`, `lvs`, and `lvremove` missing | Blocked |
-| agent runtime LVM readiness | Preflight rerun during this audit shows agent `lvcreate`, `lvs`, and `lvremove` missing | Blocked |
-| shared mounts/workspace root | Preflight rerun during this audit shows `/mnt/datasets`, `/mnt/models`, and `/var/lib/hypercube/workspaces` missing | Blocked |
-| backend Agent LVM capacity | Preflight rerun during this audit shows `server_63_dev ... lvm_pool_size_gb=None` | Blocked |
-| Full 8-step LVM scenario | `docs/runbooks/lvm-thin-workspace-full-validation.md` preconditions are not met; cannot run the create/mount/df/KPI proof | Blocked |
+| Required Korean resource-limit planning spec reviewed | `docs/container-resource-limits-기획.ko.html` fetched from GitHub `dev` | Done |
+| Required agent LVM thin contract spec reviewed | `docs/agent-integration-lvm-thin-spec.ko.html` fetched from GitHub `dev` | Done |
+| PR 1 template weights and min floors | `ContainerTemplate` fields in `backend/apps/containers/models.py`; migration `0010_template_weights.py` | Done |
+| PR 1 Agent capacity model | `Agent` fields in `backend/apps/agents/models.py`; migration `0008_agent_capacity.py` | Done |
+| PR 1 capacity_report handling | `backend/apps/common/consumers.py`; `backend/apps/common/tests/test_consumers.py` | Done |
+| PR 1 recommendation helper | `backend/apps/containers/services/recommend.py`; `backend/apps/containers/tests/test_recommend.py` | Done |
+| PR 2 ContainerRequest CPU/memory/workspace schema | `ContainerRequest` model and serializer fields | Done |
+| PR 2 min floor validation | `ContainerRequestSerializer._apply_resource_limit_defaults` plus min-limit tests | Done |
+| PR 2 Container limit/device fields | `Container` fields and migration `0011_container_resource_limits.py` | Done |
+| PR 2 update-limits regression | Prior server-63 targeted backend tests recorded in `progress.md` | Done |
+| PR 3 hostConfig payload | `backend/apps/containers/services/deployment.py` maps memory/cpu to lower-camel agent payload | Done |
+| PR 3 LVM workspace and sharedMounts payload contract | Core payload builder conditionally sends LVM `workspace` and `sharedMounts` only when `Agent.lvm_pool_size_gb` exists | Core done; live LVM path blocked |
+| PR 3 create_container_result workspace_device persistence | `backend/apps/common/consumers.py` and consumer tests cover workspace metadata persistence | Core done; live LVM result blocked |
+| PR 3 workspace metrics to KPI API | `MyContainerViewSet.current_metrics` merges workspace metrics and DB snapshot | Core done; live LVM metric blocked |
+| PR 3 docs sync | `docs/api.md`, `docs/agent-protocol.md`, `docs/agent-payload-contract.md` fetched from `dev` | Done |
+| PR 4 ResourceLimitForm | `frontend/src/lib/components/ResourceLimitForm.svelte` fetched from `dev` | Done |
+| PR 4 request modal recommendation prefill and submit fields | `frontend/src/lib/components/NewRequestModal.svelte` fetches `/api/containers/recommend/` and submits `cpu_percent`, `memory_mb`, `workspace_gb` | Done |
+| PR 4 recommend endpoint | `ContainerViewSet.recommend` and `docs/api.md` expose `/api/containers/recommend/` and `/api/v1/containers/recommend/` | Done |
+| PR 5 KPI quota chips and unlimited state | `frontend/src/lib/components/ContainerKpiBar.svelte` includes CPU/memory/workspace limit chips and denominator tooltip text | Done |
+| PR 5 chart denominator labels | `UserMetricChart.svelte` and container detail route pass y-axis and denominator text | Done |
+| Backend tests | `progress.md` records 111 tests OK and targeted 7 tests OK on server 63 | Done |
+| Frontend tests/check/E2E | `progress.md` records 57 tests OK, `npm run check` 0 errors/193 warnings, E2E 3 passed | Done |
+| Backend mypy if present | `progress.md` records no mypy config/dependency/module | Not applicable |
+| Core commit and push | Core implementation/docs are present on GitHub `dev`; latest report update pushed by GitHub contents API | Done |
+| Agent PR exists | PR #17 open draft, mergeable, CI success | Done, draft |
+| Agent server-63 non-destructive runtime validation | build + resource-limits-lvm self-test + network-policy self-test passed in `hypercube-agent-dev-63` | Done |
+| Agent/ops permission option | Issue #16 has no `PERMISSION_OPTION=<1|2|3>` answer | Blocked |
+| server-63 host LVM readiness | Current preflight shows host `lvcreate`, `lvs`, and `lvremove` missing | Blocked |
+| agent runtime LVM readiness | Current preflight shows agent `lvcreate`, `lvs`, and `lvremove` missing | Blocked |
+| shared mounts/workspace root | Current preflight shows `/mnt/datasets`, `/mnt/models`, and `/var/lib/hypercube/workspaces` missing | Blocked |
+| backend Agent LVM capacity | Current backend row shows `server_63_dev.lvm_pool_size_gb=None` | Blocked |
+| Full 8-step LVM scenario | Preflight preconditions are not met, so create/mount/df/KPI proof cannot run | Blocked |
 
 ## Why Existing Green Tests Are Not Enough
 
 The green backend/frontend tests verify core behavior and the no-LVM compatibility
-path. They do not prove that server 63 can create an LVM thin volume, mount it,
-bind it into the created container, return `workspace_device`, emit workspace
-metrics, or show `df /workspace` at the requested quota. The current preflight
-failure directly blocks that proof path.
+path. The agent PR tests verify the non-destructive agent code path. Neither set
+proves that server 63 can create an LVM thin volume, mount it, bind it into the
+created container, return `workspace_device`, emit workspace metrics, or show
+`df /workspace` at the requested quota. The current preflight failure directly
+blocks that proof path.
 
 ## Remaining Completion Gate
 
@@ -128,5 +180,5 @@ The next valid completion attempt starts only after all of these are true:
    create-container, LVM mount, backend persistence, metrics, and UI denominator
    checks.
 
-Until those gates pass, the correct status is: core ready, external LVM/agent
-runtime gate blocked, goal not complete.
+Until those gates pass, the correct status is: core ready, agent PR/runtime
+non-destructive path validated, external LVM/ops gate blocked, goal not complete.
