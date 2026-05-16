@@ -202,7 +202,7 @@
 	// --- helpers --------------------------------------------------------
 	function formatCores(v: number | null): string {
 		if (v === null) return '—';
-		if (v < 0.1) return '0 cores';
+		if (v < 0.005) return '0 cores';
 		return `${v.toFixed(2)} cores`;
 	}
 	function formatBytesShort(v: number | null): string {
@@ -235,6 +235,9 @@
 	}
 	function workspaceRawText(): string {
 		if (workspaceSizeGb > 0) return `${workspaceUsedGb.toFixed(1)} GB / ${workspaceSizeGb} GB`;
+		return `${workspaceUsedGb.toFixed(1)} GB`;
+	}
+	function workspaceUsedText() {
 		return `${workspaceUsedGb.toFixed(1)} GB`;
 	}
 
@@ -511,8 +514,8 @@
 			rawText: workspaceRawText(),
 			avg: workspaceUsedPct,
 			peak: workspaceUsedPct,
-			avgRawText: workspaceRawText(),
-			peakRawText: workspaceRawText(),
+			avgRawText: workspaceUsedText(),
+			peakRawText: workspaceUsedText(),
 			warn: 80,
 			crit: 90,
 			level: workspaceLevel,

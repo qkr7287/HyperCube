@@ -555,11 +555,11 @@
 					<div class="two-col">
 						<section>
 							<h3>1. 실행 대상</h3>
-							{#if selectedTemplate.kind === 'simple' && selectedTemplate.image_options?.length > 0}
+							{#if selectedTemplate?.kind === 'simple' && (selectedTemplate?.image_options?.length ?? 0) > 0}
 								<label class="field">
 									<span>이미지</span>
 									<select bind:value={selectedImage}>
-										{#each selectedTemplate.image_options as option}
+										{#each selectedTemplate?.image_options ?? [] as option}
 											<option value={option.image}>{option.label}</option>
 										{/each}
 									</select>
@@ -591,7 +591,7 @@
 
 						<section>
 							<h3>3. GPU</h3>
-							{#if selectedTemplate.requires_gpu}
+							{#if selectedTemplate?.requires_gpu}
 								{#if !selectedAgent}
 									<div class="empty compact">먼저 배치 서버를 선택하세요.</div>
 								{:else if gpuLoading}
@@ -644,12 +644,12 @@
 						bind:memoryMb
 						bind:workspaceGb
 						bind:useRecommendation={useResourceRecommendation}
-						recommendedCpuPercent={resourceRecommendation?.cpu_percent ?? selectedTemplate.min_cpu_percent ?? 100}
-						recommendedMemoryMb={resourceRecommendation?.memory_mb ?? selectedTemplate.min_memory_mb ?? 2048}
-						recommendedWorkspaceGb={resourceRecommendation?.workspace_gb ?? selectedTemplate.min_workspace_gb ?? 10}
-						minCpuPercent={selectedTemplate.min_cpu_percent ?? 100}
-						minMemoryMb={selectedTemplate.min_memory_mb ?? 2048}
-						minWorkspaceGb={selectedTemplate.min_workspace_gb ?? 10}
+						recommendedCpuPercent={resourceRecommendation?.cpu_percent ?? selectedTemplate?.min_cpu_percent ?? 100}
+						recommendedMemoryMb={resourceRecommendation?.memory_mb ?? selectedTemplate?.min_memory_mb ?? 2048}
+						recommendedWorkspaceGb={resourceRecommendation?.workspace_gb ?? selectedTemplate?.min_workspace_gb ?? 10}
+						minCpuPercent={selectedTemplate?.min_cpu_percent ?? 100}
+						minMemoryMb={selectedTemplate?.min_memory_mb ?? 2048}
+						minWorkspaceGb={selectedTemplate?.min_workspace_gb ?? 10}
 						hostCpuCores={selectedAgentInfo?.cpu_cores ?? null}
 						hostMemoryMb={selectedAgentInfo?.ram_total_mb ?? null}
 						hostWorkspacePoolGb={selectedAgentInfo?.workspace_pool_total_gb ?? null}
@@ -685,12 +685,12 @@
 						{/if}
 					</section>
 
-					{#if selectedTemplate.env_schema?.length > 0 || selectedTemplate.port_schema?.length > 0}
+					{#if (selectedTemplate?.env_schema?.length ?? 0) > 0 || (selectedTemplate?.port_schema?.length ?? 0) > 0}
 						<section>
 							<h3>5. 환경/포트</h3>
 							<div class="two-col">
 								<div class="stack">
-									{#each selectedTemplate.env_schema ?? [] as env}
+									{#each selectedTemplate?.env_schema ?? [] as env}
 										<label class="field">
 											<span>{env.key}{env.required ? ' *' : ''}</span>
 											<input
@@ -705,7 +705,7 @@
 									{/each}
 								</div>
 								<div class="stack">
-									{#each selectedTemplate.port_schema ?? [] as port}
+									{#each selectedTemplate?.port_schema ?? [] as port}
 										<label class="field">
 											<span>{port.description || `Port ${port.internal}`}</span>
 											<input
