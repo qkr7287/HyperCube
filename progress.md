@@ -14,9 +14,11 @@ Core implementation baseline:
 7454fdd feat(containers): add resource limits and workspace quotas
 ```
 
-Latest docs/status commits:
+Recent docs/status commits before this progress refresh:
 
 ```text
+eb4af51 docs: refresh final gate audit with agent file audit
+e550e85 docs: record agent pr17 file audit in progress
 402f8dc docs: record agent pr17 file audit
 3b48784 docs: refresh lvm host setup runbook for pr17 gate
 cca0ab6 docs: update progress with final gate audit refresh
