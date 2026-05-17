@@ -24,6 +24,7 @@
 		width = '100%',
 		ariaLabel = '',
 		group,
+		dataOnly = false,
 	}: {
 		option: EChartsOption;
 		notMerge?: boolean;
@@ -35,6 +36,11 @@
 		// 같은 group 문자열을 가진 차트들끼리 axisPointer / tooltip 이 동기화된다.
 		// echarts.connect(group) 으로 horizontal cursor sync.
 		group?: string;
+		// true 면 후속 setOption 에서 replaceMerge 를 안 보냄 → series 의 stable identity
+		// 가 유지되어 valueAnimation 이 작동 (게이지 needle / 값 transition).
+		// series 가 동적으로 추가/제거되는 차트는 false (default) 로 두어야 stale series
+		// 가 남지 않는다. gauge 같이 "동일 series, data 만 갱신" 케이스용.
+		dataOnly?: boolean;
 	} = $props();
 
 	let host: HTMLDivElement | undefined = $state(undefined);
@@ -54,6 +60,12 @@
 		if (firstApply) {
 			inst.setOption(o, { notMerge: true, lazyUpdate, replaceMerge });
 			firstApply = false;
+			return;
+		}
+		// dataOnly: replaceMerge 안 보냄 → series 가 stable identity 로 deepMerge.
+		// 결과: type/axisLine/pointer 같이 동일한 부분은 noop, data 만 transition.
+		if (dataOnly) {
+			inst.setOption(o, { notMerge: false, lazyUpdate });
 			return;
 		}
 		const mergeReplace = replaceMerge ?? 'series';

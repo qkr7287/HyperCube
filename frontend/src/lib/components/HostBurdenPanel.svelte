@@ -253,7 +253,7 @@ per-container 전력은 직접 측정 불가능 — 절대값 신뢰 X, 추세·
 						<span class="gauge-max">/ {card.metric.hostMax}{card.unit}</span>
 					</header>
 					<div class="gauge-host" aria-label={card.label}>
-						<EChartBase option={gaugeOption(card.metric, card.unit)} ariaLabel={card.label} />
+						<EChartBase option={gaugeOption(card.metric, card.unit)} ariaLabel={card.label} dataOnly />
 					</div>
 					<div class="share" data-tone={tone}>
 						<div class="share-meta">
@@ -285,7 +285,7 @@ per-container 전력은 직접 측정 불가능 — 절대값 신뢰 X, 추세·
 						<span class="gauge-max">/ {total.hostMax}W</span>
 					</header>
 					<div class="gauge-host" aria-label="서버 총 전력">
-						<EChartBase option={gaugeOption(total, 'W')} ariaLabel="서버 총 전력" />
+						<EChartBase option={gaugeOption(total, 'W')} ariaLabel="서버 총 전력" dataOnly />
 					</div>
 				</article>
 				<article class="gauge-card total-card">
@@ -294,7 +294,7 @@ per-container 전력은 직접 측정 불가능 — 절대값 신뢰 X, 추세·
 						<span class="gauge-max">/ {temp.hostMax}°C</span>
 					</header>
 					<div class="gauge-host" aria-label="호스트 최고 온도">
-						<EChartBase option={gaugeOption(temp, '°C')} ariaLabel="호스트 최고 온도" />
+						<EChartBase option={gaugeOption(temp, '°C')} ariaLabel="호스트 최고 온도" dataOnly />
 					</div>
 				</article>
 			</div>
