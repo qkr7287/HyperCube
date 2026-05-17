@@ -1197,18 +1197,36 @@ KPI — 컨테이너·요청·자원 합계
 					<span class="th">자원
 						<span class="col-resize" onmousedown={(e) => startResize(e, 3, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</span>
-					<button class="th sortable" class:active={sortField === 'cpu'} onclick={() => setSort('cpu')}>
-						CPU (1h){sortField === 'cpu' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+					<button
+						class="th sortable"
+						class:active={sortField === 'cpu'}
+						onclick={() => setSort('cpu')}
+						title={`컨테이너 CPU 사용률 (자체 cores quota 대비 %, quota 없으면 host 전체 대비).\n최근 1시간 추세 — 약 2분 간격 30 포인트.\nidle = 1H 동안 활동 거의 없음.`}
+					>
+						CPU <small>(1H · quota)</small>{sortField === 'cpu' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
 						<span class="col-resize" onmousedown={(e) => startResize(e, 4, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</button>
-					<button class="th sortable" class:active={sortField === 'mem'} onclick={() => setSort('mem')}>
-						MEM (1h){sortField === 'mem' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+					<button
+						class="th sortable"
+						class:active={sortField === 'mem'}
+						onclick={() => setSort('mem')}
+						title={`컨테이너 메모리 사용률 (자체 memory_limit 대비 %, limit 없으면 host 전체 대비).\n최근 1시간 추세 — 약 2분 간격 30 포인트.\nidle = 1H 동안 활동 거의 없음.`}
+					>
+						MEM <small>(1H · limit)</small>{sortField === 'mem' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
 						<span class="col-resize" onmousedown={(e) => startResize(e, 5, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</button>
-					<span class="th">GPU 코어 (1h)
+					<span
+						class="th"
+						title={`컨테이너 GPU SM 사용률 (할당된 GPU slice 대비 %).\nfull slice 는 host GPU 대비와 동일, MIG/partial slice 는 비례.\n최근 1시간 추세 — 약 2분 간격 30 포인트.\nGPU 슬라이스 미할당 컨테이너는 빈 칸 (—).`}
+					>
+						GPU 코어 <small>(1H · slice)</small>
 						<span class="col-resize" onmousedown={(e) => startResize(e, 6, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</span>
-					<span class="th">GPU VRAM (1h)
+					<span
+						class="th"
+						title={`컨테이너 GPU VRAM 사용률 (할당된 slice memory 대비 %).\n최근 1시간 추세 — 약 2분 간격 30 포인트.\nGPU 슬라이스 미할당 컨테이너는 빈 칸 (—).`}
+					>
+						GPU VRAM <small>(1H · slice)</small>
 						<span class="col-resize" onmousedown={(e) => startResize(e, 7, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</span>
 					<button class="th sortable" class:active={sortField === 'last_seen'} onclick={() => setSort('last_seen')}>
@@ -1265,10 +1283,10 @@ KPI — 컨테이너·요청·자원 합계
 											<path d={sp.area} fill="rgba(77,191,179,0.18)" stroke="none" />
 											<path d={sp.line} fill="none" stroke="#4dbfb3" stroke-width="1.4" />
 										</svg>
+										<span class="spark-num">{(series[series.length - 1] ?? 0).toFixed(0)}%</span>
 									{:else}
-										<span class="spark-flat" aria-hidden="true"></span>
+										<span class="spark-idle" title="최근 1시간 활동 거의 없음">idle</span>
 									{/if}
-									<span class="spark-num">{(series[series.length - 1] ?? 0).toFixed(0)}%</span>
 								{:else}
 									<span class="spark-pending">—</span>
 								{/if}
@@ -1284,10 +1302,10 @@ KPI — 컨테이너·요청·자원 합계
 											<path d={sp.area} fill="rgba(165,180,252,0.18)" stroke="none" />
 											<path d={sp.line} fill="none" stroke="#a5b4fc" stroke-width="1.4" />
 										</svg>
+										<span class="spark-num mem">{(series[series.length - 1] ?? 0).toFixed(0)}%</span>
 									{:else}
-										<span class="spark-flat mem" aria-hidden="true"></span>
+										<span class="spark-idle" title="최근 1시간 메모리 사용 거의 없음">idle</span>
 									{/if}
-									<span class="spark-num mem">{(series[series.length - 1] ?? 0).toFixed(0)}%</span>
 								{:else}
 									<span class="spark-pending">—</span>
 								{/if}
@@ -1305,10 +1323,10 @@ KPI — 컨테이너·요청·자원 합계
 											<path d={sp.area} fill="rgba(244,114,182,0.18)" stroke="none" />
 											<path d={sp.line} fill="none" stroke="#f472b6" stroke-width="1.4" />
 										</svg>
+										<span class="spark-num gpu-util">{(series[series.length - 1] ?? 0).toFixed(0)}%</span>
 									{:else}
-										<span class="spark-flat gpu-util" aria-hidden="true"></span>
+										<span class="spark-idle" title="GPU 슬라이스는 받았지만 최근 1시간 사용 거의 없음">idle</span>
 									{/if}
-									<span class="spark-num gpu-util">{(series[series.length - 1] ?? 0).toFixed(0)}%</span>
 								{:else}
 									<span class="spark-pending">…</span>
 								{/if}
@@ -1326,10 +1344,10 @@ KPI — 컨테이너·요청·자원 합계
 											<path d={sp.area} fill="rgba(160,135,217,0.18)" stroke="none" />
 											<path d={sp.line} fill="none" stroke="#a087d9" stroke-width="1.4" />
 										</svg>
+										<span class="spark-num gpu">{(series[series.length - 1] ?? 0).toFixed(0)}%</span>
 									{:else}
-										<span class="spark-flat gpu" aria-hidden="true"></span>
+										<span class="spark-idle" title="GPU 슬라이스 메모리 사용 거의 없음">idle</span>
 									{/if}
-									<span class="spark-num gpu">{(series[series.length - 1] ?? 0).toFixed(0)}%</span>
 								{:else}
 									<span class="spark-pending">…</span>
 								{/if}
@@ -2855,6 +2873,18 @@ KPI — 컨테이너·요청·자원 합계
 		color: var(--text-muted);
 	}
 
+	.spark-idle {
+		font-size: 11px;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		color: var(--text-muted);
+		padding: 2px 8px;
+		border-radius: 999px;
+		background: rgba(100, 116, 139, 0.12);
+		border: 1px dashed rgba(100, 116, 139, 0.32);
+		cursor: help;
+	}
+
 	.row-actions {
 		display: inline-flex !important;
 		flex-wrap: nowrap;
@@ -3359,7 +3389,7 @@ KPI — 컨테이너·요청·자원 합계
 	.th {
 		position: relative;
 		display: inline-flex;
-		align-items: center;
+		align-items: baseline;
 		gap: 4px;
 		background: transparent;
 		border: none;
@@ -3369,6 +3399,14 @@ KPI — 컨테이너·요청·자원 합계
 		letter-spacing: inherit;
 		padding: 0;
 		text-align: left;
+	}
+	.th small {
+		font-size: 9.5px;
+		font-weight: 700;
+		color: var(--text-muted);
+		letter-spacing: 0;
+		text-transform: none;
+		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 	}
 
 	.col-resize {
