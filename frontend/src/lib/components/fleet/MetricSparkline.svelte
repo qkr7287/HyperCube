@@ -138,9 +138,13 @@
 	.spark {
 		display: block;
 		width: 100%;
-		max-width: 140px;
 		min-width: 0;
 		height: 100%;
+	}
+	/* stretch 모드가 아닐 때만 좁은 max-width 유지 — 좁은 list cell 같이
+	   "옆에 정보 텍스트가 같이 있고 스파크는 작은 보조" 케이스 보호. */
+	.spark:not([preserveAspectRatio='none']) {
+		max-width: 140px;
 	}
 	.baseline {
 		stroke: rgba(100, 116, 139, 0.18);

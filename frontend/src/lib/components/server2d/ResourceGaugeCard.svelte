@@ -48,7 +48,7 @@
 	</div>
 	<div class="bar"><b style={`width:${clamped}%`}></b></div>
 	<div class="foot">
-		<div class="spark"><MetricSparkline values={sparkValues} color={sparkColor} label={label} {loading} /></div>
+		<div class="spark"><MetricSparkline values={sparkValues} color={sparkColor} label={label} {loading} stretch /></div>
 		{#if hint}<small class="hint">{hint}</small>{/if}
 	</div>
 </button>
@@ -57,8 +57,8 @@
 	.gauge {
 		display: grid;
 		grid-template-rows: auto auto auto;
-		gap: 3px;
-		padding: 6px 10px 7px;
+		gap: 7px;
+		padding: 9px 12px 10px;
 		border: 1px solid var(--border);
 		border-radius: 9px;
 		background: rgba(15, 23, 42, 0.55);
