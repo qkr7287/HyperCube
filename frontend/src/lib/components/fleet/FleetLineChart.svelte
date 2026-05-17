@@ -24,6 +24,7 @@
 	let {
 		title,
 		labels,
+		timestamps,
 		series,
 		unit = 'percent',
 		help = '',
@@ -34,6 +35,9 @@
 	}: {
 		title: string;
 		labels: string[];
+		// epoch ms. 있으면 xAxis.type='time' 으로 부드러운 streaming (좌측 흘러감).
+		// 없으면 기존 category 동작 유지 (호환성).
+		timestamps?: number[];
 		series: Series[];
 		unit?: 'percent' | 'rate';
 		help?: string;
@@ -45,7 +49,7 @@
 	} = $props();
 
 	let option = $derived<EChartsOption>(
-		buildOption(labels, series, unit, topNames, soloLabel, rightPadding),
+		buildOption(labels, timestamps, series, unit, topNames, soloLabel, rightPadding),
 	);
 
 	function formatValue(value: number, u: 'percent' | 'rate'): string {
@@ -105,6 +109,7 @@
 
 	function buildOption(
 		lbls: string[],
+		ts: number[] | undefined,
 		seriesList: Series[],
 		u: 'percent' | 'rate',
 		tops: string[],
@@ -112,6 +117,7 @@
 		padRight: number,
 	): EChartsOption {
 		const yMax = u === 'percent' ? percentAxisMax(seriesList, soloName) : rateAxisMax(seriesList, soloName);
+		const useTimeAxis = Array.isArray(ts) && ts.length > 0;
 
 		const isHighlighted = (label: string): boolean => {
 			if (soloName) return label === soloName;
@@ -125,10 +131,17 @@
 			const forceHidden = !!soloName && item.label !== soloName;
 			const color = highlighted ? item.color : dimColor(item.color);
 			const showEndLabel = topSet.has(item.label) && !forceHidden;
+			// time axis 일 때 데이터는 [timestamp, value] 튜플. category 는 그대로 number[].
+			// 이게 ECharts streaming animation 의 핵심 — 각 점이 절대 시간 좌표를 가지면
+			// data 길이 바뀌어도 기존 점은 같은 자리에 머물고 새 점만 우측에 추가됨.
+			const rawValues = forceHidden || item.hidden ? [] : item.values;
+			const data = useTimeAxis
+				? rawValues.map((v, i) => [ts![i], v] as [number, number])
+				: rawValues;
 			return {
 				type: 'line' as const,
 				name: item.label,
-				data: forceHidden || item.hidden ? [] : item.values,
+				data,
 				smooth: 0.32,
 				symbol: 'none',
 				lineStyle: { color, width: highlighted ? 2.4 : 1.4 },
@@ -195,19 +208,48 @@
 				},
 			},
 			legend: { show: false },
-			xAxis: {
-				type: 'category',
-				data: lbls,
-				boundaryGap: false,
-				axisTick: { show: false },
-				axisLine: { show: false },
-				axisLabel: {
-					color: '#64748b',
-					hideOverlap: true,
-					fontSize: 10,
-				},
-				splitLine: { lineStyle: { color: 'rgba(100, 116, 139, 0.08)' } },
-			},
+			xAxis: useTimeAxis
+				? {
+						type: 'time',
+						axisTick: { show: false },
+						axisLine: { show: false },
+						axisLabel: {
+							color: '#64748b',
+							hideOverlap: true,
+							fontSize: 10,
+							// labels 와 동일한 시간 포맷 (HH:MM 등) — 호출처가 보내준 label
+							// 형식을 그대로 살리되, 시각은 ECharts time scale 이 결정.
+							formatter: (value: number) => {
+								if (!Array.isArray(lbls) || lbls.length === 0) return '';
+								// timestamp → 가장 가까운 lbls index 의 label 사용
+								if (!Array.isArray(ts) || ts.length === 0) return '';
+								let nearest = 0;
+								let nearestDiff = Math.abs(ts[0] - value);
+								for (let i = 1; i < ts.length; i++) {
+									const diff = Math.abs(ts[i] - value);
+									if (diff < nearestDiff) {
+										nearest = i;
+										nearestDiff = diff;
+									}
+								}
+								return lbls[nearest] ?? '';
+							},
+						},
+						splitLine: { lineStyle: { color: 'rgba(100, 116, 139, 0.08)' } },
+					}
+				: {
+						type: 'category',
+						data: lbls,
+						boundaryGap: false,
+						axisTick: { show: false },
+						axisLine: { show: false },
+						axisLabel: {
+							color: '#64748b',
+							hideOverlap: true,
+							fontSize: 10,
+						},
+						splitLine: { lineStyle: { color: 'rgba(100, 116, 139, 0.08)' } },
+					},
 			yAxis: {
 				type: 'value',
 				min: 0,
