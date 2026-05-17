@@ -974,6 +974,14 @@
 					<button class="refresh-btn" onclick={() => loadDashboard({ withDetail: true })} disabled={refreshing}>
 						{refreshing ? '새로고침 중...' : '↻ 새로고침'}
 					</button>
+					<label class="refresh-interval" title="갱신 주기 — polling + 차트 x축 tick 간격 + 표시 단위(모두 같음). 차트 우상단 selector 와 자동 동기화.">
+						<span>갱신 주기</span>
+						<select bind:value={selectedRange} onchange={() => handleRangeChange(selectedRange)} aria-label="갱신 주기">
+							{#each RANGE_OPTIONS as option}
+								<option value={option.key}>{option.label}</option>
+							{/each}
+						</select>
+					</label>
 				</div>
 			</section>
 
@@ -1090,8 +1098,8 @@
 				<span class="sync-chip" title="4개 차트가 함께 hover · zoom · marker 동기화됩니다">
 					<span class="sync-icon" aria-hidden="true">⤬</span> 동기화
 				</span>
-				<div class="range-tools" title="tick — polling 주기 + 차트 x축 tick 간격 + 표시 단위 (모두 같음). 항상 마지막 {CHART_POINTS}개 점 = tick × {CHART_POINTS} 범위.">
-					<span class="tick-label">tick</span>
+				<div class="range-tools" title="갱신 주기 — polling + 차트 x축 tick 간격 + 표시 단위(모두 같음). 항상 마지막 {CHART_POINTS}개 점 = 갱신 주기 × {CHART_POINTS} 범위. 상단 ops-bar 의 selector 와 자동 동기화.">
+					<span class="tick-label">갱신 주기</span>
 					<div class="range-tabs">
 						{#each RANGE_OPTIONS as option}
 							<button
