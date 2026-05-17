@@ -106,18 +106,34 @@
 		<ul class="list">
 			{#each displayed as ev (ev.id)}
 				{@const m = metaFor(ev.kind)}
-				<li>
-					<span class="dot" style:background={m.color}></span>
-					<span class="badge {m.tone}" title={ev.kind}>
-						<span class="icon">{m.icon}</span>{m.label}
-					</span>
-					{#if detail(ev)}
-						<span class="detail" data-tone={detailTone(ev)}>{detail(ev)}</span>
-					{/if}
-					<span class="time" title={formatDateTime(ev.ts)}>{formatRelativeTime(ev.ts)}</span>
+				<li class="row" data-tone={m.tone} style:--kind={m.color}>
+					<span class="row-icon" aria-hidden="true">{m.icon}</span>
+					<div class="row-body">
+						<div class="row-head">
+							<span class="kind-label">{m.label}</span>
+							{#if detail(ev)}
+								<span class="detail" data-tone={detailTone(ev)}>{detail(ev)}</span>
+							{/if}
+						</div>
+						<div class="row-time">
+							<span class="time-abs">{formatDateTime(ev.ts)}</span>
+							<span class="time-rel">· {formatRelativeTime(ev.ts)}</span>
+						</div>
+					</div>
 				</li>
 			{/each}
 		</ul>
+		{#if displayed.length <= 3 && summaryTone === 'ok'}
+			<!-- 이벤트 거의 없을 때 — 빈 공간이 휑하지 않도록 안정 상태 hint.
+			     summary footer 와 중복 정보지만 큰 빈 공간보단 안내가 낫다. -->
+			<div class="stable-hint">
+				<span class="hint-icon" aria-hidden="true">✓</span>
+				<div class="hint-body">
+					<strong>최근 큰 이벤트 없음</strong>
+					<span>지난 24시간 안정 상태. 재시작·OOM·unhealthy 0건.</span>
+				</div>
+			</div>
+		{/if}
 	{/if}
 
 	<!-- 운영 요약 footer — 최근 24h 의 restart/exit/oom/unhealthy 집계.
@@ -154,7 +170,8 @@
 		width: 100%;
 		max-width: 100%;
 		box-sizing: border-box;
-		overflow: hidden;
+		overflow-y: auto;
+		overflow-x: hidden;
 		position: relative;
 		box-shadow:
 			0 8px 24px rgba(0, 0, 0, 0.16),
@@ -216,71 +233,77 @@
 		list-style: none;
 		display: flex;
 		flex-direction: column;
-		gap: 4px;
-		flex: 1 1 0;
+		gap: 5px;
+		flex: 0 1 auto;
 		min-height: 0;
 		min-width: 0;
 		width: 100%;
 		max-width: 100%;
 		box-sizing: border-box;
 		max-height: none;
-		overflow-y: auto;
-		padding-right: 2px;
+		overflow: visible;
+		padding: 0 2px 0 0;
 	}
 
-	.list li {
+	/* 한 row 구조 — 좌측 colored stripe + icon 박스 + body (라벨/디테일/시간) */
+	.row {
 		display: grid;
-		grid-template-columns: auto auto minmax(0, 1fr) auto;
-		align-items: center;
-		gap: 7px;
-		padding: 7px 9px;
+		grid-template-columns: auto minmax(0, 1fr);
+		align-items: stretch;
+		gap: 9px;
+		padding: 8px 10px 8px 10px;
 		border-radius: 8px;
 		background: rgba(13, 17, 23, 0.58);
 		border: 1px solid rgba(100, 116, 139, 0.16);
-		font-size: 11.5px;
+		border-left: 3px solid var(--kind, rgba(148, 163, 184, 0.5));
 		transition: border-color var(--ease-fast), background-color var(--ease-fast);
 	}
-	.list li:hover {
-		border-color: rgba(48, 213, 200, 0.32);
+	.row:hover {
 		background: rgba(13, 17, 23, 0.75);
+		border-color: rgba(48, 213, 200, 0.32);
+		border-left-color: var(--kind, rgba(148, 163, 184, 0.7));
 	}
 
-	.dot {
-		flex: 0 0 auto;
-		width: 7px;
-		height: 7px;
-		border-radius: 50%;
-		box-shadow: 0 0 8px currentColor;
-	}
-
-	.badge {
+	.row-icon {
 		display: inline-flex;
 		align-items: center;
-		gap: 5px;
-		padding: 2px 8px;
-		border-radius: 999px;
-		font-size: 10.5px;
+		justify-content: center;
+		width: 26px;
+		height: 26px;
+		border-radius: 6px;
+		background: color-mix(in srgb, var(--kind) 18%, transparent);
+		color: var(--kind);
+		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+		font-size: 13px;
+		font-weight: 800;
+		flex: 0 0 auto;
+	}
+
+	.row-body {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 0;
+	}
+	.row-head {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		min-width: 0;
+		flex-wrap: wrap;
+	}
+	.kind-label {
+		font-size: 12px;
 		font-weight: 800;
 		letter-spacing: 0.01em;
+		color: var(--text-primary);
 	}
-	.badge.success { background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); }
-	.badge.warn    { background: rgba(234, 179, 8, 0.18);  color: #fde047; border: 1px solid rgba(234, 179, 8, 0.35); }
-	.badge.danger  { background: rgba(239, 68, 68, 0.18);  color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); }
-	.badge.info    { background: rgba(59, 130, 246, 0.18); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.35); }
-	.badge.muted   { background: rgba(100, 116, 139, 0.16); color: var(--text-secondary); border: 1px solid rgba(100, 116, 139, 0.32); }
-
-	.icon {
-		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-		font-size: 11px;
-	}
-
 	.detail {
 		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 		font-size: 10.5px;
 		font-weight: 750;
-		padding: 2px 7px;
+		padding: 1px 6px;
 		border-radius: 5px;
-		justify-self: start;
 	}
 	.detail[data-tone='muted'] {
 		color: var(--text-muted);
@@ -293,13 +316,62 @@
 		color: #fca5a5;
 		background: rgba(239, 68, 68, 0.14);
 	}
-
-	.time {
-		grid-column: -2 / -1;
+	.row-time {
+		display: flex;
+		align-items: baseline;
+		gap: 6px;
 		font-size: 10.5px;
 		color: var(--text-muted);
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
+		overflow: hidden;
+	}
+	.time-abs {
+		color: var(--text-secondary);
+		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+	}
+
+	/* 이벤트 적을 때 빈 공간 채우는 안정 상태 hint */
+	.stable-hint {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 12px 14px;
+		margin-top: 8px;
+		border-radius: 9px;
+		background:
+			linear-gradient(180deg, rgba(16, 185, 129, 0.06), rgba(16, 185, 129, 0.02)),
+			rgba(13, 17, 23, 0.4);
+		border: 1px dashed rgba(16, 185, 129, 0.3);
+		flex: 0 0 auto;
+	}
+	.hint-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		border-radius: 50%;
+		background: rgba(16, 185, 129, 0.18);
+		color: #6ee7b7;
+		font-size: 16px;
+		font-weight: 900;
+		flex: 0 0 auto;
+	}
+	.hint-body {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 0;
+	}
+	.hint-body strong {
+		font-size: 12px;
+		font-weight: 800;
+		color: var(--text-primary);
+	}
+	.hint-body span {
+		font-size: 10.5px;
+		color: var(--text-muted);
 	}
 
 	/* 운영 요약 footer — list 가 짧을 때도 "지금 안정 상태" 한눈 제공.
