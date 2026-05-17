@@ -67,6 +67,42 @@
 		return 0;
 	}
 
+	function pad2(n: number): string {
+		return n < 10 ? `0${n}` : `${n}`;
+	}
+
+	function formatAxisTime(value: number, ts?: number[]): string {
+		const d = new Date(value);
+		// 시리즈 범위 (첫 ~ 마지막 ts) 기준 자동 단위 선택. ts 가 없으면 HH:MM 기본.
+		let span = 0;
+		if (Array.isArray(ts) && ts.length >= 2) {
+			span = ts[ts.length - 1] - ts[0];
+		}
+		const HOUR = 3600_000;
+		const DAY = 86_400_000;
+		// 5분 이하 = HH:MM:SS, 24시간 이하 = HH:MM, 그 이상 = MM/DD HH:MM
+		if (span > 0 && span <= 5 * 60_000) {
+			return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+		}
+		if (span > 0 && span <= DAY) {
+			return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+		}
+		if (span > 0 && span <= 7 * DAY) {
+			return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+		}
+		// 더 긴 범위 또는 unknown → MM/DD
+		if (span > 7 * DAY) {
+			return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}`;
+		}
+		return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+	}
+
+	function formatTooltipTime(value: number): string {
+		// tooltip 은 항상 정밀한 시각 (초까지). 운영자가 정확한 점 시각 확인용.
+		const d = new Date(value);
+		return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+	}
+
 	function formatValue(value: number, fmt: ValueFormat, decimals: number): string {
 		if (fmt === 'bytes') return formatBytesValue(value);
 		if (fmt === 'bytes_per_sec') return `${formatBytesValue(value)}/s`;
@@ -122,9 +158,10 @@
 				bottom: hasDateLabels ? 24 : 18,
 				containLabel: true,
 			},
-			// 같은 group 의 차트 간 axisPointer/tooltip 동기화는 EChartBase
-			// 의 echarts.connect 가 처리. 여기선 snap 만 켜서 가까운 점에 흡착.
-			axisPointer: { snap: true },
+			// 같은 group 의 차트 간 axisPointer/tooltip 동기화는 EChartBase 의
+			// echarts.connect 가 처리. snap 은 짧은 간격(30s 등) 점들이 화면에서
+			// 거의 같은 x 좌표라 일부 점만 호버 인식되는 버그를 일으켜서 끔.
+			axisPointer: { snap: false },
 			dataZoom: zoom
 				? [
 						{ type: 'inside', xAxisIndex: 0, throttle: 50, zoomLock: false },
@@ -141,16 +178,25 @@
 				formatter: (params: any) => {
 					const arr = Array.isArray(params) ? params : [params];
 					if (arr.length === 0) return '';
-					const dataIndex = Number(arr[0]?.dataIndex);
-					const title =
-						(Number.isInteger(dataIndex) ? tipLbls[dataIndex] : undefined) ??
-						arr[0].axisValueLabel ??
-						'';
+					let title = '';
+					if (useTimeAxis) {
+						// time axis: axisValue 는 timestamp. 정밀한 시각 직접 포맷.
+						const tsValue = Number(arr[0]?.axisValue);
+						title = Number.isFinite(tsValue) ? formatTooltipTime(tsValue) : '';
+					} else {
+						const dataIndex = Number(arr[0]?.dataIndex);
+						title =
+							(Number.isInteger(dataIndex) ? tipLbls[dataIndex] : undefined) ??
+							arr[0].axisValueLabel ??
+							'';
+					}
 					const lines = arr.map((p: any) => {
 						const sIdx = p.seriesIndex ?? 0;
 						const ds = seriesList[sIdx];
 						const f = ds?.format ?? fmt;
-						const val = formatValue(Number(p.value ?? 0), f, decimals);
+						// time axis 의 series.data 는 [ts, val] 튜플 → value 가 [ts, val] 배열로 들어옴
+						const rawVal = Array.isArray(p.value) ? p.value[1] : p.value;
+						const val = formatValue(Number(rawVal ?? 0), f, decimals);
 						return `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color};margin-right:6px"></span>${p.seriesName}: <strong>${val}</strong>`;
 					});
 					return `<div style="color:#e2e8f0;font-weight:700;margin-bottom:4px;white-space:nowrap">${title}</div>${lines.join('<br/>')}`;
@@ -178,21 +224,10 @@
 							hideOverlap: true,
 							fontSize: hasDateLabels ? 8 : 9,
 							margin: hasDateLabels ? 9 : 6,
-							// caller 의 labels 문자열 형식 유지 — timestamp → 가장 가까운 label index.
-							formatter: (value: number) => {
-								if (!Array.isArray(lbls) || lbls.length === 0) return '';
-								if (!Array.isArray(ts) || ts.length === 0) return '';
-								let nearest = 0;
-								let nearestDiff = Math.abs(ts[0] - value);
-								for (let i = 1; i < ts.length; i++) {
-									const diff = Math.abs(ts[i] - value);
-									if (diff < nearestDiff) {
-										nearest = i;
-										nearestDiff = diff;
-									}
-								}
-								return lbls[nearest] ?? '';
-							},
+							// timestamp 직접 포맷 (caller labels 매칭 X — 같은 분 안 점들이
+							// 모두 같은 라벨로 뭉치는 버그 회피). axis 의 자동 분배가 결정한
+							// tick 시각에 맞춰 HH:MM:SS / HH:MM / MM/DD HH:MM 자동.
+							formatter: (value: number) => formatAxisTime(value, ts),
 						},
 						splitLine: { show: false },
 					}

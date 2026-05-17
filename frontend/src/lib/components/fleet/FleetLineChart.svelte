@@ -52,6 +52,34 @@
 		buildOption(labels, timestamps, series, unit, topNames, soloLabel, rightPadding),
 	);
 
+	function pad2(n: number): string {
+		return n < 10 ? `0${n}` : `${n}`;
+	}
+
+	function formatAxisTimeShort(value: number, ts?: number[]): string {
+		const d = new Date(value);
+		let span = 0;
+		if (Array.isArray(ts) && ts.length >= 2) {
+			span = ts[ts.length - 1] - ts[0];
+		}
+		const DAY = 86_400_000;
+		if (span > 0 && span <= 5 * 60_000) {
+			return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+		}
+		if (span > 0 && span <= DAY) {
+			return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+		}
+		if (span > 7 * DAY) {
+			return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}`;
+		}
+		return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+	}
+
+	function formatTooltipTime(value: number): string {
+		const d = new Date(value);
+		return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+	}
+
 	function formatValue(value: number, u: 'percent' | 'rate'): string {
 		if (u === 'percent') return `${value.toFixed(1)}%`;
 		if (value < 1) return '0 B/s';
@@ -187,7 +215,7 @@
 				borderColor: 'rgba(48, 213, 200, 0.35)',
 				borderWidth: 1,
 				textStyle: { color: '#cbd5e1', fontSize: 11 },
-				axisPointer: { type: 'line', lineStyle: { color: 'rgba(148, 163, 184, 0.3)' } },
+				axisPointer: { type: 'line', lineStyle: { color: 'rgba(148, 163, 184, 0.3)' }, snap: false },
 				formatter: (params: any) => {
 					const arr = Array.isArray(params) ? params : [params];
 					if (arr.length === 0) return '';
@@ -199,9 +227,17 @@
 						return tops.includes(name);
 					});
 					if (filtered.length === 0) return '';
-					const title = filtered[0].axisValueLabel ?? '';
+					let title = '';
+					if (useTimeAxis) {
+						const tsValue = Number(filtered[0]?.axisValue);
+						title = Number.isFinite(tsValue) ? formatTooltipTime(tsValue) : '';
+					} else {
+						title = filtered[0].axisValueLabel ?? '';
+					}
 					const lines = filtered.map((p: any) => {
-						const val = formatValue(Number(p.value ?? 0), u);
+						// time axis 의 series.data 는 [ts, val] 튜플 → value 가 배열
+						const rawVal = Array.isArray(p.value) ? p.value[1] : p.value;
+						const val = formatValue(Number(rawVal ?? 0), u);
 						return `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color};margin-right:6px"></span>${p.seriesName}: <strong>${val}</strong>`;
 					});
 					return `<div style="color:#e2e8f0;font-weight:700;margin-bottom:4px">${title}</div>${lines.join('<br/>')}`;
@@ -217,23 +253,9 @@
 							color: '#64748b',
 							hideOverlap: true,
 							fontSize: 10,
-							// labels 와 동일한 시간 포맷 (HH:MM 등) — 호출처가 보내준 label
-							// 형식을 그대로 살리되, 시각은 ECharts time scale 이 결정.
-							formatter: (value: number) => {
-								if (!Array.isArray(lbls) || lbls.length === 0) return '';
-								// timestamp → 가장 가까운 lbls index 의 label 사용
-								if (!Array.isArray(ts) || ts.length === 0) return '';
-								let nearest = 0;
-								let nearestDiff = Math.abs(ts[0] - value);
-								for (let i = 1; i < ts.length; i++) {
-									const diff = Math.abs(ts[i] - value);
-									if (diff < nearestDiff) {
-										nearest = i;
-										nearestDiff = diff;
-									}
-								}
-								return lbls[nearest] ?? '';
-							},
+							// timestamp 직접 포맷 (range 자동). caller labels 매칭 안 함 —
+							// 같은 분 안 점들이 같은 라벨로 뭉치는 버그 회피.
+							formatter: (value: number) => formatAxisTimeShort(value, ts),
 						},
 						splitLine: { lineStyle: { color: 'rgba(100, 116, 139, 0.08)' } },
 					}
