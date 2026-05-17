@@ -163,7 +163,9 @@ requests. When the target Agent reports a workspace quota pool
       "efficiencyCores": 0,
       "usage": 70.8,                           // 0-100, 모든 thread 평균
       "perCore": [100, 100, ...],              // length = threads
-      "loadAvg1m": 8.84                        // optional, Linux 만
+      "loadAvg1m": 8.84,                       // optional, Linux 만
+      "packagePowerW": 13.8,                   // RAPL package 평균 W. 첫 tick 은 null (baseline). 미지원 호스트 null.
+      "tempC": 54                              // °C, thermal_zone (x86_pkg_temp/coretemp/k10temp 우선). 미지원 null.
     },
 
     "memory": {
@@ -190,7 +192,9 @@ requests. When the target Agent reports a workspace quota pool
         "memoryTotal": 8589934592,             // bytes
         "memoryUsed": 6910115840,              // bytes
         "memoryPercent": 80.4,                 // (used/total)*100, optional
-        "temperature": 61                      // °C, optional
+        "temperature": 61,                     // °C, optional. legacy 키 (backward-compat).
+        "temperatureC": 61,                    // °C, nvidia-smi temperature.gpu. 신규 키 (temperatureC 우선, fallback temperature).
+        "powerDrawW": 24.9                     // W, nvidia-smi power.draw. nvidia-smi 없는 GPU(예: Intel iGPU)는 null.
       }
     ],
 
@@ -566,6 +570,11 @@ Agent online ↔ offline 전환 시 `GlobalEventsConsumer` group으로 broadcast
 
 ## 변경 이력
 
+- 2026-05-17 (`8b17596` + agent `f90a89c`): Level 2 호스트 부담 추정용 4 필드 추가.
+  `cpu.packagePowerW` (RAPL), `cpu.tempC` (thermal_zone), `gpu[].powerDrawW`
+  (nvidia-smi power.draw), `gpu[].temperatureC` (nvidia-smi temperature.gpu).
+  Backend `SystemMetricsHistory` 에 `cpu_power_w`, `cpu_temp_c`, `gpu_power_w`
+  컬럼 mapping. gpu temperature 는 신규 `temperatureC` 키 우선, 기존 `temperature` fallback.
 - 2026-04-29 (`7f82ff8`): `containers` / `command_progress` / `heartbeat` / `connection` /
   `agent_status_change` 메시지 카탈로그에 추가. 기존 system/container metrics 변경 없음.
 - 2026-04-27: 초안. memory.available + gpu 배열 표준화 명시.

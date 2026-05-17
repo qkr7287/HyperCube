@@ -112,6 +112,7 @@ Agent 응답에는 host capacity/report 상태도 포함된다:
 | `/api/my-containers/{id}/events/?since=&limit=100` | GET | 라이프사이클 이벤트 (ContainerEvent). agent의 `container_events` 메시지 누적. 시간 오름차순. limit max 500. |
 | `/api/my-containers/{id}/processes/?sortBy=cpu&limit=20` | GET | 컨테이너 내부 process top-N. agent `container_processes` 명령 dispatch + 동기 대기 (15s). sortBy: `cpu` \| `mem`, limit 1~100. minimal image 도 동작 (호스트 관찰). |
 | `/api/my-containers/{id}/console-sessions/?limit=50` | GET | B4 Console exec audit 조회. 세션 레벨만 (user / cmd / opened_at / closed_at / duration_seconds / exit_code / close_reason). 키스트로크 미기록. limit max 200. |
+| `/api/my-containers/{id}/burden/` | GET | 호스트 자원 부담 + 이 컨테이너 추정 영향도 (Level 2: Fan 모델 + RAPL + nvidia-smi). 응답 shape 은 frontend `BurdenSnapshot`: `{gpuTemp, gpuPower, cpuPower, totalPower (+breakdown), maxTemp}`. 각 metric 에 `hostValue / hostMax / containerShare / zones / sparkline(32 points)`. agent 가 power/temp 안 보내는 호스트는 cpu_usage 기반 Fan 모델 fallback. 자세한 계산은 `apps/metrics/burden.py:build_burden_snapshot`. |
 | `/api/my-containers/{id}/update-limits/` | POST | P0 자원 한도 / 재시작 정책 수정. body `{memory_mb?, cpu_percent?, restart_policy?, restart_max_retry?}`. agent `update_container` 명령 dispatch + 동기 대기. 한 필드만 보내도 그것만 갱신. |
 
 Container 응답에는 현재 limit snapshot 필드가 포함된다:
