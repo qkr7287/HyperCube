@@ -156,23 +156,20 @@
 		'24h': { window: '7d', bucket: '1d' },
 	};
 
-	// 자동 새로고침 주기 — 차트 range 옵션과 같은 label set 으로 sync.
-	const REFRESH_INTERVAL_OPTIONS = [
-		{ value: 30_000, label: '30초' },
-		{ value: 60_000, label: '1분' },
-		{ value: 300_000, label: '5분' },
-		{ value: 3_600_000, label: '1시간' },
-		{ value: 86_400_000, label: '24시간' },
-	] as const;
-
+	// 차트에 표시할 마지막 N 개 점 — tick 단위로 N 개. tick × N = 표시 범위.
+	const CHART_POINTS = 20;
 	let container = $state<ContainerDetail | null>(null);
 	let currentMetrics = $state<MetricsSnapshot | null>(null);
 	let history = $state<MetricsHistoryRow[]>([]);
+	// 차트엔 항상 마지막 N(=CHART_POINTS) 개 점만 표시 — tick × N 이 표시 범위가 되어
+	// "tick 단위로 점이 채워지는" 일관 UX. KPI 평균/피크는 그대로 full history 사용.
+	let chartHistory = $derived(history.slice(-CHART_POINTS));
 	let loading = $state(true);
 	let refreshing = $state(false);
 	let errorMsg = $state('');
+	// tick = 단일 source of truth (selector 1개). 차트 streaming 의 시간 단위 +
+	// polling 주기 + axis tick 간격 모두 이 값을 따른다.
 	let selectedRange = $state<(typeof RANGE_OPTIONS)[number]['key']>('1h');
-	let refreshIntervalMs = $state(60_000);
 	let refreshTimer: ReturnType<typeof setInterval> | null = null;
 	let paused = $state(false);
 	let inspectData = $state<any>(null);
@@ -493,9 +490,18 @@
 		}
 	}
 
-	function refreshIntervalLabel(ms = refreshIntervalMs): string {
-		return REFRESH_INTERVAL_OPTIONS.find((option) => option.value === ms)?.label ?? `${Math.round(ms / 1000)}초`;
-	}
+	// tick 키 → ms 매핑. polling 주기 + axis tick 간격 + 차트 표시 단위 모두 이 값.
+	const RANGE_KEY_TO_MS: Record<(typeof RANGE_OPTIONS)[number]['key'], number> = {
+		'30s': 30_000,
+		'1m': 60_000,
+		'5m': 300_000,
+		'1h': 3_600_000,
+		'24h': 86_400_000,
+	};
+
+	// refreshIntervalMs 와 tickInterval 모두 selectedRange 에서 derive — 단일 source.
+	let refreshIntervalMs = $derived(RANGE_KEY_TO_MS[selectedRange]);
+	let tickIntervalMs = $derived(RANGE_KEY_TO_MS[selectedRange]);
 
 	function startRefreshTimer() {
 		if (refreshTimer) clearInterval(refreshTimer);
@@ -504,38 +510,10 @@
 		}, refreshIntervalMs);
 	}
 
-	// 두 selector 가 같은 label set 을 공유하므로, 한쪽이 바뀌면 다른 쪽도
-	// 같은 시간 단위로 sync 해서 UI 가 어긋나 보이지 않게 한다.
-	const RANGE_KEY_TO_MS: Record<(typeof RANGE_OPTIONS)[number]['key'], number> = {
-		'30s': 30_000,
-		'1m': 60_000,
-		'5m': 300_000,
-		'1h': 3_600_000,
-		'24h': 86_400_000,
-	};
-	const MS_TO_RANGE_KEY = Object.fromEntries(
-		Object.entries(RANGE_KEY_TO_MS).map(([k, v]) => [v, k]),
-	) as Record<number, (typeof RANGE_OPTIONS)[number]['key']>;
-
-	function handleRefreshIntervalChange(event: Event) {
-		const next = Number((event.currentTarget as HTMLSelectElement).value);
-		if (!Number.isFinite(next) || next <= 0) return;
-		refreshIntervalMs = next;
-		startRefreshTimer();
-		const matchKey = MS_TO_RANGE_KEY[next];
-		if (matchKey && selectedRange !== matchKey) {
-			selectedRange = matchKey;
-			loadDashboard();
-		}
-	}
-
 	function handleRangeChange(rangeKey: (typeof RANGE_OPTIONS)[number]['key']) {
 		selectedRange = rangeKey;
-		const matchMs = RANGE_KEY_TO_MS[rangeKey];
-		if (matchMs && refreshIntervalMs !== matchMs) {
-			refreshIntervalMs = matchMs;
-			startRefreshTimer();
-		}
+		// refreshIntervalMs 가 자동으로 갱신되므로 timer 만 재시작.
+		startRefreshTimer();
 		loadDashboard();
 	}
 
@@ -654,14 +632,14 @@
 	let gpuAvg = $derived(avgOf(gpuValid));
 	let gpuPeak = $derived(peakOf(gpuMaxValid.length > 0 ? gpuMaxValid : gpuValid));
 	let gpuMemPctSeries = $derived(
-		history.map((r) => {
+		chartHistory.map((r) => {
 			const u = Number(r.gpu_memory_used ?? 0);
 			const t = Number(r.gpu_memory_total ?? 0);
 			return t > 0 ? (u / t) * 100 : 0;
 		}),
 	);
 	let gpuMemPctMaxSeries = $derived(
-		history.map((r) => {
+		chartHistory.map((r) => {
 			const u = Number(r.gpu_memory_used_max ?? r.gpu_memory_used ?? 0);
 			const t = Number(r.gpu_memory_total_max ?? r.gpu_memory_total ?? 0);
 			return t > 0 ? (u / t) * 100 : 0;
@@ -679,13 +657,13 @@
 	let hasGpuMemHistory = $derived(hasGpuAllocated || gpuMemValid.length > 0);
 	let historyShowsDateOnAxis = $derived(shouldShowDateOnAxis(history));
 	let historyLabels = $derived(
-		history.map((row) => formatHistoryTime(row.recorded_at, historyShowsDateOnAxis)),
+		chartHistory.map((row) => formatHistoryTime(row.recorded_at, historyShowsDateOnAxis)),
 	)
 	let historyTimestamps = $derived(
-		history.map((row) => new Date(row.recorded_at).getTime()),
+		chartHistory.map((row) => new Date(row.recorded_at).getTime()),
 	);
 	let historyTooltipLabels = $derived(
-		history.map((row) => formatHistoryTime(row.recorded_at, true)),
+		chartHistory.map((row) => formatHistoryTime(row.recorded_at, true)),
 	);
 
 	// 본문 차트는 dual series:
@@ -696,14 +674,14 @@
 		{
 			label: 'CPU 평균',
 			color: '#30d5c8',
-			values: history.map((row) => row.cpu_usage),
+			values: chartHistory.map((row) => row.cpu_usage),
 			fill: true,
 			format: 'percent' as const,
 		},
 		{
 			label: 'CPU 최댓값',
 			color: '#30d5c8',
-			values: history.map((row) => row.cpu_usage_max),
+			values: chartHistory.map((row) => row.cpu_usage_max),
 			fill: false,
 			dashed: true,
 			format: 'percent' as const,
@@ -713,23 +691,23 @@
 		{
 			label: '메모리 평균',
 			color: '#4fc3f7',
-			values: history.map((row) => row.memory_percent),
+			values: chartHistory.map((row) => row.memory_percent),
 			fill: true,
 			format: 'percent' as const,
 		},
 		{
 			label: '메모리 최댓값',
 			color: '#4fc3f7',
-			values: history.map((row) => row.memory_percent_max),
+			values: chartHistory.map((row) => row.memory_percent_max),
 			fill: false,
 			dashed: true,
 			format: 'percent' as const,
 		},
 	]);
-	let networkRx = $derived(history.map((row) => row.network_rx));
-	let networkTx = $derived(history.map((row) => row.network_tx));
-	let diskRead = $derived(history.map((row) => row.disk_read));
-	let diskWrite = $derived(history.map((row) => row.disk_write));
+	let networkRx = $derived(chartHistory.map((row) => row.network_rx));
+	let networkTx = $derived(chartHistory.map((row) => row.network_tx));
+	let diskRead = $derived(chartHistory.map((row) => row.disk_read));
+	let diskWrite = $derived(chartHistory.map((row) => row.disk_write));
 
 	let networkFormat = $derived<'bytes' | 'bytes_per_sec'>(networkMode === 'rate' ? 'bytes_per_sec' : 'bytes');
 	let diskFormat = $derived<'bytes' | 'bytes_per_sec'>(diskMode === 'rate' ? 'bytes_per_sec' : 'bytes');
@@ -814,14 +792,14 @@
 		{
 			label: 'GPU 코어 평균',
 			color: '#f472b6',
-			values: history.map((row) => (typeof row.gpu_usage === 'number' ? row.gpu_usage : 0)),
+			values: chartHistory.map((row) => (typeof row.gpu_usage === 'number' ? row.gpu_usage : 0)),
 			fill: true,
 			format: 'percent' as const,
 		},
 		{
 			label: 'GPU 코어 최댓값',
 			color: '#f472b6',
-			values: history.map((row) =>
+			values: chartHistory.map((row) =>
 				typeof row.gpu_usage_max === 'number'
 					? row.gpu_usage_max
 					: typeof row.gpu_usage === 'number'
@@ -996,14 +974,6 @@
 					<button class="refresh-btn" onclick={() => loadDashboard({ withDetail: true })} disabled={refreshing}>
 						{refreshing ? '새로고침 중...' : '↻ 새로고침'}
 					</button>
-					<label class="refresh-interval" title="자동 새로고침 주기">
-						<span>주기</span>
-						<select bind:value={refreshIntervalMs} onchange={handleRefreshIntervalChange} aria-label="자동 새로고침 주기">
-							{#each REFRESH_INTERVAL_OPTIONS as option}
-								<option value={option.value}>{option.label}</option>
-							{/each}
-						</select>
-					</label>
 				</div>
 			</section>
 
@@ -1120,7 +1090,8 @@
 				<span class="sync-chip" title="4개 차트가 함께 hover · zoom · marker 동기화됩니다">
 					<span class="sync-icon" aria-hidden="true">⤬</span> 동기화
 				</span>
-				<div class="range-tools">
+				<div class="range-tools" title="tick — polling 주기 + 차트 x축 tick 간격 + 표시 단위 (모두 같음). 항상 마지막 {CHART_POINTS}개 점 = tick × {CHART_POINTS} 범위.">
+					<span class="tick-label">tick</span>
 					<div class="range-tabs">
 						{#each RANGE_OPTIONS as option}
 							<button
@@ -1138,13 +1109,13 @@
 					<div class="chart-head">
 						<h3>CPU 사용률</h3>
 					</div>
-					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} datasets={cpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} yAxisLabel={cpuAxisLabel} denominatorText={cpuDenominatorText} />
+					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} tickInterval={tickIntervalMs} datasets={cpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} yAxisLabel={cpuAxisLabel} denominatorText={cpuDenominatorText} />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
 						<h3>메모리 사용률</h3>
 					</div>
-					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} datasets={memoryDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} yAxisLabel={memoryAxisLabel} denominatorText={memoryDenominatorText} />
+					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} tickInterval={tickIntervalMs} datasets={memoryDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} yAxisLabel={memoryAxisLabel} denominatorText={memoryDenominatorText} />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
@@ -1154,7 +1125,7 @@
 							<button class:active={networkMode === 'rate'} onclick={() => (networkMode = 'rate')}>속도</button>
 						</div>
 					</div>
-					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} datasets={networkDatasets} yFormat={networkFormat} group={chartGroup} enableZoom markLines={chartMarkLines} />
+					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} tickInterval={tickIntervalMs} datasets={networkDatasets} yFormat={networkFormat} group={chartGroup} enableZoom markLines={chartMarkLines} />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
@@ -1164,14 +1135,14 @@
 							<button class:active={diskMode === 'rate'} onclick={() => (diskMode = 'rate')}>속도</button>
 						</div>
 					</div>
-					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} datasets={diskDatasets} yFormat={diskFormat} group={chartGroup} enableZoom markLines={chartMarkLines} />
+					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} tickInterval={tickIntervalMs} datasets={diskDatasets} yFormat={diskFormat} group={chartGroup} enableZoom markLines={chartMarkLines} />
 				</div>
 				{#if hasGpuHistory || (currentGpuUsage !== null && currentGpuUsage !== undefined)}
 					<div class="chart-card">
 						<div class="chart-head">
 							<h3>GPU 코어 사용률</h3>
 						</div>
-						<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} datasets={gpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
+						<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} tickInterval={tickIntervalMs} datasets={gpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
 					</div>
 				{/if}
 				{#if hasGpuMemHistory || (currentGpuMemPct !== null && currentGpuMemPct !== undefined)}
@@ -1179,7 +1150,7 @@
 						<div class="chart-head">
 							<h3>GPU 메모리 (VRAM)</h3>
 						</div>
-						<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} datasets={gpuMemDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
+						<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} tickInterval={tickIntervalMs} datasets={gpuMemDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
 					</div>
 				{/if}
 			</div>
@@ -2539,7 +2510,20 @@
 	.range-tools {
 		display: inline-flex;
 		align-items: center;
-		gap: 10px;
+		gap: 8px;
+		cursor: help;
+	}
+	.tick-label {
+		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+		font-size: 10.5px;
+		font-weight: 800;
+		letter-spacing: 0.08em;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		padding: 3px 7px;
+		border-radius: 5px;
+		background: rgba(48, 213, 200, 0.1);
+		border: 1px solid rgba(48, 213, 200, 0.25);
 	}
 	.range-label {
 		font-size: 12px;

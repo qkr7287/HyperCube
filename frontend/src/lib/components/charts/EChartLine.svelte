@@ -19,6 +19,7 @@
 		labels = [],
 		tooltipLabels = [],
 		timestamps,
+		tickInterval,
 		series = [],
 		yFormat = 'percent' as ValueFormat,
 		height = '100%',
@@ -34,6 +35,10 @@
 		// epoch ms. 있으면 xAxis.type='time' (진짜 streaming — 새 점만 우측 슬라이드 in).
 		// 없으면 기존 category axis 동작 유지 (호환성).
 		timestamps?: number[];
+		// polling 주기(ms). 있으면 xAxis tick 을 정확히 이 간격으로 강제 + axisLabel 정밀도도
+		// interval 기준 자동 (30s→HH:MM:SS, 1m/5m→HH:MM, 1h→MM/DD HH:MM, 24h+→MM/DD).
+		// 없으면 ECharts 자동 분배 + ts span 기반 fallback.
+		tickInterval?: number;
 		series?: LineSeries[];
 		yFormat?: ValueFormat;
 		height?: string | number;
@@ -49,7 +54,7 @@
 	} = $props();
 
 	let option = $derived<EChartsOption>(
-		buildOption(labels, tooltipLabels, timestamps, series, yFormat, showLegend, enableZoom, markLines, yAxisName),
+		buildOption(labels, tooltipLabels, timestamps, tickInterval, series, yFormat, showLegend, enableZoom, markLines, yAxisName),
 	);
 
 	function percentDecimals(seriesList: LineSeries[]): number {
@@ -71,27 +76,26 @@
 		return n < 10 ? `0${n}` : `${n}`;
 	}
 
-	function formatAxisTime(value: number, ts?: number[]): string {
+	function formatAxisTime(value: number, ts: number[] | undefined, intervalMs: number | undefined): string {
 		const d = new Date(value);
-		// 시리즈 범위 (첫 ~ 마지막 ts) 기준 자동 단위 선택. ts 가 없으면 HH:MM 기본.
-		let span = 0;
-		if (Array.isArray(ts) && ts.length >= 2) {
-			span = ts[ts.length - 1] - ts[0];
-		}
+		// 정밀도 선택 우선순위: tickInterval(명시) > ts span(휴리스틱) > HH:MM default
 		const HOUR = 3600_000;
 		const DAY = 86_400_000;
-		// 5분 이하 = HH:MM:SS, 24시간 이하 = HH:MM, 그 이상 = MM/DD HH:MM
-		if (span > 0 && span <= 5 * 60_000) {
+		const eff = intervalMs && intervalMs > 0
+			? intervalMs
+			: (Array.isArray(ts) && ts.length >= 2 ? ts[ts.length - 1] - ts[0] : 0);
+		// 30초 이하 (polling 단위) = HH:MM:SS, 1m~10m = HH:MM, ~1d = HH:MM,
+		// 1d~7d = MM/DD HH:MM, 7d+ = MM/DD
+		if (eff > 0 && eff < 60_000) {
 			return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 		}
-		if (span > 0 && span <= DAY) {
+		if (eff > 0 && eff < HOUR) {
 			return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 		}
-		if (span > 0 && span <= 7 * DAY) {
+		if (eff > 0 && eff < DAY) {
 			return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 		}
-		// 더 긴 범위 또는 unknown → MM/DD
-		if (span > 7 * DAY) {
+		if (eff >= DAY) {
 			return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}`;
 		}
 		return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
@@ -135,6 +139,7 @@
 		lbls: string[],
 		tipLbls: string[],
 		ts: number[] | undefined,
+		intervalMs: number | undefined,
 		seriesList: LineSeries[],
 		fmt: ValueFormat,
 		legend: boolean | undefined,
@@ -217,6 +222,11 @@
 			xAxis: useTimeAxis
 				? {
 						type: 'time',
+						// polling 주기를 그대로 tick 간격으로 강제 — caller 가 보낸 점마다
+						// 라벨이 박힘 (자동 분배가 멋대로 4~6 ticks 만 그리는 걸 회피).
+						...(intervalMs && intervalMs > 0
+							? { interval: intervalMs, minInterval: intervalMs }
+							: {}),
 						axisTick: { show: false },
 						axisLine: { show: false },
 						axisLabel: {
@@ -224,10 +234,7 @@
 							hideOverlap: true,
 							fontSize: hasDateLabels ? 8 : 9,
 							margin: hasDateLabels ? 9 : 6,
-							// timestamp 직접 포맷 (caller labels 매칭 X — 같은 분 안 점들이
-							// 모두 같은 라벨로 뭉치는 버그 회피). axis 의 자동 분배가 결정한
-							// tick 시각에 맞춰 HH:MM:SS / HH:MM / MM/DD HH:MM 자동.
-							formatter: (value: number) => formatAxisTime(value, ts),
+							formatter: (value: number) => formatAxisTime(value, ts, intervalMs),
 						},
 						splitLine: { show: false },
 					}
