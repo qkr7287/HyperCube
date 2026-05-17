@@ -20,6 +20,7 @@ from apps.common import command_router
 from apps.common.permissions import IsAdmin
 from apps.common.redis_client import get_redis_client
 from apps.agents.models import Agent
+from apps.metrics.burden import build_burden_snapshot
 from apps.metrics.models import ContainerMetricsHistory
 from apps.metrics.serializers import ContainerMetricsHistorySerializer
 from apps.models_catalog.prepare import (
@@ -513,6 +514,19 @@ class MyContainerViewSet(ReadOnlyModelViewSet):
             params={"containerId": container.container_id},
         )
         return self._agent_resp_to_http(resp)
+
+    @extend_schema(
+        summary="호스트 자원 부담 + 이 컨테이너 추정 영향도",
+        description=(
+            "Level 2 추정 (Fan + RAPL + nvidia-smi). 응답 shape 은 frontend 의 "
+            "`BurdenSnapshot` 과 동일. agent 가 power/temp 를 안 보내는 호스트는 "
+            "Fan 모델 fallback + null 필드로 graceful 처리."
+        ),
+    )
+    @action(detail=True, methods=["get"], url_path="burden")
+    def burden(self, request, pk=None):
+        container = self.get_object()
+        return Response(build_burden_snapshot(container))
 
     @extend_schema(
         summary="컨테이너 콘솔 세션 audit 조회",

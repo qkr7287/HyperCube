@@ -52,6 +52,24 @@ class SystemMetricsHistory(models.Model):
         null=True, blank=True,
         help_text="GPU 최고 온도 (°C). 다중 GPU 중 가장 뜨거운 값.",
     )
+    gpu_power_w = models.FloatField(
+        null=True, blank=True,
+        help_text="GPU 전체 전력 합산 (W). nvidia-smi power.draw 합. 다중 GPU 합산.",
+    )
+    cpu_power_w = models.FloatField(
+        null=True, blank=True,
+        help_text=(
+            "CPU package 평균 전력 (W). Intel/AMD RAPL energy_uj 차분으로 계산. "
+            "multi-socket 합산. RAPL 미지원 / 권한 없음 시 null."
+        ),
+    )
+    cpu_temp_c = models.FloatField(
+        null=True, blank=True,
+        help_text=(
+            "CPU package 온도 (°C). thermal_zone (x86_pkg_temp/coretemp/k10temp) 우선. "
+            "센서 없으면 null."
+        ),
+    )
     raw_data = models.JSONField(help_text="Agent로부터 받은 system_metrics 전체 payload")
     recorded_at = models.DateTimeField(db_index=True, help_text="Agent가 수집한 시각")
 

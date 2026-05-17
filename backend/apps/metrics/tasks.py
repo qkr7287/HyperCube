@@ -122,12 +122,28 @@ def _collect_system_metrics(r, agent):
         avail = memory.get("available")
         kwargs["memory_available"] = _as_int(avail) if avail is not None else None
 
+    # Level 2 호스트 부담 추정: CPU package 전력/온도 (RAPL + thermal_zone).
+    # Agent 가 안 보내면 (구버전 / RAPL 미지원 호스트) null.
+    if "cpu_power_w" in db_cols:
+        cpu_w = cpu.get("packagePowerW")
+        kwargs["cpu_power_w"] = _as_float(cpu_w) if cpu_w is not None else None
+    if "cpu_temp_c" in db_cols:
+        cpu_t = cpu.get("tempC")
+        kwargs["cpu_temp_c"] = _as_float(cpu_t) if cpu_t is not None else None
+
     if gpus and isinstance(gpus, list):
         # 다중 GPU 호스트도 단일 컬럼으로 aggregation 가능하게 평균·합산·최대값 정규화.
         usage_vals = [_as_float(g.get("usage")) for g in gpus if g.get("usage") is not None]
         mem_used_vals = [_as_int(g.get("memoryUsed")) for g in gpus if g.get("memoryUsed") is not None]
         mem_total_vals = [_as_int(g.get("memoryTotal")) for g in gpus if g.get("memoryTotal") is not None]
-        temp_vals = [_as_float(g.get("temperature")) for g in gpus if g.get("temperature") is not None]
+        # 온도: 새 키 temperatureC 우선, 구 key temperature fallback.
+        temp_vals = [
+            _as_float(g.get("temperatureC") if g.get("temperatureC") is not None else g.get("temperature"))
+            for g in gpus
+            if (g.get("temperatureC") is not None or g.get("temperature") is not None)
+        ]
+        # 전력: 신규 key powerDrawW. 안 보내는 GPU 만 skip 하고 나머지 합산.
+        power_vals = [_as_float(g.get("powerDrawW")) for g in gpus if g.get("powerDrawW") is not None]
         if "gpu_count" in db_cols:
             kwargs["gpu_count"] = len(gpus)
         if "gpu_usage" in db_cols and usage_vals:
@@ -138,6 +154,8 @@ def _collect_system_metrics(r, agent):
             kwargs["gpu_memory_total"] = sum(mem_total_vals)
         if "gpu_temperature_max" in db_cols and temp_vals:
             kwargs["gpu_temperature_max"] = max(temp_vals)
+        if "gpu_power_w" in db_cols and power_vals:
+            kwargs["gpu_power_w"] = sum(power_vals)
     else:
         # 호스트에 GPU 없음. count=0 만 채워서 "GPU 보고는 했고 0대" 표시.
         if "gpu_count" in db_cols:
