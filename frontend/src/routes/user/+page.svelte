@@ -1201,32 +1201,32 @@ KPI — 컨테이너·요청·자원 합계
 						class="th sortable"
 						class:active={sortField === 'cpu'}
 						onclick={() => setSort('cpu')}
-						title={`컨테이너 CPU 사용률 (자체 cores quota 대비 %, quota 없으면 host 전체 대비).\n최근 1시간 추세 — 약 2분 간격 30 포인트.`}
+						title={`컨테이너 CPU 사용률.\n분모: 자체 cores quota (없으면 host 전체).\n최근 1시간 추세 — 약 2분 간격 30 포인트.`}
 					>
-						CPU <small>(1H · quota)</small>{sortField === 'cpu' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+						CPU <small>(1H)</small>{sortField === 'cpu' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
 						<span class="col-resize" onmousedown={(e) => startResize(e, 4, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</button>
 					<button
 						class="th sortable"
 						class:active={sortField === 'mem'}
 						onclick={() => setSort('mem')}
-						title={`컨테이너 메모리 사용률 (자체 memory_limit 대비 %, limit 없으면 host 전체 대비).\n최근 1시간 추세 — 약 2분 간격 30 포인트.`}
+						title={`컨테이너 메모리 사용률.\n분모: 자체 memory_limit (없으면 host 전체).\n최근 1시간 추세 — 약 2분 간격 30 포인트.`}
 					>
-						MEM <small>(1H · limit)</small>{sortField === 'mem' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+						MEM <small>(1H)</small>{sortField === 'mem' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
 						<span class="col-resize" onmousedown={(e) => startResize(e, 5, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</button>
 					<span
 						class="th"
-						title={`컨테이너 GPU SM 사용률 (할당된 GPU slice 대비 %).\nfull slice 는 host GPU 대비와 동일, MIG/partial slice 는 비례.\n최근 1시간 추세 — 약 2분 간격 30 포인트.\nGPU 슬라이스 미할당 컨테이너는 빈 칸 (—).`}
+						title={`컨테이너 GPU SM 사용률.\n분모: 할당된 GPU slice (full slice 는 host GPU 와 동일, MIG/partial slice 는 비례).\n최근 1시간 추세 — 약 2분 간격 30 포인트.\nGPU 슬라이스 미할당 컨테이너는 빈 칸 (—).`}
 					>
-						GPU 코어 <small>(1H · slice)</small>
+						GPU 코어 <small>(1H)</small>
 						<span class="col-resize" onmousedown={(e) => startResize(e, 6, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</span>
 					<span
 						class="th"
-						title={`컨테이너 GPU VRAM 사용률 (할당된 slice memory 대비 %).\n최근 1시간 추세 — 약 2분 간격 30 포인트.\nGPU 슬라이스 미할당 컨테이너는 빈 칸 (—).`}
+						title={`컨테이너 GPU VRAM 사용률.\n분모: 할당된 slice memory.\n최근 1시간 추세 — 약 2분 간격 30 포인트.\nGPU 슬라이스 미할당 컨테이너는 빈 칸 (—).`}
 					>
-						GPU VRAM <small>(1H · slice)</small>
+						GPU VRAM <small>(1H)</small>
 						<span class="col-resize" onmousedown={(e) => startResize(e, 7, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</span>
 					<button class="th sortable" class:active={sortField === 'last_seen'} onclick={() => setSort('last_seen')}>
