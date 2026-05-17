@@ -234,7 +234,7 @@
 		{/if}
 	</div>
 	<div class="body" class:loading>
-		<EChartBase {option} ariaLabel={title} />
+		<EChartBase {option} ariaLabel={title} dataOnly />
 	</div>
 </div>
 
