@@ -39,6 +39,15 @@
 	let lastFetched = $state<Date | null>(null);
 	let timer: ReturnType<typeof setInterval> | null = null;
 
+	// 5xx 연속 발생 시 polling backoff. agent_offline (503) / timeout (504) 처럼
+	// 단기간 회복이 어려운 상태에서 매 5초 재요청해서 콘솔·백엔드 로그를 도배하지 않게 한다.
+	const BACKOFF_THRESHOLD = 3; // 5xx 가 N번 연속이면 backoff 진입
+	const BACKOFF_BASE_MS = 30_000; // 30s
+	const BACKOFF_MAX_MS = 300_000; // 5m cap
+	let consecutive5xx = $state(0);
+	let backoffUntil = $state(0); // epoch ms; 0 이면 backoff 미적용
+	let isOffline = $derived(consecutive5xx >= BACKOFF_THRESHOLD);
+
 	const STATE_LABEL: Record<string, { label: string; tone: string }> = {
 		R: { label: '실행', tone: 'success' },
 		S: { label: '대기', tone: 'muted' },
@@ -53,10 +62,24 @@
 		return localStorage.getItem('hc_access_token');
 	}
 
-	async function load() {
+	function scheduleBackoff() {
+		// 연속 실패 횟수를 BACKOFF_THRESHOLD 만큼 뺀 다음 지수 증가. cap 적용.
+		const step = Math.max(0, consecutive5xx - BACKOFF_THRESHOLD);
+		const delay = Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** step);
+		backoffUntil = Date.now() + delay;
+	}
+
+	function resetBackoff() {
+		consecutive5xx = 0;
+		backoffUntil = 0;
+	}
+
+	async function load(force = false) {
 		if (!containerId) return;
 		const t = token();
 		if (!t) return;
+		// backoff 윈도우 안이면 자동 호출은 skip. force=true (수동 새로고침) 면 무시하고 즉시 시도.
+		if (!force && backoffUntil > Date.now()) return;
 		loading = true;
 		try {
 			const qs = new URLSearchParams({ sortBy, limit: String(limit) });
@@ -65,6 +88,12 @@
 			const j = await r.json().catch(() => ({}));
 			if (!r.ok) {
 				errorMsg = j?.error?.detail || j?.detail || `HTTP ${r.status}`;
+				if (r.status >= 500) {
+					consecutive5xx += 1;
+					if (consecutive5xx >= BACKOFF_THRESHOLD) scheduleBackoff();
+				} else {
+					resetBackoff();
+				}
 				return;
 			}
 			const data = j?.data ?? {};
@@ -72,6 +101,7 @@
 			total = Number(data.total ?? 0);
 			errorMsg = '';
 			lastFetched = new Date();
+			resetBackoff();
 		} catch (err: any) {
 			errorMsg = err?.message || '프로세스 조회 실패';
 		} finally {
@@ -82,7 +112,13 @@
 	function tick() {
 		if (paused) return;
 		if (typeof document !== 'undefined' && document.hidden) return;
+		if (backoffUntil > Date.now()) return;
 		load();
+	}
+
+	function manualRetry() {
+		resetBackoff();
+		load(true);
 	}
 
 	$effect(() => {
@@ -184,14 +220,22 @@
 					<option value={n}>top {n}</option>
 				{/each}
 			</select>
-			<button class="refresh" onclick={load} disabled={loading}>
+			<button class="refresh" onclick={manualRetry} disabled={loading}>
 				{loading ? '불러오는 중...' : '지금 새로고침'}
 			</button>
 		</div>
 	</div>
 
-	{#if errorMsg}
-		<StateBox kind="error" message={errorMsg} action={load} actionLabel="다시 시도" />
+	{#if isOffline}
+		<StateBox
+			kind="error"
+			icon="🛑"
+			message={`Agent 응답 없음 — 자동 폴링을 잠시 멈췄습니다. (${errorMsg || 'HTTP 5xx'})`}
+			action={manualRetry}
+			actionLabel="지금 다시 시도"
+		/>
+	{:else if errorMsg}
+		<StateBox kind="error" message={errorMsg} action={manualRetry} actionLabel="다시 시도" />
 	{:else if loading && processes.length === 0}
 		<StateBox kind="loading" message="프로세스 목록 불러오는 중..." />
 	{:else if processes.length === 0}

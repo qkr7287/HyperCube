@@ -302,10 +302,22 @@
 		});
 		const json = await response.json().catch(() => ({}));
 		if (!response.ok) {
-			throw new Error(json?.error?.detail || json?.detail || `HTTP ${response.status}`);
+			const err: Error & { status?: number } = new Error(
+				json?.error?.detail || json?.detail || `HTTP ${response.status}`,
+			);
+			err.status = response.status;
+			throw err;
 		}
 		return json.data as T;
 	}
+
+	// inspect 폴링 backoff (loadInspect 전용). agent_offline 503 가 길어질 때
+	// 매 refresh tick 마다 또 503 을 받지 않게 lockout 시간을 둔다.
+	const INSPECT_BACKOFF_THRESHOLD = 3;
+	const INSPECT_BACKOFF_BASE_MS = 30_000;
+	const INSPECT_BACKOFF_MAX_MS = 300_000;
+	let inspect5xx = 0;
+	let inspectBackoffUntil = 0;
 
 	function snapshotGpu(snap: MetricsSnapshot | null): number | null {
 		const list = snap?.gpu;
@@ -360,6 +372,8 @@
 		//   - 진짜 fail 이 지속되면 다음 fetch 도 안 들어와서 데이터는 stale 이지만
 		//     UI 가 매 5초 깜빡이는 것보단 stale 상태로 두는 게 운영자 시야에 낫다.
 		// 첫 fetch (또는 명시적 reload) 만 loading=true / error clear 동작.
+		// silent polling 은 5xx 연속 시 backoff window 동안 호출 자체를 skip.
+		if (silent && inspectBackoffUntil > Date.now()) return;
 		const showLoading = !silent || !inspectData;
 		if (showLoading) {
 			inspectLoading = true;
@@ -369,7 +383,20 @@
 			inspectData = await api<any>(`/api/my-containers/${containerId}/inspect/`);
 			// 성공 시는 silent 라도 stale error chip 은 지워준다.
 			if (inspectError) inspectError = '';
+			inspect5xx = 0;
+			inspectBackoffUntil = 0;
 		} catch (err: any) {
+			if (err?.status >= 500) {
+				inspect5xx += 1;
+				if (inspect5xx >= INSPECT_BACKOFF_THRESHOLD) {
+					const step = inspect5xx - INSPECT_BACKOFF_THRESHOLD;
+					const delay = Math.min(INSPECT_BACKOFF_MAX_MS, INSPECT_BACKOFF_BASE_MS * 2 ** step);
+					inspectBackoffUntil = Date.now() + delay;
+				}
+			} else {
+				inspect5xx = 0;
+				inspectBackoffUntil = 0;
+			}
 			if (showLoading) {
 				inspectError = err?.message || 'inspect 조회 실패';
 			}
