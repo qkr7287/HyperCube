@@ -119,7 +119,7 @@
 </script>
 
 <div class="radar">
-	<EChartBase {option} ariaLabel="자원 밸런스 레이더" />
+	<EChartBase {option} ariaLabel="자원 밸런스 레이더" dataOnly />
 </div>
 
 <style>

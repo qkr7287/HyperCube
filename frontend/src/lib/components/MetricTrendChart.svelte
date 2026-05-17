@@ -373,7 +373,7 @@
 		</div>
 	{/if}
 	<div class="canvas-wrap" class:compact>
-		<EChartBase {option} ariaLabel={label} />
+		<EChartBase {option} ariaLabel={label} dataOnly />
 		{#if loading}
 			<div class="chart-loading" role="status" aria-live="polite">
 				<span class="chart-spinner"></span>

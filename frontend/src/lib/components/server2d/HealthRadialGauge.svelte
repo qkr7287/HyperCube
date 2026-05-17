@@ -70,7 +70,7 @@
 <div class="radial">
 	<div class="chart-wrap">
 		<div class="canvas-square">
-			<EChartBase {option} ariaLabel="{label} {Math.round(score)}점" />
+			<EChartBase {option} ariaLabel="{label} {Math.round(score)}점" dataOnly />
 			<div class="center-label">
 				<strong style={`color:${toneColors[tone]}`}>{Math.round(score)}</strong>
 				<small>{label}</small>

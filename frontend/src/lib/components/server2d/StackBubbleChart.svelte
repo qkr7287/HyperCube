@@ -230,7 +230,7 @@
 </script>
 
 <div class="bubble">
-	<EChartBase {option} ariaLabel="스택 부하 (CPU x 메모리) 버블 차트" />
+	<EChartBase {option} ariaLabel="스택 부하 (CPU x 메모리) 버블 차트" dataOnly />
 </div>
 
 <style>
