@@ -151,6 +151,7 @@
 		justify-content: space-between;
 		gap: 8px;
 		min-width: 0;
+		margin-top: 5px;
 	}
 
 	.spark {
