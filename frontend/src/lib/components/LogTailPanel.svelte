@@ -12,6 +12,14 @@
 	import { browser } from '$app/environment';
 	import { base } from '$app/paths';
 	import StateBox from './StateBox.svelte';
+	import InfoTooltip from './InfoTooltip.svelte';
+
+	const HEADER_HELP = `컨테이너 stdout/stderr 를 agent 가 WebSocket 으로 stream.
+
+· bottom 근처에 있으면 새 로그 자동 따라감, 위로 스크롤하면 자동 분리되어 과거 로그 읽기 가능
+· "재연결" = WS 스트림만 다시 연결 (컨테이너 무관)
+· "일시정지" = 화면 갱신만 멈춤 (수신 자체는 buffer 에 계속 쌓임)
+· 최대 5000줄 유지 (cap 초과 시 가장 오래된 줄부터 drop)`;
 
 	type LineRow = { id: number; stream: 'stdout' | 'stderr' | 'mixed'; text: string };
 	type PendingChunk = { lines: string[]; stream: LineRow['stream'] };
@@ -419,7 +427,7 @@
 <section class="panel" class:closed={!open}>
 	<div class="panel-header slim">
 		<div>
-			<h2>실시간 로그</h2>
+			<h2>실시간 로그<InfoTooltip text={HEADER_HELP} placement="bottom-start" /></h2>
 		</div>
 		<button class="toggle" class:on={open} onclick={togglePanel}>
 			{open ? '닫기' : '열기'}

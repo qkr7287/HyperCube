@@ -21,6 +21,14 @@
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { browser } from '$app/environment';
 	import { base } from '$app/paths';
+	import InfoTooltip from './InfoTooltip.svelte';
+
+	const HEADER_HELP = `컨테이너 안에 web shell (exec) 세션을 띄움. Portainer 모델 — 명령 차단 없이 full shell 권한.
+
+· "+ 새 세션" 으로 여러 세션 동시 사용 (각각 자기 WS · execId)
+· 활성 세션의 shell/user 는 docker exec 본질상 시작 후 변경 불가 → 신규 세션 prefs 만 노출
+· 탭 × 닫기 = 그 세션만 종료 (다른 세션 영향 없음)
+· 세션 audit (누가/언제/cmd/exitCode) 은 backend ConsoleSession 모델 — 키스트로크는 미기록`;
 
 	let {
 		agentId,
@@ -418,7 +426,7 @@
 <section class="panel" class:closed={!open}>
 	<div class="panel-header slim" class:closed-row={!open}>
 		<div>
-			<h2>콘솔 (exec)</h2>
+			<h2>콘솔 (exec)<InfoTooltip text={HEADER_HELP} placement="bottom-start" /></h2>
 			{#if open}
 				<p>컨테이너 안에 shell 을 띄워 명령 실행. 탭을 닫으면 그 세션만 종료됩니다.</p>
 			{/if}

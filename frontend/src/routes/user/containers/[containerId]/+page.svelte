@@ -1361,9 +1361,28 @@
 		<div class="bento-area area-tabs">
 			<TabbedContextPanel
 				tabs={[
-					{ key: 'process', label: '프로세스', content: processTab },
-					{ key: 'info', label: '컨테이너 정보', content: infoTab },
-					{ key: 'events', label: '이벤트', content: eventsTab, badge: events.length || null },
+					{
+						key: 'process',
+						label: '프로세스',
+						content: processTab,
+						title:
+							'컨테이너 내부에서 돌고 있는 프로세스 top-N. 호스트 /proc + PID namespace 매핑으로 수집해서 minimal image (ps 없음) 도 동작.',
+					},
+					{
+						key: 'info',
+						label: '컨테이너 정보',
+						content: infoTab,
+						title:
+							'런타임 상태 (시작 시각·Agent·PID) + 요청 시 설정 (포트·환경변수) + Inspect (docker inspect subset). 섹션별 접기 가능.',
+					},
+					{
+						key: 'events',
+						label: '이벤트',
+						content: eventsTab,
+						badge: events.length || null,
+						title:
+							'컨테이너 라이프사이클 이벤트 (start/stop/die/restart/oom/health_status 등). agent 가 docker events stream 으로 받아 영구 보존.',
+					},
 				] as ContextTab[]}
 			/>
 		</div>

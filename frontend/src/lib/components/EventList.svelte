@@ -6,6 +6,16 @@
 <script lang="ts">
 	import { formatDateTime, formatRelativeTime } from '$lib/utils/container-dashboard';
 	import StateBox from './StateBox.svelte';
+	import InfoTooltip from './InfoTooltip.svelte';
+
+	const HEADER_HELP = `컨테이너 라이프사이클 이벤트. agent 가 docker events stream 으로 받아 backend ContainerEvent 에 저장.
+
+종류:
+· start / stop / die / restart / pause / unpause / kill
+· oom (메모리 한도 초과로 OOM killer 가 죽임)
+· health_status (HEALTHCHECK 결과 전환 — healthy / unhealthy / starting)
+
+메트릭과 달리 cleanup 없이 영구 보존. 컨테이너 삭제 시에만 함께 사라짐. 최대 200건 한 번에 fetch.`;
 
 	export type EventRow = {
 		id: number;
@@ -91,7 +101,7 @@
 <section class="panel">
 	<div class="panel-header slim">
 		<div>
-			<h2>최근 이벤트</h2>
+			<h2>최근 이벤트<InfoTooltip text={HEADER_HELP} placement="bottom-start" /></h2>
 		</div>
 		<span class="count">{events.length}건</span>
 	</div>

@@ -10,6 +10,12 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { formatBytesValue } from '$lib/utils/container-dashboard';
 	import StateBox from './StateBox.svelte';
+	import InfoTooltip from './InfoTooltip.svelte';
+
+	const HEADER_HELP = `컨테이너 안에서 돌고 있는 프로세스 top-N.
+agent 가 호스트 /proc + PID namespace 매핑으로 수집 — 컨테이너 안에 ps 가 없어도 동작.
+
+CPU% / RSS 정렬, 검색으로 PID·이름·명령으로 필터링. 5초마다 갱신.`;
 
 	type ProcessRow = {
 		pid: number;
@@ -208,7 +214,7 @@
 <section class="panel">
 	<div class="panel-header slim">
 		<div>
-			<h2>컨테이너 내부 프로세스</h2>
+			<h2>컨테이너 내부 프로세스<InfoTooltip text={HEADER_HELP} placement="bottom-start" /></h2>
 		</div>
 		<div class="tools">
 			<div class="seg" role="group" aria-label="정렬 기준">
