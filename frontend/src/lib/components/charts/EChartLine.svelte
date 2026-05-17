@@ -111,7 +111,7 @@
 			animationEasingUpdate: 'cubicInOut',
 			grid: {
 				top: showLegendResolved ? 28 : 6,
-				left: axisName ? 34 : 4,
+				left: 4,
 				right: 6,
 				bottom: hasDateLabels ? 24 : 18,
 				containLabel: true,
@@ -179,10 +179,10 @@
 			yAxis: {
 				type: 'value',
 				min: 0,
-				name: axisName || undefined,
-				nameLocation: 'middle',
-				nameGap: 28,
-				nameTextStyle: { color: '#94a3b8', fontSize: 10, fontWeight: 700 },
+				// yAxis 좌측 name (예 "CPU %") 은 의도적으로 안 그림. UserMetricChart 가
+				// 우상단 .chart-denominator 로 라벨/분모를 더 큰 글씨로 보여주는데,
+				// 좁은 차트 (~110px) 좌측 34px 공간에 회전된 axis name 까지 넣으면
+				// tick label 과 겹쳐서 둘 다 못 읽힌다.
 				// percent 차트는 항상 0~100 범위 강제. 임계 markLine (80/90 등) 이
 				// 데이터 max 보다 위에 있어도 화면 안에 보이도록. 작은 값일 때 그래프가
 				// 바닥에 깔리는 트레이드오프는 capacity 시야 우위로 수용.
@@ -190,12 +190,18 @@
 				axisLabel: {
 					color: '#64748b',
 					fontSize: 9,
-					formatter: (v: number) => formatValue(v, fmt, decimals),
+					hideOverlap: true,
+					margin: 4,
+					// axis tick 은 정수로만 표시 (0% / 25% / 50% / 75% / 100%). 소수점은
+					// tooltip 에서. 좁은 차트에서 "0.00%" 같은 7 글자 라벨이 5 줄로
+					// 들어가면 무조건 겹친다.
+					formatter: (v: number) =>
+						fmt === 'percent' ? `${Math.round(v)}%` : formatValue(v, fmt, decimals),
 				},
 				axisLine: { show: false },
 				axisTick: { show: false },
 				splitLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.05)' } },
-				/* percent 차트 yAxis 라벨 자릿수 통일 — split 5 면 0/20/40/60/80/100 */
+				/* percent 차트 yAxis 라벨 자릿수 통일 — split 4 면 0/25/50/75/100 */
 				splitNumber: fmt === 'percent' ? 4 : undefined,
 			},
 			series: seriesList.map((ds, i) => ({
