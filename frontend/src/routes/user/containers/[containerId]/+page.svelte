@@ -2674,7 +2674,9 @@
 
 	/* "컨테이너 정보" 통합 탭 — 단일 스크롤 + 섹션 접기.
 	   3개 영역 (런타임 / 요청 설정 / Inspect) 을 details/summary 로 묶어
-	   기본 펼침 + 사용자가 원하면 접기 가능. */
+	   기본 펼침 + 사용자가 원하면 접기 가능.
+	   안 콘텐츠 (runtime / config / inspect) 가 자체 max-height·overflow 를
+	   가지면 내부 스크롤이 발생해 통합 스크롤이 분절되므로 모두 풀어준다. */
 	.info-stack {
 		flex: 1 1 0;
 		display: flex;
@@ -2682,6 +2684,7 @@
 		gap: 6px;
 		min-height: 0;
 		overflow-y: auto;
+		overflow-x: hidden;
 		padding-right: 4px;
 		scrollbar-gutter: stable;
 	}
@@ -2740,6 +2743,26 @@
 		border: none;
 		background: transparent;
 		box-shadow: none;
+	}
+	/* 안 콘텐츠 의 자체 overflow 를 풀어 통합 스크롤 (info-stack) 으로 위임.
+	   각 panel/list/grid 가 자기 안에서 스크롤되면 운영자가 마우스 휠 위치에
+	   따라 어디가 스크롤되는지 혼란이 생긴다. height: 100% / flex: 1 1 0 도
+	   같이 풀어줘야 원본 panel 이 부모 (info-section) 안에서 자연 높이로 자람. */
+	.info-section :global(.panel),
+	.info-section :global(.runtime-panel),
+	.info-section :global(.config-panel),
+	.info-section :global(.context-grid),
+	.info-section :global(.config-detail-grid),
+	.info-section :global(.tag-list),
+	.info-section :global(.port-flow-list),
+	.info-section :global(.env-list),
+	.info-section :global(.inspect-body),
+	.info-section :global(.inspect-content),
+	.info-section :global(.grid) {
+		max-height: none;
+		overflow: visible;
+		height: auto;
+		flex: 0 1 auto;
 	}
 	.context-grid > .panel {
 		display: flex;
