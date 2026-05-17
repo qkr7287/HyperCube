@@ -18,6 +18,7 @@
 	let {
 		labels = [],
 		tooltipLabels = [],
+		timestamps,
 		series = [],
 		yFormat = 'percent' as ValueFormat,
 		height = '100%',
@@ -30,6 +31,9 @@
 	}: {
 		labels?: string[];
 		tooltipLabels?: string[];
+		// epoch ms. 있으면 xAxis.type='time' (진짜 streaming — 새 점만 우측 슬라이드 in).
+		// 없으면 기존 category axis 동작 유지 (호환성).
+		timestamps?: number[];
 		series?: LineSeries[];
 		yFormat?: ValueFormat;
 		height?: string | number;
@@ -45,7 +49,7 @@
 	} = $props();
 
 	let option = $derived<EChartsOption>(
-		buildOption(labels, tooltipLabels, series, yFormat, showLegend, enableZoom, markLines, yAxisName),
+		buildOption(labels, tooltipLabels, timestamps, series, yFormat, showLegend, enableZoom, markLines, yAxisName),
 	);
 
 	function percentDecimals(seriesList: LineSeries[]): number {
@@ -94,6 +98,7 @@
 	function buildOption(
 		lbls: string[],
 		tipLbls: string[],
+		ts: number[] | undefined,
 		seriesList: LineSeries[],
 		fmt: ValueFormat,
 		legend: boolean | undefined,
@@ -104,6 +109,7 @@
 		const decimals = percentDecimals(seriesList);
 		const showLegendResolved = legend ?? seriesList.length > 1;
 		const hasDateLabels = lbls.some((label) => /\d{1,2}\/\d{1,2}/.test(label));
+		const useTimeAxis = Array.isArray(ts) && ts.length > 0;
 
 		return {
 			animationDuration: 250,
@@ -162,20 +168,48 @@
 						itemGap: 14,
 					}
 				: { show: false },
-			xAxis: {
-				type: 'category',
-				data: lbls,
-				boundaryGap: false,
-				axisTick: { show: false },
-				axisLine: { show: false },
-				axisLabel: {
-					color: '#64748b',
-					hideOverlap: true,
-					fontSize: hasDateLabels ? 8 : 9,
-					margin: hasDateLabels ? 9 : 6,
-				},
-				splitLine: { show: false },
-			},
+			xAxis: useTimeAxis
+				? {
+						type: 'time',
+						axisTick: { show: false },
+						axisLine: { show: false },
+						axisLabel: {
+							color: '#64748b',
+							hideOverlap: true,
+							fontSize: hasDateLabels ? 8 : 9,
+							margin: hasDateLabels ? 9 : 6,
+							// caller 의 labels 문자열 형식 유지 — timestamp → 가장 가까운 label index.
+							formatter: (value: number) => {
+								if (!Array.isArray(lbls) || lbls.length === 0) return '';
+								if (!Array.isArray(ts) || ts.length === 0) return '';
+								let nearest = 0;
+								let nearestDiff = Math.abs(ts[0] - value);
+								for (let i = 1; i < ts.length; i++) {
+									const diff = Math.abs(ts[i] - value);
+									if (diff < nearestDiff) {
+										nearest = i;
+										nearestDiff = diff;
+									}
+								}
+								return lbls[nearest] ?? '';
+							},
+						},
+						splitLine: { show: false },
+					}
+				: {
+						type: 'category',
+						data: lbls,
+						boundaryGap: false,
+						axisTick: { show: false },
+						axisLine: { show: false },
+						axisLabel: {
+							color: '#64748b',
+							hideOverlap: true,
+							fontSize: hasDateLabels ? 8 : 9,
+							margin: hasDateLabels ? 9 : 6,
+						},
+						splitLine: { show: false },
+					},
 			yAxis: {
 				type: 'value',
 				min: 0,
@@ -213,7 +247,10 @@
 				id: ds.label || `s_${i}`,
 				type: 'line',
 				name: ds.label,
-				data: ds.values,
+				// time axis 일 때 각 점에 절대 timestamp 부여 — streaming animation 의 핵심.
+				data: useTimeAxis
+					? ds.values.map((v, j) => [ts![j], v] as [number, number])
+					: ds.values,
 				smooth: 0.32,
 				smoothMonotone: 'x',
 				symbol: 'none',
@@ -234,7 +271,7 @@
 </script>
 
 <div class="line-host" style:height={typeof height === 'number' ? `${height}px` : height}>
-	<EChartBase {option} {ariaLabel} {height} {group} />
+	<EChartBase {option} {ariaLabel} {height} {group} dataOnly />
 </div>
 
 <style>

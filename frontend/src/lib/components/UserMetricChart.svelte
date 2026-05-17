@@ -11,6 +11,7 @@
 	let {
 		labels = [],
 		tooltipLabels = [],
+		timestamps,
 		datasets = [],
 		yFormat = 'percent' as ValueFormat,
 		group,
@@ -22,6 +23,8 @@
 	}: {
 		labels?: string[];
 		tooltipLabels?: string[];
+		// epoch ms. 있으면 EChartLine 이 time axis 로 자동 streaming.
+		timestamps?: number[];
 		datasets?: Series[];
 		yFormat?: ValueFormat;
 		group?: string;
@@ -40,7 +43,7 @@
 			{#if denominatorText}<em>{denominatorText}</em>{/if}
 		</div>
 	{/if}
-	<EChartLine {labels} {tooltipLabels} series={datasets} {yFormat} height="100%" {group} {enableZoom} {markLines} yAxisName={yAxisLabel} />
+	<EChartLine {labels} {tooltipLabels} {timestamps} series={datasets} {yFormat} height="100%" {group} {enableZoom} {markLines} yAxisName={yAxisLabel} />
 </div>
 
 <style>

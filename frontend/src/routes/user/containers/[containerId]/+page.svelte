@@ -680,6 +680,9 @@
 	let historyShowsDateOnAxis = $derived(shouldShowDateOnAxis(history));
 	let historyLabels = $derived(
 		history.map((row) => formatHistoryTime(row.recorded_at, historyShowsDateOnAxis)),
+	)
+	let historyTimestamps = $derived(
+		history.map((row) => new Date(row.recorded_at).getTime()),
 	);
 	let historyTooltipLabels = $derived(
 		history.map((row) => formatHistoryTime(row.recorded_at, true)),
@@ -1135,13 +1138,13 @@
 					<div class="chart-head">
 						<h3>CPU 사용률</h3>
 					</div>
-					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} datasets={cpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} yAxisLabel={cpuAxisLabel} denominatorText={cpuDenominatorText} />
+					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} datasets={cpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} yAxisLabel={cpuAxisLabel} denominatorText={cpuDenominatorText} />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
 						<h3>메모리 사용률</h3>
 					</div>
-					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} datasets={memoryDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} yAxisLabel={memoryAxisLabel} denominatorText={memoryDenominatorText} />
+					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} datasets={memoryDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} yAxisLabel={memoryAxisLabel} denominatorText={memoryDenominatorText} />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
@@ -1151,7 +1154,7 @@
 							<button class:active={networkMode === 'rate'} onclick={() => (networkMode = 'rate')}>속도</button>
 						</div>
 					</div>
-					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} datasets={networkDatasets} yFormat={networkFormat} group={chartGroup} enableZoom markLines={chartMarkLines} />
+					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} datasets={networkDatasets} yFormat={networkFormat} group={chartGroup} enableZoom markLines={chartMarkLines} />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
@@ -1161,14 +1164,14 @@
 							<button class:active={diskMode === 'rate'} onclick={() => (diskMode = 'rate')}>속도</button>
 						</div>
 					</div>
-					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} datasets={diskDatasets} yFormat={diskFormat} group={chartGroup} enableZoom markLines={chartMarkLines} />
+					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} datasets={diskDatasets} yFormat={diskFormat} group={chartGroup} enableZoom markLines={chartMarkLines} />
 				</div>
 				{#if hasGpuHistory || (currentGpuUsage !== null && currentGpuUsage !== undefined)}
 					<div class="chart-card">
 						<div class="chart-head">
 							<h3>GPU 코어 사용률</h3>
 						</div>
-						<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} datasets={gpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
+						<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} datasets={gpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
 					</div>
 				{/if}
 				{#if hasGpuMemHistory || (currentGpuMemPct !== null && currentGpuMemPct !== undefined)}
@@ -1176,7 +1179,7 @@
 						<div class="chart-head">
 							<h3>GPU 메모리 (VRAM)</h3>
 						</div>
-						<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} datasets={gpuMemDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
+						<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} datasets={gpuMemDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
 					</div>
 				{/if}
 			</div>
