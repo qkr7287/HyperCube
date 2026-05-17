@@ -25,6 +25,7 @@
 		title,
 		labels,
 		timestamps,
+		tickInterval,
 		series,
 		unit = 'percent',
 		help = '',
@@ -38,6 +39,8 @@
 		// epoch ms. 있으면 xAxis.type='time' 으로 부드러운 streaming (좌측 흘러감).
 		// 없으면 기존 category 동작 유지 (호환성).
 		timestamps?: number[];
+		// polling 주기 (ms). xAxis tick 을 그 간격으로 강제 + 라벨 정밀도 자동.
+		tickInterval?: number;
 		series: Series[];
 		unit?: 'percent' | 'rate';
 		help?: string;
@@ -49,27 +52,30 @@
 	} = $props();
 
 	let option = $derived<EChartsOption>(
-		buildOption(labels, timestamps, series, unit, topNames, soloLabel, rightPadding),
+		buildOption(labels, timestamps, tickInterval, series, unit, topNames, soloLabel, rightPadding),
 	);
 
 	function pad2(n: number): string {
 		return n < 10 ? `0${n}` : `${n}`;
 	}
 
-	function formatAxisTimeShort(value: number, ts?: number[]): string {
+	function formatAxisTimeShort(value: number, ts: number[] | undefined, intervalMs?: number): string {
 		const d = new Date(value);
-		let span = 0;
-		if (Array.isArray(ts) && ts.length >= 2) {
-			span = ts[ts.length - 1] - ts[0];
-		}
 		const DAY = 86_400_000;
-		if (span > 0 && span <= 5 * 60_000) {
+		const HOUR = 3600_000;
+		const eff = intervalMs && intervalMs > 0
+			? intervalMs
+			: (Array.isArray(ts) && ts.length >= 2 ? ts[ts.length - 1] - ts[0] : 0);
+		if (eff > 0 && eff < 60_000) {
 			return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 		}
-		if (span > 0 && span <= DAY) {
+		if (eff > 0 && eff < HOUR) {
 			return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 		}
-		if (span > 7 * DAY) {
+		if (eff > 0 && eff < DAY) {
+			return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+		}
+		if (eff >= DAY) {
 			return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}`;
 		}
 		return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
@@ -138,6 +144,7 @@
 	function buildOption(
 		lbls: string[],
 		ts: number[] | undefined,
+		intervalMs: number | undefined,
 		seriesList: Series[],
 		u: 'percent' | 'rate',
 		tops: string[],
@@ -247,15 +254,18 @@
 			xAxis: useTimeAxis
 				? {
 						type: 'time',
+						...(intervalMs && intervalMs > 0
+							? { interval: intervalMs, minInterval: intervalMs }
+							: {}),
 						axisTick: { show: false },
 						axisLine: { show: false },
 						axisLabel: {
 							color: '#64748b',
 							hideOverlap: true,
 							fontSize: 10,
-							// timestamp 직접 포맷 (range 자동). caller labels 매칭 안 함 —
-							// 같은 분 안 점들이 같은 라벨로 뭉치는 버그 회피.
-							formatter: (value: number) => formatAxisTimeShort(value, ts),
+							// timestamp 직접 포맷 — intervalMs 가 있으면 그 단위 기준,
+							// 없으면 ts span 으로 fallback.
+							formatter: (value: number) => formatAxisTimeShort(value, ts, intervalMs),
 						},
 						splitLine: { lineStyle: { color: 'rgba(100, 116, 139, 0.08)' } },
 					}

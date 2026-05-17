@@ -1732,6 +1732,7 @@
 								help="모든 스택 CPU 평균."
 								labels={trendLabels}
 								timestamps={historyModel.buckets}
+								tickInterval={rangeConfig.bucketSeconds * 1000}
 								unit="percent"
 								series={stackCpuSeries}
 								topNames={cpuTopNames}
@@ -1750,6 +1751,7 @@
 								help="모든 스택 메모리 평균."
 								labels={trendLabels}
 								timestamps={historyModel.buckets}
+								tickInterval={rangeConfig.bucketSeconds * 1000}
 								unit="percent"
 								series={stackMemorySeries}
 								topNames={memoryTopNames}
@@ -1768,6 +1770,7 @@
 								help="모든 스택 네트워크 트래픽."
 								labels={trendLabels}
 								timestamps={historyModel.buckets}
+								tickInterval={rangeConfig.bucketSeconds * 1000}
 								unit="rate"
 								series={stackNetworkSeries}
 								topNames={networkTopNames}
@@ -1791,6 +1794,7 @@
 									help="GPU usage 보고가 있는 컨테이너의 스택별 평균. usage=null(측정 불가)은 평균에서 제외."
 									labels={trendLabels}
 								timestamps={historyModel.buckets}
+								tickInterval={rangeConfig.bucketSeconds * 1000}
 									unit="percent"
 									series={stackGpuSeries}
 									topNames={gpuTopNames}
