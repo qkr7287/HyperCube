@@ -16,6 +16,8 @@
 	import StateBox from '$lib/components/StateBox.svelte';
 	import AgentStatusIndicator from '$lib/components/AgentStatusIndicator.svelte';
 	import ContainerLimitModal from '$lib/components/ContainerLimitModal.svelte';
+	import HostBurdenPanel from '$lib/components/HostBurdenPanel.svelte';
+	import TabbedContextPanel, { type Tab as ContextTab } from '$lib/components/TabbedContextPanel.svelte';
 	import { activeAgentIds } from '$lib/stores/global-events';
 	import { eventColor, eventLabel, type EventRow } from '$lib/utils/container-events';
 	import type { MarkLineEntry } from '$lib/components/charts/types';
@@ -1187,21 +1189,18 @@
 			</div>
 		</div>
 
-		<div class="bento-area area-process">
+		<div class="bento-area area-burden">
+			<HostBurdenPanel {containerId} />
+		</div>
+
+		{#snippet processTab()}
 			<ProcessTopPanel {containerId} {paused} />
-		</div>
+		{/snippet}
 
-		<div class="bento-area area-events">
-			<EventList {events} errorMsg={eventsError} />
-		</div>
-
-		<div class="bento-area area-inspect">
-			<InspectPanel data={inspectData} loading={inspectLoading} errorMsg={inspectError} />
-		</div>
-
-		<div class="bento-area area-context">
-			<section class="details-grid context-grid" aria-label="런타임 정보 및 요청 시 설정">
-			<div class="panel runtime-panel">
+		{#snippet runtimeTab()}
+			{@const c = container!}
+			<div class="context-grid">
+			<div class="panel runtime-panel tab-inner">
 				<div class="panel-header slim">
 					<div>
 						<h2>런타임 정보<InfoTooltip text={runtimeHelp} placement="bottom-start" /></h2>
@@ -1215,24 +1214,24 @@
 					</div>
 					<div>
 						<span>최근 동기화</span>
-						<strong>{formatDateTime(container.last_seen)}</strong>
+						<strong>{formatDateTime(c.last_seen)}</strong>
 					</div>
 				</div>
 				<div class="info-grid">
 					<div class="info-item">
 						<span class="info-label">컨테이너 ID</span>
-						<span class="info-value mono" title={container.container_id}>{container.container_id}</span>
+						<span class="info-value mono" title={c.container_id}>{c.container_id}</span>
 					</div>
 					<div class="info-item info-item-stacked">
 						<span class="info-label">요청</span>
-						<span class="info-value">{statusLabel(container.request_status)}</span>
-						<span class="info-meta mono" title={container.request_id ?? '-'}>{container.request_id ?? '-'}</span>
+						<span class="info-value">{statusLabel(c.request_status)}</span>
+						<span class="info-meta mono" title={c.request_id ?? '-'}>{c.request_id ?? '-'}</span>
 					</div>
 				</div>
-				{#if container.review_note}
+				{#if c.review_note}
 					<div class="note-box">
 						<span class="info-label">검토 메모</span>
-						<p>{container.review_note}</p>
+						<p>{c.review_note}</p>
 					</div>
 				{/if}
 				<div class="runtime-footprint" aria-label="런타임 운영 상태">
@@ -1244,12 +1243,16 @@
 					<div data-tone={agentOnline ? 'success' : 'danger'}>
 						<span>Agent</span>
 						<strong>{agentOnline ? '온라인' : '오프라인'}</strong>
-						<em title={container.agent ?? '-'}>{container.agent ?? '-'}</em>
+						<em title={c.agent ?? '-'}>{c.agent ?? '-'}</em>
 					</div>
 				</div>
 			</div>
+			</div>
+		{/snippet}
 
-			<div class="panel config-panel">
+		{#snippet configTab()}
+			<div class="context-grid">
+			<div class="panel config-panel tab-inner">
 				<div class="panel-header slim">
 					<div>
 						<h2>요청 시 설정<InfoTooltip text={configHelp} placement="bottom-start" /></h2>
@@ -1318,7 +1321,27 @@
 					</div>
 				{/if}
 			</div>
-			</section>
+			</div>
+		{/snippet}
+
+		{#snippet eventsTab()}
+			<EventList {events} errorMsg={eventsError} />
+		{/snippet}
+
+		{#snippet inspectTab()}
+			<InspectPanel data={inspectData} loading={inspectLoading} errorMsg={inspectError} />
+		{/snippet}
+
+		<div class="bento-area area-tabs">
+			<TabbedContextPanel
+				tabs={[
+					{ key: 'process', label: '프로세스', content: processTab },
+					{ key: 'runtime', label: '런타임', content: runtimeTab },
+					{ key: 'config', label: '설정', content: configTab },
+					{ key: 'events', label: '이벤트', content: eventsTab, badge: events.length || null },
+					{ key: 'inspect', label: 'Inspect', content: inspectTab },
+				] as ContextTab[]}
+			/>
 		</div>
 
 		</div>
@@ -2299,11 +2322,11 @@
 	.bento {
 		display: grid;
 		grid-template-columns: repeat(12, minmax(0, 1fr));
-		grid-template-rows: minmax(0, 1.05fr) minmax(0, 0.76fr) minmax(0, 0.67fr);
+		grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
 		grid-template-areas:
-			"charts charts charts charts charts live live live live process process process"
-			"charts charts charts charts charts live live live live context context context"
-			"events events inspect inspect inspect live live live live context context context";
+			"charts charts charts charts charts live live live live tabs tabs tabs"
+			"charts charts charts charts charts live live live live tabs tabs tabs"
+			"burden burden burden burden burden live live live live tabs tabs tabs";
 		gap: clamp(5px, 0.45vw, 9px);
 		margin-top: 0;
 		flex: 1 1 0;
@@ -2320,21 +2343,11 @@
 	.area-live {
 		grid-area: live;
 	}
-	.area-process {
-		grid-area: process;
+	.area-burden {
+		grid-area: burden;
 	}
-	.area-events {
-		grid-area: events;
-	}
-	.area-inspect {
-		grid-area: inspect;
-	}
-	.area-context {
-		grid-area: context;
-	}
-	.area-context > .context-grid {
-		flex: 1 1 0;
-		width: 100%;
+	.area-tabs {
+		grid-area: tabs;
 	}
 
 	.live-stack {
@@ -3159,11 +3172,11 @@
 	/* 1280~1439: 차트와 라이브 패널을 위에 두고 보조 패널은 한 줄로 압축. */
 	@media (max-width: 1439px) {
 		.bento {
-			grid-template-rows: minmax(0, 1.08fr) minmax(0, 0.73fr) minmax(0, 0.61fr);
+			grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
 			grid-template-areas:
-				"charts charts charts charts charts live live live live process process process"
-				"charts charts charts charts charts live live live live context context context"
-				"events events inspect inspect inspect live live live live context context context";
+				"charts charts charts charts charts live live live live tabs tabs tabs"
+				"charts charts charts charts charts live live live live tabs tabs tabs"
+				"burden burden burden burden burden live live live live tabs tabs tabs";
 		}
 	}
 
@@ -3231,11 +3244,9 @@
 			grid-auto-rows: auto;
 			grid-template-areas:
 				'charts'
-				'events'
-				'inspect'
+				'burden'
 				'live'
-				'process'
-				'context';
+				'tabs';
 			overflow: visible;
 			flex: 0 0 auto;
 		}
@@ -3255,7 +3266,7 @@
 			grid-template-rows: none;
 			height: auto;
 		}
-		.area-context > .context-grid {
+		.context-grid {
 			flex: 0 0 auto;
 		}
 		.context-grid > .panel {

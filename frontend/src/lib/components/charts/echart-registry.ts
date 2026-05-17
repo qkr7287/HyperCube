@@ -13,6 +13,7 @@ import {
 	PieChart,
 	RadarChart,
 	ScatterChart,
+	GaugeChart,
 } from 'echarts/charts';
 import {
 	GridComponent,
@@ -33,6 +34,7 @@ echarts.use([
 	PieChart,
 	RadarChart,
 	ScatterChart,
+	GaugeChart,
 	GridComponent,
 	TooltipComponent,
 	LegendComponent,

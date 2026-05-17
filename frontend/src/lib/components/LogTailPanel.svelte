@@ -39,7 +39,6 @@
 	let subscribed = $state(false);
 	let endedReason = $state<string | null>(null);
 	let errorMsg = $state('');
-	let autoScroll = $state(true);
 	let paused = $state(false);
 	let filter = $state('');
 	let logBox: HTMLDivElement | undefined = $state(undefined);
@@ -48,6 +47,16 @@
 	let clearedByUser = $state(false);
 	let pendingChunks = $state<PendingChunk[]>([]);
 	let pausedLineCount = $state(0);
+
+	// Sticky-bottom 자동 스크롤. bottom 근처(STICK_THRESHOLD_PX)면 stuckToBottom=true
+	// → 신규 라인 도착 시 자동 따라감. 사용자가 위로 스크롤하면 자동 해제, 다시
+	// bottom 가면 자동 재부착. 강제 점프(예전 autoScroll=true) 보다 표준 log/chat UX.
+	const STICK_THRESHOLD_PX = 24;
+	let stuckToBottom = $state(true);
+	let unreadCount = $state(0);
+	// 우리가 코드로 강제 스크롤한 경우엔 onscroll 핸들러가 stuckToBottom 토글 시
+	// race condition 으로 잘못 끄지 않도록 skip.
+	let programmaticScroll = false;
 
 	let initialTail = $state(100);
 	let timestamps = $state(true);
@@ -283,15 +292,37 @@
 		clearedByUser = false;
 		// cap — 가장 오래된 부분 drop. 데이터 손실 의식적 (메모리 보호).
 		if (next.length > MAX_LINES) next.splice(0, next.length - MAX_LINES);
+		const added = next.length - lines.length;
 		lines = next;
-		if (autoScroll) {
+		if (stuckToBottom) {
 			await tick();
 			scrollToBottom();
+		} else if (added > 0) {
+			// 사용자가 위로 올려둔 상태 → 카운터만 증가. floating 버튼이 안내.
+			unreadCount += added;
 		}
 	}
 
 	function scrollToBottom() {
-		if (logBox) logBox.scrollTop = logBox.scrollHeight;
+		if (!logBox) return;
+		programmaticScroll = true;
+		logBox.scrollTop = logBox.scrollHeight;
+		stuckToBottom = true;
+		unreadCount = 0;
+		// onscroll 이 reentrant 로 호출돼도 우리가 강제한 거 무시되도록 미세 지연 후 reset.
+		setTimeout(() => {
+			programmaticScroll = false;
+		}, 0);
+	}
+
+	function handleLogScroll() {
+		if (!logBox || programmaticScroll) return;
+		const distanceFromBottom = logBox.scrollHeight - logBox.scrollTop - logBox.clientHeight;
+		const atBottom = distanceFromBottom <= STICK_THRESHOLD_PX;
+		if (atBottom !== stuckToBottom) {
+			stuckToBottom = atBottom;
+			if (atBottom) unreadCount = 0;
+		}
 	}
 
 	function clearPendingChunks() {
@@ -363,13 +394,15 @@
 		}
 	}
 
-	function restart() {
+	function reconnect() {
 		stopTail();
 		lines = [];
 		lineSeq = 0;
 		clearedByUser = false;
 		clearPendingChunks();
-		showActionMsg('스트림 재시작 중');
+		unreadCount = 0;
+		stuckToBottom = true;
+		showActionMsg('스트림 재연결 중');
 		setTimeout(() => startTail(), 100);
 	}
 
@@ -429,9 +462,6 @@
 				placeholder="필터 (regex / substring)"
 				bind:value={filter}
 			/>
-			<label class="chk log-auto-scroll">
-				<input type="checkbox" bind:checked={autoScroll} /> 자동 스크롤
-			</label>
 			<label class="chk log-pause">
 				<input type="checkbox" bind:checked={paused} /> 일시정지
 			</label>
@@ -439,23 +469,39 @@
 				<button class="btn clear-btn" onclick={clearLines} disabled={lines.length === 0}>지우기</button>
 				<button class="btn copy-btn" onclick={copyAll} disabled={displayed.length === 0}>복사</button>
 				<button class="btn download-btn" onclick={downloadAll} disabled={displayed.length === 0}>다운로드</button>
-				<button class="btn restart-btn" onclick={restart}>재시작</button>
+				<button class="btn reconnect-btn" onclick={reconnect} title="WebSocket 스트림만 재연결합니다. 컨테이너는 영향 없음.">재연결</button>
 			</div>
 			<span class="action-msg" class:visible={!!toolbarMsg} aria-live="polite">{toolbarMsg || '\u00a0'}</span>
-			<span class="count">{displayed.length}{filter ? ` / ${lines.length}` : ''}줄{lines.length >= MAX_LINES ? ' (cap)' : ''}</span>
 		</div>
 
-		<div class="logbox" bind:this={logBox}>
-			{#if displayed.length === 0}
-				<StateBox
-					kind={emptyStateKind()}
-					compact
-					message={emptyStateMessage()}
-				/>
-			{:else}
-				{#each displayed as line (line.id)}
-					<div class="line {line.stream}">{line.text}</div>
-				{/each}
+		<div class="logbox-wrap">
+			<div class="logbox" bind:this={logBox} onscroll={handleLogScroll}>
+				{#if displayed.length === 0}
+					<StateBox
+						kind={emptyStateKind()}
+						compact
+						message={emptyStateMessage()}
+					/>
+				{:else}
+					{#each displayed as line (line.id)}
+						<div class="line {line.stream}">{line.text}</div>
+					{/each}
+				{/if}
+			</div>
+			{#if !stuckToBottom}
+				<button
+					type="button"
+					class="jump-bottom"
+					class:has-unread={unreadCount > 0}
+					onclick={scrollToBottom}
+					title="맨 아래로 이동 — 자동 추적 재개"
+				>
+					{#if unreadCount > 0}
+						↓ 새 {unreadCount}줄
+					{:else}
+						↓ 맨 아래로
+					{/if}
+				</button>
 			{/if}
 		</div>
 	{/if}
@@ -588,12 +634,12 @@
 
 	.toolbar {
 		display: grid;
-		grid-template-columns: auto minmax(120px, 1fr) auto auto;
+		grid-template-columns: auto minmax(120px, 1fr) auto;
 		grid-template-rows: 24px 26px 18px;
 		grid-template-areas:
-			"status filter auto pause"
-			"actions actions actions actions"
-			"msg msg msg count";
+			"status filter pause"
+			"actions actions actions"
+			"msg msg msg";
 		gap: 5px;
 		align-items: center;
 		min-width: 0;
@@ -697,10 +743,6 @@
 		background: var(--accent);
 	}
 
-	.log-auto-scroll {
-		grid-area: auto;
-	}
-
 	.log-pause {
 		grid-area: pause;
 	}
@@ -740,7 +782,7 @@
 		cursor: not-allowed;
 	}
 
-	.restart-btn {
+	.reconnect-btn {
 		color: var(--accent);
 		border-color: rgba(48, 213, 200, 0.3);
 		background: rgba(48, 213, 200, 0.08);
@@ -771,15 +813,46 @@
 		opacity: 1;
 	}
 
-	.count {
-		grid-area: count;
-		justify-self: end;
-		min-width: 64px;
-		margin-left: 0;
-		font-size: 10px;
-		color: var(--text-muted);
-		text-align: right;
-		white-space: nowrap;
+	.logbox-wrap {
+		position: relative;
+		flex: 1 1 0;
+		min-height: 0;
+		min-width: 0;
+		width: 100%;
+		display: flex;
+	}
+
+	.jump-bottom {
+		position: absolute;
+		right: 12px;
+		bottom: 10px;
+		padding: 5px 11px;
+		border-radius: 999px;
+		border: 1px solid rgba(48, 213, 200, 0.45);
+		background: rgba(13, 17, 23, 0.92);
+		color: var(--accent);
+		font-family: inherit;
+		font-size: 10.5px;
+		font-weight: 800;
+		letter-spacing: 0.02em;
+		cursor: pointer;
+		z-index: 2;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+		transition: background 0.15s ease, border-color 0.15s ease;
+	}
+	.jump-bottom:hover {
+		background: rgba(48, 213, 200, 0.18);
+		border-color: rgba(48, 213, 200, 0.7);
+	}
+	.jump-bottom.has-unread {
+		background: rgba(48, 213, 200, 0.18);
+		border-color: rgba(48, 213, 200, 0.6);
+		animation: pulse-unread 1.6s ease-in-out infinite;
+	}
+
+	@keyframes pulse-unread {
+		0%, 100% { box-shadow: 0 4px 12px rgba(48, 213, 200, 0.15); }
+		50% { box-shadow: 0 4px 16px rgba(48, 213, 200, 0.55); }
 	}
 
 	.logbox {

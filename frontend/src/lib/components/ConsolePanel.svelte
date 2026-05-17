@@ -1,12 +1,21 @@
 <!--
-  ConsolePanel — 컨테이너 내부에 web 기반 shell 을 띄움 (B4 Console exec).
+  ConsolePanel — 컨테이너 내부 shell (B4 Console exec). 멀티 세션 / 탭 지원.
 
-  /ws/server/<agent_id>/ 로 자체 WS 를 열어 exec_open 발행 → exec_chunk 메시지를
-  xterm 으로 write, term.onData 를 base64 encode 해 exec_input 발송. fit addon 으로
-  컨테이너 크기에 맞춰 exec_resize 전달. unmount / 닫기 시 exec_close + WS close.
+  /ws/server/<agent_id>/ 로 세션마다 자체 WS 를 열어 exec_open → exec_chunk 를
+  xterm 으로 write. 세션마다 독립된 execId, term, ws, mountEl.
 
-  Portainer 모델: console 권한 = full shell 권한. 명령 차단 없음. 키스트로크 미기록.
-  세션 audit 은 backend ConsoleSession 모델에서 처리.
+  설계 결정
+  ---------
+  · 세션 1개 = WS 1개 (격리). 한 세션이 끊겨도 다른 세션 영향 X.
+  · 비활성 탭의 term 은 unmount 하지 않고 display:none 으로 숨김 — 백그라운드에서
+    들어오는 chunk 가 buffer 되어 탭 전환 시 즉시 보임.
+  · 탭 닫기 = 그 세션의 exec_close + WS close + term.dispose. 마지막 탭 닫으면
+    sessions 비어 placeholder 표시.
+  · reactive (sessions[]) 와 non-reactive (handles: ws/term/fitAddon/mountEl) 분리.
+    xterm/WebSocket 같이 큰 객체를 $state proxy 에 넣어 reactivity 가 깊은 순회
+    하지 않게 한다.
+
+  Portainer 모델: 명령 차단 없음, 키스트로크 미기록. session audit 은 backend.
 -->
 <script lang="ts">
 	import { onDestroy, onMount, tick } from 'svelte';
@@ -23,22 +32,40 @@
 		startOpen?: boolean;
 	} = $props();
 
+	type SessionStatus = 'connecting' | 'active' | 'ended' | 'error';
+
+	type SessionView = {
+		id: string; // = execId
+		label: string;
+		shell: 'sh' | 'bash';
+		user: string;
+		status: SessionStatus;
+		connected: boolean;
+		ready: boolean;
+		errorMsg: string;
+		endedReason: string | null;
+		exitCode: number | null;
+	};
+
+	type SessionHandle = {
+		ws: WebSocket | null;
+		term: any;
+		fitAddon: any;
+		mountEl: HTMLDivElement | null;
+		resizeObs: ResizeObserver | null;
+	};
+
 	let open = $state(startOpen);
-	let ws: WebSocket | null = null;
-	let execId = $state<string | null>(null);
-	let term: any = null;
-	let fitAddon: any = null;
-	let termEl: HTMLDivElement | undefined = $state(undefined);
-	let resizeObs: ResizeObserver | null = null;
+	let sessions = $state<SessionView[]>([]);
+	let activeId = $state<string | null>(null);
+	let nextOrdinal = $state(1);
 
-	let connected = $state(false);
-	let ready = $state(false);
-	let endedReason = $state<string | null>(null);
-	let exitCode = $state<number | null>(null);
-	let errorMsg = $state('');
+	// non-reactive: 큰 비-serializable 객체. Map 으로 분리해 svelte reactivity 가 깊이
+	// 순회하지 않게 한다.
+	const handles = new Map<string, SessionHandle>();
 
-	let shellCmd = $state<'sh' | 'bash'>('sh');
-	let execUser = $state('');
+	let mountedShellPref = $state<'sh' | 'bash'>('sh');
+	let mountedUserPref = $state<string>('');
 
 	function token(): string | null {
 		if (!browser) return null;
@@ -63,33 +90,45 @@
 		for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
 		return btoa(bin);
 	}
-
 	function b64ToBytes(b64: string): Uint8Array {
 		const bin = atob(b64);
 		const arr = new Uint8Array(bin.length);
 		for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
 		return arr;
 	}
-
 	function strToB64(s: string): string {
 		return bytesToB64(new TextEncoder().encode(s));
 	}
 
-	async function ensureTerm() {
-		if (term) return;
-		// open=true 직후 호출되면 {:else} 블록의 <div bind:this={termEl}> 가
-		// 아직 mount 안 됐을 수 있다. Svelte 가 DOM patch 끝낼 때까지 대기.
-		if (!termEl) {
+	function makeLabel(shell: string, user: string, ordinal: number): string {
+		const u = user ? user : '(default)';
+		return `${shell} · ${u} · #${ordinal}`;
+	}
+
+	function getSession(id: string): SessionView | undefined {
+		return sessions.find((s) => s.id === id);
+	}
+	function patchSession(id: string, patch: Partial<SessionView>) {
+		sessions = sessions.map((s) => (s.id === id ? { ...s, ...patch } : s));
+	}
+
+	async function ensureTerm(id: string) {
+		const h = handles.get(id);
+		if (!h || h.term) return;
+		// mountEl 이 아직 mount 안 된 시점에 호출될 수 있다. Svelte 가 DOM patch 끝낼
+		// 때까지 대기.
+		if (!h.mountEl) {
 			await tick();
 		}
-		if (!termEl) return;
+		const el = h.mountEl;
+		if (!el) return;
 		const [{ Terminal }, { FitAddon }] = await Promise.all([
 			import('@xterm/xterm'),
 			import('@xterm/addon-fit'),
 		]);
 		await import('@xterm/xterm/css/xterm.css');
 
-		term = new Terminal({
+		const term = new Terminal({
 			cursorBlink: true,
 			fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace',
 			fontSize: 12,
@@ -102,57 +141,65 @@
 			scrollback: 5000,
 			convertEol: false,
 		});
-		fitAddon = new FitAddon();
+		const fitAddon = new FitAddon();
 		term.loadAddon(fitAddon);
-		term.open(termEl);
+		term.open(el);
 		fitAddon.fit();
 
 		term.onData((data: string) => {
-			if (!execId || !ws || ws.readyState !== WebSocket.OPEN) return;
+			const hh = handles.get(id);
+			const ws = hh?.ws;
+			if (!ws || ws.readyState !== WebSocket.OPEN) return;
 			ws.send(JSON.stringify({
 				type: 'command',
 				requestId: uuid(),
 				command: 'exec_input',
-				params: { execId, data: strToB64(data) },
+				params: { execId: id, data: strToB64(data) },
 			}));
 		});
 
-		resizeObs = new ResizeObserver(() => {
+		const resizeObs = new ResizeObserver(() => {
 			try {
-				fitAddon?.fit();
-				if (term && execId && ws && ws.readyState === WebSocket.OPEN) {
-					ws.send(JSON.stringify({
+				fitAddon.fit();
+				const hh = handles.get(id);
+				if (hh?.ws?.readyState === WebSocket.OPEN) {
+					hh.ws.send(JSON.stringify({
 						type: 'command',
 						requestId: uuid(),
 						command: 'exec_resize',
-						params: { execId, cols: term.cols, rows: term.rows },
+						params: { execId: id, cols: term.cols, rows: term.rows },
 					}));
 				}
 			} catch {
 				/* ignore */
 			}
 		});
-		resizeObs.observe(termEl);
+		resizeObs.observe(el);
+
+		h.term = term;
+		h.fitAddon = fitAddon;
+		h.resizeObs = resizeObs;
 	}
 
-	async function startSession() {
-		if (ws) return;
-		errorMsg = '';
-		endedReason = null;
-		exitCode = null;
-		ready = false;
+	async function startSession(id: string) {
+		const view = getSession(id);
+		const h = handles.get(id);
+		if (!view || !h || h.ws) return;
+		patchSession(id, { errorMsg: '', endedReason: null, exitCode: null, ready: false, status: 'connecting' });
 
-		await ensureTerm();
+		await ensureTerm(id);
 
 		const t = token();
 		if (!t) {
-			errorMsg = '로그인이 필요합니다.';
+			patchSession(id, { errorMsg: '로그인이 필요합니다.', status: 'error' });
 			return;
 		}
-		ws = new WebSocket(wsUrl(), ['hypercube.jwt', t]);
+
+		const ws = new WebSocket(wsUrl(), ['hypercube.jwt', t]);
+		h.ws = ws;
 		ws.onopen = () => {
-			connected = true;
-			sendOpen();
+			patchSession(id, { connected: true });
+			sendOpen(id);
 		};
 		ws.onmessage = (ev) => {
 			let msg: any;
@@ -161,143 +208,211 @@
 			} catch {
 				return;
 			}
-			handleMessage(msg);
+			handleMessage(id, msg);
 		};
 		ws.onerror = () => {
-			errorMsg = 'WebSocket 에러';
+			patchSession(id, { errorMsg: 'WebSocket 에러', status: 'error' });
 		};
 		ws.onclose = () => {
-			connected = false;
-			ready = false;
-			ws = null;
+			patchSession(id, { connected: false, ready: false });
+			const hh = handles.get(id);
+			if (hh) hh.ws = null;
 		};
 	}
 
-	function sendOpen() {
-		if (!ws || ws.readyState !== WebSocket.OPEN || !term) return;
-		execId = uuid();
-		const cmd = shellCmd === 'bash' ? ['/bin/bash'] : ['/bin/sh'];
-		ws.send(JSON.stringify({
+	function sendOpen(id: string) {
+		const view = getSession(id);
+		const h = handles.get(id);
+		if (!view || !h?.ws || h.ws.readyState !== WebSocket.OPEN || !h.term) return;
+		const cmd = view.shell === 'bash' ? ['/bin/bash'] : ['/bin/sh'];
+		h.ws.send(JSON.stringify({
 			type: 'command',
-			requestId: execId,
+			requestId: id, // execId 로 매핑
 			command: 'exec_open',
 			params: {
 				containerId,
 				cmd,
-				user: execUser || undefined,
+				user: view.user || undefined,
 				tty: true,
-				cols: term.cols,
-				rows: term.rows,
+				cols: h.term.cols,
+				rows: h.term.rows,
 			},
 		}));
 	}
 
-	function sendClose() {
-		if (!ws || ws.readyState !== WebSocket.OPEN || !execId) return;
-		ws.send(JSON.stringify({
+	function sendClose(id: string) {
+		const h = handles.get(id);
+		if (!h?.ws || h.ws.readyState !== WebSocket.OPEN) return;
+		h.ws.send(JSON.stringify({
 			type: 'command',
 			requestId: uuid(),
 			command: 'exec_close',
-			params: { execId },
+			params: { execId: id },
 		}));
 	}
 
-	function stopSession() {
-		sendClose();
-		try {
-			ws?.close();
-		} catch {
-			/* ignore */
+	function teardownSession(id: string) {
+		sendClose(id);
+		const h = handles.get(id);
+		if (h) {
+			try {
+				h.ws?.close();
+			} catch {
+				/* ignore */
+			}
+			try {
+				h.resizeObs?.disconnect();
+			} catch {
+				/* ignore */
+			}
+			try {
+				h.term?.dispose();
+			} catch {
+				/* ignore */
+			}
+			handles.delete(id);
 		}
-		ws = null;
-		execId = null;
-		connected = false;
-		ready = false;
-
-		// xterm 도 같이 정리. 다음 "열기" 시 새 termEl(svelte 가 새로 mount 한 DOM)에
-		// fresh xterm 을 attach 해야 한다. term 만 살려두면 옛 destroyed DOM 을
-		// 가리켜 화면이 빈 채로 표시됨.
-		try {
-			resizeObs?.disconnect();
-		} catch {
-			/* ignore */
-		}
-		resizeObs = null;
-		try {
-			term?.dispose();
-		} catch {
-			/* ignore */
-		}
-		term = null;
-		fitAddon = null;
 	}
 
-	function handleMessage(msg: any) {
+	function handleMessage(id: string, msg: any) {
 		const t = msg?.type;
-		if (t === 'command_response' && msg.requestId === execId) {
+		const h = handles.get(id);
+		if (!h) return;
+		if (t === 'command_response' && msg.requestId === id) {
 			if (msg.success) {
-				ready = true;
+				patchSession(id, { ready: true, status: 'active' });
 			} else {
-				errorMsg = msg.error || 'exec_open failed';
-				ready = false;
+				patchSession(id, {
+					errorMsg: msg.error || 'exec_open failed',
+					ready: false,
+					status: 'error',
+				});
 			}
 			return;
 		}
-		if (t === 'exec_chunk' && msg.execId === execId) {
-			if (term && typeof msg.data === 'string') {
+		if (t === 'exec_chunk' && msg.execId === id) {
+			if (h.term && typeof msg.data === 'string') {
 				try {
-					term.write(b64ToBytes(msg.data));
+					h.term.write(b64ToBytes(msg.data));
 				} catch {
 					/* ignore decode errors */
 				}
 			}
 			return;
 		}
-		if (t === 'exec_end' && msg.execId === execId) {
-			endedReason = msg.reason || 'ended';
-			exitCode = typeof msg.exitCode === 'number' ? msg.exitCode : null;
-			ready = false;
-			if (term) term.write(`\r\n\x1b[33m[session ended: ${endedReason}${exitCode !== null ? `, exit ${exitCode}` : ''}]\x1b[0m\r\n`);
+		if (t === 'exec_end' && msg.execId === id) {
+			const endedReason = msg.reason || 'ended';
+			const exitCode = typeof msg.exitCode === 'number' ? msg.exitCode : null;
+			patchSession(id, {
+				endedReason,
+				exitCode,
+				ready: false,
+				status: 'ended',
+			});
+			if (h.term) {
+				h.term.write(
+					`\r\n\x1b[33m[session ended: ${endedReason}${exitCode !== null ? `, exit ${exitCode}` : ''}]\x1b[0m\r\n`,
+				);
+			}
 			return;
 		}
 	}
 
-	function togglePanel() {
-		open = !open;
-		if (open) {
-			startSession();
-		} else {
-			stopSession();
+	function newSession(shell: 'sh' | 'bash' = mountedShellPref, user: string = mountedUserPref) {
+		const id = uuid();
+		const ordinal = nextOrdinal;
+		nextOrdinal = nextOrdinal + 1;
+		const view: SessionView = {
+			id,
+			label: makeLabel(shell, user, ordinal),
+			shell,
+			user,
+			status: 'connecting',
+			connected: false,
+			ready: false,
+			errorMsg: '',
+			endedReason: null,
+			exitCode: null,
+		};
+		handles.set(id, { ws: null, term: null, fitAddon: null, mountEl: null, resizeObs: null });
+		sessions = [...sessions, view];
+		activeId = id;
+		// mount 직후 DOM 이 생성된 다음 cycle 에 ws/term 시작.
+		queueMicrotask(() => startSession(id));
+	}
+
+	function closeSession(id: string) {
+		teardownSession(id);
+		const wasActive = activeId === id;
+		sessions = sessions.filter((s) => s.id !== id);
+		if (wasActive) {
+			activeId = sessions.length > 0 ? sessions[sessions.length - 1].id : null;
 		}
 	}
 
-	function restart() {
-		stopSession();
-		if (term) {
-			term.reset();
+	function selectSession(id: string) {
+		activeId = id;
+		// 활성 전환 직후 fit — 비활성으로 숨겨져 있던 term 의 dimension 재계산.
+		queueMicrotask(() => {
+			const h = handles.get(id);
+			try {
+				h?.fitAddon?.fit();
+			} catch {
+				/* ignore */
+			}
+		});
+	}
+
+	function togglePanel() {
+		open = !open;
+		if (open && sessions.length === 0) {
+			// 패널을 처음 열면 자동으로 한 세션 시작 — 기존 단일-세션 UX 와 동일.
+			newSession();
 		}
-		setTimeout(() => startSession(), 100);
+		if (!open) {
+			// 닫을 때 모든 세션 종료. 다시 열면 새로 시작.
+			for (const s of sessions) teardownSession(s.id);
+			sessions = [];
+			activeId = null;
+		}
+	}
+
+	// Svelte action — 각 termbox <div> 가 mount/unmount 될 때 handles 에 등록/해제.
+	// each loop 안에서 동적 id 매핑이라 bind:this 보다 use:action 이 깔끔.
+	function termMount(node: HTMLDivElement, id: string) {
+		const h = handles.get(id);
+		if (h) h.mountEl = node;
+		return {
+			destroy() {
+				const hh = handles.get(id);
+				if (hh && hh.mountEl === node) hh.mountEl = null;
+			},
+		};
+	}
+
+	function statusLabel(s: SessionView): string {
+		if (s.errorMsg) return `에러: ${s.errorMsg}`;
+		if (s.endedReason) return `종료 (${s.endedReason}${s.exitCode !== null ? `, exit ${s.exitCode}` : ''})`;
+		if (s.ready) return '● 활성';
+		if (s.connected) return '◌ 연결 중...';
+		return '◌ 끊김';
+	}
+
+	function statusClass(s: SessionView): string {
+		if (s.errorMsg || s.endedReason) return 'err';
+		if (s.ready) return 'ok';
+		return '';
 	}
 
 	onMount(() => {
-		if (open) startSession();
+		if (open && sessions.length === 0) newSession();
 	});
 
 	onDestroy(() => {
-		stopSession();
-		try {
-			resizeObs?.disconnect();
-		} catch {
-			/* ignore */
-		}
-		try {
-			term?.dispose();
-		} catch {
-			/* ignore */
-		}
-		term = null;
-		fitAddon = null;
+		for (const s of sessions) teardownSession(s.id);
 	});
+
+	let activeSession = $derived(sessions.find((s) => s.id === activeId) ?? null);
 </script>
 
 <section class="panel" class:closed={!open}>
@@ -305,7 +420,7 @@
 		<div>
 			<h2>콘솔 (exec)</h2>
 			{#if open}
-				<p>컨테이너 내부에 shell 을 띄워 직접 명령을 실행. 패널을 열면 새 exec 세션이 시작되고, 닫으면 정리됩니다.</p>
+				<p>컨테이너 안에 shell 을 띄워 명령 실행. 탭을 닫으면 그 세션만 종료됩니다.</p>
 			{/if}
 		</div>
 		<button class="toggle" class:on={open} onclick={togglePanel}>
@@ -313,44 +428,106 @@
 		</button>
 	</div>
 
-	{#if !open}
-		<!-- closed 상태: panel-header 만 보이게 (열기 토글 위주). 큰 CTA placeholder
-		     는 한 화면 fit 위해 제거. 사용자는 우측 "열기" 버튼으로 시작. -->
-	{:else}
-		<div class="toolbar">
-			<span class="status" class:ok={ready} class:err={!!errorMsg || endedReason}>
-				{#if errorMsg}
-					에러: {errorMsg}
-				{:else if endedReason}
-					종료됨 ({endedReason}{exitCode !== null ? `, exit ${exitCode}` : ''})
-				{:else if ready}
-					● 활성
-				{:else if connected}
-					◌ 연결 중...
-				{:else}
-					◌ 끊김
-				{/if}
-			</span>
-			<label class="sel">
-				shell
-				<select bind:value={shellCmd} disabled={ready || connected}>
-					<option value="sh">/bin/sh</option>
-					<option value="bash">/bin/bash</option>
-				</select>
-			</label>
-			<label class="sel">
-				user
-				<input
-					type="text"
-					placeholder="(기본)"
-					bind:value={execUser}
-					disabled={ready || connected}
-				/>
-			</label>
-			<button class="btn" onclick={restart}>재시작</button>
+	{#if open}
+		<!-- 탭 바: 세션 목록 + "+ 새 세션" -->
+		<div class="tab-bar" role="tablist" aria-label="콘솔 세션">
+			{#each sessions as s (s.id)}
+				<div
+					class="tab"
+					class:active={s.id === activeId}
+					class:err={s.status === 'error' || !!s.endedReason}
+					role="tab"
+					aria-selected={s.id === activeId}
+				>
+					<button
+						type="button"
+						class="tab-label"
+						onclick={() => selectSession(s.id)}
+						title={s.label}
+					>
+						<span class="tab-dot" data-status={s.status} aria-hidden="true"></span>
+						<span class="tab-text">{s.label}</span>
+					</button>
+					<button
+						type="button"
+						class="tab-close"
+						onclick={() => closeSession(s.id)}
+						aria-label="세션 닫기"
+						title="세션 닫기"
+					>×</button>
+				</div>
+			{/each}
+			<button type="button" class="tab-new" onclick={() => newSession()} title="새 세션 시작">+ 새 세션</button>
 		</div>
 
-		<div class="termbox" bind:this={termEl}></div>
+		<!-- 활성 세션 toolbar (옵션·상태) -->
+		{#if activeSession}
+			{@const s = activeSession}
+			<div class="toolbar">
+				<span class="status" class:ok={statusClass(s) === 'ok'} class:err={statusClass(s) === 'err'}>
+					{statusLabel(s)}
+				</span>
+				<label class="sel">
+					shell
+					<select
+						value={s.shell}
+						onchange={(e) => {
+							mountedShellPref = (e.currentTarget as HTMLSelectElement).value as 'sh' | 'bash';
+						}}
+						disabled
+						title="신규 세션에 적용되는 기본값입니다. 시작된 세션의 shell 은 변경되지 않습니다."
+					>
+						<option value="sh">/bin/sh</option>
+						<option value="bash">/bin/bash</option>
+					</select>
+				</label>
+				<label class="sel">
+					user
+					<input
+						type="text"
+						placeholder="(default)"
+						value={s.user}
+						disabled
+						title="신규 세션에 적용되는 기본값입니다. 시작된 세션의 user 는 변경되지 않습니다."
+					/>
+				</label>
+			</div>
+		{/if}
+
+		<!-- 새 세션 기본값 (sessions 비어 있을 때 입력 받기) -->
+		{#if sessions.length === 0}
+			<div class="empty-state">
+				<button type="button" class="empty-cta" onclick={() => newSession()}>
+					<span class="placeholder-icon">›_</span>
+					<span class="placeholder-title">새 세션 시작</span>
+					<span class="placeholder-desc">컨테이너 안에 shell 을 띄워 명령을 실행합니다.</span>
+				</button>
+				<div class="empty-prefs">
+					<label class="sel">
+						shell
+						<select bind:value={mountedShellPref}>
+							<option value="sh">/bin/sh</option>
+							<option value="bash">/bin/bash</option>
+						</select>
+					</label>
+					<label class="sel">
+						user
+						<input type="text" placeholder="(default)" bind:value={mountedUserPref} />
+					</label>
+				</div>
+			</div>
+		{/if}
+
+		<!-- 모든 세션의 term — 활성만 보이고 나머지는 hidden (DOM/buffer 유지) -->
+		<div class="term-stack" class:has-sessions={sessions.length > 0}>
+			{#each sessions as s (s.id)}
+				<div
+					class="termbox"
+					class:visible={s.id === activeId}
+					use:termMount={s.id}
+				></div>
+			{/each}
+		</div>
 	{/if}
 </section>
 
@@ -396,6 +573,7 @@
 		margin-bottom: 5px;
 		padding-bottom: 5px;
 		border-bottom: 1px solid rgba(100, 116, 139, 0.12);
+		flex: 0 0 auto;
 	}
 	.panel-header.closed-row {
 		align-items: center;
@@ -412,8 +590,6 @@
 		opacity: 0.7;
 		margin-right: 6px;
 	}
-	/* closed 상태 panel — h2 + toggle 한 줄 컴팩트. accent 좌측 stripe 로 클릭
-	   가능 영역임을 암시 (logs 의 placeholder 와 톤 통일). */
 	.panel.closed {
 		padding: clamp(5px, 0.45vw, 9px) clamp(8px, 0.7vw, 14px);
 		border-color: rgba(48, 213, 200, 0.22);
@@ -439,59 +615,6 @@
 		color: var(--text-secondary);
 	}
 
-	.panel.closed {
-		display: flex;
-		flex-direction: column;
-		min-height: 0;
-		height: 100%;
-	}
-
-	.placeholder {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 12px;
-		padding: 32px 20px;
-		min-height: 200px;
-		border: 1px dashed rgba(48, 213, 200, 0.28);
-		border-radius: 12px;
-		background: rgba(48, 213, 200, 0.04);
-		color: var(--text-secondary);
-		font-family: inherit;
-		cursor: pointer;
-		transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-	}
-	.placeholder:hover {
-		background: rgba(48, 213, 200, 0.1);
-		border-color: rgba(48, 213, 200, 0.5);
-		color: var(--accent);
-	}
-	.placeholder-icon {
-		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-		font-size: 26px;
-		line-height: 1;
-		color: var(--accent);
-		opacity: 0.7;
-	}
-	.placeholder:hover .placeholder-icon {
-		opacity: 1;
-	}
-	.placeholder-title {
-		font-size: 14px;
-		font-weight: 800;
-		letter-spacing: 0.02em;
-		color: var(--text-primary);
-	}
-	.placeholder-desc {
-		font-size: 12px;
-		font-weight: 500;
-		text-align: center;
-		line-height: 1.5;
-		color: var(--text-muted);
-	}
-
 	.toggle {
 		padding: 5px 9px;
 		border-radius: 7px;
@@ -509,6 +632,116 @@
 		color: var(--accent);
 	}
 
+	/* 탭 바 */
+	.tab-bar {
+		display: flex;
+		gap: 3px;
+		align-items: center;
+		min-width: 0;
+		max-width: 100%;
+		overflow-x: auto;
+		padding: 3px;
+		margin-bottom: 5px;
+		background: rgba(2, 6, 12, 0.45);
+		border: 1px solid rgba(100, 116, 139, 0.18);
+		border-radius: 8px;
+		scrollbar-width: thin;
+		flex: 0 0 auto;
+	}
+	.tab {
+		display: inline-flex;
+		align-items: center;
+		gap: 2px;
+		padding: 0;
+		border-radius: 6px;
+		background: transparent;
+		max-width: 220px;
+		min-width: 0;
+		flex: 0 0 auto;
+	}
+	.tab.active {
+		background: rgba(48, 213, 200, 0.16);
+		box-shadow: inset 0 0 0 1px rgba(48, 213, 200, 0.3);
+	}
+	.tab.err.active {
+		background: rgba(239, 68, 68, 0.15);
+		box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.35);
+	}
+	.tab-label {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 4px 8px;
+		background: transparent;
+		border: 0;
+		color: var(--text-muted);
+		font: inherit;
+		font-size: 10.5px;
+		font-weight: 700;
+		letter-spacing: 0.01em;
+		cursor: pointer;
+		max-width: 180px;
+	}
+	.tab.active .tab-label { color: var(--accent); }
+	.tab.err .tab-label { color: #fca5a5; }
+	.tab-text {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+	}
+	.tab-dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: rgba(100, 116, 139, 0.4);
+		flex: 0 0 auto;
+	}
+	.tab-dot[data-status='active']     { background: #34d399; box-shadow: 0 0 4px rgba(52, 211, 153, 0.55); }
+	.tab-dot[data-status='connecting'] { background: #fbbf24; }
+	.tab-dot[data-status='ended']      { background: rgba(148, 163, 184, 0.6); }
+	.tab-dot[data-status='error']      { background: #f87171; box-shadow: 0 0 4px rgba(239, 68, 68, 0.55); }
+	.tab-close {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 18px;
+		height: 18px;
+		border: 0;
+		border-radius: 4px;
+		background: transparent;
+		color: var(--text-muted);
+		font: inherit;
+		font-size: 14px;
+		font-weight: 700;
+		line-height: 1;
+		cursor: pointer;
+		margin-right: 3px;
+	}
+	.tab-close:hover {
+		background: rgba(239, 68, 68, 0.2);
+		color: #fca5a5;
+	}
+	.tab-new {
+		padding: 4px 9px;
+		margin-left: auto;
+		border: 1px dashed rgba(48, 213, 200, 0.35);
+		border-radius: 6px;
+		background: transparent;
+		color: var(--accent);
+		font: inherit;
+		font-size: 10.5px;
+		font-weight: 800;
+		letter-spacing: 0.02em;
+		cursor: pointer;
+		white-space: nowrap;
+		flex: 0 0 auto;
+	}
+	.tab-new:hover {
+		background: rgba(48, 213, 200, 0.12);
+		border-color: rgba(48, 213, 200, 0.6);
+	}
+
 	.toolbar {
 		display: flex;
 		flex-wrap: wrap;
@@ -522,6 +755,7 @@
 		border-radius: 8px;
 		background: rgba(13, 17, 23, 0.5);
 		border: 1px solid rgba(100, 116, 139, 0.16);
+		flex: 0 0 auto;
 	}
 	.status {
 		font-size: 10px;
@@ -561,39 +795,81 @@
 		font-size: 10px;
 	}
 
-	.btn {
-		padding: 4px 7px;
-		border-radius: 7px;
-		background: rgba(13, 17, 23, 0.86);
-		border: 1px solid rgba(31, 41, 55, 0.9);
+	/* 빈 상태 placeholder + 신규 세션 prefs */
+	.empty-state {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		min-height: 0;
+	}
+	.empty-cta {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 10px;
+		padding: 22px 18px;
+		min-height: 140px;
+		border: 1px dashed rgba(48, 213, 200, 0.28);
+		border-radius: 12px;
+		background: rgba(48, 213, 200, 0.04);
 		color: var(--text-secondary);
 		font-family: inherit;
-		font-size: 10px;
-		font-weight: 700;
 		cursor: pointer;
+		transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 	}
-	.btn:hover:not(:disabled) {
+	.empty-cta:hover {
+		background: rgba(48, 213, 200, 0.1);
+		border-color: rgba(48, 213, 200, 0.5);
 		color: var(--accent);
-		border-color: rgba(48, 213, 200, 0.4);
 	}
-	.btn:disabled {
-		opacity: 0.4;
-		cursor: not-allowed;
+	.placeholder-icon {
+		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+		font-size: 22px;
+		line-height: 1;
+		color: var(--accent);
+		opacity: 0.8;
+	}
+	.placeholder-title {
+		font-size: 13px;
+		font-weight: 800;
+		color: var(--text-primary);
+	}
+	.placeholder-desc {
+		font-size: 11px;
+		color: var(--text-muted);
+		text-align: center;
+	}
+	.empty-prefs {
+		display: flex;
+		gap: 8px;
+		justify-content: center;
+		flex: 0 0 auto;
 	}
 
-	.termbox {
+	/* termbox 스택 — 비활성 세션은 hidden 으로 DOM 유지 (xterm buffer 보존) */
+	.term-stack {
+		position: relative;
 		flex: 1 1 0;
-		height: auto;
 		min-height: 0;
 		min-width: 0;
-		width: 100%;
-		max-width: 100%;
-		box-sizing: border-box;
+		display: flex;
+	}
+	.term-stack:not(.has-sessions) { display: none; }
+	.termbox {
+		position: absolute;
+		inset: 0;
 		padding: 7px;
 		border-radius: 8px;
 		background: linear-gradient(180deg, #02060c, #020812);
 		border: 1px solid rgba(100, 116, 139, 0.18);
 		overflow: hidden;
+		visibility: hidden;
+	}
+	.termbox.visible {
+		visibility: visible;
 	}
 
 	.termbox :global(.xterm) {
