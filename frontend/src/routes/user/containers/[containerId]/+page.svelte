@@ -1197,7 +1197,7 @@
 			<ProcessTopPanel {containerId} {paused} />
 		{/snippet}
 
-		{#snippet runtimeTab()}
+		{#snippet runtimeSection()}
 			{@const c = container!}
 			<div class="context-grid">
 			<div class="panel runtime-panel tab-inner">
@@ -1250,7 +1250,7 @@
 			</div>
 		{/snippet}
 
-		{#snippet configTab()}
+		{#snippet configSection()}
 			<div class="context-grid">
 			<div class="panel config-panel tab-inner">
 				<div class="panel-header slim">
@@ -1328,18 +1328,42 @@
 			<EventList {events} errorMsg={eventsError} />
 		{/snippet}
 
-		{#snippet inspectTab()}
+		{#snippet inspectSection()}
 			<InspectPanel data={inspectData} loading={inspectLoading} errorMsg={inspectError} />
+		{/snippet}
+
+		{#snippet infoTab()}
+			<div class="info-stack">
+				<details open class="info-section">
+					<summary class="info-section-head">
+						<span class="info-section-title">런타임 상태</span>
+						<span class="info-section-hint">컨테이너 ID · 시작 시각 · Agent · 호스트 PID</span>
+					</summary>
+					{@render runtimeSection()}
+				</details>
+				<details open class="info-section">
+					<summary class="info-section-head">
+						<span class="info-section-title">요청 시 설정</span>
+						<span class="info-section-hint">포트 매핑 · 환경 변수 · 실행 설정</span>
+					</summary>
+					{@render configSection()}
+				</details>
+				<details open class="info-section">
+					<summary class="info-section-head">
+						<span class="info-section-title">Inspect (raw)</span>
+						<span class="info-section-hint">docker inspect subset · state · mounts · network</span>
+					</summary>
+					{@render inspectSection()}
+				</details>
+			</div>
 		{/snippet}
 
 		<div class="bento-area area-tabs">
 			<TabbedContextPanel
 				tabs={[
 					{ key: 'process', label: '프로세스', content: processTab },
-					{ key: 'runtime', label: '런타임', content: runtimeTab },
-					{ key: 'config', label: '설정', content: configTab },
+					{ key: 'info', label: '컨테이너 정보', content: infoTab },
 					{ key: 'events', label: '이벤트', content: eventsTab, badge: events.length || null },
-					{ key: 'inspect', label: 'Inspect', content: inspectTab },
 				] as ContextTab[]}
 			/>
 		</div>
@@ -2646,6 +2670,76 @@
 		height: 100%;
 		min-height: 0;
 		margin-top: 0;
+	}
+
+	/* "컨테이너 정보" 통합 탭 — 단일 스크롤 + 섹션 접기.
+	   3개 영역 (런타임 / 요청 설정 / Inspect) 을 details/summary 로 묶어
+	   기본 펼침 + 사용자가 원하면 접기 가능. */
+	.info-stack {
+		flex: 1 1 0;
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		min-height: 0;
+		overflow-y: auto;
+		padding-right: 4px;
+		scrollbar-gutter: stable;
+	}
+	.info-section {
+		flex: 0 0 auto;
+		border: 1px solid rgba(100, 116, 139, 0.18);
+		border-radius: 9px;
+		background:
+			linear-gradient(180deg, rgba(13, 17, 23, 0.6), rgba(8, 12, 19, 0.55)),
+			rgba(13, 17, 23, 0.72);
+		overflow: hidden;
+	}
+	.info-section-head {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+		padding: 7px 10px;
+		cursor: pointer;
+		list-style: none;
+		background: rgba(2, 6, 12, 0.45);
+		border-bottom: 1px solid rgba(100, 116, 139, 0.18);
+		user-select: none;
+	}
+	.info-section-head::-webkit-details-marker { display: none; }
+	.info-section-head::before {
+		content: '▸';
+		color: var(--text-muted);
+		font-size: 10px;
+		transition: transform 0.15s ease;
+		display: inline-block;
+		width: 10px;
+	}
+	.info-section[open] .info-section-head::before {
+		transform: rotate(90deg);
+	}
+	.info-section-title {
+		font-size: 12px;
+		font-weight: 850;
+		letter-spacing: 0.04em;
+		color: var(--text-primary);
+		text-transform: uppercase;
+	}
+	.info-section-hint {
+		font-size: 10px;
+		color: var(--text-muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		flex: 1 1 auto;
+		min-width: 0;
+	}
+	.info-section > .context-grid,
+	.info-section > :global(.panel) {
+		padding: 8px;
+		border-radius: 0;
+		border: none;
+		background: transparent;
+		box-shadow: none;
 	}
 	.context-grid > .panel {
 		display: flex;

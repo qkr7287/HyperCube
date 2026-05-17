@@ -634,17 +634,16 @@
 
 	.toolbar {
 		display: grid;
-		grid-template-columns: auto minmax(120px, 1fr) auto;
-		grid-template-rows: 24px 26px 18px;
+		grid-template-columns: auto minmax(120px, 1fr) auto auto;
+		grid-template-rows: 24px 26px;
 		grid-template-areas:
-			"status filter pause"
-			"actions actions actions"
-			"msg msg msg";
+			"status filter msg pause"
+			"actions actions actions actions";
 		gap: 5px;
 		align-items: center;
 		min-width: 0;
 		max-width: 100%;
-		min-height: 82px;
+		min-height: 58px;
 		box-sizing: border-box;
 		margin-bottom: 5px;
 		padding: 5px 6px;
@@ -790,12 +789,12 @@
 
 	.action-msg {
 		grid-area: msg;
+		justify-self: end;
 		align-self: center;
-		min-height: 18px;
-		max-width: 100%;
+		max-width: 200px;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		padding: 2px 7px;
+		padding: 2px 8px;
 		border-radius: 999px;
 		background: rgba(48, 213, 200, 0.12);
 		border: 1px solid rgba(48, 213, 200, 0.28);

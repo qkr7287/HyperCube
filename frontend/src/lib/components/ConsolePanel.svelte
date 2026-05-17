@@ -429,7 +429,9 @@
 	</div>
 
 	{#if open}
-		<!-- 탭 바: 세션 목록 + "+ 새 세션" -->
+		<!-- 탭 바: 세션 목록 + 신규 세션 prefs + "+ 새 세션"
+		     활성 세션의 shell/user 는 docker exec 본질상 시작 후 변경 불가하므로
+		     toolbar 에서 제외. 다음 신규 세션에 적용될 값만 노출. -->
 		<div class="tab-bar" role="tablist" aria-label="콘솔 세션">
 			{#each sessions as s (s.id)}
 				<div
@@ -443,7 +445,7 @@
 						type="button"
 						class="tab-label"
 						onclick={() => selectSession(s.id)}
-						title={s.label}
+						title={`${s.label}\n${statusLabel(s)}`}
 					>
 						<span class="tab-dot" data-status={s.status} aria-hidden="true"></span>
 						<span class="tab-text">{s.label}</span>
@@ -457,64 +459,32 @@
 					>×</button>
 				</div>
 			{/each}
-			<button type="button" class="tab-new" onclick={() => newSession()} title="새 세션 시작">+ 새 세션</button>
-		</div>
 
-		<!-- 활성 세션 toolbar (옵션·상태) -->
-		{#if activeSession}
-			{@const s = activeSession}
-			<div class="toolbar">
-				<span class="status" class:ok={statusClass(s) === 'ok'} class:err={statusClass(s) === 'err'}>
-					{statusLabel(s)}
-				</span>
-				<label class="sel">
-					shell
-					<select
-						value={s.shell}
-						onchange={(e) => {
-							mountedShellPref = (e.currentTarget as HTMLSelectElement).value as 'sh' | 'bash';
-						}}
-						disabled
-						title="신규 세션에 적용되는 기본값입니다. 시작된 세션의 shell 은 변경되지 않습니다."
-					>
+			<div class="new-session-controls">
+				<label class="sel" title="다음 신규 세션에 적용되는 shell">
+					<span>shell</span>
+					<select bind:value={mountedShellPref}>
 						<option value="sh">/bin/sh</option>
 						<option value="bash">/bin/bash</option>
 					</select>
 				</label>
-				<label class="sel">
-					user
-					<input
-						type="text"
-						placeholder="(default)"
-						value={s.user}
-						disabled
-						title="신규 세션에 적용되는 기본값입니다. 시작된 세션의 user 는 변경되지 않습니다."
-					/>
+				<label class="sel" title="다음 신규 세션에 적용되는 user (비우면 default)">
+					<span>user</span>
+					<input type="text" placeholder="(default)" bind:value={mountedUserPref} />
 				</label>
+				<button type="button" class="tab-new" onclick={() => newSession()} title="새 세션 시작">+ 새 세션</button>
 			</div>
-		{/if}
+		</div>
 
-		<!-- 새 세션 기본값 (sessions 비어 있을 때 입력 받기) -->
+		<!-- 활성 세션 상태는 탭의 dot 색 + hover title 로 표시 (별도 줄 안 둠). -->
+
 		{#if sessions.length === 0}
 			<div class="empty-state">
 				<button type="button" class="empty-cta" onclick={() => newSession()}>
 					<span class="placeholder-icon">›_</span>
 					<span class="placeholder-title">새 세션 시작</span>
-					<span class="placeholder-desc">컨테이너 안에 shell 을 띄워 명령을 실행합니다.</span>
+					<span class="placeholder-desc">탭바의 shell · user 를 골라 + 새 세션 을 누르세요.</span>
 				</button>
-				<div class="empty-prefs">
-					<label class="sel">
-						shell
-						<select bind:value={mountedShellPref}>
-							<option value="sh">/bin/sh</option>
-							<option value="bash">/bin/bash</option>
-						</select>
-					</label>
-					<label class="sel">
-						user
-						<input type="text" placeholder="(default)" bind:value={mountedUserPref} />
-					</label>
-				</div>
 			</div>
 		{/if}
 
@@ -724,7 +694,6 @@
 	}
 	.tab-new {
 		padding: 4px 9px;
-		margin-left: auto;
 		border: 1px dashed rgba(48, 213, 200, 0.35);
 		border-radius: 6px;
 		background: transparent;
@@ -740,6 +709,16 @@
 	.tab-new:hover {
 		background: rgba(48, 213, 200, 0.12);
 		border-color: rgba(48, 213, 200, 0.6);
+	}
+
+	.new-session-controls {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		margin-left: auto;
+		flex: 0 0 auto;
+		padding-left: 6px;
+		border-left: 1px solid rgba(100, 116, 139, 0.18);
 	}
 
 	.toolbar {
