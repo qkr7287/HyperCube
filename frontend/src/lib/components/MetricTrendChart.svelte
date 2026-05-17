@@ -16,8 +16,20 @@
 	import EChartBase from '$lib/components/charts/EChartBase.svelte';
 	import type { EChartsOption } from '$lib/components/charts/echart-registry';
 
-	type RangeKey = '1m' | '5m' | '10m' | '1h' | '6h' | '24h' | '7d';
+	// 7d 는 ContainerDetailModal 의 metricsRange ('7d' 포함) 호환용 — UI selector
+	// (RANGE_OPTIONS) 에선 노출 안 함, defaultRange 로만 들어옴.
+	type RangeKey = '30s' | '1m' | '5m' | '1h' | '24h' | '7d';
 	type Unit = 'percent' | 'count' | 'bytes' | 'rate';
+
+	const CHART_POINTS = 20;
+	const RANGE_KEY_TO_MS: Record<RangeKey, number> = {
+		'30s': 30_000,
+		'1m': 60_000,
+		'5m': 300_000,
+		'1h': 3_600_000,
+		'24h': 86_400_000,
+		'7d': 7 * 86_400_000,
+	};
 
 	let {
 		agentId,
@@ -27,7 +39,7 @@
 		label,
 		color = '#30d5c8',
 		unit = 'percent',
-		defaultRange = '10m',
+		defaultRange = '5m' as RangeKey,
 		accessToken = '',
 		endpoint = '/api/metrics/system/',
 		extraQuery = '',
@@ -58,17 +70,16 @@
 	} = $props();
 
 	const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
+		{ key: '30s', label: '30초' },
 		{ key: '1m', label: '1분' },
 		{ key: '5m', label: '5분' },
-		{ key: '10m', label: '10분' },
 		{ key: '1h', label: '1시간' },
-		{ key: '6h', label: '6시간' },
 		{ key: '24h', label: '24시간' },
-		{ key: '7d', label: '7일' },
 	];
 
 	let range = $state<RangeKey>(defaultRange);
 	let labels = $state<string[]>([]);
+	let timestamps = $state<number[]>([]);
 	let values = $state<number[]>([]);
 	let loading = $state(false);
 	let loadedKey = '';
@@ -128,6 +139,7 @@
 			if (derivative) {
 				const rateValues: number[] = [];
 				const rateLabels: string[] = [];
+				const rateTs: number[] = [];
 				for (let i = 1; i < paired.length; i += 1) {
 					const [v0, , t0] = paired[i - 1];
 					const [v1, l1, t1] = paired[i];
@@ -135,13 +147,16 @@
 					if (dt > 0) {
 						rateValues.push(Math.max(0, ((v1 as number) - (v0 as number)) / dt));
 						rateLabels.push(l1);
+						rateTs.push(t1 as number);
 					}
 				}
 				values = rateValues;
 				labels = rateLabels;
+				timestamps = rateTs;
 			} else {
 				values = paired.map(([v]) => v as number);
 				labels = paired.map(([, l]) => l);
+				timestamps = paired.map(([, , t]) => t as number);
 			}
 			loadedKey = `${agentId}|${forRange}`;
 		} catch (err) {
@@ -163,12 +178,13 @@
 		const now = new Date();
 		const pad = (n: number) => n.toString().padStart(2, '0');
 		const lbl =
-			range === '24h' || range === '7d'
+			range === '24h'
 				? `${pad(now.getMonth() + 1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`
 				: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-		const cap = range === '7d' || range === '24h' ? 500 : 240;
+		const cap = range === '24h' ? 500 : 240;
 		values = [...values, v].slice(-cap);
 		labels = [...labels, lbl].slice(-cap);
+		timestamps = [...timestamps, now.getTime()].slice(-cap);
 	}
 
 	function computeYBounds(nums: number[], u: Unit): { min: number; max: number } {
@@ -228,14 +244,42 @@
 		return v.toFixed(0);
 	}
 
+	function pad2(n: number): string {
+		return n < 10 ? `0${n}` : `${n}`;
+	}
+
+	function formatAxisTime(value: number, intervalMs: number): string {
+		const d = new Date(value);
+		const DAY = 86_400_000;
+		const HOUR = 3600_000;
+		if (intervalMs < 60_000) {
+			return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+		}
+		if (intervalMs < HOUR) {
+			return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+		}
+		if (intervalMs < DAY) {
+			return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+		}
+		return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}`;
+	}
+
+	function formatTooltipTime(value: number): string {
+		const d = new Date(value);
+		return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+	}
+
 	function buildOption(
 		lbls: string[],
+		ts: number[],
 		vals: number[],
 		u: Unit,
 		seriesLabel: string,
 		seriesColor: string,
+		intervalMs: number,
 	): EChartsOption {
 		const bounds = computeYBounds(vals, u);
+		const useTimeAxis = ts.length > 0;
 		// percent 모드 stepSize: 항상 5~7 ticks 가 되도록 max 별로 조정.
 		// ECharts 5.5 는 11 ticks (max=100, step=10) 같은 dense layout 을 modal
 		// 처럼 짧은 chart 에서 가독성 부족이라 판단해 alignTicks 경고를 띄움.
@@ -272,32 +316,54 @@
 				borderWidth: 1,
 				padding: 10,
 				textStyle: { color: '#cbd5e1', fontSize: 11 },
-				axisPointer: { type: 'line', lineStyle: { color: 'rgba(148, 163, 184, 0.3)' } },
+				axisPointer: { type: 'line', lineStyle: { color: 'rgba(148, 163, 184, 0.3)' }, snap: false },
 				formatter: (params: any) => {
 					const arr = Array.isArray(params) ? params : [params];
 					if (arr.length === 0) return '';
-					const title = arr[0].axisValueLabel ?? '';
+					let title = '';
+					if (useTimeAxis) {
+						const tsValue = Number(arr[0]?.axisValue);
+						title = Number.isFinite(tsValue) ? formatTooltipTime(tsValue) : '';
+					} else {
+						title = arr[0].axisValueLabel ?? '';
+					}
 					const lines = arr.map((p: any) => {
-						const v = Number(p.value ?? 0);
+						const rawVal = Array.isArray(p.value) ? p.value[1] : p.value;
+						const v = Number(rawVal ?? 0);
 						return `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color};margin-right:6px"></span>${p.seriesName}: <strong>${formatValue(v, u)}</strong>`;
 					});
 					return `<div style="color:#e2e8f0;font-weight:700;margin-bottom:4px">${title}</div>${lines.join('<br/>')}`;
 				},
 			},
 			legend: { show: false },
-			xAxis: {
-				type: 'category',
-				data: lbls,
-				boundaryGap: false,
-				axisTick: { show: false },
-				axisLine: { show: false },
-				axisLabel: {
-					color: '#64748b',
-					hideOverlap: true,
-					fontSize: 10,
-				},
-				splitLine: { show: false },
-			},
+			xAxis: useTimeAxis
+				? {
+						type: 'time',
+						interval: intervalMs,
+						minInterval: intervalMs,
+						axisTick: { show: false },
+						axisLine: { show: false },
+						axisLabel: {
+							color: '#64748b',
+							hideOverlap: true,
+							fontSize: 10,
+							formatter: (value: number) => formatAxisTime(value, intervalMs),
+						},
+						splitLine: { show: false },
+					}
+				: {
+						type: 'category',
+						data: lbls,
+						boundaryGap: false,
+						axisTick: { show: false },
+						axisLine: { show: false },
+						axisLabel: {
+							color: '#64748b',
+							hideOverlap: true,
+							fontSize: 10,
+						},
+						splitLine: { show: false },
+					},
 			yAxis: {
 				type: 'value',
 				min: bounds.min,
@@ -320,9 +386,10 @@
 			},
 			series: [
 				{
+					id: 'main',
 					type: 'line',
 					name: seriesLabel,
-					data: vals,
+					data: useTimeAxis ? vals.map((v, i) => [ts[i], v] as [number, number]) : vals,
 					smooth: 0.35,
 					symbol: 'none',
 					lineStyle: { color: seriesColor, width: 2 },
@@ -334,7 +401,14 @@
 		};
 	}
 
-	let option = $derived<EChartsOption>(buildOption(labels, values, unit, label, color));
+	// 차트엔 마지막 N(=CHART_POINTS) 개 점만 — tick × N 이 가시 범위.
+	let chartLabels = $derived(labels.slice(-CHART_POINTS));
+	let chartValues = $derived(values.slice(-CHART_POINTS));
+	let chartTimestamps = $derived(timestamps.slice(-CHART_POINTS));
+	let tickIntervalMs = $derived(RANGE_KEY_TO_MS[range]);
+	let option = $derived<EChartsOption>(
+		buildOption(chartLabels, chartTimestamps, chartValues, unit, label, color, tickIntervalMs),
+	);
 
 	// agent / range 변경 시 history 재요청.
 	$effect(() => {
@@ -352,7 +426,8 @@
 
 <div class="trend">
 	{#if !hideRangeTabs}
-		<div class="tabs" role="tablist">
+		<div class="tabs" role="tablist" title={`갱신 주기 — polling + 차트 x축 tick 간격 + 표시 단위(모두 같음). 항상 마지막 ${CHART_POINTS}개 점 = 갱신 주기 × ${CHART_POINTS} 범위.`}>
+			<span class="tick-label">갱신 주기</span>
 			{#each RANGE_OPTIONS as opt}
 				<button
 					type="button"
@@ -400,6 +475,20 @@
 		flex-wrap: wrap;
 		gap: 6px;
 		align-items: center;
+		cursor: help;
+	}
+
+	.tick-label {
+		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+		font-size: 10.5px;
+		font-weight: 800;
+		letter-spacing: 0.08em;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		padding: 3px 7px;
+		border-radius: 5px;
+		background: rgba(48, 213, 200, 0.1);
+		border: 1px solid rgba(48, 213, 200, 0.25);
 	}
 
 	.tab {

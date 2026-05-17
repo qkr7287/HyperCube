@@ -108,7 +108,7 @@
 				label="프로세스 수"
 				color="#f87171"
 				unit="count"
-				defaultRange="10m"
+				defaultRange="5m"
 			/>
 
 			{#if loading}

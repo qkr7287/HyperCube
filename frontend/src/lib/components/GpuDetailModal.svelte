@@ -234,7 +234,7 @@
 						label={`GPU ${selectedIndex} 사용률`}
 						color="#22d3ee"
 						unit="percent"
-						defaultRange="10m"
+						defaultRange="5m"
 					/>
 
 					<!-- ── VRAM 차트 ── -->
@@ -255,7 +255,7 @@
 						label={`GPU ${selectedIndex} VRAM 사용량`}
 						color="#a78bfa"
 						unit="bytes"
-						defaultRange="10m"
+						defaultRange="5m"
 					/>
 
 					<!-- ── 온도 차트 ── -->
@@ -281,7 +281,7 @@
 							label={`GPU ${selectedIndex} 온도`}
 							color="#f87171"
 							unit="count"
-							defaultRange="10m"
+							defaultRange="5m"
 						/>
 					{/if}
 				{/if}

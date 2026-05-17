@@ -111,7 +111,7 @@
 				label="메모리 사용률 (%)"
 				color="#8b5cf6"
 				unit="percent"
-				defaultRange="10m"
+				defaultRange="5m"
 			/>
 		</div>
 	</div>

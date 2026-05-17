@@ -89,7 +89,7 @@
 				label="TCP 연결 수"
 				color="#4ade80"
 				unit="count"
-				defaultRange="10m"
+				defaultRange="5m"
 			/>
 
 			{#if loading}
