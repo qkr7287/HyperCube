@@ -31,6 +31,29 @@
 		'7d': 7 * 86_400_000,
 	};
 
+	// 짧은 tick (1분 등) 으로 backend raw API 만 부르면 1m 안 raw rows ~1-2 개라
+	// 차트가 거의 비어 보임. tick × CHART_POINTS 만큼 window 잡아 bucket
+	// aggregation 받으면 정확히 N 개 점.
+	const AUTO_BUCKET: Record<RangeKey, { window: string; bucket: string }> = {
+		'30s': { window: '10m', bucket: '30' },
+		'1m':  { window: '1h',  bucket: '60' },
+		'5m':  { window: '6h',  bucket: '300' },
+		'1h':  { window: '24h', bucket: '3600' },
+		'24h': { window: '7d',  bucket: '86400' },
+		'7d':  { window: '7d',  bucket: '86400' },
+	};
+
+	// metricField → bucket aggregation field 자동 매핑 (system buckets endpoint 기준).
+	// caller 가 bucketField 를 명시하면 그쪽이 우선.
+	const FIELD_TO_BUCKET: Record<string, string> = {
+		'cpu_usage': 'cpu_avg',
+		'memory_usage': 'memory_avg',
+		'memory_percent': 'memory_avg',
+		'disk_usage': 'disk_avg',
+		'gpu_usage': 'gpu_avg',
+		'gpu_temperature_max': 'gpu_temperature_max',
+	};
+
 	let {
 		agentId,
 		metricField,
@@ -104,11 +127,18 @@
 		if (!agentId || !accessToken) return;
 		loading = true;
 		try {
-			const useBuckets = Boolean(bucket && (windowRange || forRange));
+			// caller 가 명시 안 했으면 자동 BUCKET_MAP 으로 fetch — tick × N 만큼
+			// window 잡고 backend bucket aggregation. 짧은 tick (1m 등) 으로 raw
+			// API 만 호출하면 1 분 안 raw rows 1-2 개라 차트가 비어 보임.
+			const auto = AUTO_BUCKET[forRange];
+			const effWindow = windowRange || auto.window;
+			const effBucket = bucket || auto.bucket;
+			const effBucketField = bucketField || FIELD_TO_BUCKET[metricField] || '';
+			const useBuckets = Boolean(effBucket && effWindow);
 			const limit = forRange === '7d' || forRange === '24h' ? 500 : 240;
 			const extra = extraQuery ? `&${extraQuery}` : '';
 			const url = useBuckets
-				? `${base}${endpoint}buckets/?agent=${encodeURIComponent(agentId)}&range=${windowRange || forRange}&bucket=${bucket}${extra}`
+				? `${base}${endpoint}buckets/?agent=${encodeURIComponent(agentId)}&range=${effWindow}&bucket=${effBucket}${extra}`
 				: `${base}${endpoint}?agent=${encodeURIComponent(agentId)}&range=${forRange}&limit=${limit}&ordering=recorded_at${extra}`;
 			const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
 			if (!res.ok) return;
@@ -122,11 +152,11 @@
 						: Array.isArray(payload)
 							? payload
 							: [];
-			const useBucketsParse = Boolean(bucket && (windowRange || forRange));
+			const useBucketsParse = useBuckets;
 			const tsField = useBucketsParse ? 'bucket_start' : 'recorded_at';
 			const kept = downsample(rows);
-			const read = useBucketsParse && bucketField
-				? (r: any) => Number(r?.[bucketField] ?? 0)
+			const read = useBucketsParse && effBucketField
+				? (r: any) => Number(r?.[effBucketField] ?? 0)
 				: metricExtractor
 					? (r: any) => {
 						const v = metricExtractor(r);
