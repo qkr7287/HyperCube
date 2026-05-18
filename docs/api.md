@@ -132,12 +132,17 @@ DB의 `workspace_gb_limit` / `workspace_device` / `workspace_project_id`
 ML/Jupyter workspace containers. Plaintext Jupyter tokens are kept in Redis and
 are not serialized through this API.
 
+워크스페이스 토큰은 **컨테이너 lifecycle에 묶여 있다**. Redis 토큰에는 TTL이
+없고, 컨테이너가 삭제될 때 `delete_workspace_token_for_container`로 제거된다.
+`workspace_runtime_expires_at` / `workspace_token_expires_at` 필드는 직렬화는
+유지하지만 항상 `null`로 응답한다(과거 호환용).
+
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/workspaces/` | GET | admin은 전체, user는 자기 workspace만 |
 | `/api/workspaces/{container_id}/` | GET | workspace 상세 |
 | `/api/workspaces/{container_id}/open/` | POST | one-time open ticket URL 발급. 응답: `{url, expiresInSeconds}` |
-| `/api/workspaces/{container_id}/extend-runtime/` | POST | body `{additional_hours}`. runtime expiry와 Redis token TTL 연장 |
+| `/api/workspaces/{container_id}/extend-runtime/` | POST | **deprecated.** lifecycle-bound 모델로 변경 후 no-op. 200 응답만 돌려준다. |
 
 Open URL은 `/workspace/<workspace_key>/lab?ticket=...` 형태다.
 MVP의 `workspace_key`는 `ContainerRequest.id`다. Docker container ID는

@@ -129,14 +129,15 @@ def prepare_workspace_secret_for_request(
     if not request.workspace_enabled_snapshot:
         return None
     now = now or timezone.now()
-    ttl = workspace_token_ttl_seconds()
     token_ref = request.workspace_token_ref or secrets.token_urlsafe(24)
     token = secrets.token_urlsafe(48)
-    expires_at = now + timedelta(seconds=ttl)
 
-    get_redis_client().set(workspace_token_key(token_ref), token, ex=ttl)
+    # No Redis TTL: the workspace token lives as long as the container.
+    # delete_workspace_token_for_container/_for_request remove it on
+    # container deletion / request rejection.
+    get_redis_client().set(workspace_token_key(token_ref), token)
     request.workspace_token_ref = token_ref
-    request.workspace_token_expires_at = expires_at
+    request.workspace_token_expires_at = None
     request.deployment_phase = "create_container"
     request.save(
         update_fields=[
@@ -146,7 +147,7 @@ def prepare_workspace_secret_for_request(
             "updated_at",
         ]
     )
-    return WorkspaceSecret(token_ref=token_ref, token=token, expires_at=expires_at)
+    return WorkspaceSecret(token_ref=token_ref, token=token, expires_at=None)
 
 
 def workspace_payload_for_request(
@@ -189,11 +190,10 @@ def apply_workspace_metadata_from_response(
     max_hours = request.requested_max_runtime_hours or (
         template.default_max_runtime_hours if template else None
     )
-    runtime_expires_at = (
-        now + timedelta(hours=max_hours)
-        if max_hours
-        else None
-    )
+    # Lifecycle-bound model: token + runtime live as long as the container.
+    # No wall-clock expiry is enforced; the field stays NULL so the UI does
+    # not show a misleading "expires at" timestamp.
+    runtime_expires_at = None
 
     container.workspace_enabled = True
     container.workspace_kind = (
@@ -386,31 +386,12 @@ def build_workspace_open_url(container: Container, ticket: str, path: str = "lab
 
 
 def extend_workspace_runtime(container: Container, additional_hours: int):
+    # Deprecated in the lifecycle-bound workspace model: the token has no
+    # wall-clock TTL and lives until the container is deleted. The endpoint
+    # is kept as a no-op so older clients do not break, but it intentionally
+    # does not touch Redis TTL (which would re-introduce an expiry).
     if additional_hours <= 0:
         raise ValidationError("additional_hours must be positive")
-    enforce_runtime_extension_policy(container, additional_hours)
-    now = timezone.now()
-    current = container.workspace_runtime_expires_at or now
-    if current < now:
-        current = now
-    container.workspace_runtime_expires_at = current + timedelta(hours=additional_hours)
-    container.workspace_max_runtime_hours = (container.workspace_max_runtime_hours or 0) + additional_hours
-    if container.workspace_token_ref:
-        remaining_seconds = max(
-            workspace_token_ttl_seconds(),
-            int((container.workspace_runtime_expires_at - now).total_seconds()),
-        )
-        get_redis_client().expire(
-            workspace_token_key(container.workspace_token_ref),
-            remaining_seconds,
-        )
-        container.workspace_token_expires_at = now + timedelta(seconds=remaining_seconds)
-    container.save(update_fields=[
-        "workspace_runtime_expires_at",
-        "workspace_max_runtime_hours",
-        "workspace_token_expires_at",
-        "last_seen",
-    ])
     return container
 
 

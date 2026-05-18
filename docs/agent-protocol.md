@@ -671,8 +671,12 @@ The backend falls back to `<container name>:<internalPort>` for internal-only
 workspace upstreams. `hc-backend` must be joined to `hc-ml-internal` for this
 path to work.
 
-The backend stores only `workspace_token_ref` and expiry metadata in Postgres.
-The plaintext token exists in Redis and in the agent command payload only.
+The backend stores only `workspace_token_ref` in Postgres
+(`workspace_runtime_expires_at` / `workspace_token_expires_at` are kept on the
+model for backwards-compat but are always `NULL` under the lifecycle-bound
+workspace model). The plaintext token exists in Redis without a TTL and in
+the agent command payload only; it is removed from Redis when the container
+is deleted.
 
 ## Model Prepare Extension
 
