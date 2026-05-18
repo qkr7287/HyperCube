@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { base } from '$app/paths';
 	import { browser } from '$app/environment';
+	import UploadModelWizard from '$lib/components/UploadModelWizard.svelte';
 
 	type ModelUploadRequest = {
 		id: string;
@@ -33,6 +34,8 @@
 	let loading = $state(false);
 	let processingId = $state('');
 	let errorMsg = $state('');
+	let wizardOpen = $state(false);
+	let lastRegisteredTemplate = $state<string | null>(null);
 
 	function token(): string | null {
 		if (!browser) return null;
@@ -161,8 +164,16 @@
 			<button class="refresh-btn" onclick={load} disabled={loading}>
 				{loading ? '불러오는 중...' : '새로고침'}
 			</button>
+			<button class="primary-btn" onclick={() => (wizardOpen = true)}>+ 템플릿 등록</button>
 		</div>
 	</div>
+
+	{#if lastRegisteredTemplate}
+		<div class="success-box" role="status">
+			템플릿 <strong>{lastRegisteredTemplate}</strong> 이(가) 등록되었습니다. 사용자가 새 요청 모달에서 바로 선택할 수 있습니다.
+			<button class="success-close" onclick={() => (lastRegisteredTemplate = null)} aria-label="닫기">×</button>
+		</div>
+	{/if}
 
 	{#if errorMsg}
 		<div class="error-box">{errorMsg}</div>
@@ -240,6 +251,16 @@
 	{/if}
 </div>
 
+<UploadModelWizard
+	open={wizardOpen}
+	mode="admin"
+	onClose={() => (wizardOpen = false)}
+	onSubmitted={(result) => {
+		lastRegisteredTemplate = result.templateName ?? null;
+		load();
+	}}
+/>
+
 <style>
 	.page {
 		padding: 28px 32px;
@@ -311,6 +332,44 @@
 	.reject-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+	.primary-btn {
+		background: var(--accent);
+		border: 1px solid transparent;
+		color: var(--bg-base);
+		padding: 7px 14px;
+		font-size: 12px;
+		font-weight: 800;
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+		font-family: inherit;
+	}
+	.primary-btn:hover {
+		filter: brightness(1.1);
+	}
+	.success-box {
+		position: relative;
+		background: rgba(77, 191, 179, 0.10);
+		border: 1px solid rgba(77, 191, 179, 0.4);
+		color: var(--text-primary);
+		padding: 10px 36px 10px 14px;
+		border-radius: var(--radius-sm);
+		margin-bottom: 12px;
+		font-size: 13px;
+	}
+	.success-close {
+		position: absolute;
+		right: 8px;
+		top: 50%;
+		transform: translateY(-50%);
+		width: 24px;
+		height: 24px;
+		padding: 0;
+		background: transparent;
+		border: none;
+		color: var(--text-muted);
+		font-size: 16px;
+		cursor: pointer;
 	}
 	.error-box {
 		background: rgba(239, 68, 68, 0.1);

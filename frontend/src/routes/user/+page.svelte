@@ -5,8 +5,8 @@
 	import { page } from '$app/stores';
 	import { base } from '$app/paths';
 	import InfoTooltip from '$lib/components/InfoTooltip.svelte';
-	import ModelUploadRequestModal from '$lib/components/ModelUploadRequestModal.svelte';
 	import NewRequestModal from '$lib/components/NewRequestModal.svelte';
+	import UploadModelWizard from '$lib/components/UploadModelWizard.svelte';
 	import Pill from '$lib/components/Pill.svelte';
 	import { statusEvents, type AgentStatusEvent } from '$lib/stores/global-events';
 	import {
@@ -1763,8 +1763,9 @@ KPI — 컨테이너·요청·자원 합계
 	}}
 />
 
-<ModelUploadRequestModal
+<UploadModelWizard
 	open={modelUploadModalOpen}
+	mode="user"
 	onClose={() => { modelUploadModalOpen = false; }}
 	onSubmitted={() => {
 		pushToast('success', '모델 등록 요청이 제출되었습니다. 관리자 승인 후 템플릿으로 사용할 수 있습니다.');
