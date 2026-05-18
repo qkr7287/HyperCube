@@ -84,12 +84,23 @@ def workspace_proxy(request, workspace_key: str, upstream_path: str = ""):
 
 def _authenticate_workspace_request(request, container):
     ticket = request.GET.get("ticket")
-    if ticket:
-        payload = consume_workspace_ticket(ticket, container)
-        payload["_new_session"] = True
-        return payload
-
     session_value = request.COOKIES.get(WORKSPACE_SESSION_COOKIE)
+
+    if ticket:
+        try:
+            payload = consume_workspace_ticket(ticket, container)
+            payload["_new_session"] = True
+            return payload
+        except PermissionDenied:
+            # Ticket invalid or already consumed. JupyterLab routinely
+            # redirects /lab → /lab/workspaces/auto-X?ticket=...&reset
+            # carrying the original (now-spent) ticket in the query, so
+            # if a valid session cookie was already set by the first
+            # request we should accept that and continue. Re-raise only
+            # if there is no session to fall back to.
+            if not session_value:
+                raise
+
     if not session_value:
         return None
     try:
