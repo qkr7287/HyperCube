@@ -215,15 +215,13 @@
 				{#if agent.agent.is_active}
 					<span class="live-dot" aria-hidden="true" title="Agent 실시간 연결 중"></span>
 				{/if}
-				<strong title={agent.agent.hostname}>{agent.agent.hostname}</strong>
-				<span class="ip-inline">{agent.agent.ip_address}</span>
-				<MetricHelp text={"각 막대 = 리소스 사용률(%)\n0% = 거의 안 씀, 100% = 완전 사용 중\n\n위험 임계\n• CPU 90% / 메모리 90%\n• 디스크 90% / GPU 95%"} />
-				<span class="meta">
-					<span class="health-tag {agent.health}">{healthLabel(agent.health)}</span>
-				</span>
+				<strong class="hostname" title={agent.agent.hostname}>{agent.agent.hostname}</strong>
 			</span>
+			<span class="ip-row">{agent.agent.ip_address}</span>
 		</div>
 		<div class="head-actions">
+			<span class="health-tag {agent.health}">{healthLabel(agent.health)}</span>
+			<MetricHelp text={"각 막대 = 리소스 사용률(%)\n0% = 거의 안 씀, 100% = 완전 사용 중\n\n위험 임계\n• CPU 90% / 메모리 90%\n• 디스크 90% / GPU 95%"} />
 			{#if onOpen2d}
 				{@const isSim = agent.agent.id.startsWith('sim-')}
 				<button
@@ -394,22 +392,21 @@
 	.title-line {
 		display: flex;
 		align-items: center;
-		flex-wrap: wrap;
+		flex-wrap: nowrap;
 		gap: 8px;
 		min-width: 0;
 		width: 100%;
 	}
-	.title-line .meta {
-		margin-left: auto;
-	}
-	.ip-inline {
+	.ip-row {
 		color: var(--text-muted);
 		font-size: var(--font-xs);
 		font-weight: 700;
 		font-variant-numeric: tabular-nums;
 		letter-spacing: 0;
+		line-height: 1.1;
+		padding-left: 15px; /* live-dot(7) + gap(8) 만큼 들여쓰기 */
 	}
-	.title strong {
+	.title strong.hostname {
 		color: var(--text-primary);
 		font-size: var(--font-sm);
 		font-weight: 800;
@@ -418,6 +415,7 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		min-width: 0;
+		flex: 0 1 auto;
 	}
 	.meta {
 		display: inline-flex;
@@ -428,10 +426,14 @@
 	}
 	.health-tag {
 		display: inline-flex;
-		padding: 2px 6px;
+		align-items: center;
+		padding: 2px 7px;
+		height: 22px;
 		border-radius: var(--radius-sm);
+		font-size: var(--font-xs);
 		font-weight: 800;
 		letter-spacing: 0.3px;
+		white-space: nowrap;
 	}
 	.health-tag.healthy { color: #34d399; background: rgba(52, 211, 153, 0.14); }
 	.health-tag.warning { color: #fbbf24; background: rgba(245, 158, 11, 0.18); }
@@ -441,8 +443,10 @@
 
 	.head-actions {
 		display: inline-flex;
+		align-items: center;
 		gap: 5px;
 		flex-wrap: nowrap;
+		flex-shrink: 0;
 	}
 	.monitor-btn {
 		height: clamp(20px, 1.35vw, 26px);
