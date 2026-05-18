@@ -203,9 +203,11 @@
 				endLabel: showEndLabel
 					? {
 							show: true,
+							// 값만 표시 — stack 이름은 차트 위쪽 chip 으로 식별 (color 매칭).
+							// 라벨이 짧아지면 grid.right padding 도 줄여 차트 폭 확보.
 							formatter: (p: any) => {
 								const v = Array.isArray(p.value) ? p.value[1] : p.value;
-								return `${item.label} ${formatValue(Number(v ?? 0), u)}`;
+								return formatValue(Number(v ?? 0), u);
 							},
 							color,
 							backgroundColor: 'rgba(13, 17, 23, 0.78)',
@@ -215,9 +217,8 @@
 							padding: [3, 6],
 							fontSize: 10,
 							fontWeight: 700,
-							distance: 6,
-							// box width cap → 긴 stack 이름이 panel 밖으로 잘리는 대신 ellipsis 처리
-							width: 110,
+							distance: 4,
+							width: 48,
 							overflow: 'truncate',
 							ellipsis: '…',
 						}
@@ -277,7 +278,7 @@
 			grid: {
 				top: 8,
 				left: 8,
-				right: padRight > 0 ? padRight : 130, // endLabel 공간 (width:110 + padding/border/distance)
+				right: padRight > 0 ? padRight : 64, // endLabel 공간 (width:48 + padding/border/distance)
 				bottom: 22,
 				containLabel: true,
 			},
