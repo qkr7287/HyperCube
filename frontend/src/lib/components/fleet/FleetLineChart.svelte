@@ -200,29 +200,8 @@
 				itemStyle: { color },
 				z: highlighted ? 10 : 1,
 				emphasis: { focus: 'series', lineStyle: { width: highlighted ? 3 : 2 } },
-				endLabel: showEndLabel
-					? {
-							show: true,
-							// 값만 표시 — stack 이름은 차트 위쪽 chip 으로 식별 (color 매칭).
-							// 라벨이 짧아지면 grid.right padding 도 줄여 차트 폭 확보.
-							formatter: (p: any) => {
-								const v = Array.isArray(p.value) ? p.value[1] : p.value;
-								return formatValue(Number(v ?? 0), u);
-							},
-							color,
-							backgroundColor: 'rgba(13, 17, 23, 0.78)',
-							borderColor: color,
-							borderWidth: 1,
-							borderRadius: 4,
-							padding: [3, 6],
-							fontSize: 10,
-							fontWeight: 700,
-							distance: 4,
-							width: 48,
-							overflow: 'truncate',
-							ellipsis: '…',
-						}
-					: { show: false },
+				// endLabel 폐기 — chart head 의 StackLegendChips 가 색-이름 매핑 담당.
+				endLabel: { show: false },
 			};
 		}) as NonNullable<EChartsOption['series']>;
 
@@ -278,7 +257,9 @@
 			grid: {
 				top: 8,
 				left: 8,
-				right: padRight > 0 ? padRight : 64, // endLabel 공간 (width:48 + padding/border/distance)
+				// endLabel 제거 → 차트 영역 100% 사용. stack 식별은 chart head 의
+				// StackLegendChips 와 hover tooltip 으로 충분.
+				right: padRight > 0 ? padRight : 12,
 				bottom: 22,
 				containLabel: true,
 			},
