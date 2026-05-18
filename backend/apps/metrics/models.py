@@ -154,3 +154,122 @@ class ContainerMetricsHistory(models.Model):
 
     def __str__(self):
         return f"{self.container_id[:12]} @ {self.recorded_at}"
+
+
+# ----------------------------------------------------------------------
+# Rollup tables — long-range (1h/24h/7d) 차트의 사전 집계 결과.
+# raw history 위에서 매번 GROUP BY 하면 28일 ×10M+ rows scan 으로 30s+ 걸려서,
+# Celery beat 으로 주기 적재 → viewset 이 bucket size 가 3600 / 86400 일 때 여기서 SELECT.
+# bucket_seconds 컬럼으로 hourly·daily 를 한 테이블에 같이 저장한다 (테이블 수 절약).
+# ----------------------------------------------------------------------
+
+
+class SystemMetricsRollup(models.Model):
+    """SystemMetricsHistory 의 시간/일 단위 사전 집계."""
+
+    id = models.BigAutoField(primary_key=True)
+    agent = models.ForeignKey(Agent, on_delete=models.CASCADE, related_name="system_rollups")
+    bucket_seconds = models.IntegerField(help_text="3600 (1h) 또는 86400 (1d).")
+    bucket_start = models.DateTimeField(help_text="bucket 시작 시각 (aware datetime).")
+
+    cpu_avg = models.FloatField(null=True, blank=True)
+    cpu_max = models.FloatField(null=True, blank=True)
+    memory_usage_avg = models.FloatField(null=True, blank=True)
+    memory_usage_max = models.FloatField(null=True, blank=True)
+    disk_usage_avg = models.FloatField(null=True, blank=True)
+    disk_usage_max = models.FloatField(null=True, blank=True)
+    network_rx_max = models.BigIntegerField(null=True, blank=True)
+    network_tx_max = models.BigIntegerField(null=True, blank=True)
+    gpu_usage_avg = models.FloatField(null=True, blank=True)
+    gpu_usage_max = models.FloatField(null=True, blank=True)
+    gpu_memory_used_avg = models.BigIntegerField(null=True, blank=True)
+    gpu_memory_used_max = models.BigIntegerField(null=True, blank=True)
+    gpu_memory_total_avg = models.BigIntegerField(null=True, blank=True)
+    cpu_power_w_avg = models.FloatField(null=True, blank=True)
+    cpu_temp_c_max = models.FloatField(null=True, blank=True)
+
+    sample_count = models.IntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "system_metrics_rollup"
+        unique_together = [("agent", "bucket_seconds", "bucket_start")]
+        indexes = [
+            models.Index(fields=["agent", "bucket_seconds", "-bucket_start"]),
+        ]
+
+
+class ContainerMetricsRollup(models.Model):
+    """ContainerMetricsHistory 의 시간/일 단위 사전 집계."""
+
+    id = models.BigAutoField(primary_key=True)
+    agent = models.ForeignKey(Agent, on_delete=models.CASCADE, related_name="container_rollups")
+    container_id = models.CharField(max_length=64)
+    stack = models.CharField(max_length=128, default="Unmanaged")
+    bucket_seconds = models.IntegerField()
+    bucket_start = models.DateTimeField()
+
+    cpu_usage_pct_avg = models.FloatField(null=True, blank=True)
+    cpu_usage_pct_max = models.FloatField(null=True, blank=True)
+    cpu_usage_raw_avg = models.FloatField(null=True, blank=True)
+    cpu_usage_raw_max = models.FloatField(null=True, blank=True)
+    cpu_cores_quota_avg = models.FloatField(null=True, blank=True)
+    memory_avg = models.FloatField(null=True, blank=True)
+    memory_max = models.FloatField(null=True, blank=True)
+    memory_percent_avg = models.FloatField(null=True, blank=True)
+    network_rx_max = models.BigIntegerField(null=True, blank=True)
+    network_tx_max = models.BigIntegerField(null=True, blank=True)
+    disk_read_max = models.BigIntegerField(null=True, blank=True)
+    disk_write_max = models.BigIntegerField(null=True, blank=True)
+    gpu_usage_avg = models.FloatField(null=True, blank=True)
+    gpu_usage_max = models.FloatField(null=True, blank=True)
+    gpu_memory_used_avg = models.BigIntegerField(null=True, blank=True)
+    gpu_memory_used_max = models.BigIntegerField(null=True, blank=True)
+    gpu_memory_total_avg = models.BigIntegerField(null=True, blank=True)
+
+    sample_count = models.IntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "container_metrics_rollup"
+        unique_together = [("agent", "container_id", "bucket_seconds", "bucket_start")]
+        indexes = [
+            models.Index(fields=["agent", "bucket_seconds", "-bucket_start"]),
+            models.Index(fields=["agent", "stack", "bucket_seconds", "-bucket_start"], name="cmroll_agent_stack_idx"),
+        ]
+
+
+class StackMetricsRollup(models.Model):
+    """스택 단위 메트릭의 시간/일 단위 사전 집계 — server-2d "스택 평균 추이" 차트의 직접 소스."""
+
+    id = models.BigAutoField(primary_key=True)
+    agent = models.ForeignKey(Agent, on_delete=models.CASCADE, related_name="stack_rollups")
+    stack = models.CharField(max_length=128)
+    bucket_seconds = models.IntegerField()
+    bucket_start = models.DateTimeField()
+
+    cpu_avg = models.FloatField(null=True, blank=True)
+    cpu_max = models.FloatField(null=True, blank=True)
+    memory_percent_avg = models.FloatField(null=True, blank=True)
+    memory_percent_max = models.FloatField(null=True, blank=True)
+    memory_bytes_avg = models.BigIntegerField(null=True, blank=True)
+    network_rx_max = models.BigIntegerField(null=True, blank=True)
+    network_tx_max = models.BigIntegerField(null=True, blank=True)
+    disk_read_max = models.BigIntegerField(null=True, blank=True)
+    disk_write_max = models.BigIntegerField(null=True, blank=True)
+    gpu_usage_avg = models.FloatField(null=True, blank=True)
+    gpu_usage_max = models.FloatField(null=True, blank=True)
+    gpu_memory_used_avg = models.BigIntegerField(null=True, blank=True)
+    gpu_memory_used_max = models.BigIntegerField(null=True, blank=True)
+    gpu_memory_total_avg = models.BigIntegerField(null=True, blank=True)
+
+    container_count = models.IntegerField(default=0)
+    sample_count = models.IntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "stack_metrics_rollup"
+        unique_together = [("agent", "stack", "bucket_seconds", "bucket_start")]
+        indexes = [
+            models.Index(fields=["agent", "bucket_seconds", "-bucket_start"]),
+        ]

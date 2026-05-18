@@ -17,7 +17,13 @@ from rest_framework.viewsets import GenericViewSet
 from apps.common.permissions import IsViewer
 from apps.containers.models import Container
 
-from .models import ContainerMetricsHistory, SystemMetricsHistory
+from .models import (
+    ContainerMetricsHistory,
+    ContainerMetricsRollup,
+    StackMetricsRollup,
+    SystemMetricsHistory,
+    SystemMetricsRollup,
+)
 from .serializers import (
     ContainerMetricsHistoryDetailSerializer,
     ContainerMetricsHistorySerializer,
@@ -91,17 +97,58 @@ def _parse_bucket_seconds(raw: str | None, default: int = 60) -> int:
     return max(10, min(n, 30 * 86400))
 
 
-# 24h/7d 집계는 수백만 row를 GROUP BY해야 해서 한 번 계산하면 60s 캐시.
-# Cache key는 path + 정렬된 query params + user 단위로 분리해서 권한 누수 방지.
-_BUCKET_CACHE_TTL = 60
+# 캐시 TTL: bucket 크기에 비례. 7d range (bucket=1w) 는 한번 41s 걸려 계산한 결과를
+# 1시간 재사용 — 그 사이 bucket boundary 가 바뀔 일이 없음. 짧은 range 는 짧은 TTL.
+_BUCKET_CACHE_TTL_BASE = 60
+_BUCKET_CACHE_TTL_CAP = 3600
+
+
+def _bucket_cache_ttl(bucket_sec: int) -> int:
+    # bucket_sec / 10 로 자연스럽게 비례. 10s bucket → 60s, 1w bucket → cap(3600).
+    return max(_BUCKET_CACHE_TTL_BASE, min(bucket_sec // 10, _BUCKET_CACHE_TTL_CAP))
+
+
+def _floor_iso_to_bucket(value: str, bucket_sec: int) -> str:
+    """from_time/to_time 을 bucket 경계로 floor → 캐시 키 안정화.
+    Date.now() 기반 ISO string 이 매 호출마다 달라져 cache miss 가 나는 문제 회피.
+    """
+    if not value or bucket_sec <= 0:
+        return value or ""
+    try:
+        dt = timezone.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return value
+    epoch = int(dt.timestamp())
+    floored = epoch - (epoch % bucket_sec)
+    return str(floored)
 
 
 def _make_cache_key(prefix: str, request, bucket_sec: int) -> str:
     params = sorted(request.query_params.items())
     user_id = getattr(request.user, "id", "anon")
-    raw = f"{prefix}|{user_id}|{bucket_sec}|" + "&".join(f"{k}={v}" for k, v in params)
+    # from_time/to_time 은 bucket 경계로 정규화 — Date.now() 차이로 인한 무한 miss 회피.
+    normalized = [
+        (k, _floor_iso_to_bucket(v, bucket_sec) if k in {"from_time", "to_time"} else v)
+        for k, v in params
+    ]
+    raw = f"{prefix}|{user_id}|{bucket_sec}|" + "&".join(f"{k}={v}" for k, v in normalized)
     digest = hashlib.md5(raw.encode()).hexdigest()
     return f"metrics:buckets:{digest}"
+
+
+# Rollup 테이블에 사전 적재해둔 bucket_seconds. 그 외 값은 raw GROUP BY 경로로.
+_ROLLUP_BUCKETS = {3600, 86400}
+# 7d range. daily rollup 위에서 7개씩 다시 묶음 (28일이라도 28 row 만 다룸).
+_WEEKLY_BUCKET = 604800
+
+
+def _parse_iso(value: str | None):
+    if not value:
+        return None
+    try:
+        return timezone.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
 
 
 class SystemMetricsFilter(filters.FilterSet):
@@ -195,6 +242,13 @@ class SystemMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet):
         if cached is not None:
             return Response(cached)
 
+        # Long-range (1h/24h/7d) 는 사전 적재된 rollup 테이블에서 직접 조회.
+        # 10M+ raw rows GROUP BY 대신 (agent × bucket_seconds) 인덱스 range scan.
+        if bucket_sec in _ROLLUP_BUCKETS or bucket_sec == _WEEKLY_BUCKET:
+            payload = _serve_system_from_rollup(request, bucket_sec)
+            cache.set(cache_key, payload, _bucket_cache_ttl(bucket_sec))
+            return Response(payload)
+
         qs = self.filter_queryset(self.get_queryset())
         # PostgreSQL: floor(epoch / N) * N → bucket start in epoch seconds.
         bucket_expr = RawSQL(
@@ -277,7 +331,7 @@ class SystemMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet):
                 )
             results.append(row)
         payload = {"bucket_seconds": bucket_sec, "results": results}
-        cache.set(cache_key, payload, _BUCKET_CACHE_TTL)
+        cache.set(cache_key, payload, _bucket_cache_ttl(bucket_sec))
         return Response(payload)
 
 
@@ -334,6 +388,11 @@ class StackMetricsViewSet(GenericViewSet):
         cached = cache.get(cache_key)
         if cached is not None:
             return Response(cached)
+
+        if bucket_sec in _ROLLUP_BUCKETS or bucket_sec == _WEEKLY_BUCKET:
+            payload = _serve_stacks_from_rollup(request, bucket_sec)
+            cache.set(cache_key, payload, _bucket_cache_ttl(bucket_sec))
+            return Response(payload)
 
         qs = self.filter_queryset(self.get_queryset())
         bucket_expr = RawSQL(
@@ -418,7 +477,7 @@ class StackMetricsViewSet(GenericViewSet):
             results.append(row)
 
         payload = {"bucket_seconds": bucket_sec, "results": results}
-        cache.set(cache_key, payload, _BUCKET_CACHE_TTL)
+        cache.set(cache_key, payload, _bucket_cache_ttl(bucket_sec))
         return Response(payload)
 
 
@@ -502,6 +561,11 @@ class ContainerMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet
         cached = cache.get(cache_key)
         if cached is not None:
             return Response(cached)
+
+        if bucket_sec in _ROLLUP_BUCKETS or bucket_sec == _WEEKLY_BUCKET:
+            payload = _serve_containers_from_rollup(request, bucket_sec)
+            cache.set(cache_key, payload, _bucket_cache_ttl(bucket_sec))
+            return Response(payload)
 
         qs = self.filter_queryset(self.get_queryset())
         bucket_expr = RawSQL(
@@ -613,5 +677,348 @@ class ContainerMetricsViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet
             for r in rows
         ]
         payload = {"bucket_seconds": bucket_sec, "results": results}
-        cache.set(cache_key, payload, _BUCKET_CACHE_TTL)
+        cache.set(cache_key, payload, _bucket_cache_ttl(bucket_sec))
         return Response(payload)
+
+
+# ----------------------------------------------------------------------
+# Rollup-based serving — long-range (1h/24h/7d) 차트의 직접 소스.
+# raw GROUP BY 와 응답 shape 100% 동일하게 유지 (frontend 변경 0).
+# 7d (604800) 는 daily(86400) rollup 위에서 다시 weekly group by — 28 rows.
+# ----------------------------------------------------------------------
+
+
+def _rollup_window(request, bucket_sec: int):
+    """from_time/to_time 을 bucket 경계로 정규화해 (start, end) datetime 반환.
+    범위 없으면 default = 마지막 N개 bucket (N=10).
+    """
+    to_dt = _parse_iso(request.query_params.get("to_time")) or timezone.now()
+    from_dt = _parse_iso(request.query_params.get("from_time"))
+    if from_dt is None:
+        from_dt = to_dt - timedelta(seconds=bucket_sec * 10)
+    return from_dt, to_dt
+
+
+def _agent_id_filter(request) -> str | None:
+    return request.query_params.get("agent")
+
+
+def _serve_system_from_rollup(request, bucket_sec: int) -> dict:
+    storage_bucket = _storage_bucket_for(bucket_sec)
+    from_dt, to_dt = _rollup_window(request, bucket_sec)
+    qs = SystemMetricsRollup.objects.filter(
+        bucket_seconds=storage_bucket,
+        bucket_start__gte=from_dt,
+        bucket_start__lte=to_dt,
+    )
+    agent_id = _agent_id_filter(request)
+    if agent_id:
+        qs = qs.filter(agent_id=agent_id)
+    # 권한 — admin 외엔 자기 container 가 있는 agent 만.
+    user = request.user
+    if getattr(user, "role", None) != "admin":
+        owned_agent_ids = list(
+            Container.objects.filter(requester=user).values_list("agent_id", flat=True).distinct()
+        )
+        qs = qs.filter(agent_id__in=owned_agent_ids)
+
+    rows = list(qs.order_by("agent_id", "bucket_start"))
+    if bucket_sec == _WEEKLY_BUCKET:
+        rows = _regroup_to_weekly_system(rows, from_dt)
+
+    results = []
+    for r in rows:
+        bucket_epoch = int(r.bucket_start.timestamp())
+        results.append({
+            "agent": str(r.agent_id),
+            "bucket_epoch": bucket_epoch,
+            "bucket_start": r.bucket_start.isoformat(),
+            "cpu_avg": round(r.cpu_avg or 0, 2),
+            "cpu_max": round(r.cpu_max or 0, 2),
+            "memory_avg": round(r.memory_usage_avg or 0, 2),
+            "memory_max": round(r.memory_usage_max or 0, 2),
+            "memory_used_avg": 0,
+            "memory_total_avg": 0,
+            "disk_avg": round(r.disk_usage_avg or 0, 2),
+            "disk_max": round(r.disk_usage_max or 0, 2),
+            "network_rx_max": int(r.network_rx_max or 0),
+            "network_tx_max": int(r.network_tx_max or 0),
+            "sample_count": int(r.sample_count or 0),
+            "gpu_avg": round(r.gpu_usage_avg, 2) if r.gpu_usage_avg is not None else None,
+            "gpu_max": round(r.gpu_usage_max, 2) if r.gpu_usage_max is not None else None,
+            "gpu_memory_used_avg": int(r.gpu_memory_used_avg) if r.gpu_memory_used_avg is not None else None,
+            "gpu_memory_total_avg": int(r.gpu_memory_total_avg) if r.gpu_memory_total_avg is not None else None,
+        })
+    return {"bucket_seconds": bucket_sec, "results": results}
+
+
+def _serve_stacks_from_rollup(request, bucket_sec: int) -> dict:
+    storage_bucket = _storage_bucket_for(bucket_sec)
+    from_dt, to_dt = _rollup_window(request, bucket_sec)
+    qs = StackMetricsRollup.objects.filter(
+        bucket_seconds=storage_bucket,
+        bucket_start__gte=from_dt,
+        bucket_start__lte=to_dt,
+    )
+    agent_id = _agent_id_filter(request)
+    if agent_id:
+        qs = qs.filter(agent_id=agent_id)
+    stack = request.query_params.get("stack")
+    if stack:
+        qs = qs.filter(stack=stack)
+    user = request.user
+    if getattr(user, "role", None) != "admin":
+        owned_agent_ids = list(
+            Container.objects.filter(requester=user).values_list("agent_id", flat=True).distinct()
+        )
+        qs = qs.filter(agent_id__in=owned_agent_ids)
+
+    rows = list(qs.order_by("agent_id", "stack", "bucket_start"))
+    if bucket_sec == _WEEKLY_BUCKET:
+        rows = _regroup_to_weekly_stack(rows, from_dt)
+
+    results = []
+    for r in rows:
+        bucket_epoch = int(r.bucket_start.timestamp())
+        results.append({
+            "agent": str(r.agent_id),
+            "stack": r.stack,
+            "bucket_epoch": bucket_epoch,
+            "bucket_start": r.bucket_start.isoformat(),
+            "cpu_avg": round(r.cpu_avg or 0, 2),
+            "cpu_max": round(r.cpu_max or 0, 2),
+            "memory_percent_avg": round(r.memory_percent_avg or 0, 2),
+            "memory_percent_max": round(r.memory_percent_max or 0, 2),
+            "memory_bytes_avg": int(r.memory_bytes_avg or 0),
+            "network_rx_max": int(r.network_rx_max or 0),
+            "network_tx_max": int(r.network_tx_max or 0),
+            "disk_read_max": int(r.disk_read_max or 0),
+            "disk_write_max": int(r.disk_write_max or 0),
+            "container_count": int(r.container_count or 0),
+            "sample_count": int(r.sample_count or 0),
+            "gpu_usage_avg": round(r.gpu_usage_avg, 2) if r.gpu_usage_avg is not None else None,
+            "gpu_usage_max": round(r.gpu_usage_max, 2) if r.gpu_usage_max is not None else None,
+            "gpu_memory_used_avg": int(r.gpu_memory_used_avg) if r.gpu_memory_used_avg is not None else None,
+            "gpu_memory_used_max": int(r.gpu_memory_used_max) if r.gpu_memory_used_max is not None else None,
+            "gpu_memory_total_avg": int(r.gpu_memory_total_avg) if r.gpu_memory_total_avg is not None else None,
+        })
+    return {"bucket_seconds": bucket_sec, "results": results}
+
+
+def _serve_containers_from_rollup(request, bucket_sec: int) -> dict:
+    storage_bucket = _storage_bucket_for(bucket_sec)
+    from_dt, to_dt = _rollup_window(request, bucket_sec)
+    qs = ContainerMetricsRollup.objects.filter(
+        bucket_seconds=storage_bucket,
+        bucket_start__gte=from_dt,
+        bucket_start__lte=to_dt,
+    )
+    agent_id = _agent_id_filter(request)
+    if agent_id:
+        qs = qs.filter(agent_id=agent_id)
+    container_id = request.query_params.get("container_id")
+    if container_id:
+        qs = qs.filter(container_id=container_id)
+    user = request.user
+    if getattr(user, "role", None) != "admin":
+        owned_container_ids = list(
+            Container.objects.filter(requester=user).values_list("container_id", flat=True)
+        )
+        qs = qs.filter(container_id__in=owned_container_ids)
+
+    rows = list(qs.order_by("agent_id", "container_id", "bucket_start"))
+    if bucket_sec == _WEEKLY_BUCKET:
+        rows = _regroup_to_weekly_container(rows, from_dt)
+
+    results = []
+    for r in rows:
+        bucket_epoch = int(r.bucket_start.timestamp())
+        cpu_pct_avg = r.cpu_usage_pct_avg
+        cpu_pct_max = r.cpu_usage_pct_max
+        results.append({
+            "agent": str(r.agent_id),
+            "container_id": r.container_id,
+            "bucket_epoch": bucket_epoch,
+            "bucket_start": r.bucket_start.isoformat(),
+            "cpu_usage_pct_avg": round(cpu_pct_avg, 2) if cpu_pct_avg is not None else None,
+            "cpu_usage_pct_max": round(cpu_pct_max, 2) if cpu_pct_max is not None else None,
+            "cpu_usage_avg": round(r.cpu_usage_raw_avg, 2) if r.cpu_usage_raw_avg is not None else None,
+            "cpu_usage_max": round(r.cpu_usage_raw_max, 2) if r.cpu_usage_raw_max is not None else None,
+            "cpu_cores_quota_avg": round(r.cpu_cores_quota_avg, 2) if r.cpu_cores_quota_avg is not None else None,
+            "cpu_avg": round(cpu_pct_avg or 0, 2),
+            "cpu_max": round(cpu_pct_max or 0, 2),
+            "memory_avg": float(r.memory_avg or 0),
+            "memory_max": float(r.memory_max or 0),
+            "memory_percent_avg": round(r.memory_percent_avg or 0, 2),
+            "network_rx_max": int(r.network_rx_max or 0),
+            "network_tx_max": int(r.network_tx_max or 0),
+            "disk_read_max": int(r.disk_read_max or 0),
+            "disk_write_max": int(r.disk_write_max or 0),
+            "gpu_usage_avg": round(r.gpu_usage_avg, 2) if r.gpu_usage_avg is not None else None,
+            "gpu_usage_max": round(r.gpu_usage_max, 2) if r.gpu_usage_max is not None else None,
+            "gpu_memory_used_avg": int(r.gpu_memory_used_avg) if r.gpu_memory_used_avg is not None else None,
+            "gpu_memory_used_max": int(r.gpu_memory_used_max) if r.gpu_memory_used_max is not None else None,
+            "gpu_memory_total_avg": int(r.gpu_memory_total_avg) if r.gpu_memory_total_avg is not None else None,
+            "gpu_memory_total_max": None,
+            "sample_count": int(r.sample_count or 0),
+        })
+    return {"bucket_seconds": bucket_sec, "results": results}
+
+
+def _storage_bucket_for(bucket_sec: int) -> int:
+    # 7d range 는 daily rollup 에서 다시 묶음.
+    if bucket_sec == _WEEKLY_BUCKET:
+        return 86400
+    return bucket_sec
+
+
+def _week_start_epoch(dt) -> int:
+    epoch = int(dt.timestamp())
+    return epoch - (epoch % _WEEKLY_BUCKET)
+
+
+def _epoch_to_utc(epoch_sec: int):
+    from datetime import datetime as _dt, timezone as _tz
+    return _dt.fromtimestamp(int(epoch_sec), tz=_tz.utc)
+
+
+def _regroup_to_weekly_system(rows, from_dt):
+    """daily SystemMetricsRollup 리스트를 weekly 로 합침."""
+    from collections import defaultdict
+    bucket_map: dict[tuple, dict] = defaultdict(lambda: {"cpu_avgs": [], "cpu_maxs": [], "mem_avgs": [], "mem_maxs": [], "disk_avgs": [], "disk_maxs": [], "rx_maxs": [], "tx_maxs": [], "gpu_avgs": [], "gpu_maxs": [], "gpu_mu_avgs": [], "gpu_mt_avgs": [], "sample_count": 0, "agent_id": None})
+    for r in rows:
+        wk = _week_start_epoch(r.bucket_start)
+        key = (r.agent_id, wk)
+        b = bucket_map[key]
+        b["agent_id"] = r.agent_id
+        if r.cpu_avg is not None: b["cpu_avgs"].append(r.cpu_avg)
+        if r.cpu_max is not None: b["cpu_maxs"].append(r.cpu_max)
+        if r.memory_usage_avg is not None: b["mem_avgs"].append(r.memory_usage_avg)
+        if r.memory_usage_max is not None: b["mem_maxs"].append(r.memory_usage_max)
+        if r.disk_usage_avg is not None: b["disk_avgs"].append(r.disk_usage_avg)
+        if r.disk_usage_max is not None: b["disk_maxs"].append(r.disk_usage_max)
+        if r.network_rx_max is not None: b["rx_maxs"].append(r.network_rx_max)
+        if r.network_tx_max is not None: b["tx_maxs"].append(r.network_tx_max)
+        if r.gpu_usage_avg is not None: b["gpu_avgs"].append(r.gpu_usage_avg)
+        if r.gpu_usage_max is not None: b["gpu_maxs"].append(r.gpu_usage_max)
+        if r.gpu_memory_used_avg is not None: b["gpu_mu_avgs"].append(r.gpu_memory_used_avg)
+        if r.gpu_memory_total_avg is not None: b["gpu_mt_avgs"].append(r.gpu_memory_total_avg)
+        b["sample_count"] += int(r.sample_count or 0)
+    avg = lambda xs: (sum(xs) / len(xs)) if xs else None
+    mx = lambda xs: max(xs) if xs else None
+    out = []
+    for (agent_id, wk), b in sorted(bucket_map.items(), key=lambda kv: (str(kv[0][0]), kv[0][1])):
+        out.append(SystemMetricsRollup(
+            agent_id=agent_id,
+            bucket_seconds=_WEEKLY_BUCKET,
+            bucket_start=_epoch_to_utc(wk),
+            cpu_avg=avg(b["cpu_avgs"]), cpu_max=mx(b["cpu_maxs"]),
+            memory_usage_avg=avg(b["mem_avgs"]), memory_usage_max=mx(b["mem_maxs"]),
+            disk_usage_avg=avg(b["disk_avgs"]), disk_usage_max=mx(b["disk_maxs"]),
+            network_rx_max=mx(b["rx_maxs"]), network_tx_max=mx(b["tx_maxs"]),
+            gpu_usage_avg=avg(b["gpu_avgs"]), gpu_usage_max=mx(b["gpu_maxs"]),
+            gpu_memory_used_avg=int(avg(b["gpu_mu_avgs"])) if b["gpu_mu_avgs"] else None,
+            gpu_memory_total_avg=int(avg(b["gpu_mt_avgs"])) if b["gpu_mt_avgs"] else None,
+            sample_count=b["sample_count"],
+        ))
+    return out
+
+
+def _regroup_to_weekly_stack(rows, from_dt):
+    from collections import defaultdict
+    bucket_map: dict[tuple, dict] = defaultdict(lambda: {"cpu_avgs": [], "cpu_maxs": [], "mp_avgs": [], "mp_maxs": [], "mb_avgs": [], "rx": [], "tx": [], "dr": [], "dw": [], "gpu_avgs": [], "gpu_maxs": [], "gpu_mu_avgs": [], "gpu_mu_maxs": [], "gpu_mt_avgs": [], "container_count_max": 0, "sample_count": 0, "agent_id": None, "stack": ""})
+    for r in rows:
+        wk = _week_start_epoch(r.bucket_start)
+        key = (r.agent_id, r.stack, wk)
+        b = bucket_map[key]
+        b["agent_id"] = r.agent_id
+        b["stack"] = r.stack
+        if r.cpu_avg is not None: b["cpu_avgs"].append(r.cpu_avg)
+        if r.cpu_max is not None: b["cpu_maxs"].append(r.cpu_max)
+        if r.memory_percent_avg is not None: b["mp_avgs"].append(r.memory_percent_avg)
+        if r.memory_percent_max is not None: b["mp_maxs"].append(r.memory_percent_max)
+        if r.memory_bytes_avg is not None: b["mb_avgs"].append(r.memory_bytes_avg)
+        if r.network_rx_max is not None: b["rx"].append(r.network_rx_max)
+        if r.network_tx_max is not None: b["tx"].append(r.network_tx_max)
+        if r.disk_read_max is not None: b["dr"].append(r.disk_read_max)
+        if r.disk_write_max is not None: b["dw"].append(r.disk_write_max)
+        if r.gpu_usage_avg is not None: b["gpu_avgs"].append(r.gpu_usage_avg)
+        if r.gpu_usage_max is not None: b["gpu_maxs"].append(r.gpu_usage_max)
+        if r.gpu_memory_used_avg is not None: b["gpu_mu_avgs"].append(r.gpu_memory_used_avg)
+        if r.gpu_memory_used_max is not None: b["gpu_mu_maxs"].append(r.gpu_memory_used_max)
+        if r.gpu_memory_total_avg is not None: b["gpu_mt_avgs"].append(r.gpu_memory_total_avg)
+        b["container_count_max"] = max(b["container_count_max"], int(r.container_count or 0))
+        b["sample_count"] += int(r.sample_count or 0)
+    avg = lambda xs: (sum(xs) / len(xs)) if xs else None
+    mx = lambda xs: max(xs) if xs else None
+    out = []
+    for (agent_id, stack, wk), b in sorted(bucket_map.items(), key=lambda kv: (str(kv[0][0]), kv[0][1], kv[0][2])):
+        out.append(StackMetricsRollup(
+            agent_id=agent_id, stack=stack,
+            bucket_seconds=_WEEKLY_BUCKET,
+            bucket_start=_epoch_to_utc(wk),
+            cpu_avg=avg(b["cpu_avgs"]), cpu_max=mx(b["cpu_maxs"]),
+            memory_percent_avg=avg(b["mp_avgs"]), memory_percent_max=mx(b["mp_maxs"]),
+            memory_bytes_avg=int(avg(b["mb_avgs"])) if b["mb_avgs"] else None,
+            network_rx_max=mx(b["rx"]), network_tx_max=mx(b["tx"]),
+            disk_read_max=mx(b["dr"]), disk_write_max=mx(b["dw"]),
+            gpu_usage_avg=avg(b["gpu_avgs"]), gpu_usage_max=mx(b["gpu_maxs"]),
+            gpu_memory_used_avg=int(avg(b["gpu_mu_avgs"])) if b["gpu_mu_avgs"] else None,
+            gpu_memory_used_max=mx(b["gpu_mu_maxs"]),
+            gpu_memory_total_avg=int(avg(b["gpu_mt_avgs"])) if b["gpu_mt_avgs"] else None,
+            container_count=b["container_count_max"],
+            sample_count=b["sample_count"],
+        ))
+    return out
+
+
+def _regroup_to_weekly_container(rows, from_dt):
+    from collections import defaultdict
+    bucket_map: dict[tuple, dict] = defaultdict(lambda: {"cp_avgs": [], "cp_maxs": [], "cr_avgs": [], "cr_maxs": [], "cq_avgs": [], "m_avgs": [], "m_maxs": [], "mp_avgs": [], "rx": [], "tx": [], "dr": [], "dw": [], "gpu_avgs": [], "gpu_maxs": [], "gpu_mu_avgs": [], "gpu_mu_maxs": [], "gpu_mt_avgs": [], "sample_count": 0, "agent_id": None, "container_id": "", "stack": ""})
+    for r in rows:
+        wk = _week_start_epoch(r.bucket_start)
+        key = (r.agent_id, r.container_id, wk)
+        b = bucket_map[key]
+        b["agent_id"] = r.agent_id
+        b["container_id"] = r.container_id
+        b["stack"] = r.stack
+        if r.cpu_usage_pct_avg is not None: b["cp_avgs"].append(r.cpu_usage_pct_avg)
+        if r.cpu_usage_pct_max is not None: b["cp_maxs"].append(r.cpu_usage_pct_max)
+        if r.cpu_usage_raw_avg is not None: b["cr_avgs"].append(r.cpu_usage_raw_avg)
+        if r.cpu_usage_raw_max is not None: b["cr_maxs"].append(r.cpu_usage_raw_max)
+        if r.cpu_cores_quota_avg is not None: b["cq_avgs"].append(r.cpu_cores_quota_avg)
+        if r.memory_avg is not None: b["m_avgs"].append(r.memory_avg)
+        if r.memory_max is not None: b["m_maxs"].append(r.memory_max)
+        if r.memory_percent_avg is not None: b["mp_avgs"].append(r.memory_percent_avg)
+        if r.network_rx_max is not None: b["rx"].append(r.network_rx_max)
+        if r.network_tx_max is not None: b["tx"].append(r.network_tx_max)
+        if r.disk_read_max is not None: b["dr"].append(r.disk_read_max)
+        if r.disk_write_max is not None: b["dw"].append(r.disk_write_max)
+        if r.gpu_usage_avg is not None: b["gpu_avgs"].append(r.gpu_usage_avg)
+        if r.gpu_usage_max is not None: b["gpu_maxs"].append(r.gpu_usage_max)
+        if r.gpu_memory_used_avg is not None: b["gpu_mu_avgs"].append(r.gpu_memory_used_avg)
+        if r.gpu_memory_used_max is not None: b["gpu_mu_maxs"].append(r.gpu_memory_used_max)
+        if r.gpu_memory_total_avg is not None: b["gpu_mt_avgs"].append(r.gpu_memory_total_avg)
+        b["sample_count"] += int(r.sample_count or 0)
+    avg = lambda xs: (sum(xs) / len(xs)) if xs else None
+    mx = lambda xs: max(xs) if xs else None
+    out = []
+    for (agent_id, container_id, wk), b in sorted(bucket_map.items(), key=lambda kv: (str(kv[0][0]), kv[0][1], kv[0][2])):
+        out.append(ContainerMetricsRollup(
+            agent_id=agent_id, container_id=container_id, stack=b["stack"],
+            bucket_seconds=_WEEKLY_BUCKET,
+            bucket_start=_epoch_to_utc(wk),
+            cpu_usage_pct_avg=avg(b["cp_avgs"]), cpu_usage_pct_max=mx(b["cp_maxs"]),
+            cpu_usage_raw_avg=avg(b["cr_avgs"]), cpu_usage_raw_max=mx(b["cr_maxs"]),
+            cpu_cores_quota_avg=avg(b["cq_avgs"]),
+            memory_avg=avg(b["m_avgs"]), memory_max=mx(b["m_maxs"]),
+            memory_percent_avg=avg(b["mp_avgs"]),
+            network_rx_max=mx(b["rx"]), network_tx_max=mx(b["tx"]),
+            disk_read_max=mx(b["dr"]), disk_write_max=mx(b["dw"]),
+            gpu_usage_avg=avg(b["gpu_avgs"]), gpu_usage_max=mx(b["gpu_maxs"]),
+            gpu_memory_used_avg=int(avg(b["gpu_mu_avgs"])) if b["gpu_mu_avgs"] else None,
+            gpu_memory_used_max=mx(b["gpu_mu_maxs"]),
+            gpu_memory_total_avg=int(avg(b["gpu_mt_avgs"])) if b["gpu_mt_avgs"] else None,
+            sample_count=b["sample_count"],
+        ))
+    return out

@@ -43,6 +43,21 @@ gh workflow run deploy-prod.yml -f sha=14e92fa
 
 Backend container entrypoint가 자동 처리: `manage.py migrate --noinput`
 
+### 0010 (metrics rollups) — 신규 환경 / 첫 배포 후 backfill 필수
+
+`SystemMetricsRollup` / `ContainerMetricsRollup` / `StackMetricsRollup` 가 빈 상태로 시작하므로
+1h/24h/7d range 차트가 한동안 빈 그래프를 보임. Celery beat 이 hourly 5분 / daily 30분마다
+직전 3개 bucket 만 채우므로 과거 데이터는 한 번 수동 backfill:
+
+```bash
+docker exec hc-backend python manage.py shell -c \
+  "from apps.metrics.tasks import compute_metrics_rollups; \
+   print(compute_metrics_rollups(3600, lookback_buckets=720)); \
+   print(compute_metrics_rollups(86400, lookback_buckets=60))"
+```
+
+raw history 가 큰 경우 첫 실행 1~3분 소요. 이후엔 beat 가 자동 유지.
+
 ## Health Check
 
 - URL: `http://192.168.0.16:3334/hypercube/`

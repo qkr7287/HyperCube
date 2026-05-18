@@ -195,6 +195,19 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.metrics.tasks.cleanup_old_metrics",
         "schedule": crontab(hour=3, minute=0),
     },
+    # 1h/24h/7d range 차트의 사전 집계. 매번 raw 위에서 GROUP BY 하면 28일 ×10M+
+    # rows 라 30s+ 걸려서 hourly/daily rollup 테이블로 누적. viewset 이 bucket 크기
+    # 보고 rollup 직접 읽음 → 첫 호출도 100ms 미만.
+    "compute-metrics-rollups-hourly": {
+        "task": "apps.metrics.tasks.compute_metrics_rollups",
+        "schedule": 300.0,
+        "kwargs": {"bucket_seconds": 3600, "lookback_buckets": 3},
+    },
+    "compute-metrics-rollups-daily": {
+        "task": "apps.metrics.tasks.compute_metrics_rollups",
+        "schedule": 1800.0,
+        "kwargs": {"bucket_seconds": 86400, "lookback_buckets": 3},
+    },
     "detect-offline-agents": {
         "task": "apps.agents.tasks.detect_offline_agents",
         "schedule": 30.0,
