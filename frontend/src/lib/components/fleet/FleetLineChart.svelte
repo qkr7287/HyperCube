@@ -133,14 +133,10 @@
 		return peak;
 	}
 
-	function percentAxisMax(list: Series[], soloName: string | null): number {
-		const peak = peakValue(list, soloName);
-		if (peak <= 0) return 5;
-		const padded = peak * 1.2;
-		const stops = [2, 5, 10, 15, 20, 30, 40, 50, 60, 80, 100];
-		for (const stop of stops) {
-			if (padded <= stop) return stop;
-		}
+	function percentAxisMax(_list: Series[], _soloName: string | null): number {
+		// 항상 0~100 고정 → 70/90 threshold band 가 시각 anchor 역할.
+		// 작은 값(0~5%)은 평탄해 보이지만 의미적으로 "안전 구간"이 분명히 전달됨.
+		// 정확한 수치는 endLabel/tooltip 으로 보완.
 		return 100;
 	}
 
@@ -225,6 +221,51 @@
 			};
 		}) as NonNullable<EChartsOption['series']>;
 
+		// Threshold band — percent 단위 차트에만 의미. yMax 가 70% 넘을 때만 warn
+		// band, 90% 넘을 때만 critical band 추가. yMax 가 5~10% 같이 낮은 평탄
+		// 구간에선 band 자체가 view 밖이라 그리지 않음 (시각 잡음 회피).
+		const thresholdSeries: any[] = [];
+		if (u === 'percent' && yMax > 70) {
+			const areas: any[] = [
+				[
+					{ yAxis: 70, itemStyle: { color: 'rgba(245, 158, 11, 0.10)' } },
+					{ yAxis: Math.min(90, yMax) },
+				],
+			];
+			if (yMax > 90) {
+				areas.push([
+					{ yAxis: 90, itemStyle: { color: 'rgba(239, 68, 68, 0.13)' } },
+					{ yAxis: Math.min(100, yMax) },
+				]);
+			}
+			thresholdSeries.push({
+				type: 'line',
+				name: '__threshold__',
+				data: [],
+				silent: true,
+				showInLegend: false,
+				tooltip: { show: false },
+				markArea: { silent: true, data: areas, label: { show: false } },
+				markLine: {
+					silent: true,
+					symbol: 'none',
+					data: [
+						{
+							yAxis: 70,
+							lineStyle: { color: 'rgba(245, 158, 11, 0.55)', type: 'dashed', width: 1 },
+							label: { show: true, position: 'insideStartTop', formatter: '70%', color: '#fbbf24', fontSize: 9, fontWeight: 700 },
+						},
+						...(yMax > 90 ? [{
+							yAxis: 90,
+							lineStyle: { color: 'rgba(239, 68, 68, 0.6)', type: 'dashed', width: 1 },
+							label: { show: true, position: 'insideStartTop', formatter: '90%', color: '#f87171', fontSize: 9, fontWeight: 700 },
+						}] : []),
+					],
+				},
+			});
+		}
+		const allSeries = [...(echSeries as any[]), ...thresholdSeries] as NonNullable<EChartsOption['series']>;
+
 		return {
 			animationDuration: 200,
 			animationDurationUpdate: 600,
@@ -250,6 +291,8 @@
 					// soloLabel / topNames 필터 동등 — chart.js tooltip.filter
 					const filtered = arr.filter((p: any) => {
 						const name = p.seriesName ?? '';
+						// threshold dummy series 는 tooltip 에 등장 안 함
+						if (name === '__threshold__') return false;
 						if (soloName) return name === soloName;
 						if (tops.length === 0) return true;
 						return tops.includes(name);
@@ -316,7 +359,7 @@
 				},
 				splitLine: { lineStyle: { color: 'rgba(100, 116, 139, 0.12)' } },
 			},
-			series: echSeries,
+			series: allSeries,
 		};
 	}
 </script>
