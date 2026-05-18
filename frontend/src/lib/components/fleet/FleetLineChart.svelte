@@ -216,6 +216,10 @@
 							fontSize: 10,
 							fontWeight: 700,
 							distance: 6,
+							// box width cap → 긴 stack 이름이 panel 밖으로 잘리는 대신 ellipsis 처리
+							width: 110,
+							overflow: 'truncate',
+							ellipsis: '…',
 						}
 					: { show: false },
 			};
@@ -273,7 +277,7 @@
 			grid: {
 				top: 8,
 				left: 8,
-				right: padRight > 0 ? padRight : 90, // endLabel 공간
+				right: padRight > 0 ? padRight : 130, // endLabel 공간 (width:110 + padding/border/distance)
 				bottom: 22,
 				containLabel: true,
 			},
