@@ -30,10 +30,8 @@
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import ContainersGridPanel from '$lib/components/server2d/ContainersGridPanel.svelte';
 	import StackLegendChips from '$lib/components/server2d/StackLegendChips.svelte';
-	import DonutChart from '$lib/components/server2d/DonutChart.svelte';
 	import HealthRadialGauge from '$lib/components/server2d/HealthRadialGauge.svelte';
-	import ResourceRadarChart from '$lib/components/server2d/ResourceRadarChart.svelte';
-	import StackBubbleChart from '$lib/components/server2d/StackBubbleChart.svelte';
+	import PowerTempGauge from '$lib/components/server2d/PowerTempGauge.svelte';
 	import EventLogStrip from '$lib/components/server2d/EventLogStrip.svelte';
 	import { view, resetViewForServerChange } from '$lib/stores/server2d-view.svelte';
 	import { resolveGroup, groupContainersByStack } from '$lib/utils/container-grouping';
@@ -218,6 +216,22 @@
 	let total = $derived(rows.length);
 	let totalNetwork = $derived(rows.reduce((sum, row) => sum + row.network, 0));
 	let gpuAverage = $derived(avg((systemInfo?.gpu ?? []).map((gpu: any) => Number(gpu.usage ?? 0))));
+
+	// PowerTempGauge 가 GPU 합산값 (전력) / 최대값 (온도) 으로 단일화해서 받음.
+	// 멀티 GPU 호스트도 한 게이지로 표시. measured value 가 하나도 없으면 null → "—" 로 표시.
+	function gpuAggregate(gpus: any, field: string): number | null {
+		if (!Array.isArray(gpus) || gpus.length === 0) return null;
+		const vals: number[] = [];
+		for (const g of gpus) {
+			const raw = g?.[field];
+			if (raw == null) continue;
+			const num = Number(raw);
+			if (Number.isFinite(num)) vals.push(num);
+		}
+		if (vals.length === 0) return null;
+		// 전력은 합산 (다중 GPU 총 W), 온도는 최대 (가장 뜨거운 GPU 기준).
+		return field === 'powerDrawW' ? vals.reduce((a, b) => a + b, 0) : Math.max(...vals);
+	}
 	let health = $derived(resolveHealth(systemInfo?.cpu?.usage ?? 0, systemInfo?.memory?.usage ?? 0, systemInfo?.disk?.usage ?? 0, gpuAverage, problem, isDemoServer || $wsConnected));
 	let healthScore = $derived.by(() => {
 		const cpu = Number(systemInfo?.cpu?.usage ?? 0);
@@ -1676,7 +1690,7 @@
 			<section class="center">
 				<div class="panel snapshot">
 					<div class="panel-head">
-						<div class="panel-title">서버 스냅샷 <InfoTooltip text={`서버 한 대를 4개 그래프로 한눈에.\n\n• 도넛: 컨테이너 상태 분포\n• 원형 게이지: 종합 건강 점수\n• 레이더: 자원 6축 밸런스\n• 버블: 스택 CPU × 메모리 부하 (크기 = 컨테이너 수)`} placement="bottom-start" /></div>
+						<div class="panel-title">서버 스냅샷 <InfoTooltip text={`서버 한 대를 3개 카드로 한눈에.\n\n• 통합: 건강 점수 + 컨테이너 상태 + 자원 사용률 + 핫 스택\n• 전력: CPU package · GPU 전력 (W)\n• 온도: CPU package · GPU 온도 (°C)`} placement="bottom-start" /></div>
 						<div class="hot-inline" title="CPU + 메모리 + 트래픽을 합산한 부하 상위 3개 컨테이너. 클릭하면 상세가 열립니다.">
 							<span class="hot-label"><span class="flame">🔥</span> 부하 TOP 3</span>
 							{#each hottest.slice(0, 3) as row (row.id)}
@@ -1688,32 +1702,71 @@
 						</div>
 					</div>
 					<div class="snapshot-grid">
+						<div class="snap-cell unified">
+							<div class="snap-title">서버 통합</div>
+							<div class="snap-body unified-body">
+								<div class="health-col">
+									<HealthRadialGauge score={healthScore} label={healthLabel(health)} tone={healthTone} />
+								</div>
+								<div class="info-col">
+									<div class="ctr-strip">
+										{#each stateSegments as seg}
+											<span class="ctr-chip" data-tone={seg.label}>
+												<span class="ctr-dot" style:background={seg.color}></span>
+												<strong>{seg.value}</strong>
+												<span class="ctr-label">{seg.label}</span>
+											</span>
+										{/each}
+									</div>
+									<div class="res-bars">
+										{#each [
+											{ label: 'CPU', value: Number(systemInfo?.cpu?.usage ?? 0), color: '#30d5c8' },
+											{ label: 'MEM', value: Number(systemInfo?.memory?.usage ?? 0), color: '#60a5fa' },
+											{ label: 'DSK', value: Number(systemInfo?.disk?.usage ?? 0), color: '#a78bfa' },
+											{ label: 'GPU', value: gpuAverage, color: '#f472b6' },
+										] as bar}
+											<div class="res-row" title={`${bar.label} ${bar.value.toFixed(1)}%`}>
+												<span class="res-label">{bar.label}</span>
+												<div class="res-track">
+													<div class="res-fill" style:width={`${Math.max(0, Math.min(100, bar.value))}%`} style:background={bar.color}></div>
+												</div>
+												<span class="res-val">{bar.value.toFixed(0)}%</span>
+											</div>
+										{/each}
+									</div>
+									{#if bubbleStacks.length > 0}
+										<div class="hot-stack" title="CPU + MEM 합산 부하 상위 스택">
+											{#each [...bubbleStacks].sort((a, b) => (b.cpu + b.memory) - (a.cpu + a.memory)).slice(0, 2) as st}
+												<span class="hot-stack-chip" style:border-color={st.color}>
+													<strong>{st.name}</strong>
+													<em>CPU {st.cpu.toFixed(0)}·MEM {st.memory.toFixed(0)}</em>
+												</span>
+											{/each}
+										</div>
+									{/if}
+								</div>
+							</div>
+						</div>
 						<div class="snap-cell">
-							<div class="snap-title">컨테이너 상태</div>
+							<div class="snap-title">전력</div>
 							<div class="snap-body">
-								<DonutChart
-									segments={stateSegments}
-									centerLabel="전체"
-									centerValue={String(total)}
+								<PowerTempGauge
+									title=""
+									unit="W"
+									cpu={{ label: 'CPU', value: systemInfo?.cpu?.packagePowerW ?? null, max: 150, warn: 95, crit: 130 }}
+									gpu={{ label: 'GPU', value: gpuAggregate(systemInfo?.gpu, 'powerDrawW'), max: 350, warn: 220, crit: 300 }}
 								/>
 							</div>
 						</div>
 						<div class="snap-cell">
-							<div class="snap-title">종합 건강 점수</div>
+							<div class="snap-title">온도</div>
 							<div class="snap-body">
-								<HealthRadialGauge score={healthScore} label={healthLabel(health)} tone={healthTone} />
-							</div>
-						</div>
-						<div class="snap-cell">
-							<div class="snap-title">자원 밸런스</div>
-							<div class="snap-body">
-								<ResourceRadarChart axes={radarAxes} primaryColor="#30d5c8" />
-							</div>
-						</div>
-						<div class="snap-cell">
-							<div class="snap-title">스택 부하 (CPU × MEM)</div>
-							<div class="snap-body">
-								<StackBubbleChart stacks={bubbleStacks} />
+								<PowerTempGauge
+									title=""
+									unit="°C"
+									cpu={{ label: 'CPU', value: systemInfo?.cpu?.tempC ?? null, max: 100, warn: 80, crit: 95 }}
+									gpu={{ label: 'GPU', value: gpuAggregate(systemInfo?.gpu, 'temperatureC'), max: 100, warn: 75, crit: 85 }}
+								/>
 							</div>
 						</div>
 					</div>
@@ -2486,11 +2539,129 @@
 
 	.snapshot-grid {
 		display: grid;
-		grid-template-columns: minmax(0, 0.78fr) minmax(0, 0.78fr) minmax(0, 0.95fr) minmax(0, 1.85fr);
+		grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr);
 		grid-template-rows: minmax(0, 1fr);
 		gap: 8px;
 		min-height: 0;
 		flex: 1;
+	}
+
+	.snap-cell.unified .unified-body {
+		display: grid;
+		grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+		gap: 10px;
+		min-height: 0;
+		height: 100%;
+	}
+	.health-col {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 0;
+	}
+	.info-col {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		min-width: 0;
+		min-height: 0;
+	}
+	.ctr-strip {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+	.ctr-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 2px 6px;
+		background: rgba(15, 23, 42, 0.6);
+		border: 1px solid rgba(100, 116, 139, 0.2);
+		border-radius: 4px;
+		font-size: 10px;
+		font-weight: 700;
+		color: var(--text-secondary);
+	}
+	.ctr-chip strong {
+		color: var(--text-primary);
+		font-size: 11px;
+		font-variant-numeric: tabular-nums;
+	}
+	.ctr-dot {
+		display: inline-block;
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+	}
+	.ctr-label {
+		font-size: 9.5px;
+		letter-spacing: 0.2px;
+	}
+	.res-bars {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+	}
+	.res-row {
+		display: grid;
+		grid-template-columns: 26px minmax(0, 1fr) 32px;
+		align-items: center;
+		gap: 6px;
+		font-size: 10px;
+		font-weight: 800;
+		color: var(--text-muted);
+	}
+	.res-label {
+		letter-spacing: 0.3px;
+	}
+	.res-track {
+		height: 6px;
+		background: rgba(100, 116, 139, 0.18);
+		border-radius: 3px;
+		overflow: hidden;
+	}
+	.res-fill {
+		height: 100%;
+		border-radius: 3px;
+		transition: width 0.4s ease;
+	}
+	.res-val {
+		text-align: right;
+		font-variant-numeric: tabular-nums;
+		color: var(--text-primary);
+	}
+	.hot-stack {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		margin-top: auto;
+	}
+	.hot-stack-chip {
+		display: inline-flex;
+		flex-direction: column;
+		gap: 1px;
+		padding: 3px 6px;
+		background: rgba(48, 213, 200, 0.1);
+		border: 1px solid rgba(48, 213, 200, 0.3);
+		border-radius: 4px;
+		min-width: 0;
+	}
+	.hot-stack-chip strong {
+		font-size: 10px;
+		font-weight: 800;
+		color: var(--text-primary);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		max-width: 130px;
+	}
+	.hot-stack-chip em {
+		font-style: normal;
+		font-size: 9px;
+		font-weight: 700;
+		color: var(--text-muted);
+		font-variant-numeric: tabular-nums;
 	}
 
 	.snap-cell {

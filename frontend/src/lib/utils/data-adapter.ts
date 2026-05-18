@@ -38,6 +38,8 @@ export interface GpuMetric {
 	memoryUsed: number;
 	usage: number;
 	temperature?: number;
+	temperatureC?: number | null;
+	powerDrawW?: number | null;
 }
 
 export interface SystemInfo {
@@ -55,6 +57,9 @@ export interface SystemInfo {
 		model: string;            // e.g. "Intel Xeon Silver 4210 × 2"
 		// Dynamic.
 		usage: number;            // % aggregate, thread-weighted
+		// Power / thermal — null when the agent host has no RAPL / thermal sensor access.
+		packagePowerW?: number | null;
+		tempC?: number | null;
 	};
 	memory: { total: string; used: string; free: string; usage: number };
 	disk: { total: string; used: string; free: string; usage: number };
@@ -116,6 +121,8 @@ export function transformSystemMetrics(msg: any): SystemInfo {
 			efficiencyCores,
 			model: cpu.model ?? '',
 			usage: cpu.usage ?? 0,
+			packagePowerW: typeof cpu.packagePowerW === 'number' ? cpu.packagePowerW : null,
+			tempC: typeof cpu.tempC === 'number' ? cpu.tempC : null,
 		},
 		memory: {
 			total: formatBytes(memTotal),
@@ -158,6 +165,8 @@ export function transformSystemMetrics(msg: any): SystemInfo {
 				memoryUsed: typeof g.memoryUsed === 'number' ? g.memoryUsed : 0,
 				usage: typeof g.usage === 'number' ? g.usage : 0,
 				temperature: typeof g.temperature === 'number' ? g.temperature : undefined,
+				temperatureC: typeof g.temperatureC === 'number' ? g.temperatureC : null,
+				powerDrawW: typeof g.powerDrawW === 'number' ? g.powerDrawW : null,
 			}))
 			.sort((a, b) => a.index - b.index),
 	};
