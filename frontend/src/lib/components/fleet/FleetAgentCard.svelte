@@ -10,13 +10,67 @@
 		onSelect = () => {},
 		onOpen2d,
 		onOpen3d,
+		canManage = false,
+		onDeleted,
 	}: {
 		agent: FleetAgentRow;
 		selected?: boolean;
 		onSelect?: (agentId: string) => void;
 		onOpen2d?: (agentId: string) => void;
 		onOpen3d?: (agentId: string) => void;
+		// admin 만 톱니바퀴 메뉴 노출. backend (IsSuperAdmin=IsAdmin) 가 어차피
+		// 한 번 더 막지만, 일반 사용자에겐 안 보이는 게 UX 깔끔.
+		canManage?: boolean;
+		onDeleted?: (agentId: string) => void;
 	} = $props();
+
+	import { base } from '$app/paths';
+
+	let menuOpen = $state(false);
+	let confirming = $state(false);
+	let deleting = $state(false);
+	let deleteError = $state<string | null>(null);
+
+	function toggleMenu(e: MouseEvent) {
+		e.stopPropagation();
+		menuOpen = !menuOpen;
+		confirming = false;
+		deleteError = null;
+	}
+
+	function closeMenu() {
+		menuOpen = false;
+		confirming = false;
+	}
+
+	async function handleDelete(e: MouseEvent) {
+		e.stopPropagation();
+		if (!confirming) {
+			confirming = true;
+			return;
+		}
+		deleting = true;
+		deleteError = null;
+		try {
+			const token = localStorage.getItem('hc_access_token') || '';
+			const res = await fetch(`${base}/api/agents/${agent.agent.id}/`, {
+				method: 'DELETE',
+				headers: { Authorization: `Bearer ${token}` },
+			});
+			if (res.status === 204 || res.ok) {
+				closeMenu();
+				onDeleted?.(agent.agent.id);
+			} else if (res.status === 403) {
+				deleteError = '권한이 없습니다 (admin 전용).';
+			} else {
+				deleteError = `삭제 실패 (HTTP ${res.status})`;
+			}
+		} catch (err) {
+			deleteError = String(err);
+		} finally {
+			deleting = false;
+		}
+	}
 
 	let hasGpu = $derived((agent.latest?.gpu_count ?? 0) > 0);
 
@@ -197,6 +251,41 @@
 					<span aria-hidden="true">◆</span>
 					<span class="monitor-label">3D</span>
 				</button>
+			{/if}
+			{#if canManage}
+				<div class="settings-wrap" role="presentation" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
+					<button
+						type="button"
+						class="settings-btn"
+						aria-label="Agent 관리"
+						title="Agent 관리"
+						onclick={toggleMenu}
+					>
+						<span aria-hidden="true">⚙</span>
+					</button>
+					{#if menuOpen}
+						<div class="settings-menu" role="menu">
+							{#if !confirming}
+								<button type="button" class="menu-item danger" onclick={handleDelete}>
+									Agent 삭제
+								</button>
+							{:else}
+								<div class="confirm-row">
+									<span class="confirm-text">정말 삭제?</span>
+									<button type="button" class="menu-item danger" disabled={deleting} onclick={handleDelete}>
+										{deleting ? '삭제 중…' : '예'}
+									</button>
+									<button type="button" class="menu-item" disabled={deleting} onclick={closeMenu}>
+										취소
+									</button>
+								</div>
+							{/if}
+							{#if deleteError}
+								<div class="menu-error">{deleteError}</div>
+							{/if}
+						</div>
+					{/if}
+				</div>
 			{/if}
 		</div>
 	</header>
@@ -393,6 +482,86 @@
 		background: rgba(100, 116, 139, 0.1);
 		color: var(--text-muted);
 		border-color: rgba(100, 116, 139, 0.3);
+	}
+
+	.settings-wrap {
+		position: relative;
+		display: inline-flex;
+	}
+	.settings-btn {
+		width: 28px;
+		height: 28px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		border: 1px solid rgba(100, 116, 139, 0.25);
+		border-radius: var(--radius-sm, 4px);
+		background: transparent;
+		color: var(--text-secondary);
+		font-size: 14px;
+		cursor: pointer;
+	}
+	.settings-btn:hover {
+		background: var(--bg-tab);
+		color: var(--text-primary);
+	}
+	.settings-menu {
+		position: absolute;
+		top: calc(100% + 4px);
+		right: 0;
+		min-width: 140px;
+		padding: 4px;
+		background: var(--bg-card);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md, 6px);
+		box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+		z-index: 50;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.menu-item {
+		display: block;
+		width: 100%;
+		padding: 6px 10px;
+		border: none;
+		background: transparent;
+		color: var(--text-primary);
+		font-size: 12px;
+		text-align: left;
+		border-radius: 4px;
+		cursor: pointer;
+	}
+	.menu-item:hover:not(:disabled) {
+		background: var(--bg-tab);
+	}
+	.menu-item.danger {
+		color: #ef4444;
+	}
+	.menu-item.danger:hover:not(:disabled) {
+		background: rgba(239, 68, 68, 0.12);
+	}
+	.menu-item:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	.confirm-row {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		padding: 4px 6px;
+	}
+	.confirm-text {
+		font-size: 12px;
+		color: var(--text-secondary);
+		white-space: nowrap;
+	}
+	.menu-error {
+		padding: 4px 8px;
+		font-size: 11px;
+		color: #ef4444;
+		background: rgba(239, 68, 68, 0.08);
+		border-radius: 4px;
 	}
 
 	.reason-chip {

@@ -256,6 +256,16 @@
 	});
 
 	onDestroy(stopFleetMonitoring);
+
+	function handleAgentDeleted(_agentId: string) {
+		// fleet snapshot + 상단 카운트 둘 다 갱신. 삭제한 카드는 다음 fleet
+		// payload 가 도착하면 자연 제거됨.
+		refreshFleet();
+		if (browser) {
+			const token = localStorage.getItem('hc_access_token');
+			if (token) loadAgentCount(token);
+		}
+	}
 </script>
 
 <svelte:head>
@@ -438,7 +448,7 @@
 					</div>
 					<div class="fleet-view-body">
 						{#if viewMode === 'card'}
-							<FleetCardRotator agents={displayedAgents} selectedId={selectedAgentId} {range} onSelect={selectAgent} onOpen2d={open2d} onOpen3d={open3d} />
+							<FleetCardRotator agents={displayedAgents} selectedId={selectedAgentId} {range} onSelect={selectAgent} onOpen2d={open2d} onOpen3d={open3d} canManage={isLoggedIn} onDeleted={handleAgentDeleted} />
 						{:else}
 							<AgentHealthTable agents={displayedAgents} selectedId={selectedAgentId} onSelect={selectAgent} onOpen2d={open2d} onOpen3d={open3d} />
 						{/if}
