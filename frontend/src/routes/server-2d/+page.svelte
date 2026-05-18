@@ -1734,16 +1734,6 @@
 											</div>
 										{/each}
 									</div>
-									{#if bubbleStacks.length > 0}
-										<div class="hot-stack" title="CPU + MEM 합산 부하 상위 스택">
-											{#each [...bubbleStacks].sort((a, b) => (b.cpu + b.memory) - (a.cpu + a.memory)).slice(0, 2) as st}
-												<span class="hot-stack-chip" style:border-color={st.color}>
-													<strong>{st.name}</strong>
-													<em>CPU {st.cpu.toFixed(0)}·MEM {st.memory.toFixed(0)}</em>
-												</span>
-											{/each}
-										</div>
-									{/if}
 								</div>
 							</div>
 						</div>
@@ -2455,6 +2445,7 @@
 	.snapshot {
 		gap: 6px;
 		min-height: 0;
+		max-height: 200px;
 		overflow: hidden;
 	}
 
@@ -2562,7 +2553,8 @@
 	.info-col {
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
+		justify-content: center;
+		gap: 8px;
 		min-width: 0;
 		min-height: 0;
 	}
@@ -2631,39 +2623,6 @@
 		font-variant-numeric: tabular-nums;
 		color: var(--text-primary);
 	}
-	.hot-stack {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 4px;
-		margin-top: auto;
-	}
-	.hot-stack-chip {
-		display: inline-flex;
-		flex-direction: column;
-		gap: 1px;
-		padding: 3px 6px;
-		background: rgba(48, 213, 200, 0.1);
-		border: 1px solid rgba(48, 213, 200, 0.3);
-		border-radius: 4px;
-		min-width: 0;
-	}
-	.hot-stack-chip strong {
-		font-size: 10px;
-		font-weight: 800;
-		color: var(--text-primary);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		max-width: 130px;
-	}
-	.hot-stack-chip em {
-		font-style: normal;
-		font-size: 9px;
-		font-weight: 700;
-		color: var(--text-muted);
-		font-variant-numeric: tabular-nums;
-	}
-
 	.snap-cell {
 		display: grid;
 		grid-template-rows: auto minmax(0, 1fr);
