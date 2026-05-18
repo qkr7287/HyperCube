@@ -203,13 +203,9 @@
 {/if}
 
 <style>
-	.page { padding: 28px 32px; }
-	.page-header {
-		display: flex; justify-content: space-between; align-items: flex-end;
-		margin-bottom: 20px; gap: 20px; flex-wrap: wrap;
-	}
-	h1 { font-size: 20px; font-weight: 700; color: var(--text-primary); margin: 0 0 6px; }
-	.subtitle { margin: 0; font-size: 12px; color: var(--text-muted); }
+	/* Layout-level :global() controls .page / .page-header / h1 / .subtitle /
+	   .table-wrap / table / thead / tbody / .filter-btn / .refresh-btn /
+	   .error-box / .empty so this panel only declares panel-specific styling. */
 	.create-btn {
 		background: var(--accent); color: var(--bg-base); border: none;
 		padding: 9px 18px; border-radius: var(--radius-sm);
@@ -217,40 +213,11 @@
 		white-space: nowrap;
 	}
 	.create-btn:hover { filter: brightness(1.1); }
-
-	.error-box {
-		background: rgba(239,68,68,0.1); border: 1px solid var(--error);
-		color: var(--error); padding: 10px 14px; border-radius: var(--radius-sm);
-		font-size: 12px; margin-bottom: 16px;
-	}
-
-	.empty {
-		padding: 60px 20px; text-align: center;
-		background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md);
-	}
-	.empty-icon { font-size: 36px; margin-bottom: 10px; }
-	.empty-text { color: var(--text-muted); font-size: 13px; margin-bottom: 16px; }
 	.empty-btn {
 		background: var(--accent); color: var(--bg-base); border: none;
 		padding: 8px 16px; border-radius: var(--radius-sm);
 		font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
 	}
-
-	.table-wrap {
-		background: var(--bg-card); border: 1px solid var(--border);
-		border-radius: var(--radius-md); overflow: hidden;
-	}
-	table { width: 100%; border-collapse: collapse; }
-	th, td {
-		padding: 10px 14px; text-align: left; font-size: 12px;
-		border-bottom: 1px solid var(--border);
-	}
-	th {
-		background: var(--bg-tab); color: var(--text-secondary);
-		font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.02em;
-	}
-	tbody tr:hover { background: var(--bg-tab); }
-	tbody tr:last-child td { border-bottom: none; }
 
 	.name-cell { font-weight: 600; color: var(--text-primary); }
 	.desc-cell { color: var(--text-secondary); max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

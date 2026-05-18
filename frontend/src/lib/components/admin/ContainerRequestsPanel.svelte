@@ -237,71 +237,10 @@
 />
 
 <style>
-	.page {
-		padding: 28px 32px;
-	}
-	.page-header {
-		display: flex; justify-content: space-between; align-items: flex-end;
-		margin-bottom: 20px; gap: 20px; flex-wrap: wrap;
-	}
-	h1 {
-		font-size: 20px; font-weight: 700; color: var(--text-primary);
-		margin: 0 0 6px;
-	}
-	.subtitle {
-		margin: 0; font-size: 12px; color: var(--text-muted);
-	}
-	.controls { display: flex; gap: 10px; align-items: center; }
-	.filter-group { display: flex; gap: 2px; background: var(--bg-card); border-radius: var(--radius-md); padding: 3px; }
-	.filter-btn {
-		background: none; border: none; color: var(--text-secondary);
-		padding: 6px 14px; font-size: 12px; cursor: pointer;
-		border-radius: var(--radius-sm); font-family: inherit;
-	}
-	.filter-btn:hover { color: var(--text-primary); }
-	.filter-btn.active {
-		background: var(--accent); color: var(--bg-base); font-weight: 600;
-	}
-	.refresh-btn {
-		background: var(--bg-card); border: 1px solid var(--border);
-		color: var(--text-primary); padding: 7px 14px; font-size: 12px;
-		border-radius: var(--radius-sm); cursor: pointer; font-family: inherit;
-	}
-	.refresh-btn:hover:not(:disabled) { border-color: var(--accent); }
-	.refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-	.error-box {
-		background: rgba(239, 68, 68, 0.1); border: 1px solid var(--error);
-		color: var(--error); padding: 10px 14px; border-radius: var(--radius-sm);
-		font-size: 12px; margin-bottom: 16px;
-	}
-
-	.empty {
-		padding: 60px 20px; text-align: center;
-		background: var(--bg-card); border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-	}
-	.empty-icon { font-size: 36px; margin-bottom: 10px; }
-	.empty-text { color: var(--text-muted); font-size: 13px; }
-
-	.table-wrap {
-		background: var(--bg-card); border: 1px solid var(--border);
-		border-radius: var(--radius-md); overflow: hidden;
-	}
-	table {
-		width: 100%; border-collapse: collapse;
-	}
-	th, td {
-		padding: 10px 14px; text-align: left; font-size: 12px;
-		border-bottom: 1px solid var(--border);
-	}
-	th {
-		background: var(--bg-tab); color: var(--text-secondary);
-		font-weight: 600; font-size: 11px;
-		text-transform: uppercase; letter-spacing: 0.02em;
-	}
-	tbody tr:hover { background: var(--bg-tab); }
-	tbody tr:last-child td { border-bottom: none; }
+	/* Shared chrome (.page / .page-header / h1 / .subtitle / .controls /
+	   .filter-group / .filter-btn / .refresh-btn / .error-box / .empty /
+	   .table-wrap / table / thead / tbody) is defined in admin layout
+	   :global(). Panel only owns its own row decorations. */
 	.dim { color: var(--text-muted); }
 
 	.action-tag {

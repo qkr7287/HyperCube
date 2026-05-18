@@ -281,127 +281,12 @@
 </div>
 
 <style>
-	.page {
-		padding: 28px 32px;
-	}
-	.page-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: flex-start;
-		gap: 20px;
-		margin-bottom: 20px;
-	}
-	h1 {
-		margin: 0 0 6px;
-	}
-	.subtitle {
-		margin: 0;
-		font-size: 12px;
-		color: var(--text-muted);
-		max-width: 720px;
-		line-height: 1.5;
-	}
-	.controls {
-		display: flex;
-		gap: 10px;
-		align-items: center;
-		flex-shrink: 0;
-	}
-	.filter-group {
-		display: flex;
-		gap: 2px;
-		background: var(--bg-card);
-		border-radius: var(--radius-md);
-		padding: 3px;
-	}
-	.filter-btn {
-		background: none;
-		border: none;
-		color: var(--text-secondary);
-		padding: 6px 14px;
-		font-size: 12px;
-		border-radius: var(--radius-sm);
-		cursor: pointer;
-		font-family: inherit;
-	}
-	.filter-btn:hover {
-		color: var(--text-primary);
-	}
-	.filter-btn.active {
-		background: var(--accent);
-		color: var(--bg-base);
-		font-weight: 900;
-	}
-	.refresh-btn {
-		background: var(--bg-card);
-		border: 1px solid var(--border);
-		color: var(--text-primary);
-		padding: 7px 14px;
-		font-size: 12px;
-		border-radius: var(--radius-sm);
-		cursor: pointer;
-		font-family: inherit;
-	}
-	.refresh-btn:hover:not(:disabled) {
-		border-color: var(--accent);
-	}
-	.refresh-btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.error-box {
-		background: rgba(239, 68, 68, 0.1);
-		border: 1px solid var(--error);
-		color: var(--error);
-		padding: 10px 14px;
-		border-radius: var(--radius-sm);
-		margin-bottom: 12px;
-		font-size: 13px;
-	}
-
-	.empty {
-		padding: 60px 0;
-		text-align: center;
-		color: var(--text-muted);
-		font-size: 13px;
-	}
-
-	.table-wrap {
-		background: var(--bg-card);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		overflow: auto;
-	}
-	table {
-		width: 100%;
-		border-collapse: collapse;
-		font-size: 12.5px;
-	}
-	thead th {
-		text-align: left;
-		font-weight: 800;
-		color: var(--text-muted);
-		font-size: 11px;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		padding: 10px 12px;
-		border-bottom: 1px solid var(--border);
-		background: rgba(13, 17, 23, 0.4);
-		position: sticky;
-		top: 0;
-	}
-	tbody td {
-		padding: 10px 12px;
-		border-bottom: 1px solid rgba(100, 116, 139, 0.12);
-		vertical-align: top;
-	}
+	/* Layout-level :global() controls .page / .page-header / h1 / .subtitle /
+	   .controls / .filter-group / .filter-btn / .refresh-btn / .error-box /
+	   .empty / .table-wrap / table / thead / tbody / .chip so this panel
+	   only declares panel-specific styling. */
 	tbody tr.expanded {
 		background: rgba(77, 191, 179, 0.04);
-	}
-	.num {
-		text-align: right;
-		font-variant-numeric: tabular-nums;
 	}
 	.ts {
 		white-space: nowrap;
@@ -436,17 +321,10 @@
 		flex-wrap: wrap;
 		gap: 4px;
 	}
-	.chip {
-		padding: 2px 7px;
-		font-size: 10.5px;
-		font-weight: 800;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		color: var(--text-secondary);
-		background: rgba(100, 116, 139, 0.18);
-		border-radius: 5px;
-	}
-	.chip-tpl {
+	/* .chip is provided by admin layout :global(). The template-name
+	   variant needs case preserved; bump specificity with parent class
+	   so it wins against the layout's .admin-body .chip rule. */
+	.using .chip.chip-tpl {
 		text-transform: none;
 		letter-spacing: 0;
 		color: var(--accent);
