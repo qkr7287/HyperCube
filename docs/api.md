@@ -242,7 +242,7 @@ approve 시 dispatch 흐름은 `agent-protocol.md` 참조. requestId = Container
 |----------|--------|-------------|
 | `/api/metrics/system/` | GET | 시계열 raw rows. `?agent=<uuid>`, `?range=1h`, `?limit=N` (max 2000), `?from_time=`, `?to_time=` |
 | `/api/metrics/system/{id}/` | GET | 단일 row + raw_data JSONB |
-| `/api/metrics/system/buckets/?range=7d&bucket=1d` | GET | bucket 집계 (60s 캐시). bucket: `30s/1m/5m/...1w` 또는 초 단위 정수 |
+| `/api/metrics/system/buckets/?range=7d&bucket=1d` | GET | bucket 집계. bucket: `30s/1m/5m/...1w` 또는 초 단위 정수. Cache TTL = `bucket_seconds/10` (clamp 60s~3600s); from_time/to_time 은 bucket 경계로 정규화돼서 같은 윈도우 안에선 cache hit. **bucket_sec ∈ {3600, 86400, 604800} 은 `*_metrics_rollup` 사전 집계 테이블에서 직접 SELECT** (raw GROUP BY 안 함; 7d 는 daily rollup × 7 weekly regroup). 응답 shape 동일 |
 
 집계 응답:
 ```json

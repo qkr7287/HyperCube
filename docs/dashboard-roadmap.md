@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-05-15 (hero/KPI quality up + 자동 테스트 인프라 56건 + admin fleet 카드 GPU 온도/전력 chip)
+last-updated: 2026-05-18 (server-2d 스냅샷 4→3 cell + 전력/온도 게이지 + threshold band; fleet card 기어 메뉴/agent 삭제; metrics rollup tables. 본 roadmap 은 /user/containers 페이지 중심 — server-2d 작업은 progress 메모리 참조)
 status: living document — 세션마다 갱신
 benchmark: Portainer container detail UI
 related-pages: /user/containers/[containerId]

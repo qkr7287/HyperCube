@@ -51,6 +51,10 @@
 | 로그 0줄 표시 | 과도한 파싱 | raw string 그대로 |
 | `chordTimer is not defined` 런타임 폭발 | 단축키 변수 지우고 `onDestroy` cleanup 한 줄 누락 | lifecycle 변수 제거 시 grep 으로 사용처 전수 확인 |
 | Chrome MCP `Cannot access chrome-extension://` | 다른 확장(password manager 등) popup 이 활성 탭 점유 | curl 로 token 받아 `localStorage.setItem('hc_access_token', ...)` + reload 우회 |
+| ECharts 라인이 한 점에 cram, x 라벨 1개만 노출 | bucket epoch 가 초 단위인데 time-axis 는 ms 로 해석 → 90ms span | timestamps 에 ×1000 (예: `historyModel.buckets.map(s => s * 1000)`) |
+| DELETE 호출 시 Chrome "Failed to fetch" / 500 | `EnvelopeJSONRenderer` 가 204 응답에도 `{success:true,data:null}` (28 bytes) wrap → RFC 7230 위반 | renderer 에서 204 면 `return b""` |
+| `mergeSystemInfo` 후 새 컬럼이 `undefined` 로 떨어짐 | delta merge 가 새 필드 카피 안 함 | merge fn 에 새 필드 `?? prev ?? null` 추가 (`||` 는 의미있는 0 도 falsy 처리) |
+| API bucket viewset cache 가 매번 miss | cache key 가 `Date.now()` 기준 ISO 라 매 호출 다름 | `_floor_iso_to_bucket` 으로 bucket 경계 정규화 |
 
 ## 자동 테스트 (2026-05-15 추가, 총 56건)
 
