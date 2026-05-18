@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
-from .models import ModelAsset, ModelPrepareJob, ModelVersion, ModelVersionCache
+from .models import ModelAsset, ModelPrepareJob, ModelUploadRequest, ModelVersion, ModelVersionCache
+from .services import create_model_upload_request
 
 
 class ModelVersionSerializer(serializers.ModelSerializer):
@@ -68,6 +69,92 @@ class ModelVersionImportSerializer(serializers.Serializer):
     version = serializers.CharField(max_length=80)
     source_path = serializers.CharField(max_length=1024)
     metadata = serializers.JSONField(required=False)
+
+
+class ModelUploadRequestSerializer(serializers.ModelSerializer):
+    file = serializers.FileField(write_only=True, required=True)
+    requester_username = serializers.CharField(source="requester.username", read_only=True)
+    reviewer_username = serializers.CharField(source="reviewer.username", read_only=True, default=None)
+    created_asset_slug = serializers.CharField(source="created_asset.slug", read_only=True, default=None)
+    created_version_label = serializers.CharField(source="created_version.version", read_only=True, default=None)
+    created_template_name = serializers.CharField(source="created_template.name", read_only=True, default=None)
+
+    class Meta:
+        model = ModelUploadRequest
+        fields = [
+            "id",
+            "requester",
+            "requester_username",
+            "reviewer",
+            "reviewer_username",
+            "name",
+            "slug",
+            "description",
+            "framework",
+            "task",
+            "tags",
+            "version",
+            "template_name",
+            "template_description",
+            "base_image",
+            "requires_gpu",
+            "workspace_kind",
+            "workspace_port",
+            "default_max_runtime_hours",
+            "min_cpu_percent",
+            "min_memory_mb",
+            "min_workspace_gb",
+            "file",
+            "original_filename",
+            "size_bytes",
+            "sha256",
+            "status",
+            "review_note",
+            "reviewed_at",
+            "created_asset",
+            "created_asset_slug",
+            "created_version",
+            "created_version_label",
+            "created_template",
+            "created_template_name",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "requester",
+            "requester_username",
+            "reviewer",
+            "reviewer_username",
+            "original_filename",
+            "size_bytes",
+            "sha256",
+            "status",
+            "review_note",
+            "reviewed_at",
+            "created_asset",
+            "created_asset_slug",
+            "created_version",
+            "created_version_label",
+            "created_template",
+            "created_template_name",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate_tags(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError("tags must be a list")
+        return [str(item) for item in value]
+
+    def create(self, validated_data):
+        uploaded_file = validated_data.pop("file")
+        requester = self.context["request"].user
+        return create_model_upload_request(requester=requester, uploaded_file=uploaded_file, **validated_data)
+
+
+class ModelUploadRequestReviewSerializer(serializers.Serializer):
+    note = serializers.CharField(required=False, allow_blank=True, max_length=2000)
 
 
 class ModelVersionCacheSerializer(serializers.ModelSerializer):

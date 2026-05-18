@@ -93,16 +93,6 @@
 				class="nav-link"
 				class:active={currentPath.startsWith(`${base}/user/containers`)}
 			>내 컨테이너</a>
-			<a
-				href={base + '/user/workspaces'}
-				class="nav-link"
-				class:active={currentPath.startsWith(`${base}/user/workspaces`)}
-			>워크스페이스</a>
-			<a
-				href={base + '/user/models'}
-				class="nav-link"
-				class:active={currentPath.startsWith(`${base}/user/models`)}
-			>모델</a>
 		</nav>
 		<div class="right">
 			<span class="user-name">{username}</span>
@@ -248,7 +238,7 @@
 			grid-area: nav;
 			width: 100%;
 			display: grid;
-			grid-template-columns: repeat(4, minmax(0, 1fr));
+			grid-template-columns: repeat(2, minmax(0, 1fr));
 			gap: 4px;
 			padding: 3px;
 			border-radius: 12px;

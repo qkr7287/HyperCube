@@ -31,6 +31,7 @@
 		image_options: Array<{ label: string; image: string }>;
 		env_schema: Array<Record<string, any>>;
 		port_schema: Array<Record<string, any>>;
+		default_model_version_ids?: string[];
 		description: string;
 		requires_gpu?: boolean;
 		workspace_enabled?: boolean;
@@ -359,6 +360,9 @@
 		portValues = {};
 		selectedGpuSliceIds = [];
 		gpuShareOk = false;
+		selectedModelVersionIds = (tpl.default_model_version_ids ?? [])
+			.map((id) => String(id))
+			.filter((id) => modelVersions.some((version) => version.id === id));
 		for (const env of tpl.env_schema ?? []) envValues[env.key] = env.default ?? '';
 		for (const port of tpl.port_schema ?? []) portValues[port.internal] = port.host_default ?? port.internal;
 	}
@@ -545,6 +549,7 @@
 									<div class="badges">
 										{#if tpl.requires_gpu}<b>GPU</b>{/if}
 										{#if tpl.workspace_enabled}<b>{tpl.workspace_kind || 'workspace'}</b>{/if}
+										{#if (tpl.default_model_version_ids?.length ?? 0) > 0}<b>모델 포함</b>{/if}
 										{#if tpl.category === 'ml'}<b>ML</b>{/if}
 									</div>
 								</button>

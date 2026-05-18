@@ -1,7 +1,7 @@
 from django.contrib import admin
 from unfold.admin import ModelAdmin
 
-from .models import ModelAsset, ModelPrepareJob, ModelVersion, ModelVersionCache
+from .models import ModelAsset, ModelPrepareJob, ModelUploadRequest, ModelVersion, ModelVersionCache
 
 
 @admin.register(ModelAsset)
@@ -18,6 +18,25 @@ class ModelVersionAdmin(ModelAdmin):
     list_filter = ("status",)
     search_fields = ("asset__name", "asset__slug", "version", "sha256", "original_filename")
     readonly_fields = ("id", "storage_path", "size_bytes", "sha256", "created_at")
+
+
+@admin.register(ModelUploadRequest)
+class ModelUploadRequestAdmin(ModelAdmin):
+    list_display = ("name", "version", "requester", "status", "size_bytes", "created_template", "created_at")
+    list_filter = ("status", "framework", "task", "requires_gpu")
+    search_fields = ("name", "slug", "description", "requester__username", "original_filename", "sha256")
+    readonly_fields = (
+        "id",
+        "original_filename",
+        "upload_storage_path",
+        "size_bytes",
+        "sha256",
+        "created_asset",
+        "created_version",
+        "created_template",
+        "created_at",
+        "updated_at",
+    )
 
 
 @admin.register(ModelVersionCache)

@@ -8,8 +8,9 @@ from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from apps.containers.models import ContainerTemplate
 from apps.containers.tests.factories import create_user
-from apps.models_catalog.models import ModelAsset, ModelVersion
+from apps.models_catalog.models import ModelAsset, ModelUploadRequest, ModelVersion
 
 
 class ModelCatalogAPITest(APITestCase):
@@ -31,14 +32,14 @@ class ModelCatalogAPITest(APITestCase):
         self.settings_override.disable()
         self.tempdir.cleanup()
 
-    def test_user_can_create_asset_and_upload_version_with_checksum(self):
-        self.client.force_authenticate(user=self.user)
+    def test_admin_can_create_asset_and_upload_version_with_checksum(self):
+        self.client.force_authenticate(user=self.admin)
         create_response = self.client.post(
             "/api/model-assets/",
             {
                 "name": "Llama Local",
                 "slug": "llama-local",
-                "visibility": ModelAsset.Visibility.PRIVATE,
+                "visibility": ModelAsset.Visibility.SHARED,
                 "framework": "pytorch",
                 "task": "text-generation",
             },
@@ -64,6 +65,34 @@ class ModelCatalogAPITest(APITestCase):
         self.assertTrue((Path(self.storage_dir) / version.storage_path).exists())
         self.assertEqual(list((Path(self.storage_dir) / "_tmp").glob("*")), [])
 
+    def test_user_cannot_directly_create_asset_or_upload_version(self):
+        self.client.force_authenticate(user=self.user)
+        create_response = self.client.post(
+            "/api/model-assets/",
+            {
+                "name": "Llama Local",
+                "slug": "llama-local",
+                "visibility": ModelAsset.Visibility.PRIVATE,
+                "framework": "pytorch",
+                "task": "text-generation",
+            },
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_403_FORBIDDEN)
+
+        asset = ModelAsset.objects.create(owner=self.admin, name="Shared Model", slug="shared-model", visibility=ModelAsset.Visibility.SHARED)
+        payload = b"offline model bytes"
+        upload_response = self.client.post(
+            f"/api/model-assets/{asset.id}/versions/upload/",
+            {
+                "version": "v1",
+                "file": SimpleUploadedFile("weights.bin", payload),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(upload_response.status_code, status.HTTP_403_FORBIDDEN)
+
     def test_private_asset_is_hidden_from_other_user(self):
         ModelAsset.objects.create(
             owner=self.user,
@@ -76,6 +105,58 @@ class ModelCatalogAPITest(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.json()["data"]["count"], 0)
+
+    def test_user_upload_request_approval_creates_shared_model_and_template(self):
+        self.client.force_authenticate(user=self.user)
+        payload = b"browser uploaded model bytes"
+
+        create_response = self.client.post(
+            "/api/model-upload-requests/",
+            {
+                "name": "Tiny Vision",
+                "slug": "tiny-vision",
+                "version": "v1",
+                "framework": "pytorch",
+                "task": "image-classification",
+                "template_name": "Tiny Vision Workspace",
+                "base_image": "hypercube/ml-pytorch-jupyter:cuda12.4-airgap",
+                "file": SimpleUploadedFile("tiny.pt", payload),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED, create_response.json())
+        request_id = create_response.json()["data"]["id"]
+        upload_request = ModelUploadRequest.objects.get(id=request_id)
+        self.assertEqual(upload_request.status, ModelUploadRequest.Status.PENDING)
+        self.assertEqual(upload_request.sha256, hashlib.sha256(payload).hexdigest())
+        self.assertTrue((Path(self.storage_dir) / upload_request.upload_storage_path).exists())
+
+        user_approve_response = self.client.post(
+            f"/api/model-upload-requests/{request_id}/approve/",
+            {"note": "ok"},
+            format="json",
+        )
+        self.assertEqual(user_approve_response.status_code, status.HTTP_403_FORBIDDEN)
+
+        self.client.force_authenticate(user=self.admin)
+        approve_response = self.client.post(
+            f"/api/model-upload-requests/{request_id}/approve/",
+            {"note": "approved"},
+            format="json",
+        )
+
+        self.assertEqual(approve_response.status_code, status.HTTP_200_OK, approve_response.json())
+        upload_request.refresh_from_db()
+        self.assertEqual(upload_request.status, ModelUploadRequest.Status.APPROVED)
+        asset = ModelAsset.objects.get(slug="tiny-vision")
+        version = ModelVersion.objects.get(asset=asset, version="v1")
+        template = ContainerTemplate.objects.get(name="Tiny Vision Workspace")
+        self.assertEqual(asset.visibility, ModelAsset.Visibility.SHARED)
+        self.assertEqual(version.sha256, hashlib.sha256(payload).hexdigest())
+        self.assertEqual(template.default_model_version_ids, [str(version.id)])
+        self.assertEqual(template.category, ContainerTemplate.Category.ML)
+        self.assertTrue((Path(self.storage_dir) / version.storage_path).exists())
 
     def test_admin_import_rejects_external_url_and_path_traversal(self):
         asset = ModelAsset.objects.create(

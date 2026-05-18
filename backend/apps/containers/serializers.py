@@ -203,6 +203,7 @@ class ContainerTemplateSerializer(serializers.ModelSerializer):
             "env_schema",
             "port_schema",
             "default_volumes",
+            "default_model_version_ids",
             "compose_yaml",
             "created_by",
             "created_by_username",

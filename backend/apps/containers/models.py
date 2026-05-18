@@ -73,6 +73,7 @@ class ContainerTemplate(models.Model):
     # 포트 스키마: [{"internal":5432,"host_default":15432,"description":"DB port"}]
     port_schema = models.JSONField(default=list, blank=True)
     default_volumes = models.JSONField(default=list, blank=True)
+    default_model_version_ids = models.JSONField(default=list, blank=True)
 
     # compose 전용
     compose_yaml = models.TextField(blank=True, default="")

@@ -51,6 +51,7 @@
 	const navItems = [
 		{ href: `${base}/`, label: '전체 서버 모니터링', match: '/' },
 		{ href: `${base}/admin/requests`, label: '서버 승인', match: '/admin/requests', badge: () => pending },
+		{ href: `${base}/admin/model-requests`, label: '모델 요청', match: '/admin/model-requests' },
 		{ href: `${base}/admin/templates`, label: '템플릿', match: '/admin/templates' },
 		{ href: `${base}/server-2d`, label: '2D 관제 대시보드', match: '/server-2d' },
 		{ href: `${base}/server-3d`, label: '3D 상세 모니터링', match: '/server-3d' },

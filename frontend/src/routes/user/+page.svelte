@@ -5,6 +5,7 @@
 	import { page } from '$app/stores';
 	import { base } from '$app/paths';
 	import InfoTooltip from '$lib/components/InfoTooltip.svelte';
+	import ModelUploadRequestModal from '$lib/components/ModelUploadRequestModal.svelte';
 	import NewRequestModal from '$lib/components/NewRequestModal.svelte';
 	import Pill from '$lib/components/Pill.svelte';
 	import { statusEvents, type AgentStatusEvent } from '$lib/stores/global-events';
@@ -58,6 +59,19 @@
 		}>;
 	};
 
+	type ModelUploadRequestRow = {
+		id: string;
+		name: string;
+		version: string;
+		original_filename?: string;
+		status: string;
+		created_template_name?: string | null;
+		review_note?: string;
+		reviewer_username?: string | null;
+		reviewed_at?: string | null;
+		created_at: string;
+	};
+
 	type TabKey = 'containers' | 'history';
 	type ContainerFilter = 'all' | 'running' | 'workspace' | 'stopped';
 	type HistoryFilter = 'all' | 'deployed' | 'rejected' | 'others';
@@ -72,9 +86,11 @@
 	let debouncedSearch = $state('');
 	let containers = $state<MyContainer[]>([]);
 	let requests = $state<RequestRow[]>([]);
+	let modelUploadRequests = $state<ModelUploadRequestRow[]>([]);
 	let loading = $state(true);
 	let refreshing = $state(false);
 	let newModalOpen = $state(false);
+	let modelUploadModalOpen = $state(false);
 	let newModalPrefill = $state<null | {
 		templateId?: string | null;
 		agentId?: string | null;
@@ -648,10 +664,14 @@ KPI — 컨테이너·요청·자원 합계
 		const reqSize = opts.silent && requests.length > REQ_PAGE_SIZE
 			? Math.min(100, requests.length)
 			: REQ_PAGE_SIZE;
-		const [reqJson, contJson] = await Promise.all([
+		const [reqJson, contJson, modelReqJson] = await Promise.all([
 			fetchJson(`/api/requests/?page=1&page_size=${reqSize}&ordering=-created_at`, t),
 			fetchJson('/api/my-containers/?page_size=100&ordering=-last_seen', t),
+			fetchJson('/api/model-upload-requests/?page_size=20&ordering=-created_at', t),
 		]);
+		if (modelReqJson) {
+			modelUploadRequests = modelReqJson?.data?.results ?? [];
+		}
 		if (reqJson) {
 			requests = reqJson?.data?.results ?? [];
 			if (!opts.silent) requestPage = 1;
@@ -687,6 +707,13 @@ KPI — 컨테이너·요청·자원 합계
 		}
 		autoFitContainerCols();
 		autoFitHistoryCols();
+	}
+
+	async function loadModelUploadRequests() {
+		const t = token();
+		if (!t) return;
+		const json = await fetchJson('/api/model-upload-requests/?page_size=20&ordering=-created_at', t);
+		if (json) modelUploadRequests = json?.data?.results ?? [];
 	}
 
 	async function loadMoreRequests() {
@@ -1096,6 +1123,7 @@ KPI — 컨테이너·요청·자원 합계
 				<span class="btn-spinner" class:spinning={refreshing}></span>
 				{refreshing ? '갱신 중…' : '새로고침'}
 			</button>
+			<button class="ghost-btn" onclick={() => (modelUploadModalOpen = true)}>모델 등록 요청</button>
 			<button class="new-btn" onclick={() => openNewRequest(null)}>+ 새 요청</button>
 		</div>
 	</section>
@@ -1595,6 +1623,47 @@ KPI — 컨테이너·요청·자원 합계
 
 			<section class="side-section">
 				<header class="side-head">
+					<h2>모델 등록 요청<Pill tone="var(--text-secondary)" size="md" minWidth="28px">{modelUploadRequests.length}</Pill></h2>
+				</header>
+				{#if modelUploadRequests.length === 0}
+					<div class="side-empty">제출한 모델 등록 요청이 없습니다</div>
+				{:else}
+					<ul class="side-req-list">
+						{#each modelUploadRequests.slice(0, 8) as r (r.id)}
+							<li class="side-req-item">
+								<div class="side-req-top">
+									<strong title={`${r.name} ${r.version}`}>
+										{r.name} <span class="model-version">{r.version}</span>
+									</strong>
+									<Pill status={r.status} dot size="md" minWidth="76px">{statusLabel(r.status)}</Pill>
+								</div>
+								<div class="side-req-meta">
+									{r.original_filename || '-'}
+								</div>
+								{#if r.status === 'approved' && r.created_template_name}
+									<div class="side-req-msg">
+										<span>템플릿: <strong>{r.created_template_name}</strong></span>
+									</div>
+								{:else if r.status === 'rejected' && r.review_note}
+									<div class="side-req-msg" title={r.review_note}>
+										<span>반려: {r.review_note}</span>
+									</div>
+								{:else if r.status === 'failed' && r.review_note}
+									<div class="side-req-msg" title={r.review_note}>
+										<span>실패: {r.review_note}</span>
+									</div>
+								{/if}
+								<div class="side-req-msg">
+									<span>{formatRelativeTime(r.created_at)}</span>
+								</div>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</section>
+
+			<section class="side-section">
+				<header class="side-head">
 					<h2>서버 상태 변화<Pill tone="var(--text-secondary)" size="md" minWidth="28px">{liveEvents.length}</Pill></h2>
 					<InfoTooltip text={agentEventsHelp} label="서버 상태 변화 도움말" placement="bottom-start" />
 				</header>
@@ -1691,6 +1760,15 @@ KPI — 컨테이너·요청·자원 합계
 		newModalPrefill = null;
 		pushToast('success', '새 요청이 제출되었습니다. 승인 대기 중입니다.');
 		load();
+	}}
+/>
+
+<ModelUploadRequestModal
+	open={modelUploadModalOpen}
+	onClose={() => { modelUploadModalOpen = false; }}
+	onSubmitted={() => {
+		pushToast('success', '모델 등록 요청이 제출되었습니다. 관리자 승인 후 템플릿으로 사용할 수 있습니다.');
+		loadModelUploadRequests();
 	}}
 />
 
@@ -2026,6 +2104,17 @@ KPI — 컨테이너·요청·자원 합계
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	.model-version {
+		display: inline-block;
+		padding: 0 6px;
+		margin-left: 4px;
+		font-size: 11px;
+		font-weight: 800;
+		color: var(--text-muted);
+		background: rgba(100, 116, 139, 0.12);
+		border-radius: 4px;
 	}
 
 	.track.tiny {
@@ -2606,20 +2695,15 @@ KPI — 컨테이너·요청·자원 합계
 		background: var(--bg-card);
 		border: 1px solid var(--border);
 		border-radius: 10px;
-		overflow: hidden;
+		overflow: auto;
 		flex: 1;
 		min-height: 0;
-		display: flex;
-		flex-direction: column;
 	}
 
 	.container-list {
 		list-style: none;
 		margin: 0;
 		padding: 0;
-		flex: 1;
-		min-height: 0;
-		overflow-y: auto;
 	}
 
 	.container-head,
@@ -2642,6 +2726,8 @@ KPI — 컨테이너·요청·자원 합계
 		position: sticky;
 		top: 0;
 		z-index: 2;
+		width: max-content;
+		min-width: 100%;
 		border-bottom: 1px solid rgba(100, 116, 139, 0.42);
 		box-shadow: 0 1px 0 rgba(100, 116, 139, 0.14);
 	}
@@ -2986,20 +3072,15 @@ KPI — 컨테이너·요청·자원 합계
 		background: var(--bg-card);
 		border: 1px solid var(--border);
 		border-radius: 10px;
-		overflow: hidden;
+		overflow: auto;
 		flex: 1;
 		min-height: 0;
-		display: flex;
-		flex-direction: column;
 	}
 
 	.history-list {
 		list-style: none;
 		margin: 0;
 		padding: 0;
-		flex: 1;
-		min-height: 0;
-		overflow-y: auto;
 	}
 
 	.history-head,
@@ -3022,6 +3103,8 @@ KPI — 컨테이너·요청·자원 합계
 		position: sticky;
 		top: 0;
 		z-index: 2;
+		width: max-content;
+		min-width: 100%;
 		border-bottom: 1px solid rgba(100, 116, 139, 0.42);
 		box-shadow: 0 1px 0 rgba(100, 116, 139, 0.14);
 	}

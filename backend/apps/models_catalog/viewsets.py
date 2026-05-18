@@ -1,6 +1,6 @@
 from django.core.exceptions import ValidationError
 from django.http import FileResponse, Http404
-from django.db.models import Count, Q
+from django.db.models import Count
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -10,11 +10,15 @@ from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
 from apps.agents.models import Agent
 
-from .models import ModelAsset, ModelPrepareJob, ModelVersion, ModelVersionCache
+from apps.common.permissions import IsAdmin
+
+from .models import ModelAsset, ModelPrepareJob, ModelUploadRequest, ModelVersion, ModelVersionCache
 from .prepare import can_agent_stream_version, mount_path_for_version
 from .serializers import (
     ModelAssetSerializer,
     ModelPrepareJobSerializer,
+    ModelUploadRequestReviewSerializer,
+    ModelUploadRequestSerializer,
     ModelVersionCacheSerializer,
     ModelVersionImportSerializer,
     ModelVersionSerializer,
@@ -23,6 +27,8 @@ from .serializers import (
 from .services import (
     import_model_version_from_offline_path,
     model_version_file_path,
+    approve_model_upload_request,
+    reject_model_upload_request,
     save_uploaded_model_version,
 )
 
@@ -35,6 +41,11 @@ class ModelAssetViewSet(ModelViewSet):
     search_fields = ["name", "slug", "description", "framework", "task"]
     ordering_fields = ["name", "created_at", "updated_at"]
 
+    def get_permissions(self):
+        if self.action in ("create", "update", "partial_update", "destroy", "upload_version", "import_version"):
+            return [IsAdmin()]
+        return [IsAuthenticated()]
+
     def get_queryset(self):
         qs = (
             ModelAsset.objects.select_related("owner")
@@ -44,7 +55,7 @@ class ModelAssetViewSet(ModelViewSet):
         user = self.request.user
         if getattr(user, "role", None) == "admin":
             return qs
-        return qs.filter(Q(owner=user) | Q(visibility=ModelAsset.Visibility.SHARED))
+        return qs.filter(visibility=ModelAsset.Visibility.SHARED)
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
@@ -75,8 +86,6 @@ class ModelAssetViewSet(ModelViewSet):
     )
     def upload_version(self, request, pk=None):
         asset = self.get_object()
-        if not _can_write_asset(asset, request.user):
-            return Response({"detail": "Only the owner or admin can upload versions."}, status=status.HTTP_403_FORBIDDEN)
         serializer = ModelVersionUploadSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
@@ -93,8 +102,6 @@ class ModelAssetViewSet(ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="versions/import")
     def import_version(self, request, pk=None):
-        if getattr(request.user, "role", None) != "admin":
-            return Response({"detail": "Admin only."}, status=status.HTTP_403_FORBIDDEN)
         asset = self.get_object()
         serializer = ModelVersionImportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -121,7 +128,7 @@ class ModelVersionViewSet(ReadOnlyModelViewSet):
         visible_assets = ModelAsset.objects.all()
         user = self.request.user
         if getattr(user, "role", None) != "admin":
-            visible_assets = visible_assets.filter(Q(owner=user) | Q(visibility=ModelAsset.Visibility.SHARED))
+            visible_assets = visible_assets.filter(visibility=ModelAsset.Visibility.SHARED)
         return ModelVersion.objects.select_related("asset", "uploaded_by").filter(asset__in=visible_assets)
 
     @action(detail=False, methods=["get"], url_path="cache-status")
@@ -210,6 +217,72 @@ class ModelVersionViewSet(ReadOnlyModelViewSet):
         return response
 
 
+class ModelUploadRequestViewSet(ModelViewSet):
+    serializer_class = ModelUploadRequestSerializer
+    permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
+    filterset_fields = ["status", "framework", "task"]
+    search_fields = ["name", "slug", "description", "template_name", "original_filename"]
+    ordering_fields = ["created_at", "updated_at", "status", "name"]
+    http_method_names = ["get", "post", "delete", "head", "options"]
+
+    def get_queryset(self):
+        qs = ModelUploadRequest.objects.select_related(
+            "requester",
+            "reviewer",
+            "created_asset",
+            "created_version",
+            "created_template",
+        )
+        if getattr(self.request.user, "role", None) == "admin":
+            return qs
+        return qs.filter(requester=self.request.user)
+
+    def get_permissions(self):
+        if self.action in ("approve", "reject"):
+            return [IsAdmin()]
+        return [IsAuthenticated()]
+
+    def destroy(self, request, *args, **kwargs):
+        upload_request = self.get_object()
+        if upload_request.status != ModelUploadRequest.Status.PENDING:
+            return Response(
+                {"detail": "Only pending model upload requests can be deleted."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=["post"], url_path="approve")
+    def approve(self, request, pk=None):
+        upload_request = self.get_object()
+        serializer = ModelUploadRequestReviewSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            approved = approve_model_upload_request(
+                upload_request,
+                reviewer=request.user,
+                note=serializer.validated_data.get("note", ""),
+            )
+        except ValidationError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(ModelUploadRequestSerializer(approved, context={"request": request}).data)
+
+    @action(detail=True, methods=["post"], url_path="reject")
+    def reject(self, request, pk=None):
+        upload_request = self.get_object()
+        serializer = ModelUploadRequestReviewSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            rejected = reject_model_upload_request(
+                upload_request,
+                reviewer=request.user,
+                note=serializer.validated_data.get("note", ""),
+            )
+        except ValidationError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(ModelUploadRequestSerializer(rejected, context={"request": request}).data)
+
+
 class ModelVersionCacheViewSet(ReadOnlyModelViewSet):
     serializer_class = ModelVersionCacheSerializer
     permission_classes = [IsAuthenticated]
@@ -231,14 +304,14 @@ class ModelPrepareJobViewSet(ReadOnlyModelViewSet):
 
 
 def _can_write_asset(asset, user) -> bool:
-    return getattr(user, "role", None) == "admin" or asset.owner_id == user.id
+    return getattr(user, "role", None) == "admin"
 
 
 def _visible_assets_for_user(user):
     qs = ModelAsset.objects.all()
     if getattr(user, "role", None) == "admin":
         return qs
-    return qs.filter(Q(owner=user) | Q(visibility=ModelAsset.Visibility.SHARED))
+    return qs.filter(visibility=ModelAsset.Visibility.SHARED)
 
 
 def _visible_caches_for_user(user):

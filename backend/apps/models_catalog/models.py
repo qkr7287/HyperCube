@@ -84,6 +84,93 @@ class ModelVersion(models.Model):
         return f"{self.asset.slug}:{self.version}"
 
 
+class ModelUploadRequest(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+        FAILED = "failed", "Failed"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    requester = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="model_upload_requests",
+    )
+    reviewer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_model_upload_requests",
+    )
+    name = models.CharField(max_length=160)
+    slug = models.SlugField(max_length=180, blank=True, default="")
+    description = models.TextField(blank=True, default="")
+    framework = models.CharField(max_length=64, blank=True, default="")
+    task = models.CharField(max_length=64, blank=True, default="")
+    tags = models.JSONField(default=list, blank=True)
+    version = models.CharField(max_length=80, default="v1")
+    template_name = models.CharField(max_length=100, blank=True, default="")
+    template_description = models.TextField(blank=True, default="")
+    base_image = models.CharField(
+        max_length=255,
+        default="hypercube/ml-pytorch-jupyter:cuda12.4-airgap",
+    )
+    requires_gpu = models.BooleanField(default=True)
+    workspace_kind = models.CharField(max_length=32, blank=True, default="jupyter")
+    workspace_port = models.PositiveIntegerField(default=8888)
+    default_max_runtime_hours = models.PositiveIntegerField(null=True, blank=True, default=24)
+    min_cpu_percent = models.PositiveIntegerField(default=100)
+    min_memory_mb = models.PositiveIntegerField(default=2048)
+    min_workspace_gb = models.PositiveIntegerField(default=10)
+    original_filename = models.CharField(max_length=255, blank=True, default="")
+    upload_storage_path = models.CharField(max_length=512, blank=True, default="")
+    size_bytes = models.BigIntegerField(default=0)
+    sha256 = models.CharField(max_length=64, blank=True, default="")
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    review_note = models.TextField(blank=True, default="")
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_asset = models.ForeignKey(
+        ModelAsset,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="source_upload_requests",
+    )
+    created_version = models.ForeignKey(
+        ModelVersion,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="source_upload_requests",
+    )
+    created_template = models.ForeignKey(
+        "containers.ContainerTemplate",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="source_model_upload_requests",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["requester", "status"]),
+            models.Index(fields=["status", "-created_at"]),
+            models.Index(fields=["slug"]),
+        ]
+
+    def __str__(self):
+        return f"{self.name}:{self.version} ({self.status})"
+
+
 class ModelVersionCache(models.Model):
     class Status(models.TextChoices):
         MISSING = "missing", "Missing"
