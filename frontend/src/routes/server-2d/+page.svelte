@@ -2325,6 +2325,9 @@
 		padding: 10px 14px 12px;
 		align-items: stretch;
 		overflow: hidden;
+		/* 전체 페이지 글자/요소 가독성 살짝 키움. Chromium 의 zoom 은 layout 도
+		   같이 확대돼 click 좌표나 grid 비율이 그대로 유지된다. */
+		zoom: 1.06;
 	}
 
 	.panel {
@@ -2391,7 +2394,8 @@
 
 	.center {
 		display: grid;
-		grid-template-rows: minmax(0, 0.85fr) minmax(0, 1.85fr);
+		/* snapshot 은 max-height:200px 에 자체 cap. 나머지는 trend-events 가 모두 차지. */
+		grid-template-rows: auto minmax(0, 1fr);
 		gap: 8px;
 		min-width: 0;
 		min-height: 0;
