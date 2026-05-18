@@ -2797,7 +2797,9 @@
 		}
 
 		.snapshot-grid {
-			grid-template-columns: repeat(4, minmax(0, 1fr));
+			/* 3-cell (unified · power · temp) 비율 유지. 좁아진 폭에서도 unified
+			   가 dual-gauge 두 개 합한 만큼 차지하게 1.6 : 1 : 1. */
+			grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr);
 		}
 	}
 
@@ -2835,8 +2837,10 @@
 		}
 
 		.snapshot-grid {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
-			grid-template-rows: repeat(2, minmax(200px, 1fr));
+			/* 매우 좁은 화면 (≤1200px) — 3-cell 을 세로 stack. 가로 grid
+			   대신 한 줄씩 쌓아 가독성 우선. */
+			grid-template-columns: minmax(0, 1fr);
+			grid-template-rows: repeat(3, minmax(160px, auto));
 		}
 
 		.trend-grid {
