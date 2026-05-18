@@ -348,6 +348,17 @@
 		}
 	}
 
+	function bundledModelLabels(tpl: Template): string[] {
+		const ids = tpl.default_model_version_ids ?? [];
+		if (ids.length === 0) return [];
+		return ids
+			.map((id) => {
+				const v = modelVersions.find((mv) => mv.id === id);
+				return v ? `${v.asset_name} ${v.version}` : '';
+			})
+			.filter((s) => !!s);
+	}
+
 	function selectTemplate(tpl: Template) {
 		selectedTemplate = tpl;
 		selectedImage = tpl.image || (tpl.image_options?.[0]?.image ?? '');
@@ -540,12 +551,19 @@
 					{:else}
 						<div class="template-grid">
 							{#each visibleTemplates as tpl (tpl.id)}
+								{@const bundled = bundledModelLabels(tpl)}
 								<button type="button" class="template-card" onclick={() => selectTemplate(tpl)}>
 									<div class="tpl-head">
 										<strong>{tpl.name}</strong>
 										<span>{tpl.kind}</span>
 									</div>
 									<p>{tpl.description || tpl.image}</p>
+									{#if bundled.length > 0}
+										<div class="bundled-models" title={bundled.join(', ')}>
+											<span class="bundled-key">포함 모델</span>
+											<span class="bundled-val">{bundled.join(' · ')}</span>
+										</div>
+									{/if}
 									<div class="badges">
 										{#if tpl.requires_gpu}<b>GPU</b>{/if}
 										{#if tpl.workspace_enabled}<b>{tpl.workspace_kind || 'workspace'}</b>{/if}
@@ -914,6 +932,37 @@
 	.micro {
 		color: var(--text-muted);
 		font-size: 11px;
+	}
+
+	.bundled-models {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+		padding: 6px 8px;
+		border: 1px solid rgba(77, 191, 179, 0.25);
+		border-radius: 6px;
+		background: rgba(77, 191, 179, 0.06);
+		font-size: 11.5px;
+		line-height: 1.4;
+		min-width: 0;
+	}
+
+	.bundled-key {
+		flex-shrink: 0;
+		color: var(--accent);
+		font-weight: 900;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		font-size: 10px;
+	}
+
+	.bundled-val {
+		color: var(--text-primary);
+		font-weight: 700;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.badges {
