@@ -86,6 +86,27 @@
 		return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 	}
 
+	// bucket 시작/끝을 명시 — bucket epoch 가 자정/주 경계랑 안 떨어져서
+	// (UTC 기준 floor 라 KST 에선 목요일 09:00 같은 식으로 떨어짐) x축 라벨과
+	// 시각이 어긋나 보이는 문제 해결. 데이터 한 점은 [start, start+interval) 구간 평균.
+	function formatTooltipBucket(value: number, intervalMs: number | undefined): string {
+		if (!intervalMs || intervalMs <= 0) return formatTooltipTime(value);
+		const start = new Date(value);
+		const end = new Date(value + intervalMs);
+		const DAY = 86_400_000;
+		const HOUR = 3_600_000;
+		const fmtDay = (d: Date) => `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}`;
+		const fmtHM = (d: Date) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+		const fmtHMS = (d: Date) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+		if (intervalMs >= DAY) {
+			return `${fmtDay(start)} ~ ${fmtDay(end)}`;
+		}
+		if (intervalMs >= HOUR) {
+			return `${fmtDay(start)} ${fmtHM(start)} ~ ${fmtHM(end)}`;
+		}
+		return `${fmtHMS(start)} ~ ${fmtHMS(end)}`;
+	}
+
 	function formatValue(value: number, u: 'percent' | 'rate'): string {
 		if (u === 'percent') return `${value.toFixed(1)}%`;
 		if (value < 1) return '0 B/s';
@@ -237,7 +258,7 @@
 					let title = '';
 					if (useTimeAxis) {
 						const tsValue = Number(filtered[0]?.axisValue);
-						title = Number.isFinite(tsValue) ? formatTooltipTime(tsValue) : '';
+						title = Number.isFinite(tsValue) ? formatTooltipBucket(tsValue, intervalMs) : '';
 					} else {
 						title = filtered[0].axisValueLabel ?? '';
 					}

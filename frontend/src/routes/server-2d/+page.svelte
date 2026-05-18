@@ -234,6 +234,10 @@
 	let historyAnchorMs = $derived(historyPolledAt?.getTime() ?? Date.now());
 	let historyModel = $derived(buildHistoryModel(containerHistoryRows, stackHistoryRows, rows, selectedRange, historyAnchorMs));
 	let trendLabels = $derived(historyModel.buckets.map((bucket) => formatRangeTick(bucket, selectedRange)));
+	// historyModel.buckets 은 epoch seconds. ECharts time axis 는 ms 라 ×1000.
+	// 안 하면 [1779065880, …] 같은 값이 ms 로 해석돼 1970-01-21 부근에 점이 몰리고
+	// 라벨이 1개만 보이며 streaming 도 안 됨.
+	let trendTimestampsMs = $derived(historyModel.buckets.map((bucket) => bucket * 1000));
 	let systemTrend = $derived(buildSystemTrend(systemHistoryRows, selectedRange, historyAnchorMs));
 
 	let stackCpuSeries = $derived(
@@ -1731,7 +1735,7 @@
 								title={`CPU 평균 / ${rangeConfig.label}`}
 								help="모든 스택 CPU 평균."
 								labels={trendLabels}
-								timestamps={historyModel.buckets}
+								timestamps={trendTimestampsMs}
 								tickInterval={rangeConfig.bucketSeconds * 1000}
 								unit="percent"
 								series={stackCpuSeries}
@@ -1750,7 +1754,7 @@
 								title={`메모리 평균 / ${rangeConfig.label}`}
 								help="모든 스택 메모리 평균."
 								labels={trendLabels}
-								timestamps={historyModel.buckets}
+								timestamps={trendTimestampsMs}
 								tickInterval={rangeConfig.bucketSeconds * 1000}
 								unit="percent"
 								series={stackMemorySeries}
@@ -1769,7 +1773,7 @@
 								title={`트래픽 평균 / ${rangeConfig.label}`}
 								help="모든 스택 네트워크 트래픽."
 								labels={trendLabels}
-								timestamps={historyModel.buckets}
+								timestamps={trendTimestampsMs}
 								tickInterval={rangeConfig.bucketSeconds * 1000}
 								unit="rate"
 								series={stackNetworkSeries}
@@ -1793,7 +1797,7 @@
 									title={`GPU 평균 / ${rangeConfig.label}`}
 									help="GPU usage 보고가 있는 컨테이너의 스택별 평균. usage=null(측정 불가)은 평균에서 제외."
 									labels={trendLabels}
-								timestamps={historyModel.buckets}
+								timestamps={trendTimestampsMs}
 								tickInterval={rangeConfig.bucketSeconds * 1000}
 									unit="percent"
 									series={stackGpuSeries}
