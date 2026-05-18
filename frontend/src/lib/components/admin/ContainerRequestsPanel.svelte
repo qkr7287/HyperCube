@@ -166,7 +166,6 @@
 					class:active={filter === 'all'}
 					onclick={() => { filter = 'all'; onFilterChange(); }}
 				>전체</button>
-				<InfoTooltip text={"필터 옵션\n\n• 대기중만 — 아직 승인/반려되지 않은 요청만 보여줍니다. 헤더의 빨간 배지 숫자와 같습니다.\n• 전체 — 처리 끝난 요청까지 모두 보여줍니다. 누가 언제 어떤 요청을 했는지 이력 확인용으로 쓰세요."} placement="bottom-end" />
 			</div>
 			<button class="refresh-btn" onclick={load} disabled={loading}>
 				{loading ? '불러오는 중...' : '↻ 새로고침'}

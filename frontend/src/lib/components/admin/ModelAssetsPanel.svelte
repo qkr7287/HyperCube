@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { base } from '$app/paths';
 	import { browser } from '$app/environment';
+	import UploadModelWizard from '$lib/components/UploadModelWizard.svelte';
 
 	type ModelAsset = {
 		id: string;
@@ -45,6 +46,8 @@
 	let errorMsg = $state('');
 	let visibilityFilter = $state<'all' | 'shared' | 'private'>('all');
 	let busyId = $state('');
+	let wizardOpen = $state(false);
+	let lastRegistered = $state<string | null>(null);
 	let expandedId = $state<string | null>(null);
 
 	function token(): string | null {
@@ -165,10 +168,18 @@
 				<button class="filter-btn" class:active={visibilityFilter === 'private'} onclick={() => (visibilityFilter = 'private')}>private</button>
 			</div>
 			<button class="refresh-btn" onclick={load} disabled={loading}>
-				{loading ? '불러오는 중…' : '새로고침'}
+				{loading ? '불러오는 중…' : '↻ 새로고침'}
 			</button>
+			<button class="register-btn" onclick={() => (wizardOpen = true)}>+ 모델 등록</button>
 		</div>
 	</div>
+
+	{#if lastRegistered}
+		<div class="success-box" role="status">
+			<strong>{lastRegistered}</strong> 등록 완료 — 모델 자산과 같이 만들어진 템플릿은 "컨테이너 템플릿" 탭에서 바로 확인할 수 있습니다.
+			<button class="success-close" onclick={() => (lastRegistered = null)} aria-label="닫기">×</button>
+		</div>
+	{/if}
 
 	{#if errorMsg}
 		<div class="error-box">{errorMsg}</div>
@@ -287,11 +298,60 @@
 	</div>
 </div>
 
+<UploadModelWizard
+	open={wizardOpen}
+	mode="admin"
+	onClose={() => (wizardOpen = false)}
+	onSubmitted={(result) => {
+		lastRegistered = result.templateName ?? null;
+		load();
+	}}
+/>
+
 <style>
 	/* Layout-level :global() controls .page / .page-header / h1 / .subtitle /
 	   .controls / .filter-group / .filter-btn / .refresh-btn / .error-box /
 	   .empty / .table-wrap / table / thead / tbody / .chip so this panel
 	   only declares panel-specific styling. */
+	.register-btn {
+		padding: 7px 14px;
+		font: inherit;
+		font-size: 12px;
+		font-weight: 800;
+		background: var(--accent);
+		border: 1px solid transparent;
+		color: var(--bg-base);
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+	}
+	.register-btn:hover {
+		filter: brightness(1.1);
+	}
+	.success-box {
+		position: relative;
+		margin-bottom: 12px;
+		padding: 10px 36px 10px 14px;
+		background: rgba(77, 191, 179, 0.10);
+		border: 1px solid rgba(77, 191, 179, 0.4);
+		color: var(--text-primary);
+		border-radius: var(--radius-sm);
+		font-size: 13px;
+	}
+	.success-close {
+		position: absolute;
+		right: 8px;
+		top: 50%;
+		transform: translateY(-50%);
+		width: 24px;
+		height: 24px;
+		padding: 0;
+		background: transparent;
+		border: none;
+		color: var(--text-muted);
+		font-size: 16px;
+		cursor: pointer;
+	}
+
 	tbody tr.expanded {
 		background: rgba(77, 191, 179, 0.04);
 	}
