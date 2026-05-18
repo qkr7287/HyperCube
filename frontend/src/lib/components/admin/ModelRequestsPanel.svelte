@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { base } from '$app/paths';
 	import { browser } from '$app/environment';
+	import InfoTooltip from '$lib/components/InfoTooltip.svelte';
 
 	type ModelUploadRequest = {
 		id: string;
@@ -142,7 +143,7 @@
 <div class="page">
 	<div class="page-header">
 		<div>
-			<h1>모델 등록 요청</h1>
+			<h1>모델 등록 요청 <InfoTooltip text={"일반 사용자가 \"이 모델 파일을 공유 모델로 등록해 주세요\"라고 보낸 업로드 신청을 관리자가 검토하는 화면입니다.\n\n• 승인하면 ModelAsset + ModelVersion + ContainerTemplate이 한 번에 만들어져 모든 사용자가 공유 카탈로그에서 바로 선택할 수 있습니다.\n• 반려하면 사용자에게 사유와 함께 거절됩니다."} placement="bottom-start" /></h1>
 			<p class="subtitle">사용자가 브라우저로 업로드한 모델 파일을 검토하고 공유 모델/컨테이너 템플릿으로 등록합니다.</p>
 		</div>
 		<div class="controls">
@@ -157,9 +158,10 @@
 					class:active={filter === 'all'}
 					onclick={() => onFilterChange('all')}
 				>전체</button>
+				<InfoTooltip text={"필터 옵션\n\n• 대기중만 — 아직 승인/반려되지 않은 업로드 요청만 보여줍니다.\n• 전체 — 처리 끝난 요청까지 모두 보여줍니다. 누가 언제 어떤 모델을 올렸는지 이력 확인용."} placement="bottom-end" />
 			</div>
 			<button class="refresh-btn" onclick={load} disabled={loading}>
-				{loading ? '불러오는 중...' : '새로고침'}
+				{loading ? '불러오는 중...' : '↻ 새로고침'}
 			</button>
 		</div>
 	</div>
@@ -170,6 +172,7 @@
 
 	{#if !loading && requests.length === 0}
 		<div class="empty">
+			<div class="empty-icon">📭</div>
 			<div class="empty-text">
 				{filter === 'pending' ? '대기 중인 모델 등록 요청이 없습니다.' : '모델 등록 요청 이력이 없습니다.'}
 			</div>
