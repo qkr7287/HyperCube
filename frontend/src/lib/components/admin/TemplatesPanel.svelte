@@ -132,27 +132,31 @@
 		<div class="error-box">{errorMsg}</div>
 	{/if}
 
-	{#if !loading && templates.length === 0}
-		<div class="empty">
-			<div class="empty-icon">📦</div>
-			<div class="empty-text">등록된 템플릿이 없습니다.</div>
-			<button class="empty-btn" onclick={openCreate}>첫 템플릿 만들기</button>
-		</div>
-	{:else}
-		<div class="table-wrap">
-			<table>
-				<thead>
-					<tr>
-						<th>이름 <InfoTooltip text={"템플릿을 식별하는 사람이 읽기 쉬운 이름입니다.\n사용자 화면 \"컨테이너 생성\" 드롭다운에 그대로 노출됩니다.\n\n예: \"Postgres 16\", \"Nginx 정적 호스팅\"."} placement="bottom-start" /></th>
-						<th class="col-kind">타입 <InfoTooltip text={"템플릿이 정의된 형식\n\n• Simple — 단일 이미지 + 기본 옵션 (docker run 한 번에 띄울 수 있는 컨테이너)\n• Compose — docker-compose.yml 형태 (여러 서비스를 묶음으로 띄워야 할 때)"} placement="bottom-start" /></th>
-						<th>이미지 <InfoTooltip text={"Simple 타입일 때 사용할 도커 이미지 주소입니다 (예: postgres:16, nginx:alpine).\nCompose 타입은 yaml 안에 이미지가 여러 개 들어 있어 여기엔 \"(yaml)\"로 표시됩니다."} placement="bottom-start" /></th>
-						<th>설명 <InfoTooltip text={"이 템플릿이 어떤 용도인지, 어떤 옵션을 쓰는지 사용자가 한 줄로 이해할 수 있게 적은 짧은 안내입니다.\n사용자 화면에서 템플릿 선택 시 함께 노출됩니다."} placement="bottom-start" /></th>
-						<th class="col-author">작성자 <InfoTooltip text={"이 템플릿을 등록한 관리자 계정입니다."} placement="bottom-start" /></th>
-						<th class="col-date">수정일 <InfoTooltip text={"이 템플릿이 마지막으로 만들어졌거나 편집된 날짜입니다.\n오래된 템플릿은 이미지 태그가 옛 버전으로 고정되어 있을 수 있으니 가끔 점검해 주세요."} placement="bottom-start" /></th>
-						<th class="col-actions"></th>
+	<div class="table-wrap">
+		<table>
+			<thead>
+				<tr>
+					<th>이름 <InfoTooltip text={"템플릿을 식별하는 사람이 읽기 쉬운 이름입니다.\n사용자 화면 \"컨테이너 생성\" 드롭다운에 그대로 노출됩니다.\n\n예: \"Postgres 16\", \"Nginx 정적 호스팅\"."} placement="bottom-start" /></th>
+					<th class="col-kind">타입 <InfoTooltip text={"템플릿이 정의된 형식\n\n• Simple — 단일 이미지 + 기본 옵션 (docker run 한 번에 띄울 수 있는 컨테이너)\n• Compose — docker-compose.yml 형태 (여러 서비스를 묶음으로 띄워야 할 때)"} placement="bottom-start" /></th>
+					<th>이미지 <InfoTooltip text={"Simple 타입일 때 사용할 도커 이미지 주소입니다 (예: postgres:16, nginx:alpine).\nCompose 타입은 yaml 안에 이미지가 여러 개 들어 있어 여기엔 \"(yaml)\"로 표시됩니다."} placement="bottom-start" /></th>
+					<th>설명 <InfoTooltip text={"이 템플릿이 어떤 용도인지, 어떤 옵션을 쓰는지 사용자가 한 줄로 이해할 수 있게 적은 짧은 안내입니다.\n사용자 화면에서 템플릿 선택 시 함께 노출됩니다."} placement="bottom-start" /></th>
+					<th class="col-author">작성자 <InfoTooltip text={"이 템플릿을 등록한 관리자 계정입니다."} placement="bottom-start" /></th>
+					<th class="col-date">수정일 <InfoTooltip text={"이 템플릿이 마지막으로 만들어졌거나 편집된 날짜입니다.\n오래된 템플릿은 이미지 태그가 옛 버전으로 고정되어 있을 수 있으니 가끔 점검해 주세요."} placement="bottom-start" /></th>
+					<th class="col-actions"></th>
+				</tr>
+			</thead>
+			<tbody>
+				{#if !loading && templates.length === 0}
+					<tr class="empty-row">
+						<td colspan="7">
+							<div class="empty-inline">
+								<div class="empty-icon">📦</div>
+								<div class="empty-text">등록된 템플릿이 없습니다.</div>
+								<button class="empty-btn" onclick={openCreate}>첫 템플릿 만들기</button>
+							</div>
+						</td>
 					</tr>
-				</thead>
-				<tbody>
+				{:else}
 					{#each templates as tpl (tpl.id)}
 						<tr>
 							<td class="name-cell">{tpl.name}</td>
@@ -171,10 +175,10 @@
 							</td>
 						</tr>
 					{/each}
-				</tbody>
-			</table>
-		</div>
-	{/if}
+				{/if}
+			</tbody>
+		</table>
+	</div>
 </div>
 
 <TemplateEditorModal

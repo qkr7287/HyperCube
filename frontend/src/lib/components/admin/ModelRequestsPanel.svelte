@@ -170,29 +170,33 @@
 		<div class="error-box">{errorMsg}</div>
 	{/if}
 
-	{#if !loading && requests.length === 0}
-		<div class="empty">
-			<div class="empty-icon">📭</div>
-			<div class="empty-text">
-				{filter === 'pending' ? '대기 중인 모델 등록 요청이 없습니다.' : '모델 등록 요청 이력이 없습니다.'}
-			</div>
-		</div>
-	{:else}
-		<div class="table-wrap">
-			<table>
-				<thead>
-					<tr>
-						<th>제출자</th>
-						<th>모델</th>
-						<th>파일</th>
-						<th>생성 템플릿</th>
-						<th>실행 조건</th>
-						<th class="col-status">상태</th>
-						<th class="col-time">제출</th>
-						<th class="col-actions"></th>
+	<div class="table-wrap">
+		<table>
+			<thead>
+				<tr>
+					<th>제출자</th>
+					<th>모델</th>
+					<th>파일</th>
+					<th>생성 템플릿</th>
+					<th>실행 조건</th>
+					<th class="col-status">상태</th>
+					<th class="col-time">제출</th>
+					<th class="col-actions"></th>
+				</tr>
+			</thead>
+			<tbody>
+				{#if !loading && requests.length === 0}
+					<tr class="empty-row">
+						<td colspan="8">
+							<div class="empty-inline">
+								<div class="empty-icon">📭</div>
+								<div class="empty-text">
+									{filter === 'pending' ? '대기 중인 모델 등록 요청이 없습니다.' : '모델 등록 요청 이력이 없습니다.'}
+								</div>
+							</div>
+						</td>
 					</tr>
-				</thead>
-				<tbody>
+				{:else}
 					{#each requests as req (req.id)}
 						<tr>
 							<td>{req.requester_username}</td>
@@ -237,10 +241,10 @@
 							</td>
 						</tr>
 					{/each}
-				</tbody>
-			</table>
-		</div>
-	{/if}
+				{/if}
+			</tbody>
+		</table>
+	</div>
 </div>
 
 <style>

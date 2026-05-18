@@ -227,6 +227,31 @@
 		font-size: 13px;
 		margin-bottom: 16px;
 	}
+	/* Empty placeholder rendered inside a table tbody so the header
+	   columns stay visible. Cell wraps an .empty-inline flex stack. */
+	.admin-body :global(.empty-row td) {
+		padding: 56px 20px;
+		text-align: center;
+		background: transparent;
+	}
+	.admin-body :global(.empty-row td:hover) {
+		background: transparent;
+	}
+	.admin-body :global(.empty-inline) {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 8px;
+		color: var(--text-muted);
+	}
+	.admin-body :global(.empty-inline .empty-icon) {
+		font-size: 32px;
+		margin: 0;
+	}
+	.admin-body :global(.empty-inline .empty-text) {
+		font-size: 13px;
+		margin: 0;
+	}
 
 	.admin-body :global(.table-wrap) {
 		background: var(--bg-card);

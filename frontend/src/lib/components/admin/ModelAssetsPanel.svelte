@@ -174,26 +174,33 @@
 		<div class="error-box">{errorMsg}</div>
 	{/if}
 
-	{#if !loading && visibleAssets.length === 0}
-		<div class="empty">등록된 모델 자산이 없습니다.</div>
-	{:else}
-		<div class="table-wrap">
-			<table>
-				<thead>
-					<tr>
-						<th></th>
-						<th>이름 / slug</th>
-						<th>분류</th>
-						<th>가시성</th>
-						<th class="num">버전</th>
-						<th class="num">총 용량</th>
-						<th>사용 템플릿</th>
-						<th>등록자</th>
-						<th>등록일</th>
-						<th class="col-actions"></th>
+	<div class="table-wrap">
+		<table>
+			<thead>
+				<tr>
+					<th></th>
+					<th>이름 / slug</th>
+					<th>분류</th>
+					<th>가시성</th>
+					<th class="num">버전</th>
+					<th class="num">총 용량</th>
+					<th>사용 템플릿</th>
+					<th>등록자</th>
+					<th>등록일</th>
+					<th class="col-actions"></th>
+				</tr>
+			</thead>
+			<tbody>
+				{#if !loading && visibleAssets.length === 0}
+					<tr class="empty-row">
+						<td colspan="10">
+							<div class="empty-inline">
+								<div class="empty-icon">📦</div>
+								<div class="empty-text">등록된 모델 자산이 없습니다.</div>
+							</div>
+						</td>
 					</tr>
-				</thead>
-				<tbody>
+				{:else}
 					{#each visibleAssets as a (a.id)}
 						{@const using = templatesUsing(a.id)}
 						{@const expanded = expandedId === a.id}
@@ -274,10 +281,10 @@
 							</tr>
 						{/if}
 					{/each}
-				</tbody>
-			</table>
-		</div>
-	{/if}
+				{/if}
+			</tbody>
+		</table>
+	</div>
 </div>
 
 <style>
