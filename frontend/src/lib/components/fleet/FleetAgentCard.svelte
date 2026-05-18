@@ -27,28 +27,33 @@
 	import { base } from '$app/paths';
 
 	let menuOpen = $state(false);
-	let confirming = $state(false);
+	let modalOpen = $state(false);
 	let deleting = $state(false);
 	let deleteError = $state<string | null>(null);
 
 	function toggleMenu(e: MouseEvent) {
 		e.stopPropagation();
 		menuOpen = !menuOpen;
-		confirming = false;
 		deleteError = null;
 	}
 
 	function closeMenu() {
 		menuOpen = false;
-		confirming = false;
 	}
 
-	async function handleDelete(e: MouseEvent) {
+	function openDeleteModal(e: MouseEvent) {
 		e.stopPropagation();
-		if (!confirming) {
-			confirming = true;
-			return;
-		}
+		menuOpen = false;
+		modalOpen = true;
+		deleteError = null;
+	}
+
+	function closeModal() {
+		if (deleting) return;
+		modalOpen = false;
+	}
+
+	async function confirmDelete() {
 		deleting = true;
 		deleteError = null;
 		try {
@@ -58,7 +63,7 @@
 				headers: { Authorization: `Bearer ${token}` },
 			});
 			if (res.status === 204 || res.ok) {
-				closeMenu();
+				modalOpen = false;
 				onDeleted?.(agent.agent.id);
 			} else if (res.status === 403) {
 				deleteError = '권한이 없습니다 (admin 전용).';
@@ -263,30 +268,49 @@
 					</button>
 					{#if menuOpen}
 						<div class="settings-menu" role="menu">
-							{#if !confirming}
-								<button type="button" class="menu-item danger" onclick={handleDelete}>
-									Agent 삭제
-								</button>
-							{:else}
-								<div class="confirm-row">
-									<span class="confirm-text">정말 삭제?</span>
-									<button type="button" class="menu-item danger" disabled={deleting} onclick={handleDelete}>
-										{deleting ? '삭제 중…' : '예'}
-									</button>
-									<button type="button" class="menu-item" disabled={deleting} onclick={closeMenu}>
-										취소
-									</button>
-								</div>
-							{/if}
-							{#if deleteError}
-								<div class="menu-error">{deleteError}</div>
-							{/if}
+							<button type="button" class="menu-item danger" onclick={openDeleteModal}>
+								Agent 삭제
+							</button>
 						</div>
 					{/if}
 				</div>
 			{/if}
 		</div>
 	</header>
+
+	{#if modalOpen}
+		<div
+			class="modal-backdrop"
+			role="presentation"
+			onclick={closeModal}
+			onkeydown={(e) => e.stopPropagation()}
+		>
+			<div
+				class="modal"
+				role="dialog"
+				aria-modal="true"
+				aria-labelledby="delete-agent-title-{agent.agent.id}"
+				onclick={(e) => e.stopPropagation()}
+			>
+				<h3 id="delete-agent-title-{agent.agent.id}" class="modal-title">Agent 삭제 확인</h3>
+				<p class="modal-body">
+					<strong>{agent.agent.hostname}</strong> 을(를) 정말 삭제하시겠습니까?<br />
+					이 동작은 되돌릴 수 없으며, 연결된 컨테이너·메트릭 이력도 함께 삭제됩니다.
+				</p>
+				{#if deleteError}
+					<div class="modal-error">{deleteError}</div>
+				{/if}
+				<div class="modal-actions">
+					<button type="button" class="modal-btn" disabled={deleting} onclick={closeModal}>
+						취소
+					</button>
+					<button type="button" class="modal-btn danger" disabled={deleting} onclick={confirmDelete}>
+						{deleting ? '삭제 중…' : '삭제'}
+					</button>
+				</div>
+			</div>
+		</div>
+	{/if}
 
 	<div class="compact-body">
 		<div class="metric-cards" class:has-gpu={hasGpu}>
@@ -498,16 +522,19 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		border: 1px solid rgba(100, 116, 139, 0.25);
+		border: 1px solid rgba(148, 163, 184, 0.55);
 		border-radius: var(--radius-sm, 4px);
-		background: transparent;
-		color: var(--text-secondary);
-		font-size: 14px;
+		background: rgba(148, 163, 184, 0.12);
+		color: var(--text-primary);
+		font-size: 15px;
+		line-height: 1;
 		cursor: pointer;
+		transition: background 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
 	}
 	.settings-btn:hover {
-		background: var(--bg-tab);
-		color: var(--text-primary);
+		background: rgba(148, 163, 184, 0.28);
+		border-color: rgba(148, 163, 184, 0.9);
+		transform: rotate(30deg);
 	}
 	.settings-menu {
 		position: absolute;
@@ -549,23 +576,77 @@
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
-	.confirm-row {
+	.modal-backdrop {
+		position: fixed;
+		inset: 0;
+		background: rgba(2, 6, 23, 0.65);
+		backdrop-filter: blur(2px);
 		display: flex;
 		align-items: center;
-		gap: 4px;
-		padding: 4px 6px;
+		justify-content: center;
+		z-index: 200;
 	}
-	.confirm-text {
-		font-size: 12px;
+	.modal {
+		min-width: 320px;
+		max-width: 440px;
+		background: var(--bg-card);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md, 8px);
+		padding: 18px 20px 14px;
+		box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+	}
+	.modal-title {
+		margin: 0 0 10px;
+		font-size: 14px;
+		font-weight: 800;
+		color: var(--text-primary);
+	}
+	.modal-body {
+		margin: 0 0 14px;
+		font-size: 12.5px;
+		line-height: 1.55;
 		color: var(--text-secondary);
-		white-space: nowrap;
 	}
-	.menu-error {
-		padding: 4px 8px;
-		font-size: 11px;
+	.modal-body strong {
+		color: var(--text-primary);
+	}
+	.modal-error {
+		margin-bottom: 10px;
+		padding: 6px 10px;
+		font-size: 11.5px;
 		color: #ef4444;
-		background: rgba(239, 68, 68, 0.08);
+		background: rgba(239, 68, 68, 0.1);
 		border-radius: 4px;
+	}
+	.modal-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 8px;
+	}
+	.modal-btn {
+		padding: 6px 14px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm, 4px);
+		background: transparent;
+		color: var(--text-primary);
+		font-size: 12px;
+		font-weight: 700;
+		cursor: pointer;
+	}
+	.modal-btn:hover:not(:disabled) {
+		background: var(--bg-tab);
+	}
+	.modal-btn.danger {
+		border-color: rgba(239, 68, 68, 0.6);
+		background: rgba(239, 68, 68, 0.12);
+		color: #ef4444;
+	}
+	.modal-btn.danger:hover:not(:disabled) {
+		background: rgba(239, 68, 68, 0.22);
+	}
+	.modal-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 
 	.reason-chip {
