@@ -189,6 +189,10 @@ export function mergeSystemInfo(prev: SystemInfo, incoming: SystemInfo): SystemI
 			efficiencyCores: incoming.cpu.efficiencyCores || prev.cpu.efficiencyCores,
 			model: incoming.cpu.model || prev.cpu.model,
 			usage: incoming.cpu.usage || prev.cpu.usage,
+			// Delta tick 이 power/temp 만 안 보낼 수도 있음 → null/undefined 면 prev 유지.
+			// 0 도 의미 있는 값이라 falsy 단순 fallback 은 못 씀 (RAPL 시작 직후 0W 가능).
+			packagePowerW: incoming.cpu.packagePowerW ?? prev.cpu.packagePowerW ?? null,
+			tempC: incoming.cpu.tempC ?? prev.cpu.tempC ?? null,
 		},
 		memory: {
 			total: incoming.memory.total !== '0 B' ? incoming.memory.total : prev.memory.total,
