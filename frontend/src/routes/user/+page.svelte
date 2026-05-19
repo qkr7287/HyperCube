@@ -9,7 +9,6 @@
 	import NewRequestModal from '$lib/components/NewRequestModal.svelte';
 	import UploadModelWizard from '$lib/components/UploadModelWizard.svelte';
 	import Pill from '$lib/components/Pill.svelte';
-	import { statusEvents, type AgentStatusEvent } from '$lib/stores/global-events';
 	import {
 		formatDateTime,
 		formatRelativeTime,
@@ -170,7 +169,6 @@
 	let historyListEl = $state<HTMLElement | null>(null);
 	let containerListHeight = $state(0);
 	let historyListHeight = $state(0);
-	let liveEvents = $state<AgentStatusEvent[]>([]);
 	let cpuHistory = $state<Record<string, number[]>>({});
 	let memHistory = $state<Record<string, number[]>>({});
 	let gpuUsageHistory = $state<Record<string, number[]>>({});
@@ -526,9 +524,6 @@
 		}
 	}
 
-	const unsubEvents = statusEvents.subscribe((value) => {
-		liveEvents = value;
-	});
 
 	async function fetchSparklines(t: string) {
 		const targets = containers.slice(0, 12);
@@ -627,10 +622,6 @@ KPI — 컨테이너·요청·자원 합계
 	const kpiWorkspaceHelp = `workspace_enabled 인 컨테이너 수 (Jupyter 등 작업 환경).`;
 	const activeBannerHelp = `아직 끝나지 않은 요청들의 실시간 진행 상황입니다. 4초마다 자동 갱신됩니다.`;
 	const historyTabHelp = `완료·반려·실패한 과거 요청의 이력입니다. 배포 완료 항목은 컨테이너로 바로 이동할 수 있습니다.`;
-	const agentEventsHelp = `에이전트 서버가 online/offline으로 전환될 때마다 push되는 이벤트입니다.
-서버가 안정적으로 연결되어 있으면 비어 있습니다.
-최근 ${20}건까지 표시합니다.`;
-
 	function decodeJwt(t: string): Record<string, unknown> {
 		try {
 			return JSON.parse(atob(t.split('.')[1]));
@@ -855,6 +846,61 @@ KPI — 컨테이너·요청·자원 합계
 
 	let activeRequests = $derived(requests.filter((r) => ACTIVE_STATUSES.has(r.status)));
 	let historyRequests = $derived(requests.filter((r) => !ACTIVE_STATUSES.has(r.status)));
+
+	type SideReqType = 'all' | 'container' | 'model';
+	let sideReqFilter = $state<SideReqType>('all');
+
+	type SideReq = {
+		key: string;
+		type: 'container' | 'model';
+		name: string;
+		status: string;
+		created_at: string;
+		meta: string;
+		progress: number | null;
+		note: string;
+	};
+
+	let recentRequests = $derived.by<SideReq[]>(() => {
+		const cs: SideReq[] = requests.map((r) => ({
+			key: `c-${r.id}`,
+			type: 'container' as const,
+			name: requestDisplayName(r),
+			status: r.status,
+			created_at: r.created_at,
+			meta: `${r.template_name ?? '-'} · ${r.target_agent_hostname ?? '-'}`,
+			progress: r.progress_percent ?? null,
+			note: r.progress_message ?? '',
+		}));
+		const ms: SideReq[] = modelUploadRequests.map((r) => ({
+			key: `m-${r.id}`,
+			type: 'model' as const,
+			name: `${r.name} ${r.version}`,
+			status: r.status,
+			created_at: r.created_at,
+			meta: r.original_filename ?? '',
+			progress: null,
+			note:
+				r.status === 'approved' && r.created_template_name
+					? `템플릿: ${r.created_template_name}`
+					: ((r.status === 'rejected' || r.status === 'failed') && r.review_note) || '',
+		}));
+		return [...cs, ...ms].sort(
+			(a, b) => +new Date(b.created_at) - +new Date(a.created_at),
+		);
+	});
+
+	let recentRequestsFiltered = $derived(
+		sideReqFilter === 'all'
+			? recentRequests
+			: recentRequests.filter((r) => r.type === sideReqFilter),
+	);
+
+	let recentRequestsCount = $derived({
+		all: recentRequests.length,
+		container: recentRequests.filter((r) => r.type === 'container').length,
+		model: recentRequests.filter((r) => r.type === 'model').length,
+	});
 
 	let totalCount = $derived(containers.length);
 	let runningCount = $derived(containers.filter((c) => c.status === 'running').length);
@@ -1093,7 +1139,6 @@ KPI — 컨테이너·요청·자원 합계
 			window.removeEventListener('keydown', handleGlobalKeydown);
 			window.removeEventListener('click', handleWindowClick);
 		}
-		unsubEvents();
 		userHeaderStore.set(null);
 	});
 
@@ -1600,100 +1645,45 @@ KPI — 컨테이너·요청·자원 합계
 		<aside class="side-panel" aria-label="사이드 패널">
 			<section class="side-section">
 				<header class="side-head">
-					<h2>진행 중 요청<Pill tone="var(--text-secondary)" size="md" minWidth="28px">{activeRequests.length}</Pill></h2>
-					<InfoTooltip text={activeBannerHelp} label="진행 중 도움말" placement="bottom-start" />
+					<h2>요청 리스트<Pill tone="var(--text-secondary)" size="md" minWidth="28px">{recentRequests.length}</Pill></h2>
+					<InfoTooltip text={activeBannerHelp} label="요청 리스트 도움말" placement="bottom-start" />
 				</header>
-				{#if activeRequests.length === 0}
-					<div class="side-empty">진행 중 요청 없음</div>
-				{:else}
-					<ul class="side-req-list">
-						{#each activeRequests.slice(0, 6) as r (r.id)}
-							<li class="side-req-item">
-								<div class="side-req-top">
-									<strong title={requestDisplayName(r)}>
-										{requestDisplayName(r)}
-									</strong>
-									<Pill status={r.status} dot size="md" minWidth="76px">{statusLabel(r.status)}</Pill>
-								</div>
-								<div class="side-req-meta">{r.template_name ?? '-'} · {r.target_agent_hostname ?? '-'}</div>
-								<div class="track tiny">
-									<div class="fill" style="width: {r.progress_percent ?? 0}%"></div>
-								</div>
-								<div class="side-req-msg">
-									<span>{r.progress_message ?? '대기 중'}</span>
-									<span>{r.progress_percent != null ? `${r.progress_percent}%` : ''}</span>
-								</div>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			</section>
-
-			<section class="side-section">
-				<header class="side-head">
-					<h2>모델 등록 요청<Pill tone="var(--text-secondary)" size="md" minWidth="28px">{modelUploadRequests.length}</Pill></h2>
-				</header>
-				{#if modelUploadRequests.length === 0}
-					<div class="side-empty">제출한 모델 등록 요청이 없습니다</div>
-				{:else}
-					<ul class="side-req-list">
-						{#each modelUploadRequests.slice(0, 8) as r (r.id)}
-							<li class="side-req-item">
-								<div class="side-req-top">
-									<strong title={`${r.name} ${r.version}`}>
-										{r.name} <span class="model-version">{r.version}</span>
-									</strong>
-									<Pill status={r.status} dot size="md" minWidth="76px">{statusLabel(r.status)}</Pill>
-								</div>
-								<div class="side-req-meta">
-									{r.original_filename || '-'}
-								</div>
-								{#if r.status === 'approved' && r.created_template_name}
-									<div class="side-req-msg">
-										<span>템플릿: <strong>{r.created_template_name}</strong></span>
+				<div class="side-type-chips" role="radiogroup" aria-label="요청 종류">
+					<button type="button" class:active={sideReqFilter === 'all'} onclick={() => (sideReqFilter = 'all')}>전체 <span>{recentRequestsCount.all}</span></button>
+					<button type="button" class:active={sideReqFilter === 'container'} onclick={() => (sideReqFilter = 'container')}>컨테이너 <span>{recentRequestsCount.container}</span></button>
+					<button type="button" class:active={sideReqFilter === 'model'} onclick={() => (sideReqFilter = 'model')}>모델 <span>{recentRequestsCount.model}</span></button>
+				</div>
+				<div class="side-req-head">
+					<span>종류</span>
+					<span>이름</span>
+					<span>상태</span>
+				</div>
+				<div class="side-req-scroll">
+					{#if recentRequestsFiltered.length === 0}
+						<div class="side-empty">요청 없음</div>
+					{:else}
+						<ul class="side-req-rows">
+							{#each recentRequestsFiltered as r (r.key)}
+								{@const tip = [r.meta, r.note].filter(Boolean).join(' · ')}
+								<li class="side-req-row" title={tip}>
+									<span class="type-badge" data-type={r.type}>{r.type === 'model' ? '모델' : '컨테이너'}</span>
+									<div class="req-name-cell">
+										<strong>{r.name}</strong>
+										<span class="req-time">{formatRelativeTime(r.created_at)}</span>
 									</div>
-								{:else if r.status === 'rejected' && r.review_note}
-									<div class="side-req-msg" title={r.review_note}>
-										<span>반려: {r.review_note}</span>
-									</div>
-								{:else if r.status === 'failed' && r.review_note}
-									<div class="side-req-msg" title={r.review_note}>
-										<span>실패: {r.review_note}</span>
-									</div>
+									<Pill status={r.status} size="sm" minWidth="72px">{statusLabel(r.status)}</Pill>
+								</li>
+								{#if r.progress != null}
+									<li class="side-req-progress">
+										<div class="req-track"><div class="fill" style="width: {r.progress}%"></div></div>
+									</li>
 								{/if}
-								<div class="side-req-msg">
-									<span>{formatRelativeTime(r.created_at)}</span>
-								</div>
-							</li>
-						{/each}
-					</ul>
-				{/if}
+							{/each}
+						</ul>
+					{/if}
+				</div>
 			</section>
 
-			<section class="side-section">
-				<header class="side-head">
-					<h2>서버 상태 변화<Pill tone="var(--text-secondary)" size="md" minWidth="28px">{liveEvents.length}</Pill></h2>
-					<InfoTooltip text={agentEventsHelp} label="서버 상태 변화 도움말" placement="bottom-start" />
-				</header>
-				{#if liveEvents.length === 0}
-					<div class="side-empty">서버가 안정 연결 중</div>
-				{:else}
-					<ul class="side-event-list">
-						{#each liveEvents.slice(0, 10) as ev (ev.receivedAt + ev.server_id)}
-							<li class="side-event-item">
-								<span class="event-dot" class:online={ev.status === 'online'}></span>
-								<div class="event-body">
-									<div class="event-row">
-										<strong title={ev.hostname || 'unknown'}>{ev.hostname || 'unknown'}</strong>
-										<span>{ev.status === 'online' ? '온라인' : '오프라인'}</span>
-									</div>
-									<time>{formatRelativeTime(new Date(ev.receivedAt).toISOString())}</time>
-								</div>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			</section>
 		</aside>
 	</div>
 
@@ -2015,25 +2005,182 @@ KPI — 컨테이너·요청·자원 합계
 
 	.side-panel {
 		display: grid;
-		grid-template-rows: 1fr 1fr;
+		grid-template-rows: 1fr;
 		gap: clamp(8px, 0.6vw, 12px);
 		min-height: 0;
 	}
 
 	.side-section {
+		flex: 1;
+		min-height: 0;
 		background: var(--bg-card);
 		border: 1px solid var(--border);
 		border-radius: 10px;
 		overflow: hidden;
 		display: flex;
 		flex-direction: column;
-		min-height: 0;
 	}
 
 	.side-section > ul {
 		flex: 1;
 		min-height: 0;
 		overflow-y: auto;
+	}
+
+	.side-type-chips {
+		display: inline-flex;
+		gap: 4px;
+		padding: 6px 10px 10px;
+		border-bottom: 1px solid var(--border);
+	}
+
+	.side-type-chips button {
+		padding: 4px 9px;
+		font: inherit;
+		font-size: 11px;
+		font-weight: 700;
+		color: var(--text-muted);
+		background: transparent;
+		border: 1px solid var(--border);
+		border-radius: 5px;
+		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+	}
+
+	.side-type-chips button:hover {
+		color: var(--text-primary);
+		border-color: rgba(77, 191, 179, 0.4);
+	}
+
+	.side-type-chips button.active {
+		color: var(--accent);
+		background: rgba(77, 191, 179, 0.10);
+		border-color: var(--accent);
+	}
+
+	.side-type-chips button span {
+		padding: 0 4px;
+		font-size: 10px;
+		color: var(--text-muted);
+		background: rgba(100, 116, 139, 0.18);
+		border-radius: 3px;
+	}
+
+	.side-type-chips button.active span {
+		color: var(--accent);
+		background: rgba(77, 191, 179, 0.18);
+	}
+
+	.side-req-scroll {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+	}
+
+	.side-req-rows {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+
+	.side-req-head {
+		display: grid;
+		grid-template-columns: 48px minmax(0, 1fr) 72px;
+		gap: 10px;
+		padding: 6px 12px;
+		border-bottom: 1px solid var(--border);
+		background: rgba(13, 17, 23, 0.4);
+		font-size: 10px;
+		font-weight: 800;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--text-muted);
+	}
+
+	.side-req-head span:last-child {
+		text-align: center;
+	}
+
+	.side-req-row {
+		display: grid;
+		grid-template-columns: 48px minmax(0, 1fr) 72px;
+		align-items: center;
+		gap: 10px;
+		padding: 7px 12px;
+		border-bottom: 1px solid var(--border);
+		font-size: 11.5px;
+	}
+
+	.side-req-row :global(.pill) {
+		justify-content: center;
+	}
+
+	.req-name-cell {
+		min-width: 0;
+		display: flex;
+		align-items: baseline;
+		gap: 10px;
+	}
+
+	.req-name-cell strong {
+		flex: 1 1 auto;
+		min-width: 0;
+		font-size: 12px;
+		font-weight: 800;
+		color: var(--text-primary);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.req-name-cell .req-time {
+		flex-shrink: 0;
+	}
+
+	.side-req-progress {
+		padding: 0 10px 4px;
+	}
+
+	.type-badge {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 2px 5px;
+		font-size: 10px;
+		font-weight: 800;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		border-radius: 3px;
+	}
+
+	.type-badge[data-type='container'] {
+		color: var(--accent);
+		background: rgba(77, 191, 179, 0.14);
+	}
+
+	.type-badge[data-type='model'] {
+		color: #a855f7;
+		background: rgba(168, 85, 247, 0.14);
+	}
+
+	.req-track {
+		height: 3px;
+		background: rgba(100, 116, 139, 0.16);
+		border-radius: 2px;
+		overflow: hidden;
+	}
+
+	.req-track .fill {
+		height: 100%;
+		background: var(--accent);
+		transition: width 0.2s ease;
+	}
+
+	.req-time {
+		font-size: 10px;
+		color: var(--text-muted);
 	}
 
 	.side-empty {
