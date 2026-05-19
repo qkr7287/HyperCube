@@ -657,6 +657,10 @@
 		background: rgba(2, 6, 12, 0.42);
 		border: 1px solid var(--border-soft);
 		white-space: nowrap;
+		/* parent chip-stack 의 min-width:0 + flex 컨텍스트 안에서 자동 shrink
+		   되며 텍스트가 잘리던 문제. chip 은 자기 내용물 폭은 유지하고,
+		   필요한 공간 줄여야 할 땐 옆 .kpi-label 이 ellipsis 먼저 받도록. */
+		flex-shrink: 0;
 	}
 	.chip-stack {
 		display: inline-flex;
@@ -668,6 +672,7 @@
 	.limit-chip {
 		display: inline-flex;
 		align-items: center;
+		flex-shrink: 0;
 		/* "limit 2 cores" / "limit 10 GB" 같이 흔한 라벨이 92px 에선 잘렸다.
 		   카드 폭이 좁아질 땐 chip 폭도 줄어드는 게 맞지만 92px 는 한국어/영문
 		   복합 라벨 기준으로 너무 작다. 120px 까지 허용하고, 그래도 안 들어가면
@@ -705,9 +710,13 @@
 	   ======================================================================== */
 	.kpi-hero {
 		min-width: 0;
+		/* %와 raw 를 같은 행에 두면 카드 폭이 좁아질 때 raw 가 잘렸다. 두 줄로
+		   stack — % 큰 글씨 위, raw 작은 글씨 아래. 카드 폭과 무관하게 항상
+		   동일한 시각 hierarchy 유지. */
 		display: flex;
-		align-items: baseline;
-		gap: 6px;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 2px;
 		color: var(--text-strong);
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums;
@@ -718,19 +727,19 @@
 	.hero-raw {
 		display: inline-flex;
 		align-items: baseline;
-		font-size: clamp(16px, 1.05vw, 21px);
 		font-weight: 700;
 		line-height: 1;
 		letter-spacing: -0.02em;
+		max-width: 100%;
 	}
 	.hero-pct {
-		/* % 값은 KPI 의 헤드라인 — 절대 잘리지 않게 고정 폭 유지. */
+		font-size: clamp(16px, 1.05vw, 21px);
 		flex: 0 0 auto;
 		white-space: nowrap;
 	}
 	.hero-raw {
-		font-size: clamp(13px, 0.85vw, 17px);
-		flex: 1 1 auto;
+		font-size: clamp(12px, 0.75vw, 14px);
+		color: var(--text-mid);
 		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -749,6 +758,8 @@
 		margin-left: 2px;
 	}
 	.hero-sep {
+		/* hero 가 column-stack 으로 바뀌면서 row 구분자 dot 는 시각적으로 어색해짐. */
+		display: none;
 		color: var(--text-faint);
 		font-size: 13px;
 		font-weight: 400;
