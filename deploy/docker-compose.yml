@@ -7,12 +7,16 @@
 # To pin a specific build instead of tracking `latest`, set IMAGE_TAG
 # (for example `sha-abc1234`) in your `.env`.
 
-name: hypercube
+# Compose project name + container_name 은 `hcprod-` 로 prefix 됨.
+# 같은 호스트에서 dev stack (`hypercube` project, `hc-*` 컨테이너) 와
+# 충돌하지 않도록 의도. 63번처럼 dev + prod 가 한 머신에 떠 있는 환경에서도
+# `docker ps` 가 명확히 구분된다.
+name: hypercube-prod
 
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: hc-postgres
+    container_name: hcprod-postgres
     restart: unless-stopped
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -30,7 +34,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: hc-redis
+    container_name: hcprod-redis
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -42,7 +46,7 @@ services:
 
   backend:
     image: ghcr.io/qkr7287/hypercube-backend:${IMAGE_TAG:-latest}
-    container_name: hc-backend
+    container_name: hcprod-backend
     restart: unless-stopped
     depends_on:
       postgres:
@@ -76,7 +80,7 @@ services:
 
   celery-worker:
     image: ghcr.io/qkr7287/hypercube-backend:${IMAGE_TAG:-latest}
-    container_name: hc-celery-worker
+    container_name: hcprod-celery-worker
     restart: unless-stopped
     depends_on:
       postgres:
@@ -101,7 +105,7 @@ services:
 
   celery-beat:
     image: ghcr.io/qkr7287/hypercube-backend:${IMAGE_TAG:-latest}
-    container_name: hc-celery-beat
+    container_name: hcprod-celery-beat
     restart: unless-stopped
     depends_on:
       postgres:
@@ -126,7 +130,7 @@ services:
 
   nginx:
     image: ghcr.io/qkr7287/hypercube-nginx:${IMAGE_TAG:-latest}
-    container_name: hc-nginx
+    container_name: hcprod-nginx
     restart: unless-stopped
     ports:
       - "${HC_PORT:-37003}:7003"
@@ -139,6 +143,9 @@ volumes:
   postgres_data:
 
 networks:
+  # `hc-network` 는 compose project (`hypercube-prod`) 별로 격리됨 — dev 의 같은
+  # 이름 네트워크와 분리. `hc-ml-internal` 은 external 이라 공유 — agent 컨테이너
+  # 들이 워크스페이스와 통신하기 위한 공유 데이터 plane.
   hc-network:
     driver: bridge
   hc-ml-internal:
