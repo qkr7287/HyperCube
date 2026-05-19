@@ -32,14 +32,17 @@
 		network?: { rx?: number; tx?: number };
 		disk?: { read?: number; write?: number };
 		workspace?: {
-			path?: string;
-			device?: string;
-			projectId?: number;
+			path?: string | null;
+			device?: string | null;
+			projectId?: number | null;
 			hardGb?: number;
 			sizeGb?: number;
-			usedGb?: number;
-			availableGb?: number;
-			usedPct?: number;
+			usedGb?: number | null;
+			availableGb?: number | null;
+			usedPct?: number | null;
+			rwLayerGb?: number | null;
+			rootFsGb?: number | null;
+			source?: 'du' | 'rw-layer' | 'xfs-quota' | null;
 		} | null;
 		gpu?:
 			| {
@@ -139,13 +142,33 @@
 	let workspaceSizeGb = $derived(
 		asNumber(workspace?.hardGb) || asNumber(workspace?.sizeGb) || (workspaceGbLimit ?? 0),
 	);
-	let workspaceUsedGb = $derived(asNumber(workspace?.usedGb));
+	// usedGb 는 측정 안 됐을 때 null/undefined 가 정상이라 number coerce 전에
+	// raw 값을 살려둬야 "—" 분기가 가능하다 (asNumber 는 null → 0 으로 떨군다).
+	let workspaceUsedGbRaw = $derived<number | null>(
+		typeof workspace?.usedGb === 'number' && Number.isFinite(workspace.usedGb) ? workspace.usedGb : null,
+	);
+	let workspaceUsedGb = $derived(workspaceUsedGbRaw ?? 0);
+	let workspaceMeasured = $derived(workspaceUsedGbRaw !== null);
+	let workspaceSource = $derived<'du' | 'rw-layer' | 'xfs-quota' | null>(
+		workspace?.source ?? null,
+	);
+	let workspaceSourceLabel = $derived(
+		workspaceSource === 'rw-layer'
+			? 'RW 레이어 기준'
+			: workspaceSource === 'xfs-quota'
+				? 'XFS quota 기준'
+				: '',
+	);
 	let workspaceUsedPct = $derived(
-		asNumber(workspace?.usedPct) || (workspaceSizeGb > 0 ? (workspaceUsedGb / workspaceSizeGb) * 100 : 0),
+		workspaceMeasured
+			? (typeof workspace?.usedPct === 'number' && Number.isFinite(workspace.usedPct)
+					? workspace.usedPct
+					: workspaceSizeGb > 0 ? (workspaceUsedGb / workspaceSizeGb) * 100 : 0)
+			: 0,
 	);
 	let hasWorkspaceMetric = $derived(
 		workspaceSizeGb > 0
-			|| workspaceUsedGb > 0
+			|| workspaceMeasured
 			|| Boolean(workspace?.path)
 			|| Boolean(workspace?.device)
 			|| Boolean(workspaceGbLimit),
@@ -234,11 +257,13 @@
 		return formatBytesShort(memUsed);
 	}
 	function workspaceRawText(): string {
-		if (workspaceSizeGb > 0) return `${workspaceUsedGb.toFixed(1)} GB / ${workspaceSizeGb} GB`;
-		return `${workspaceUsedGb.toFixed(1)} GB`;
+		// usedGb 가 측정 안 됐으면 0 으로 떨어트리지 말고 "—" 로 명시.
+		const usedText = workspaceMeasured ? `${workspaceUsedGb.toFixed(1)} GB` : '—';
+		if (workspaceSizeGb > 0) return `${usedText} / ${workspaceSizeGb} GB`;
+		return usedText;
 	}
 	function workspaceUsedText() {
-		return `${workspaceUsedGb.toFixed(1)} GB`;
+		return workspaceMeasured ? `${workspaceUsedGb.toFixed(1)} GB` : '—';
 	}
 
 	// hover/focus 시 띄울 bar-tooltip key (예전 meter 의 detail tooltip 복원)
@@ -291,7 +316,7 @@
 		<div class="kpi-hero" aria-label="{opts.label} 현재 {formatPercent(opts.value, 2)} {opts.rawText}">
 			<span class="hero-pct"><span class="num">{opts.value.toFixed(2)}</span><span class="unit">%</span></span>
 			<span class="hero-sep" aria-hidden="true">·</span>
-			<span class="hero-raw">{opts.rawText}</span>
+			<span class="hero-raw" title={opts.rawText}>{opts.rawText}</span>
 		</div>
 
 		<div
@@ -485,30 +510,9 @@
 		tipTitle: '네트워크 누적',
 	})}
 
-	{@render flowCard({
-		label: '디스크',
-		help: diskHelp,
-		totalParts: diskValueParts,
-		totalRaw: diskTotal,
-		aShare: diskReadShare,
-		bShare: diskWriteShare,
-		aLabel: 'READ',
-		bLabel: 'WRITE',
-		aLabelKo: '읽기',
-		bLabelKo: '쓰기',
-		aBytes: diskRead,
-		bBytes: diskWrite,
-		deltaTotal: diskDeltaTotal,
-		colorA: 'violet',
-		colorB: 'blue',
-		tipKey: 'disk',
-		tipTitle: '디스크 누적',
-		splitClass: 'disk',
-	})}
-
 	{#if hasWorkspaceMetric}
 		{@render pctCard({
-			label: 'Workspace',
+			label: '디스크',
 			help: workspaceHelp,
 			value: workspaceUsedPct,
 			rawText: workspaceRawText(),
@@ -522,7 +526,7 @@
 			delta: 0,
 			meterClass: 'memory',
 			tipKey: 'workspace',
-			tipTitle: 'Workspace disk',
+			tipTitle: '디스크 사용량',
 			limitText: workspaceLimitChip(),
 			denominatorText: workspaceGbLimit ? `${workspaceGbLimit} GB quota` : 'unlimited',
 		})}
@@ -710,11 +714,15 @@
 	.hero-raw {
 		display: inline-flex;
 		align-items: baseline;
-		min-width: 0;
 		font-size: clamp(16px, 1.05vw, 21px);
 		font-weight: 700;
 		line-height: 1;
 		letter-spacing: -0.02em;
+	}
+	.hero-pct {
+		/* % 값은 KPI 의 헤드라인 — 절대 잘리지 않게 고정 폭 유지. */
+		flex: 0 0 auto;
+		white-space: nowrap;
 	}
 	.hero-raw {
 		font-size: clamp(13px, 0.85vw, 17px);
@@ -722,6 +730,7 @@
 		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.hero-pct .num,
 	.hero-raw .num {

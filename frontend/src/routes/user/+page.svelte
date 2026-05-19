@@ -1439,16 +1439,18 @@ KPI — 컨테이너·요청·자원 합계
 								</button>
 								{#if c.workspace_enabled && c.workspace_host_port && hasAutoRecipe(c)}
 									<button
-										class="row-btn row-btn-accent"
+										class="row-btn"
 										onclick={(e) => openWorkspace(c, e, 'proxy/7860/')}
 										disabled={openingId === c.container_id}
-										title="자동 실행된 모델의 gradio UI 열기"
+										title="컨테이너에서 자동 호스팅 중인 웹 UI 열기 (gradio / streamlit / Flask 등)"
 									>
 										<svg class="row-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-											<path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z" />
-											<path d="M18 14l.9 2.5L21 17l-2.1.9-.9 2.1-.9-2.1L15 17l2.1-.5L18 14z" />
+											<circle cx="12" cy="12" r="9" />
+											<path d="M3 12h18" />
+											<path d="M12 3a14 14 0 0 1 0 18" />
+											<path d="M12 3a14 14 0 0 0 0 18" />
 										</svg>
-										<span>{openingId === c.container_id ? '여는 중…' : 'AI UI'}</span>
+										<span>{openingId === c.container_id ? '여는 중…' : 'Web UI'}</span>
 									</button>
 								{/if}
 								<button
@@ -3218,17 +3220,6 @@ KPI — 컨테이너·요청·자원 합계
 	.row-btn-icon {
 		padding: 0;
 		width: 28px;
-	}
-
-	.row-btn-accent {
-		background: rgba(77, 191, 179, 0.12);
-		border-color: rgba(77, 191, 179, 0.45);
-		color: var(--accent);
-	}
-
-	.row-btn-accent:hover {
-		background: rgba(77, 191, 179, 0.22);
-		border-color: rgba(77, 191, 179, 0.7);
 	}
 
 	.row-btn-ico {

@@ -893,13 +893,16 @@
 		white-space: pre-wrap;
 		word-break: break-all;
 		overflow-wrap: anywhere;
-	}
-	.line.stderr {
-		color: #fca5a5;
-	}
-	.line.stdout {
 		color: #cbd5e1;
 	}
+	/* stderr 는 "에러" 가 아니라 그냥 다른 stream 이다. uvicorn/tornado 처럼
+	   access log 를 stderr 로 쏘는 프레임워크가 흔하기 때문에 일률적으로
+	   빨갛게 칠하면 모든 줄이 위험해 보인다. 톤만 약간 따뜻하게 줘서 stream
+	   구분만 유지하고, 진짜 ERROR/Traceback 강조는 content 매칭에 맡긴다. */
+	.line.stderr {
+		color: #d8c5b8;
+	}
+	.line.stdout,
 	.line.mixed {
 		color: #cbd5e1;
 	}

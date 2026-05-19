@@ -3,125 +3,92 @@
 ## 전체 흐름
 
 ```
-DCMTool_TS (dev)
+HyperCube repo (qkr7287/HyperCube)
     │
-    ├── 개발자가 코드 작성 & commit & push
-    │
-    ▼
-DCMTool_TS (dev → main PR)
-    │
-    ├── 개발자가 Pull Request 생성 & 리뷰 & merge
+    ├── 개발자가 dev 브랜치에서 작업 → push
     │
     ▼
-DCMTool_TS (main) ──── [자동] GitHub Actions ────▶ DCMTool (dev)
-    │                   sync-to-dcmtool.yml           │
-    │                   SSH deploy key 사용            │
-    │                                                  │
-    │                                          개발자가 PR 생성
-    │                                          & merge
-    │                                                  │
-    │                                                  ▼
-    │                                           DCMTool (main)
-    │                                                  │
-    │                                          [자동] GitHub Actions
-    │                                          deploy.yml
-    │                                          self-hosted runner
-    │                                                  │
-    │                                                  ▼
-    │                                           16번 서버 (192.168.0.16)
-    │                                           git pull + docker rebuild
-    └──────────────────────────────────────────────────┘
+dev (origin/dev)
+    │
+    ├── 검증 (npm run check + 백엔드 test) 후 dev → main PR 생성·머지
+    │
+    ▼
+main (origin/main)
+    │
+    └── [자동] GitHub Actions
+        ┌──────────────────────────────────────────┐
+        │ build-push-images.yml (ubuntu-latest)    │
+        │  backend / nginx 이미지 빌드 후 GHCR push │
+        │  태그: latest + sha-<7chars>             │
+        └────────────────┬─────────────────────────┘
+                         │ workflow_run chain
+                         ▼
+        ┌──────────────────────────────────────────┐
+        │ deploy-prod.yml                          │
+        │  runs-on: [self-hosted, hc63-prod]       │
+        │  cd /docker/hypercube-prod               │
+        │  sed -i 's|IMAGE_TAG=.*|sha-<…>|' .env   │
+        │  docker compose pull && up -d            │
+        │  curl /api/health/ 24×5s wait            │
+        └────────────────┬─────────────────────────┘
+                         │
+                         ▼
+              http://192.168.0.63:37003/ 가용
 ```
 
-## 단계별 설명
+## 워크플로우 파일
 
-### 1단계: DCMTool_TS에서 개발 (수동)
+| 파일 | 트리거 | 결과 |
+|---|---|---|
+| `.github/workflows/build-push-images.yml` | main push, manual | GHCR `ghcr.io/qkr7287/hypercube-{backend,nginx}:{latest,sha-…}` |
+| `.github/workflows/deploy-prod.yml` | "Build and push images" workflow_run, manual | 63번 prod 컨테이너 6개 (hcprod-*) 갱신 |
+| `.github/workflows/publish-deploy-bundle.yml` | main push | `qkr7287/hypercube-deploy` 외부 배포 번들 — 현재 `DEPLOY_BUNDLE_PAT` secret 미설정이라 fail 한다 (deploy 흐름과 무관) |
 
-- `dev` 브랜치에서 작업
-- 완료 후 `dev → main` Pull Request 생성
-- 리뷰 후 merge
+## Self-hosted runner
 
-### 2단계: DCMTool로 자동 동기화
+| 라벨 | 호스트 | 역할 |
+|---|---|---|
+| `hc63-prod` | 63번 (`agics@192.168.0.63`) | prod 배포 |
 
-- **트리거**: DCMTool_TS의 main 브랜치에 push 발생 시
-- **워크플로우**: `.github/workflows/sync-to-dcmtool.yml`
-- **동작**: DCMTool_TS main 코드를 `dev-agics/DCMTool` dev 브랜치에 force push
-- **인증**: SSH deploy key (DEPLOY_KEY secret)
+위치: `/docker/actions-runner-hc63-prod/`
+systemd 서비스: `actions.runner.qkr7287-HyperCube.hc63-prod-runner.service`
 
-```yaml
-# sync-to-dcmtool.yml 핵심 부분
-on:
-  push:
-    branches: [main]
-
-steps:
-  - uses: webfactory/ssh-agent@v0.9.0
-    with:
-      ssh-private-key: ${{ secrets.DEPLOY_KEY }}
-  - run: |
-      git remote add dcmtool git@github.com:dev-agics/DCMTool.git
-      git push dcmtool main:dev --force
+상태 확인:
+```bash
+ssh hc-dev-63
+sudo systemctl status actions.runner.qkr7287-HyperCube.hc63-prod-runner.service
 ```
 
-### 3단계: DCMTool에서 배포 승인 (수동)
+GitHub UI 에서도: repo → Settings → Actions → Runners → 라벨 `hc63-prod` (Status: Idle/Active).
 
-- `dev-agics/DCMTool`에서 `dev → main` Pull Request 생성
-- 리뷰 후 merge
+## 수동 트리거
 
-### 4단계: 16번 서버 자동 배포
+- 같은 commit 으로 재배포: GitHub Actions 탭 → "Deploy to 63 prod" → Run workflow → sha 빈칸 → Run.
+- 특정 commit pin: sha 입력란에 7자 short SHA.
+- 이미지만 다시 빌드: "Build and push images" → Run workflow.
 
-- **트리거**: DCMTool의 main 브랜치에 push 발생 시
-- **워크플로우**: `.github/workflows/deploy.yml`
-- **실행 환경**: self-hosted runner (16번 서버에 설치됨)
-- **동작**: git pull → docker compose down → docker compose up -d --build
+## Rollback
 
-```yaml
-# deploy.yml 핵심 부분
-on:
-  push:
-    branches: [main]
-
-jobs:
-  deploy:
-    runs-on: self-hosted
-    steps:
-      - run: |
-          cd /home/agics-ai/docker/DCMTool
-          git pull origin main
-          docker compose down
-          docker compose up -d --build
+```bash
+ssh hc-dev-63
+cd /docker/hypercube-prod
+sed -i 's|^IMAGE_TAG=.*|IMAGE_TAG=sha-<이전7자>|' .env
+docker compose pull
+docker compose up -d
 ```
+또는 GitHub Actions UI 의 "Deploy to 63 prod" 수동 실행에 이전 sha 지정.
 
-## Secrets 설정
+## dev 는 이 흐름과 무관
 
-### qkr7287/DCMTool_TS
+dev 는 **mutagen sync** 로 로컬 Windows → 63번 코드 sync → bind-mount → uvicorn / Vite reload. GHCR 이미지 안 거치고 즉시 반영. 배포 워크플로우는 dev 무관.
 
-| Secret | 용도 |
-|--------|------|
-| `DEPLOY_KEY` | SSH private key. dev-agics/DCMTool에 push할 때 사용 |
+## 비밀 (secrets)
 
-### dev-agics/DCMTool
+| Secret | 어디서 쓰나 | 필수 여부 |
+|---|---|---|
+| `GITHUB_TOKEN` | build-push-images 가 GHCR 로그인 | auto (no action) |
+| `DEPLOY_BUNDLE_PAT` | publish-deploy-bundle 가 외부 repo push | 선택 — 미설정 시 해당 workflow 만 fail |
 
-| 설정 | 위치 |
-|------|------|
-| Deploy Key (public) | Settings > Deploy keys (write access 허용) |
-| Self-hosted Runner | `/opt/actions-runner/dcmtool` (systemd 서비스로 등록) |
-
-## Self-hosted Runner 정보
-
-- **위치**: 192.168.0.16 서버의 `/opt/actions-runner/dcmtool`
-- **서비스명**: `actions.runner.dev-agics-DCMTool.agicsai-desktop`
-- **상태 확인**: `systemctl status actions.runner.dev-agics-DCMTool.agicsai-desktop`
-- **재시작**: `systemctl restart actions.runner.dev-agics-DCMTool.agicsai-desktop`
-
-## 문제 해결
-
-### sync workflow 실패 시
-1. `qkr7287/DCMTool_TS` > Settings > Secrets에서 `DEPLOY_KEY` 확인
-2. `dev-agics/DCMTool` > Settings > Deploy keys에서 public key 확인 (write access)
-3. GitHub Actions 탭에서 로그 확인 후 Re-run
-
-### deploy workflow 실패 시
-1. 16번 서버에서 runner 상태 확인: `systemctl status actions.runner.dev-agics-DCMTool.agicsai-desktop`
-2. runner 재시작: `systemctl restart actions.runner.dev-agics-DCMTool.agicsai-desktop`
-3. 수동 배포: 서버에서 `cd /home/agics-ai/docker/DCMTool && git pull origin main && docker compose up -d --build`
+prod 자체의 시크릿 (`DJANGO_SECRET_KEY`, `DB_PASSWORD` 등) 은 GitHub 에 없고
+63번 `/docker/hypercube-prod/.env` 에만 존재. 자동 배포는 그 파일을 건드리지
+않음 (IMAGE_TAG 한 줄만 sed). 시크릿 분실 위험 X.

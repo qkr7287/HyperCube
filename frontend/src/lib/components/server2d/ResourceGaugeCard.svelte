@@ -37,6 +37,7 @@
 	type="button"
 	class="gauge {severity}"
 	class:disabled
+	class:empty={disabled}
 	onclick={disabled || !onOpen ? undefined : onOpen}
 	aria-label={`${label} 상세 보기`}
 	title={tooltip || label}
@@ -44,11 +45,23 @@
 >
 	<div class="head">
 		<span class="label">{label}</span>
-		<strong class="value">{display}</strong>
+		{#if disabled}
+			<span class="empty-tag">데이터 없음</span>
+		{:else}
+			<strong class="value">{display}</strong>
+		{/if}
 	</div>
-	<div class="bar"><b style={`width:${clamped}%`}></b></div>
+	<div class="bar" class:empty={disabled}>
+		{#if !disabled}<b style={`width:${clamped}%`}></b>{/if}
+	</div>
 	<div class="foot">
-		<div class="spark"><MetricSparkline values={sparkValues} color={sparkColor} label={label} {loading} stretch /></div>
+		<div class="spark">
+			{#if disabled}
+				<span class="spark-empty" aria-hidden="true"></span>
+			{:else}
+				<MetricSparkline values={sparkValues} color={sparkColor} label={label} {loading} stretch />
+			{/if}
+		</div>
 		{#if hint}<small class="hint">{hint}</small>{/if}
 	</div>
 </button>
@@ -77,7 +90,50 @@
 
 	.gauge.disabled {
 		cursor: default;
-		opacity: 0.72;
+	}
+	.gauge.empty {
+		border-style: dashed;
+		border-color: rgba(100, 116, 139, 0.28);
+		background: rgba(15, 23, 42, 0.32);
+	}
+	.empty-tag {
+		font-size: 10px;
+		font-weight: 800;
+		color: rgba(148, 163, 184, 0.78);
+		letter-spacing: 0.3px;
+		padding: 3px 8px;
+		border-radius: 999px;
+		background: rgba(100, 116, 139, 0.12);
+		border: 1px solid rgba(100, 116, 139, 0.24);
+		white-space: nowrap;
+	}
+	.bar.empty {
+		background:
+			repeating-linear-gradient(
+				90deg,
+				rgba(100, 116, 139, 0.18) 0 6px,
+				rgba(30, 41, 59, 0.55) 6px 12px
+			);
+		opacity: 0.55;
+	}
+	.spark-empty {
+		display: block;
+		height: 100%;
+		width: 100%;
+		border-radius: 4px;
+		background:
+			linear-gradient(
+				90deg,
+				transparent 0,
+				transparent 30%,
+				rgba(100, 116, 139, 0.18) 30%,
+				rgba(100, 116, 139, 0.18) 32%,
+				transparent 32%,
+				transparent 60%,
+				rgba(100, 116, 139, 0.18) 60%,
+				rgba(100, 116, 139, 0.18) 62%,
+				transparent 62%
+			);
 	}
 
 	.head {

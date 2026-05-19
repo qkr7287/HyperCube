@@ -41,7 +41,23 @@
 	let diskTrend = $derived(history.map((point) => point.disk_avg));
 	let gpuTrend = $derived(history.map((point) => point.gpu_avg ?? 0));
 	let netTrend = $derived(history.map((point) => point.network_rx_rate + point.network_tx_rate));
-	let gpuActive = $derived(gpuTrend.some((value) => value > 0) || (metrics?.gpu_max ?? 0) > 0);
+	let gpuActive = $derived(
+		gpuTrend.some((value) => value > 0)
+			|| (metrics?.gpu_max ?? 0) > 0
+			|| (metrics?.gpu_memory_total_bytes ?? 0) > 0,
+	);
+
+	function formatBytes(value: number): string {
+		if (!Number.isFinite(value) || value <= 0) return '0 B';
+		const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+		let next = value;
+		let index = 0;
+		while (next >= 1024 && index < units.length - 1) {
+			next /= 1024;
+			index += 1;
+		}
+		return `${next.toFixed(next >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
+	}
 
 	function count(key: string): number {
 		return Number(counts[key] ?? 0);
@@ -130,9 +146,15 @@
 
 	{#if gpuActive}
 		<div class="kpi" data-level={gpuLevel}>
-			<span class="label">GPU <MetricHelp text={"GPU를 보고하는 서버들의 평균·최대 사용률.\n\n개별 서버 기준\n• 장착된 모든 GPU의 평균\n• NVIDIA: nvidia-smi util\n• AMD: rocm-smi util\n\nGPU 0개 서버는 집계에서 제외"} /></span>
+			<span class="label">GPU <MetricHelp text={"위 값은 GPU 코어 사용률(usage). hint 는 VRAM 점유율 — 사용률 0% 라도 VRAM 이 차있으면 모델이 로드된 idle 상태입니다.\n\n개별 서버 기준\n• 사용률: 장착된 모든 GPU 평균 (NVIDIA: nvidia-smi util / AMD: rocm-smi util)\n• VRAM: memoryUsed 합 ÷ memoryTotal 합\n\nGPU 0개 서버는 집계에서 제외"} /></span>
 			<strong class="value">{formatPercent(metrics?.gpu_avg, 1)}</strong>
-			<span class="sub">최대 {formatPercent(metrics?.gpu_max, 0)}</span>
+			<span class="sub">
+				{#if (metrics?.gpu_memory_total_bytes ?? 0) > 0}
+					VRAM {formatPercent(metrics?.gpu_memory_percent, 1)} · {formatBytes(metrics?.gpu_memory_used_bytes ?? 0)} / {formatBytes(metrics?.gpu_memory_total_bytes ?? 0)}
+				{:else}
+					최대 {formatPercent(metrics?.gpu_max, 0)}
+				{/if}
+			</span>
 			<div class="spark"><MetricSparkline values={gpuTrend} color="#f472b6" label="GPU 평균 추이" /></div>
 		</div>
 	{/if}

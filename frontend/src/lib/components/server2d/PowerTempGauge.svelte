@@ -24,14 +24,15 @@
 		gpu: Entry;
 	} = $props();
 
-	function levelFor(v: number | null | undefined, warn?: number, crit?: number): 'normal' | 'warn' | 'danger' {
-		if (v == null || !Number.isFinite(v)) return 'normal';
+	function levelFor(v: number | null | undefined, warn?: number, crit?: number): 'normal' | 'warn' | 'danger' | 'empty' {
+		if (v == null || !Number.isFinite(v)) return 'empty';
 		if (crit != null && v >= crit) return 'danger';
 		if (warn != null && v >= warn) return 'warn';
 		return 'normal';
 	}
 
-	function colorFor(level: 'normal' | 'warn' | 'danger'): string {
+	function colorFor(level: 'normal' | 'warn' | 'danger' | 'empty'): string {
+		if (level === 'empty') return 'rgba(100, 116, 139, 0.55)';
 		return level === 'danger' ? '#f87171' : level === 'warn' ? '#fbbf24' : '#34d399';
 	}
 
@@ -61,22 +62,35 @@
 			<div class="cell" data-level={level}>
 				<svg class="dial" viewBox="0 0 100 60" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
 					<!-- track -->
-					<path d="M 8 50 A 42 42 0 0 1 92 50" fill="none" stroke="rgba(100,116,139,0.18)" stroke-width="8" stroke-linecap="round" />
-					<!-- value -->
 					<path
 						d="M 8 50 A 42 42 0 0 1 92 50"
 						fill="none"
-						stroke={colorFor(level)}
+						stroke={level === 'empty' ? 'rgba(100,116,139,0.12)' : 'rgba(100,116,139,0.18)'}
 						stroke-width="8"
 						stroke-linecap="round"
-						stroke-dasharray={ARC_LEN}
-						stroke-dashoffset={arcOffset(entry.value, entry.max)}
+						stroke-dasharray={level === 'empty' ? '3 5' : undefined}
 					/>
+					<!-- value -->
+					{#if level !== 'empty'}
+						<path
+							d="M 8 50 A 42 42 0 0 1 92 50"
+							fill="none"
+							stroke={colorFor(level)}
+							stroke-width="8"
+							stroke-linecap="round"
+							stroke-dasharray={ARC_LEN}
+							stroke-dashoffset={arcOffset(entry.value, entry.max)}
+						/>
+					{/if}
 				</svg>
 				<div class="readout">
-					<strong class="value" style:color={colorFor(level)}>
-						{fmt(entry.value)}<span class="unit">{unit}</span>
-					</strong>
+					{#if level === 'empty'}
+						<span class="empty-tag">데이터 없음</span>
+					{:else}
+						<strong class="value" style:color={colorFor(level)}>
+							{fmt(entry.value)}<span class="unit">{unit}</span>
+						</strong>
+					{/if}
 					<span class="label">{entry.label}</span>
 				</div>
 			</div>
@@ -122,6 +136,22 @@
 	}
 	.cell[data-level='danger'] {
 		border-color: rgba(239, 68, 68, 0.55);
+	}
+	.cell[data-level='empty'] {
+		border-style: dashed;
+		border-color: rgba(100, 116, 139, 0.25);
+		background: rgba(15, 23, 42, 0.18);
+	}
+	.empty-tag {
+		font-size: 10px;
+		font-weight: 800;
+		color: rgba(148, 163, 184, 0.7);
+		letter-spacing: 0.3px;
+		line-height: 1;
+		padding: 3px 7px;
+		border-radius: 999px;
+		background: rgba(100, 116, 139, 0.12);
+		border: 1px solid rgba(100, 116, 139, 0.22);
 	}
 	.dial {
 		width: 100%;

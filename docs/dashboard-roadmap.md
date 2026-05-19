@@ -23,7 +23,7 @@ related-pages: /user/containers/[containerId]
 ## 다음 세션 시작점
 
 1. **agent issue #13** (`update_container` memory/cpu/restart) — agent repo 별도 세션. main 머지 후 HyperCube 검증.
-2. **dev → main 머지 + prod 배포** — 누적 commits 다수, prod `http://192.168.0.16:3334/hypercube` 적용.
+2. **dev → main 머지 + prod 배포** — 누적 commits 다수, prod `http://192.168.0.63:37003/` 적용 (16번 폐기 후 63번 prod 로 이전 완료, 자동 배포).
 3. (필요 시 polish) Logs 검색 강화, 차트 zoom reset, 1920+ inspect 4col, /user/containers/[id] 페이지 자체 E2E 확장.
 
 ## 핵심 코딩 룰 (반복 실수 방지)

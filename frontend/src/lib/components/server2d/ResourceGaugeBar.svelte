@@ -61,6 +61,22 @@
 			: 0,
 	);
 
+	// VRAM 평균 — GPU usage 0% 라도 모델 weights 가 메모리를 점유 중이면 사용자가
+	// "GPU 잘 살아 있는데 사용률만 0 이구나" 를 한 번에 인지하도록 hint 에 노출.
+	const gpuVramTotalBytes = $derived(
+		Array.isArray(systemInfo?.gpu)
+			? systemInfo.gpu.reduce((sum: number, g: any) => sum + Number(g?.memoryTotal ?? 0), 0)
+			: 0,
+	);
+	const gpuVramUsedBytes = $derived(
+		Array.isArray(systemInfo?.gpu)
+			? systemInfo.gpu.reduce((sum: number, g: any) => sum + Number(g?.memoryUsed ?? 0), 0)
+			: 0,
+	);
+	const gpuVramPercent = $derived(
+		gpuVramTotalBytes > 0 ? (gpuVramUsedBytes / gpuVramTotalBytes) * 100 : 0,
+	);
+
 	function severityFor(value: number): 'ok' | 'warn' | 'hot' {
 		if (value >= 90) return 'hot';
 		if (value >= 70) return 'warn';
@@ -131,9 +147,11 @@
 		sparkValues={systemTrend.hasGpu ? systemTrend.gpu : []}
 		sparkColor="#c084fc"
 		hint={systemInfo?.gpu?.length
-			? `GPU ${systemInfo.gpu.length}개 · 최대 ${systemTrend.gpuMax.toFixed(1)}%`
+			? gpuVramTotalBytes > 0
+				? `VRAM ${gpuVramPercent.toFixed(1)}% · ${formatBytes(gpuVramUsedBytes)} / ${formatBytes(gpuVramTotalBytes)}`
+				: `GPU ${systemInfo.gpu.length}개 · 최대 ${systemTrend.gpuMax.toFixed(1)}%`
 			: 'GPU 데이터 없음'}
-		tooltip="서버에 GPU가 여러 개일 때는 전체 평균입니다. 하드웨어가 보고한 사용률을 그대로 사용합니다. 카드를 누르면 GPU별 온도·VRAM 상세가 열립니다."
+		tooltip="값은 GPU 코어 사용률(usage). hint 는 VRAM 점유율 — 사용률 0% 라도 VRAM 이 차있으면 모델이 로드된 idle 상태입니다. 카드를 누르면 GPU별 온도·VRAM 상세가 열립니다."
 		severity={systemInfo?.gpu?.length ? severityFor(gpuAverage) : 'ok'}
 		disabled={!systemInfo?.gpu?.length}
 		onOpen={systemInfo?.gpu?.length ? () => { gpuOpen = true; } : null}

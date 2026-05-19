@@ -901,13 +901,33 @@ def _container_workspace_snapshot(container: Container) -> dict | None:
 
 
 def _merge_workspace_snapshot(metrics_workspace, container: Container) -> dict | None:
+    """Agent payload + container DB 의 quota metadata 를 한 dict 으로 합친다.
+
+    Agent 가 보내주는 키 (Phase 2 contract): usedGb / rwLayerGb / rootFsGb /
+    path / projectId / source. hardGb/sizeGb 는 backend DB 의 quota 한도.
+
+    derived: usedGb 와 hardGb 가 모두 있을 때 availableGb / usedPct 를 계산.
+    UI 가 source 기반으로 라벨 분기 (du = 정확, rw-layer = fallback) 할 수
+    있도록 source 는 그대로 통과.
+    """
     workspace = dict(metrics_workspace) if isinstance(metrics_workspace, dict) else {}
-    if container.workspace_device:
-        workspace.setdefault("path", container.workspace_device)
-        workspace.setdefault("device", container.workspace_device)
+
+    # Agent 가 `path: null` 을 명시적으로 보낼 수 있는데 (overlay-only), 그땐
+    # container DB 의 workspace_device 로 보강. 빈 값일 때만 채운다.
+    if container.workspace_device and not workspace.get("path"):
+        workspace["path"] = container.workspace_device
+    workspace.setdefault("device", workspace.get("path") or container.workspace_device or None)
+
     if container.workspace_project_id and not workspace.get("projectId"):
         workspace["projectId"] = container.workspace_project_id
     if container.workspace_gb_limit:
         workspace.setdefault("hardGb", container.workspace_gb_limit)
         workspace.setdefault("sizeGb", container.workspace_gb_limit)
+
+    used_gb = workspace.get("usedGb")
+    hard_gb = workspace.get("hardGb")
+    if isinstance(used_gb, (int, float)) and isinstance(hard_gb, (int, float)) and hard_gb > 0:
+        workspace.setdefault("availableGb", round(max(0.0, float(hard_gb) - float(used_gb)), 2))
+        workspace.setdefault("usedPct", round(float(used_gb) / float(hard_gb) * 100.0, 2))
+
     return workspace or None

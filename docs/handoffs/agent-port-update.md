@@ -1,57 +1,52 @@
-# Agent .env 업데이트 요청 — HyperCube 호스트 포트 변경
+# Agent .env 업데이트 요청 — HyperCube 인프라 변경
 
-작성일: 2026-05-19
+작성일: 2026-05-19 (최초) / 2026-05-19 갱신 (prod 16번→63번 이전 반영)
 대상: `qkr7287/HyperCube-agent` 메인테이너
 
-## 무엇을 바꾸나
+## 변경 사항 한 줄 요약
 
-HyperCube 백엔드를 띄우는 모든 곳의 **호스트(외부) 포트 default 값**이 바뀝니다.
-기본 포트(5432 / 6379 / 8000 / 3000 / 7003) 가 너무 흔해서 다른 서비스랑 자주
-충돌해서, 앞에 `3` 을 붙인 5자리 포트로 통일했습니다.
+1. **호스트 포트 default 5자리 재정렬** — 충돌 회피 위해 앞에 "3" prefix
+2. **prod 서버 이전** — 16번 종료, 63번 한 머신에서 dev + prod 공존
 
-| 컴포넌트 | 이전 host 포트 (default) | 새 host 포트 (default) | 컨테이너 안 포트 |
-|---|---|---|---|
-| postgres | 5432 / 15432(dev) | **35432** | 5432 (unchanged) |
-| redis | 6379 / 16379(dev) | **36379** | 6379 (unchanged) |
-| backend (dev) | 8000 | **38000** | 8000 (unchanged) |
-| frontend dev | 3000 | **33000** | 3000 (unchanged) |
-| prod nginx | 7003 | **37003** | 7003 (unchanged) |
+## 새 엔드포인트
 
-**중요**: 컨테이너 *내부* 포트는 그대로입니다. 바뀐 건 **호스트에서 노출되는
-값(default)** 뿐. agent 가 backend 에 연결할 때 사용하는 URL 의 포트 부분만
-영향받습니다.
+| 환경 | host:port | WS | API | 컨테이너 prefix |
+|---|---|---|---|---|
+| **dev** | 192.168.0.63:38000 (backend), :33000 (frontend) | `ws://192.168.0.63:38000` | `http://192.168.0.63:38000` | `hc-*` |
+| **prod** | **192.168.0.63:37003** (nginx, all-in-one) | `ws://192.168.0.63:37003` | `http://192.168.0.63:37003` | `hcprod-*` |
 
-## 16번 prod 서버는?
+### 옛 값 (전부 폐기)
 
-여전히 `HC_PORT=3334` 로 override 중이라 **외부 URL `http://192.168.0.16:3334`
-는 그대로** 입니다. 새 default 37003 은 새로 띄우는 호스트의 시작값일 뿐.
+- `192.168.0.16:3334` (16번 prod) — 16번 서버 종료
+- `192.168.0.63:8000` (dev backend) → 38000
+- `192.168.0.63:3000` (dev frontend) → 33000
+- postgres :5432 / :15432 → :35432 (host only)
+- redis :6379 / :16379 → :36379 (host only)
 
-## 63번 dev 서버는?
+### 포트 정책
 
-곧 docker compose 재기동되면서 **backend 호스트 포트가 `:8000` → `:38000`**,
-frontend 가 `:3000` → `:33000` 으로 바뀝니다. **agent 의 BACKEND_URL 도 같이
-업데이트 필요**.
+- **컨테이너 *내부* 포트는 표준 그대로** (postgres 5432, redis 6379, backend 8000, frontend 3000, nginx 7003). 바뀐 건 **호스트로 노출되는 default** 뿐.
+- prod 는 nginx 단일 host port (37003) 가 frontend + API + WS + workspace proxy 다 처리. nginx 내부에서 backend:8000 으로 reverse proxy.
 
 ## 해줘야 할 일 (agent repo)
 
-### 1. `.env.example` 갱신
+### 1. `.env` / `.env.example` / `.env.prod.example` 갱신
 
-현재:
+**prod 용**:
 ```env
-BACKEND_URL=ws://192.168.0.16:3334
-BACKEND_API_URL=http://192.168.0.16:3334
+BACKEND_URL=ws://192.168.0.63:37003
+BACKEND_API_URL=http://192.168.0.63:37003
 ```
 
-dev 용 example 도 있으면 (예: `.env.dev.example`) 그쪽 포트도 같이 정리:
+**dev 용** (있으면):
 ```env
 BACKEND_URL=ws://192.168.0.63:38000
 BACKEND_API_URL=http://192.168.0.63:38000
 ```
 
-prod 용은 16번 서버가 여전히 3334 override 라 변경 불필요. 만약 새 prod 서버를
-세팅할 거라면 default 37003 도 보여주는 게 좋음.
+기존 `192.168.0.16:3334` 라인은 모두 제거.
 
-### 2. 문서 (README / quickstart) 의 포트 언급 검색·치환
+### 2. README / 운영 문서 검색·치환
 
 ```
 :5432  → :35432
@@ -61,28 +56,39 @@ prod 용은 16번 서버가 여전히 3334 override 라 변경 불필요. 만약
 :7003  → :37003
 :15432 → :35432  (옛 dev default)
 :16379 → :36379  (옛 dev default)
+:3334  → :37003  (16번 → 63번 prod)
+192.168.0.16 → 192.168.0.63  (모든 운영 IP)
 ```
-
-3334 / 192.168.0.16:3334 는 그대로 (운영 서버 override).
 
 ### 3. 코드 영향 없음
 
-agent 는 이미 `BACKEND_URL` 환경변수만 보고 동작하니 코드 변경은 필요 없습니다.
-.env / 문서만 갱신.
+agent 는 이미 `BACKEND_URL` 환경변수만 보고 동작. .env / 문서만.
 
-### 4. 실 dev 환경 (63번) agent 가 떠있다면
+### 4. 운영 agent 컨테이너 재시작
 
-새 backend 가 38000 으로 올라오면 기존 agent 가 8000 에 붙어있어서 끊깁니다.
-- 63번에 떠있는 `hypercube-agent-dev-63` 컨테이너의 `.env` 에서
-  `BACKEND_URL` / `BACKEND_API_URL` 의 `:8000` → `:38000` 으로 갱신
-- `docker compose -f docker-compose.dev.yml up -d` 로 재기동
+**dev agent** (`hypercube-agent-dev-63` 가 dev backend 가리킬 때):
+- `.env` 의 BACKEND_URL/API_URL `:8000` → `:38000`
+- `docker compose -f docker-compose.dev.yml up -d`
+
+**prod agent** (16번 prod 가리키던 것):
+- `.env` 의 BACKEND_URL/API_URL → `192.168.0.63:37003`
+- 적절한 compose 로 재기동
+
+> dev / prod 두 agent 가 한 호스트에서 동시에 떠 있으면 BACKEND_URL 만 다르면 됨. 한 agent 가 양쪽 동시 reporting 은 metric 섞이므로 권장 X.
 
 ## 완료 확인
 
-- [ ] `.env.example` (모든 env example 변형 포함) port 갱신
-- [ ] README · 운영 문서의 포트 표기 갱신
-- [ ] dev 환경의 실 agent .env 갱신 + 재기동
-- [ ] 갱신 후 agent 로그에서 `Connected to server <agent_uuid>` 확인
+- [ ] `.env.example` 종류별 (prod / dev) 갱신
+- [ ] README · quickstart 의 포트·IP 표기 갱신
+- [ ] 운영 agent 컨테이너 .env 갱신 + 재기동
+- [ ] 새 접속 확인:
+  - dev: `ssh hc-dev-63 "docker logs hc-backend --tail 20 | grep -i agent"`
+  - prod: `ssh hc-dev-63 "docker logs hcprod-backend --tail 20 | grep -i agent"`
+  - 또는 admin UI fleet 카드에서 online 표시 (`http://192.168.0.63:37003/admin/agents` 또는 dev 의 `:38000/admin/agents`)
 
-문의: HyperCube 메인 PR `8cd2d8b` ~ 후속 commit. 자세한 컨텍스트는
-`docs/multimodal-auto-launch-handoff.md` + `progress.md` 메모리.
+## 참조
+
+- HyperCube `docs/handoffs/63-prod-setup.md` — prod 셋업
+- HyperCube `docs/multimodal-auto-launch-handoff.md` — Phase 2 시스템 컨텍스트
+- 첫 prod 배포: GitHub Actions run `26086787486` (success)
+- main HEAD: `f87a2ac` (PR #24)
