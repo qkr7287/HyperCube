@@ -1075,6 +1075,14 @@
 						<span class="ops-msg-text">{actionMsg}</span>
 						<button class="ops-msg-close" onclick={dismissActionMsg} aria-label="닫기">✕</button>
 					</div>
+				{:else}
+					<!-- 하단 장식 — 정보 노출 X, 단순 시각 마감용 ribbon. status orb
+					     색과 호흡하는 fading dash + soft glow 로 박스 끝선을 강조한다. -->
+					<div class="ops-flair" data-status={container.status} aria-hidden="true">
+						<span class="flair-dot"></span>
+						<span class="flair-dash"></span>
+						<span class="flair-dot"></span>
+					</div>
 				{/if}
 			</section>
 			</div>
@@ -1973,12 +1981,11 @@
 			linear-gradient(180deg, rgba(13, 17, 23, 0.55), rgba(18, 23, 32, 0.98)),
 			rgba(18, 23, 32, 0.98);
 		border: 1px solid var(--border);
-		/* space-between 은 box 가 KPI 높이에 stretch 되면서 row 사이에 과도한
-		   빈 공간을 만든다. content 를 top 으로 정렬하고 explicit gap 으로만
-		   간격을 잡으면 카드/액션이 한 덩어리로 묶여 보인다. */
-		display: grid;
-		grid-template-rows: auto auto auto;
-		align-content: start;
+		/* head/quick 은 top, actions/limits 는 bottom 에 고정하기 위해 column flex
+		   + ::after spacer 로 중간 빈 공간을 흡수한다. (grid 의 space-between 은
+		   행마다 균등 분배라 어색했던 큰 gap 의 원인이었음) */
+		display: flex;
+		flex-direction: column;
 		gap: 7px;
 		flex: 0.55 1 280px;
 		min-width: 260px;
@@ -2182,6 +2189,78 @@
 
 	.ops-divider {
 		display: none;
+	}
+
+	/* head + quick 와 actions + limits 사이 가변 spacer — 박스가 KPI 행에
+	   stretch 되더라도 quick 카드는 위, 액션/한도는 아래로 자연스럽게 갈리고
+	   남는 공간은 한 곳에 모아 빈 줄이 들쭉날쭉하지 않게 된다. */
+	.ops-quick {
+		margin-bottom: auto;
+	}
+
+	.ops-flair {
+		--flair-color: rgba(148, 163, 184, 0.7);
+		--flair-glow: rgba(148, 163, 184, 0.28);
+		position: relative;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 10px;
+		padding: 10px 14px 8px;
+		min-height: 22px;
+	}
+	.ops-flair::before {
+		content: '';
+		position: absolute;
+		inset: auto 10% 0 10%;
+		height: 22px;
+		background: radial-gradient(ellipse at center bottom, var(--flair-glow), transparent 70%);
+		pointer-events: none;
+		filter: blur(2px);
+	}
+	.ops-flair[data-status='running']    { --flair-color: rgba(52, 211, 153, 0.95); --flair-glow: rgba(16, 185, 129, 0.42); }
+	.ops-flair[data-status='paused']     { --flair-color: rgba(251, 191, 36, 0.95); --flair-glow: rgba(251, 191, 36, 0.4); }
+	.ops-flair[data-status='restarting'] { --flair-color: rgba(96, 165, 250, 0.95); --flair-glow: rgba(96, 165, 250, 0.4); }
+	.ops-flair[data-status='stopped'],
+	.ops-flair[data-status='exited'],
+	.ops-flair[data-status='dead']       { --flair-color: rgba(248, 113, 113, 0.9); --flair-glow: rgba(239, 68, 68, 0.36); }
+	.ops-flair .flair-dot {
+		position: relative;
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--flair-color);
+		box-shadow:
+			0 0 0 2px rgba(255, 255, 255, 0.04),
+			0 0 10px var(--flair-color);
+		flex: 0 0 auto;
+	}
+	.ops-flair .flair-dash {
+		position: relative;
+		flex: 1 1 auto;
+		height: 2px;
+		max-width: 220px;
+		border-radius: 999px;
+		background:
+			linear-gradient(
+				90deg,
+				transparent 0,
+				var(--flair-color) 22%,
+				var(--flair-color) 78%,
+				transparent 100%
+			);
+		opacity: 0.75;
+	}
+	/* running 일 땐 점이 호흡 — 다른 상태는 정지 */
+	.ops-flair[data-status='running'] .flair-dot {
+		animation: flair-pulse 2.4s ease-in-out infinite;
+	}
+	.ops-flair[data-status='running'] .flair-dot:last-child {
+		animation-delay: 1.2s;
+	}
+	@keyframes flair-pulse {
+		0%, 100% { opacity: 0.4; transform: scale(1); }
+		50%      { opacity: 1;   transform: scale(1.25); }
 	}
 
 	/* 우측 액션 영역 — ContainerActions + limit icon btn */
