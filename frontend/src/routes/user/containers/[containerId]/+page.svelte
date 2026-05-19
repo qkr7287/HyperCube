@@ -1952,7 +1952,7 @@
 	/* unified-bar 안에서 KPI 는 중간 1fr — 가능한 wide. KPI bar 컴포넌트가 자체적으로
 	   auto-fit grid 라 4 pill 자동 분배. */
 	.kpi-row {
-		flex: 1.35 1 500px;
+		flex: 1.6 1 500px;
 		min-width: 500px;
 		display: flex;
 		align-items: stretch;
@@ -1966,7 +1966,7 @@
 	   caption 라벨이 좌측 상단, 메인 영역은 단순 row. */
 	.ops-bar {
 		margin-top: 0;
-		padding: clamp(7px, 0.5vw, 9px) clamp(8px, 0.6vw, 11px);
+		padding: clamp(7px, 0.45vw, 9px) clamp(6px, 0.45vw, 9px);
 		border-radius: 10px;
 		background:
 			linear-gradient(135deg, rgba(48, 213, 200, 0.09), transparent 38%),
@@ -1977,9 +1977,9 @@
 		grid-template-rows: auto auto auto;
 		align-content: space-between;
 		gap: 6px;
-		flex: 0.78 1 340px;
-		min-width: 320px;
-		max-width: 430px;
+		flex: 0.55 1 280px;
+		min-width: 260px;
+		max-width: 360px;
 		box-shadow:
 			0 10px 30px rgba(0, 0, 0, 0.16),
 			inset 0 1px 0 rgba(255, 255, 255, 0.03);
