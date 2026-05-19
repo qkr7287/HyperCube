@@ -898,10 +898,6 @@
 							<b>요청</b>
 							<strong>{statusLabel(container.request_status)}</strong>
 						</span>
-						<span class="meta-chip sync" data-fresh={syncFreshness} title="마지막 동기화">
-							<b>동기화</b>
-							<strong>{formatRelativeTime(currentMetrics?.timestamp || container.last_seen)}</strong>
-						</span>
 					</div>
 					<div class="hero-vitals" aria-label="컨테이너 핵심 상태">
 						<span class="vital-chip" title="컨테이너 가동 시간">
@@ -982,6 +978,10 @@
 							{/each}
 						</select>
 					</label>
+					<span class="meta-chip sync" data-fresh={syncFreshness} title="마지막 동기화">
+						<b>동기화</b>
+						<strong>{formatRelativeTime(currentMetrics?.timestamp || container.last_seen)}</strong>
+					</span>
 				</div>
 			</section>
 
