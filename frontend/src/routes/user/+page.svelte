@@ -1202,7 +1202,7 @@ KPI — 컨테이너·요청·자원 합계
 
 		{#if loading && containers.length === 0}
 			<div class="skel-table" style={containerColsStyle} aria-busy="true" aria-label="컨테이너 불러오는 중">
-				{#each Array(6) as _, i (i)}
+				{#each Array(12) as _, i (i)}
 					<div class="skel-row skel-row-container">
 						<span class="skel-cell"><span class="skel-pill"></span></span>
 						<span class="skel-cell skel-cell-stack">
@@ -1235,12 +1235,16 @@ KPI — 컨테이너·요청·자원 합계
 					<button class="new-btn" onclick={() => openNewRequest(null)}>+ 새 요청 만들기</button>
 					<div class="empty-hints">
 						<div class="hint-card">
-							<strong>워크스페이스</strong>
-							<p>Jupyter Lab + GPU 1슬라이스로 빠르게 실험 환경 구성.</p>
+							<strong>ML 워크스페이스</strong>
+							<p>Jupyter Lab + GPU 컨테이너. Qwen 2.5 등 사전 등록 모델은 한 번에 추론 UI 까지 자동 launch.</p>
+						</div>
+						<div class="hint-card">
+							<strong>내 모델 업로드</strong>
+							<p>safetensors / GGUF 같은 weight 를 올리고 inference recipe 를 골라 바로 배포 (admin 승인 후).</p>
 						</div>
 						<div class="hint-card">
 							<strong>서비스 컨테이너</strong>
-							<p>Redis · Nginx · 자체 이미지 — 컴포즈 그룹도 지원.</p>
+							<p>Redis 등 일반 이미지로 빠른 실험. 자원 한도와 workspace quota 안에서 안전하게.</p>
 						</div>
 					</div>
 				{:else}
@@ -1511,7 +1515,7 @@ KPI — 컨테이너·요청·자원 합계
 
 		{#if loading && requests.length === 0}
 			<div class="skel-table" style={historyColsStyle} aria-busy="true" aria-label="요청 이력 불러오는 중">
-				{#each Array(8) as _, i (i)}
+				{#each Array(12) as _, i (i)}
 					<div class="skel-row skel-row-history">
 						<span class="skel-cell"><span class="skel-pill" style="width: 44px"></span></span>
 						<span class="skel-cell"><span class="skel-bar" style="width: 70%"></span></span>
@@ -2707,6 +2711,16 @@ KPI — 컨테이너·요청·자원 합계
 		border-radius: 12px;
 		color: var(--text-secondary);
 		font-size: 13px;
+		/* main-content 안에서는 테이블/skeleton 자리를 그대로 차지하도록 늘린다.
+		   안 늘리면 빈 상태일 때 박스가 작아져서 아래쪽 빈 영역이 깔리는 죽은
+		   공간이 된다. 안에 내용은 center 정렬이라 키워도 어색하지 않음. */
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 10px;
 	}
 
 	.skel-table {
@@ -2715,6 +2729,16 @@ KPI — 컨테이너·요청·자원 합계
 		border-radius: 10px;
 		overflow: hidden;
 		padding: 0;
+		flex: 1;
+		min-height: 0;
+		/* 부모 col-flex 에 stretch 되면 row 가 위쪽에 깔리고 아래쪽이 통째로
+		   회색 빈 공간이 된다. 표 자체를 flex column 으로 잡고 ::after spacer 가
+		   남은 영역을 흡수해서 placeholder 가 표 같은 비율로 보이게. */
+		display: flex;
+		flex-direction: column;
+	}
+	.skel-table::after {
+		content: '';
 		flex: 1;
 		min-height: 0;
 	}

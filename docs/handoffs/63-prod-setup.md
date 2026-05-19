@@ -35,13 +35,20 @@ nano .env
 IMAGE_TAG=latest
 HC_PORT=37003
 DJANGO_SECRET_KEY=<위 50바이트 값>
-DJANGO_ALLOWED_HOSTS=192.168.0.63,localhost
-CORS_ALLOWED_ORIGINS=http://192.168.0.63:37003
-CSRF_TRUSTED_ORIGINS=http://192.168.0.63:37003
+# ALLOWED_HOSTS 는 의도적으로 비워두거나 * 로 둔다 — compose default 가 *.
+# 좁히면 외부 IP / 포트포워딩 / 도메인 추가할 때마다 .env 손대고 컨테이너
+# 재생성해야 하는 함정이 생긴다. (2026-05-19 외부 IP 로그인 차단 사건 참고)
+DJANGO_ALLOWED_HOSTS=*
+# CORS / CSRF 도 JWT 흐름에선 강제 필요 없음. 같은-origin SPA 라 CORS preflight
+# 안 타고, 로그인 view 는 authentication_classes=[] 라 CSRF 안 탐.
+CORS_ALLOWED_ORIGINS=
+CSRF_TRUSTED_ORIGINS=
 DB_NAME=hypercube
 DB_USER=hypercube
 DB_PASSWORD=<위 24바이트 값>
 ```
+
+> ⚠ `.env` 의 환경 변수를 바꾼 뒤엔 **`docker compose restart` 가 아니라 `docker compose up -d`** 로 컨테이너를 재생성해야 새 값이 반영된다. `restart` 는 같은 컨테이너를 멈췄다 켤 뿐 env_file 을 다시 읽지 않는다.
 
 ## 2. 한 번만 — GitHub self-hosted runner (label `hc63-prod`)
 
@@ -106,6 +113,8 @@ main 에 push (또는 PR 머지) → `Build and push images` workflow 가 GHCR �
 | backend 가 unhealthy | DB_PASSWORD 잘못, migration 실패 | `docker logs hcprod-backend --tail 80` |
 | 37003 :: bind already in use | 다른 서비스가 37003 쓰는 중 | `HC_PORT=37004` 등으로 변경 |
 | `docker compose pull` 401/403 | GHCR pull 권한 | `docker login ghcr.io -u <user> -p <PAT>` (한 번) |
+| 외부 IP/도메인 으로 접속 시 로그인이 `서버에 연결할 수 없습니다` | `.env` 의 `DJANGO_ALLOWED_HOSTS` 가 좁혀져 있음 → Django `DisallowedHost` 400 → 프론트엔드가 fetch error 로 인식 | `.env` 에서 `DJANGO_ALLOWED_HOSTS=*` 로 두고 `docker compose up -d backend` (restart 아님!) |
+| `.env` 바꿨는데 반영 안 됨 | `docker compose restart` 는 env_file 재로드 안 함 | `docker compose up -d <service>` 로 컨테이너 재생성. 확인: `docker exec <container> printenv VAR` |
 
 ## 참조
 
