@@ -742,7 +742,10 @@
 		white-space: nowrap;
 	}
 	.hero-raw {
-		font-size: clamp(12px, 0.75vw, 14px);
+		/* hero-pct (21px) 의 보조 라인 — pct 와 같은 크기였던 게 좁은 카드에서
+		   잘리던 게 문제였지만 stacked 상태에선 자기 폭 갖고 있어서 풀-크기로
+		   다시 돌려도 안전. 13~16px 으로 가시성 보장. */
+		font-size: clamp(13px, 0.85vw, 16px);
 		color: var(--text-mid);
 		min-width: 0;
 		overflow: hidden;
@@ -987,10 +990,9 @@
 	}
 	.foot-row {
 		display: grid;
-		/* 카드 안 row 정렬 일관성 — dot / label / pct / raw.
-		   label 폭은 컨테이너 width 에 따라 줄어들도록 clamp — 좁은 카드(≤210px)
-		   에선 한글 부연(.ko) 가 잘려도 영문 약자만 보이게 하고, pct/raw 공간 확보. */
-		grid-template-columns: 9px clamp(48px, 8vw, 64px) minmax(0, 1fr) minmax(0, auto);
+		/* dot / label / pct / raw — label 폭은 좁은 카드에서만 살짝 축소.
+		   desktop 에선 64px 유지해서 영문약자+한글부연 둘 다 들어가게. */
+		grid-template-columns: 9px clamp(56px, 5vw, 64px) minmax(0, 1fr) minmax(0, auto);
 		align-items: center;
 		gap: 7px;
 		min-width: 0;
@@ -1018,16 +1020,14 @@
 	}
 	.foot-row b .ko {
 		font-family: system-ui, -apple-system, 'Segoe UI', 'Malgun Gothic', sans-serif;
-		font-size: 9.5px;
+		font-size: 10.5px;
 		font-weight: 500;
 		color: var(--text-faint);
 		letter-spacing: 0;
 		white-space: nowrap;
 	}
-	/* 카드 폭이 매우 좁으면 영문 약자만 남기고 한글 부연 숨김 — pct/raw 가 가독 우선. */
-	@container kpi-card (max-width: 200px) {
-		.foot-row b .ko { display: none; }
-	}
+	/* 카드 폭이 좁아서 한글 부연이 라벨 영역을 넘칠 정도면 숨김.
+	   1100px 이상 desktop 에선 평균/피크/대비 그대로 노출. */
 	@media (max-width: 1100px) {
 		.foot-row b .ko { display: none; }
 	}
