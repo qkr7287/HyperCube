@@ -2707,6 +2707,16 @@ KPI — 컨테이너·요청·자원 합계
 		border-radius: 12px;
 		color: var(--text-secondary);
 		font-size: 13px;
+		/* main-content 안에서는 테이블/skeleton 자리를 그대로 차지하도록 늘린다.
+		   안 늘리면 빈 상태일 때 박스가 작아져서 아래쪽 빈 영역이 깔리는 죽은
+		   공간이 된다. 안에 내용은 center 정렬이라 키워도 어색하지 않음. */
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 10px;
 	}
 
 	.skel-table {
