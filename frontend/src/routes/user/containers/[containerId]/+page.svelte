@@ -50,12 +50,12 @@
 
 순간 속도가 아닌 누적치라 시간이 지날수록 값은 점점 커집니다. 짧은 시간 동안의 변화량은 그래프 기울기로 확인할 수 있습니다.`;
 
-	const diskHelp = `컨테이너가 시작된 시점부터 누적된 디스크 읽기/쓰기 양입니다.
+	const diskHelp = `컨테이너의 /workspace 볼륨 사용량입니다.
 
-• Read: 디스크에서 읽어 들인 누적 바이트
-• Write: 디스크에 기록한 누적 바이트
+• 분자: 현재 작업 디렉토리(/workspace)가 점유하고 있는 용량
+• 분모: 요청 시 승인된 workspace quota(hard limit)
 
-순간 IOPS가 아닌 누적 바이트입니다. 마찬가지로 그래프 기울기가 가파를수록 그 시간대에 디스크 I/O가 많았다는 의미입니다.`;
+90%를 넘으면 새 파일 쓰기가 실패할 수 있습니다. 모델 가중치·데이터셋·notebook 결과물이 이 한도를 공유합니다.`;
 
 	const timeSeriesHelp = `선택한 기간(1H/6H/24H/7D)에 해당하는 메트릭 변화 추이입니다.
 
@@ -1009,8 +1009,7 @@
 					{cpuHelp}
 					{memoryHelp}
 					{networkHelp}
-					{diskHelp}
-					workspaceHelp="컨테이너별 /workspace XFS project quota 사용량입니다. 분모는 요청 시 승인된 workspace quota(hard limit)입니다."
+					workspaceHelp={diskHelp}
 					cpuPercentLimit={container.cpu_percent_limit}
 					memoryMbLimit={container.memory_mb_limit}
 					workspaceGbLimit={container.workspace_gb_limit}

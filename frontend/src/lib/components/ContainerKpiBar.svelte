@@ -291,7 +291,7 @@
 		<div class="kpi-hero" aria-label="{opts.label} 현재 {formatPercent(opts.value, 2)} {opts.rawText}">
 			<span class="hero-pct"><span class="num">{opts.value.toFixed(2)}</span><span class="unit">%</span></span>
 			<span class="hero-sep" aria-hidden="true">·</span>
-			<span class="hero-raw">{opts.rawText}</span>
+			<span class="hero-raw" title={opts.rawText}>{opts.rawText}</span>
 		</div>
 
 		<div
@@ -485,30 +485,9 @@
 		tipTitle: '네트워크 누적',
 	})}
 
-	{@render flowCard({
-		label: '디스크',
-		help: diskHelp,
-		totalParts: diskValueParts,
-		totalRaw: diskTotal,
-		aShare: diskReadShare,
-		bShare: diskWriteShare,
-		aLabel: 'READ',
-		bLabel: 'WRITE',
-		aLabelKo: '읽기',
-		bLabelKo: '쓰기',
-		aBytes: diskRead,
-		bBytes: diskWrite,
-		deltaTotal: diskDeltaTotal,
-		colorA: 'violet',
-		colorB: 'blue',
-		tipKey: 'disk',
-		tipTitle: '디스크 누적',
-		splitClass: 'disk',
-	})}
-
 	{#if hasWorkspaceMetric}
 		{@render pctCard({
-			label: 'Workspace',
+			label: '디스크',
 			help: workspaceHelp,
 			value: workspaceUsedPct,
 			rawText: workspaceRawText(),
@@ -522,7 +501,7 @@
 			delta: 0,
 			meterClass: 'memory',
 			tipKey: 'workspace',
-			tipTitle: 'Workspace disk',
+			tipTitle: '디스크 사용량',
 			limitText: workspaceLimitChip(),
 			denominatorText: workspaceGbLimit ? `${workspaceGbLimit} GB quota` : 'unlimited',
 		})}
@@ -710,11 +689,15 @@
 	.hero-raw {
 		display: inline-flex;
 		align-items: baseline;
-		min-width: 0;
 		font-size: clamp(16px, 1.05vw, 21px);
 		font-weight: 700;
 		line-height: 1;
 		letter-spacing: -0.02em;
+	}
+	.hero-pct {
+		/* % 값은 KPI 의 헤드라인 — 절대 잘리지 않게 고정 폭 유지. */
+		flex: 0 0 auto;
+		white-space: nowrap;
 	}
 	.hero-raw {
 		font-size: clamp(13px, 0.85vw, 17px);
@@ -722,6 +705,7 @@
 		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.hero-pct .num,
 	.hero-raw .num {
