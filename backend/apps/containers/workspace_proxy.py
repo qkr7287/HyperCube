@@ -150,7 +150,13 @@ def _copy_response_headers(source_headers, response) -> None:
         lowered = key.lower()
         if lowered in HOP_BY_HOP_HEADERS:
             continue
-        if lowered in {"content-length", "content-encoding"}:
+        # Drop Content-Length only — Django recomputes it from the body it
+        # sees. Content-Encoding must be forwarded: urllib.request does not
+        # auto-decompress, so an upstream gzipped JS/CSS asset would be
+        # delivered to the browser as raw gzip bytes with the encoding
+        # header stripped, breaking gradio/JupyterLab static asset parsing
+        # (SyntaxError: Invalid or unexpected token).
+        if lowered == "content-length":
             continue
         response[key] = value
 

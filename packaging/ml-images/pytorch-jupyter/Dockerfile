@@ -19,8 +19,11 @@ RUN python -m pip install --upgrade pip && \
     chmod 0777 /workspace /workspace/models
 
 COPY start-jupyter.sh /usr/local/bin/start-jupyter.sh
-RUN chmod 0755 /usr/local/bin/start-jupyter.sh
+COPY launch_qwen2vl.py /opt/hc/launch_qwen2vl.py
+COPY 00-quickstart.ipynb /opt/hc/00-quickstart.ipynb
+RUN chmod 0755 /usr/local/bin/start-jupyter.sh && \
+    chmod 0644 /opt/hc/launch_qwen2vl.py /opt/hc/00-quickstart.ipynb
 
-EXPOSE 8888
+EXPOSE 8888 7860
 
 ENTRYPOINT ["/usr/local/bin/start-jupyter.sh"]
