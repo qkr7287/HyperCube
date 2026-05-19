@@ -59,6 +59,7 @@ def create_model_upload_request(requester, uploaded_file, **data):
 
 def approve_model_upload_request(upload_request, reviewer, note=""):
     from apps.containers.models import ContainerTemplate
+    from apps.containers.launcher_recipes import NONE_RECIPE_ID, is_valid
 
     with transaction.atomic():
         req = ModelUploadRequest.objects.select_for_update().get(pk=upload_request.pk)
@@ -118,6 +119,12 @@ def approve_model_upload_request(upload_request, reviewer, note=""):
             default_volumes=[],
             default_model_version_ids=[str(version.id)],
             compose_yaml="",
+            launcher_recipe_id=(
+                req.launcher_recipe_id
+                if (req.launcher_recipe_id == "__custom__" or is_valid(req.launcher_recipe_id))
+                else NONE_RECIPE_ID
+            ),
+            launcher_overrides=req.launcher_overrides or {},
             created_by=reviewer,
         )
         req.status = ModelUploadRequest.Status.APPROVED

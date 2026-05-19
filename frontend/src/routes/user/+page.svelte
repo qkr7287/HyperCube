@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
+	import { userHeaderStore } from '$lib/stores/user-header';
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
@@ -51,6 +52,7 @@
 		workspace_kind?: string | null;
 		workspace_host_port?: number | null;
 		workspace_runtime_expires_at?: string | null;
+		launcher_recipe_id?: string | null;
 		mounted_model_versions?: Array<{
 			id: string;
 			asset_name: string;
@@ -752,33 +754,40 @@ KPI — 컨테이너·요청·자원 합계
 		goto(`${base}/user/containers/${containerId}`);
 	}
 
-	async function openWorkspace(c: MyContainer, event?: MouseEvent) {
+	async function openWorkspace(c: MyContainer, event?: MouseEvent, path: string = 'lab') {
 		event?.stopPropagation();
 		const t = token();
 		if (!t || openingId) return;
 		openingId = c.container_id;
 		errorMsg = '';
+		const label = path === 'lab' ? 'Jupyter' : 'Gradio UI';
 		try {
 			const res = await fetch(`${base}/api/workspaces/${c.container_id}/open/`, {
 				method: 'POST',
-				headers: { Authorization: `Bearer ${t}` },
+				headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' },
+				body: JSON.stringify({ path }),
 			});
 			const json = await res.json().catch(() => ({}));
 			if (!res.ok) throw new Error(json?.detail || json?.error || `HTTP ${res.status}`);
 			const url = json.data?.url;
 			if (url) {
 				window.open(`${base}${url}`, '_blank', 'noopener,noreferrer');
-				pushToast('success', `${c.name} Jupyter를 새 탭으로 열었습니다.`);
+				pushToast('success', `${c.name} ${label}를 새 탭으로 열었습니다.`);
 			} else {
-				pushToast('error', 'Jupyter URL 응답이 비어있습니다.');
+				pushToast('error', `${label} URL 응답이 비어있습니다.`);
 			}
 		} catch (error: any) {
-			const msg = error?.message || 'Jupyter 열기에 실패했습니다.';
+			const msg = error?.message || `${label} 열기에 실패했습니다.`;
 			errorMsg = msg;
 			pushToast('error', msg);
 		} finally {
 			openingId = '';
 		}
+	}
+
+	function hasAutoRecipe(c: MyContainer): boolean {
+		const id = (c.launcher_recipe_id || '').trim();
+		return id !== '' && id !== 'none';
 	}
 
 	function requestDisplayName(r: RequestRow): string {
@@ -1085,49 +1094,31 @@ KPI — 컨테이너·요청·자원 합계
 			window.removeEventListener('click', handleWindowClick);
 		}
 		unsubEvents();
+		userHeaderStore.set(null);
+	});
+
+	// Push hero content into the shared layout header. Reactive: re-runs whenever
+	// any counter / busy flag changes.
+	$effect(() => {
+		userHeaderStore.set({
+			title: '내 대시보드',
+			subtitle: '컨테이너 · 요청 · 자원',
+			kpis: [
+				{ key: 'container', label: '컨테이너', value: `${runningCount} / ${totalCount}`, tone: 'container', on: runningCount > 0, title: '실행 중 / 전체' },
+				{ key: 'request', label: '진행 요청', value: String(activeRequests.length), tone: 'request', on: activeRequests.length > 0, title: '대기·승인·배포 중' },
+				{ key: 'gpu', label: 'GPU', value: String(gpuSliceCount), tone: 'gpu', on: gpuSliceCount > 0, title: 'GPU 슬라이스 합계' },
+				{ key: 'ws', label: '워크스페이스', value: String(workspaceCount), tone: 'ws', on: workspaceCount > 0, title: '활성화된 워크스페이스' },
+			],
+			actions: [
+				{ label: refreshing ? '갱신 중…' : '새로고침', onclick: () => load({ silent: true }), variant: 'ghost', disabled: refreshing || loading, spinning: refreshing },
+				{ label: '모델 등록 요청', onclick: () => (modelUploadModalOpen = true), variant: 'ghost' },
+				{ label: '+ 새 요청', onclick: () => openNewRequest(null), variant: 'primary' },
+			],
+		});
 	});
 </script>
 
 <div class="page">
-	<section class="hero">
-		<div class="hero-left">
-			<div class="title-row">
-				<h1>내 대시보드<span class="title-suffix">컨테이너 · 요청 · 자원 한눈에</span></h1>
-				<InfoTooltip text={pageHelp} label="페이지 도움말" placement="bottom-start" maxWidth={420} />
-			</div>
-			<div class="kpi-inline">
-				<span class="kpi-pill kpi-container" class:on={runningCount > 0} title="실행 중 / 전체 컨테이너">
-					<span class="kpi-pill-dot running"></span>
-					<span class="kpi-pill-num">{runningCount} / {totalCount}</span>
-					<span class="kpi-pill-label">컨테이너</span>
-				</span>
-				<span class="kpi-pill kpi-request" class:on={activeRequests.length > 0} title="대기·승인·배포 중 요청">
-					<span class="kpi-pill-dot" class:warn={activeRequests.length > 0}></span>
-					<span class="kpi-pill-num">{activeRequests.length}</span>
-					<span class="kpi-pill-label">진행 요청</span>
-				</span>
-				<span class="kpi-pill kpi-gpu" class:on={gpuSliceCount > 0} title="GPU 슬라이스 합계">
-					<span class="kpi-pill-dot gpu"></span>
-					<span class="kpi-pill-num">{gpuSliceCount}</span>
-					<span class="kpi-pill-label">GPU</span>
-				</span>
-				<span class="kpi-pill kpi-workspace" class:on={workspaceCount > 0} title="활성화된 워크스페이스">
-					<span class="kpi-pill-dot ws"></span>
-					<span class="kpi-pill-num">{workspaceCount}</span>
-					<span class="kpi-pill-label">워크스페이스</span>
-				</span>
-			</div>
-		</div>
-		<div class="hero-actions">
-			<button class="ghost-btn" onclick={() => load({ silent: true })} disabled={refreshing || loading}>
-				<span class="btn-spinner" class:spinning={refreshing}></span>
-				{refreshing ? '갱신 중…' : '새로고침'}
-			</button>
-			<button class="ghost-btn" onclick={() => (modelUploadModalOpen = true)}>모델 등록 요청</button>
-			<button class="new-btn" onclick={() => openNewRequest(null)}>+ 새 요청</button>
-		</div>
-	</section>
-
 	<nav class="page-tabs" aria-label="페이지 탭">
 		<button class:active={activeTab === 'containers'} onclick={() => setTab('containers')}>
 			컨테이너 <Pill tone="var(--text-secondary)" size="md" minWidth="28px">{totalCount}</Pill>
@@ -1392,6 +1383,20 @@ KPI — 컨테이너·요청·자원 합계
 									</svg>
 									<span>모니터링</span>
 								</button>
+								{#if c.workspace_enabled && c.workspace_host_port && hasAutoRecipe(c)}
+									<button
+										class="row-btn row-btn-accent"
+										onclick={(e) => openWorkspace(c, e, 'proxy/7860/')}
+										disabled={openingId === c.container_id}
+										title="자동 실행된 모델의 gradio UI 열기"
+									>
+										<svg class="row-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+											<path d="M5 12h14" />
+											<path d="M13 6l6 6-6 6" />
+										</svg>
+										<span>{openingId === c.container_id ? '여는 중…' : 'AI UI'}</span>
+									</button>
+								{/if}
 								<button
 									class="row-btn"
 									onclick={(e) => (c.workspace_enabled && c.workspace_host_port) && openWorkspace(c, e)}
@@ -3028,6 +3033,17 @@ KPI — 컨테이너·요청·자원 합계
 		width: 28px;
 	}
 
+	.row-btn-accent {
+		background: rgba(77, 191, 179, 0.12);
+		border-color: rgba(77, 191, 179, 0.45);
+		color: var(--accent);
+	}
+
+	.row-btn-accent:hover {
+		background: rgba(77, 191, 179, 0.22);
+		border-color: rgba(77, 191, 179, 0.7);
+	}
+
 	.row-btn-ico {
 		width: 13px;
 		height: 13px;
@@ -3035,17 +3051,18 @@ KPI — 컨테이너·요청·자원 합계
 	}
 
 	.row-btn-more {
-		opacity: 0;
-		transition: opacity 0.12s, background 0.12s, color 0.12s, border-color 0.12s;
 		color: var(--text-muted);
 		background: transparent;
-		border-color: transparent;
+		border-color: var(--border);
+		transition: color 0.12s, border-color 0.12s, background 0.12s;
 	}
 
-	.container-row:hover .row-btn-more,
-	.row-btn-more:focus-visible {
-		opacity: 1;
+	.row-btn-more:hover {
+		color: var(--text-primary);
+		border-color: var(--accent);
 	}
+
+	/* row-btn-more now always visible (opacity rule removed). */
 
 
 	/* filter-chips / kpi-pill 은 Pill 컴포넌트 size=md 와 동일한 외형 (height 30, radius 6) */

@@ -860,9 +860,9 @@
 						<button
 							type="button"
 							class="back-link"
-							onclick={() => goto(`${base}/user/containers`)}
-							aria-label="컨테이너 목록으로 돌아가기"
-							title="컨테이너 목록으로 돌아가기"
+							onclick={() => goto(`${base}/user`)}
+							aria-label="대시보드로 돌아가기"
+							title="대시보드로 돌아가기"
 						>
 							<span aria-hidden="true">←</span>
 						</button>

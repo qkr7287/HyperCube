@@ -7,6 +7,8 @@ from django.core.exceptions import ValidationError
 from apps.common import command_router
 from apps.containers.models import ContainerRequest
 
+from apps.containers.launcher_recipes import NONE_RECIPE_ID, is_auto
+
 from .gpu_allocation import fail_reserved_gpu_allocations_for_request, gpu_payload_for_request
 from .workspace import (
     delete_workspace_token_for_request,
@@ -100,10 +102,12 @@ def _build_create_payload(req_obj: ContainerRequest, workspace_secret=None) -> d
         }
 
     ports = [p for p in (req_obj.custom_ports or []) if isinstance(p, dict)]
+    env = dict(req_obj.custom_env or {})
+    env.update(_launcher_env_for_request(req_obj))
     params = {
         "image": req_obj.selected_image or (tpl.image if tpl else ""),
         "name": req_obj.custom_name or f"hc-{str(req_obj.id)[:8]}",
-        "env": req_obj.custom_env or {},
+        "env": env,
         "ports": ports,
         "volumes": list(tpl.default_volumes) if tpl else [],
         "gpus": gpu_payload_for_request(req_obj),
@@ -164,6 +168,65 @@ def _host_config_payload(req_obj: ContainerRequest) -> dict:
     if payload:
         payload["oomKillDisable"] = False
     return payload
+
+
+CUSTOM_RECIPE_ID = "__custom__"
+
+
+def _launcher_env_for_request(req_obj: ContainerRequest) -> dict:
+    """Inject HC_LAUNCHER_* env so the base image can auto-start a gradio UI.
+
+    Empty dict when the template has no recipe (or recipe is 'none'). When the
+    recipe is '__custom__', read launcher_overrides off the template and emit
+    HC_LAUNCHER_MODEL_CLASS / _PROCESSOR_CLASS / _APP_TEMPLATE / _TRUST_REMOTE_CODE
+    env so launch.py can build an inline recipe at startup.
+    """
+    tpl = req_obj.template
+    recipe_id = getattr(tpl, "launcher_recipe_id", None) or NONE_RECIPE_ID
+    is_custom = recipe_id == CUSTOM_RECIPE_ID
+    if not is_custom and not is_auto(recipe_id):
+        return {}
+    asset_slug = _primary_model_asset_slug(req_obj)
+    if not asset_slug:
+        return {}
+    env = {
+        "HC_LAUNCHER_RECIPE": recipe_id,
+        "HC_MODEL_DIR": f"/workspace/{asset_slug}",
+        "HC_GRADIO_PORT": "7860",
+        "HC_GRADIO_ROOT_PATH": "/proxy/7860",
+    }
+    if is_custom:
+        overrides = getattr(tpl, "launcher_overrides", None) or {}
+        model_class = (overrides.get("model_class") or "").strip()
+        if not model_class:
+            return {}
+        env["HC_LAUNCHER_MODEL_CLASS"] = model_class
+        env["HC_LAUNCHER_PROCESSOR_CLASS"] = (
+            overrides.get("processor_class") or "AutoTokenizer"
+        ).strip()
+        env["HC_LAUNCHER_APP_TEMPLATE"] = (
+            overrides.get("app_template") or "gradio_text_chat"
+        ).strip()
+        env["HC_LAUNCHER_TRUST_REMOTE_CODE"] = (
+            "true" if overrides.get("trust_remote_code") else "false"
+        )
+    return env
+
+
+def _primary_model_asset_slug(req_obj: ContainerRequest) -> str:
+    version_ids = list(req_obj.model_version_ids or [])
+    if not version_ids:
+        return ""
+    from apps.models_catalog.models import ModelVersion
+
+    version = (
+        ModelVersion.objects.select_related("asset")
+        .filter(pk=version_ids[0])
+        .first()
+    )
+    if not version or not version.asset:
+        return ""
+    return version.asset.slug or ""
 
 
 def _workspace_quota_payload(req_obj: ContainerRequest) -> dict | None:

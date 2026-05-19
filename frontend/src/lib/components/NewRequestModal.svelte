@@ -130,7 +130,9 @@
 	let useResourceRecommendation = $state(true);
 	let resourceRecommendation = $state<ResourceRecommendation | null>(null);
 	let resourceLoading = $state(false);
-	let templateTab = $state<'ml' | 'general'>('ml');
+	let templateSearch = $state('');
+	type TemplateScope = 'all' | 'with-model';
+	let templateScope = $state<TemplateScope>('all');
 	let busy = $state(false);
 	let loading = $state(false);
 	let gpuLoading = $state(false);
@@ -140,8 +142,18 @@
 	let lastCacheKey = '';
 	let lastRecommendationKey = '';
 
-	let visibleTemplates = $derived(
-		templates.filter((tpl) => (templateTab === 'ml' ? tpl.category === 'ml' : tpl.category !== 'ml')),
+	let visibleTemplates = $derived.by(() => {
+		const q = templateSearch.trim().toLowerCase();
+		return templates.filter((tpl) => {
+			if (templateScope === 'with-model' && !(tpl.default_model_version_ids?.length)) return false;
+			if (!q) return true;
+			const hay = `${tpl.name} ${tpl.description ?? ''} ${tpl.image ?? ''}`.toLowerCase();
+			return hay.includes(q);
+		});
+	});
+
+	let withModelCount = $derived(
+		templates.filter((tpl) => (tpl.default_model_version_ids?.length ?? 0) > 0).length,
 	);
 
 	let gpuSlices = $derived(
@@ -236,7 +248,8 @@
 		workspaceGb = 10;
 		useResourceRecommendation = true;
 		resourceRecommendation = null;
-		templateTab = 'ml';
+		templateSearch = '';
+		templateScope = 'all';
 		gpuDevices = [];
 		cacheStatuses = {};
 		errorMsg = '';
@@ -271,7 +284,7 @@
 			modelVersions = modelJson.data?.results ?? [];
 
 			if (agents.length === 1) selectedAgent = agents[0].id;
-			if (!templates.some((tpl) => tpl.category === 'ml')) templateTab = 'general';
+			// preserve the user's filter; we no longer auto-flip to General.
 		} catch (error: any) {
 			errorMsg = error?.message || '요청 정보를 불러오지 못했습니다.';
 		} finally {
@@ -535,13 +548,17 @@
 
 			<div class="modal-content">
 				{#if !selectedTemplate}
-					<div class="tabs">
-						<button type="button" class:active={templateTab === 'ml'} onclick={() => (templateTab = 'ml')}>
-							ML Workspace
-						</button>
-						<button type="button" class:active={templateTab === 'general'} onclick={() => (templateTab = 'general')}>
-							General
-						</button>
+					<div class="tpl-toolbar">
+						<input
+							class="tpl-search"
+							type="search"
+							bind:value={templateSearch}
+							placeholder="템플릿 검색 (이름 · 설명 · 이미지)"
+						/>
+						<div class="tpl-segmented" role="radiogroup" aria-label="범위">
+							<button type="button" class:active={templateScope === 'all'} onclick={() => (templateScope = 'all')} aria-pressed={templateScope === 'all'}>전체 <span class="cnt">{templates.length}</span></button>
+							<button type="button" class:active={templateScope === 'with-model'} onclick={() => (templateScope = 'with-model')} aria-pressed={templateScope === 'with-model'}>모델 <span class="cnt">{withModelCount}</span></button>
+						</div>
 					</div>
 
 					{#if loading}
@@ -549,204 +566,216 @@
 					{:else if visibleTemplates.length === 0}
 						<div class="empty">선택 가능한 템플릿이 없습니다.</div>
 					{:else}
-						<div class="template-grid">
-							{#each visibleTemplates as tpl (tpl.id)}
-								{@const bundled = bundledModelLabels(tpl)}
-								<button type="button" class="template-card" onclick={() => selectTemplate(tpl)}>
-									<div class="tpl-head">
-										<strong>{tpl.name}</strong>
-										<span>{tpl.kind}</span>
-									</div>
-									<p>{tpl.description || tpl.image}</p>
-									{#if bundled.length > 0}
-										<div class="bundled-models" title={bundled.join(', ')}>
-											<span class="bundled-key">포함 모델</span>
-											<span class="bundled-val">{bundled.join(' · ')}</span>
-										</div>
-									{/if}
-									<div class="badges">
-										{#if tpl.requires_gpu}<b>GPU</b>{/if}
-										{#if tpl.workspace_enabled}<b>{tpl.workspace_kind || 'workspace'}</b>{/if}
-										{#if (tpl.default_model_version_ids?.length ?? 0) > 0}<b>모델 포함</b>{/if}
-										{#if tpl.category === 'ml'}<b>ML</b>{/if}
-									</div>
-								</button>
-							{/each}
+						<div class="tpl-table-wrap">
+							<table class="tpl-table">
+								<thead>
+									<tr>
+										<th>이름</th>
+										<th class="col-meta">유형</th>
+										<th>이미지 / 포함 모델</th>
+										<th class="col-meta">자원</th>
+										<th class="col-pick"></th>
+									</tr>
+								</thead>
+								<tbody>
+									{#each visibleTemplates as tpl (tpl.id)}
+										{@const bundled = bundledModelLabels(tpl)}
+										<tr class="tpl-row" onclick={() => selectTemplate(tpl)} title={tpl.description || tpl.image}>
+											<td><strong>{tpl.name}</strong></td>
+											<td class="col-meta">{tpl.kind}{#if tpl.category === 'ml'} · ML{/if}</td>
+											<td class="col-archs">
+												{#if bundled.length > 0}
+													<code title={bundled.join(', ')}>{bundled.slice(0, 2).join(' · ')}{bundled.length > 2 ? ` +${bundled.length - 2}` : ''}</code>
+												{:else}
+													<code class="muted">{tpl.image || '—'}</code>
+												{/if}
+											</td>
+											<td class="col-meta">
+												{tpl.requires_gpu ? 'GPU' : 'CPU'} · {tpl.workspace_kind || '—'}
+											</td>
+											<td class="col-pick"><span class="tpl-pick">선택 →</span></td>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
 						</div>
 					{/if}
 				{:else}
-					<div class="two-col">
-						<section>
-							<h3>1. 실행 대상</h3>
+					<table class="cfg-table">
+						<tbody>
 							{#if selectedTemplate?.kind === 'simple' && (selectedTemplate?.image_options?.length ?? 0) > 0}
-								<label class="field">
-									<span>이미지</span>
-									<select bind:value={selectedImage}>
-										{#each selectedTemplate?.image_options ?? [] as option}
-											<option value={option.image}>{option.label}</option>
+								<tr>
+									<th>이미지</th>
+									<td>
+										<select bind:value={selectedImage}>
+											{#each selectedTemplate?.image_options ?? [] as option}
+												<option value={option.image}>{option.label}</option>
+											{/each}
+										</select>
+									</td>
+								</tr>
+							{/if}
+							<tr>
+								<th>컨테이너 이름</th>
+								<td><input bind:value={customName} placeholder="비워두면 자동 생성" /></td>
+							</tr>
+							<tr>
+								<th>배치 서버 <em class="req">*</em></th>
+								<td>
+									<select bind:value={selectedAgent}>
+										<option value="" disabled>서버 선택</option>
+										{#each agents as agent (agent.id)}
+											<option value={agent.id}>{agent.hostname} ({agent.ip_address})</option>
 										{/each}
 									</select>
-								</label>
-							{/if}
-							<label class="field">
-								<span>컨테이너 이름</span>
-								<input bind:value={customName} placeholder="비워두면 자동 생성" />
-							</label>
-							<label class="field">
-								<span>배치 서버 *</span>
-								<select bind:value={selectedAgent}>
-									<option value="" disabled>서버 선택</option>
-									{#each agents as agent (agent.id)}
-										<option value={agent.id}>{agent.hostname} ({agent.ip_address})</option>
-									{/each}
-								</select>
-							</label>
-							<label class="field">
-								<span>최대 실행 시간</span>
-								<input
-									type="number"
-									min="1"
-									bind:value={requestedMaxRuntimeHours}
-									placeholder="템플릿 기본값"
-								/>
-							</label>
-						</section>
-
-						<section>
-							<h3>3. GPU</h3>
-							{#if selectedTemplate?.requires_gpu}
-								{#if !selectedAgent}
-									<div class="empty compact">먼저 배치 서버를 선택하세요.</div>
-								{:else if gpuLoading}
-									<div class="empty compact">GPU 정보를 불러오는 중입니다.</div>
-								{:else if gpuSlices.length === 0}
-									<div class="empty compact">선택한 서버에 사용 가능한 GPU slice가 없습니다.</div>
-								{:else}
-									<div class="slice-list">
-										{#each gpuSlices as slice (slice.id)}
-											<button
-												type="button"
-												class="slice-tile"
-												class:selected={selectedGpuSliceIds.includes(slice.id)}
-												disabled={slice.status !== 'available'}
-												onclick={() => selectGpuSlice(slice.id)}
-											>
-												<span>
-													<strong>{slice.label || slice.gpuName || slice.device_id}</strong>
-													<em>GPU {slice.gpuIndex ?? 0} · {sliceModeLabel(slice)} · {formatMb(slice.memory_mb)}</em>
-												</span>
-												<div class="slice-badges">
-													<b>{slice.status}</b>
-													{#if slice.allow_shared}<b class="share-badge">shareable</b>{/if}
-												</div>
-											</button>
-										{/each}
-									</div>
-									{#if selectedGpuCanShare}
-										<label class="share-opt-in">
-											<input type="checkbox" bind:checked={gpuShareOk} />
-											<span>
-												<strong>Request shared GPU</strong>
-												<em>Experimental: backend policy must enable shared mode and memory accounting first.</em>
-											</span>
-										</label>
-									{:else if selectedGpuSlice}
-										<div class="policy-note">
-											Selected slice will be reserved exclusively. Shared GPU is allowed only when both the slice and backend policy opt in.
+								</td>
+							</tr>
+							<tr>
+								<th>최대 실행 시간</th>
+								<td>
+									<input
+										type="number"
+										min="1"
+										bind:value={requestedMaxRuntimeHours}
+										placeholder="템플릿 기본값"
+									/>
+									<span class="cfg-hint">시간 단위. 비우면 템플릿 기본값.</span>
+								</td>
+							</tr>
+							<tr>
+								<th>GPU</th>
+								<td>
+									{#if !selectedTemplate?.requires_gpu}
+										<span class="cfg-muted">이 템플릿은 GPU 없이 요청할 수 있습니다.</span>
+									{:else if !selectedAgent}
+										<span class="cfg-muted">먼저 배치 서버를 선택하세요.</span>
+									{:else if gpuLoading}
+										<span class="cfg-muted">GPU 정보를 불러오는 중…</span>
+									{:else if gpuSlices.length === 0}
+										<span class="cfg-muted">선택한 서버에 사용 가능한 GPU slice가 없습니다.</span>
+									{:else}
+										<div class="slice-list">
+											{#each gpuSlices as slice (slice.id)}
+												<button
+													type="button"
+													class="slice-tile"
+													class:selected={selectedGpuSliceIds.includes(slice.id)}
+													disabled={slice.status !== 'available'}
+													onclick={() => selectGpuSlice(slice.id)}
+												>
+													<span>
+														<strong>{slice.label || slice.gpuName || slice.device_id}</strong>
+														<em>GPU {slice.gpuIndex ?? 0} · {sliceModeLabel(slice)} · {formatMb(slice.memory_mb)}</em>
+													</span>
+													<div class="slice-badges">
+														<b>{slice.status}</b>
+														{#if slice.allow_shared}<b class="share-badge">shareable</b>{/if}
+													</div>
+												</button>
+											{/each}
 										</div>
+										{#if selectedGpuCanShare}
+											<label class="share-opt-in">
+												<input type="checkbox" bind:checked={gpuShareOk} />
+												<span>
+													<strong>Request shared GPU</strong>
+													<em>Experimental: backend policy must enable shared mode and memory accounting first.</em>
+												</span>
+											</label>
+										{:else if selectedGpuSlice}
+											<div class="policy-note">
+												Selected slice will be reserved exclusively. Shared GPU is allowed only when both the slice and backend policy opt in.
+											</div>
+										{/if}
 									{/if}
-								{/if}
-							{:else}
-								<div class="empty compact">이 템플릿은 GPU 없이 요청할 수 있습니다.</div>
-							{/if}
-						</section>
-					</div>
-
-					<ResourceLimitForm
-						bind:cpuPercent
-						bind:memoryMb
-						bind:workspaceGb
-						bind:useRecommendation={useResourceRecommendation}
-						recommendedCpuPercent={resourceRecommendation?.cpu_percent ?? selectedTemplate?.min_cpu_percent ?? 100}
-						recommendedMemoryMb={resourceRecommendation?.memory_mb ?? selectedTemplate?.min_memory_mb ?? 2048}
-						recommendedWorkspaceGb={resourceRecommendation?.workspace_gb ?? selectedTemplate?.min_workspace_gb ?? 10}
-						minCpuPercent={selectedTemplate?.min_cpu_percent ?? 100}
-						minMemoryMb={selectedTemplate?.min_memory_mb ?? 2048}
-						minWorkspaceGb={selectedTemplate?.min_workspace_gb ?? 10}
-						hostCpuCores={selectedAgentInfo?.cpu_cores ?? null}
-						hostMemoryMb={selectedAgentInfo?.ram_total_mb ?? null}
-						hostWorkspacePoolGb={selectedAgentInfo?.workspace_pool_total_gb ?? null}
-						hostWorkspacePoolFreeGb={selectedAgentInfo?.workspace_pool_free_gb ?? null}
-						hostWorkspaceHardEnforcement={selectedAgentInfo?.workspace_hard_enforcement ?? false}
-						loading={resourceLoading}
-					/>
-
-					<section>
-						<h3>4. 모델 자산</h3>
-						{#if modelVersions.length === 0}
-							<div class="empty compact">등록된 모델 버전이 없습니다.</div>
-						{:else}
-							<div class="model-list">
-								{#each modelVersions as version (version.id)}
-									<button
-										type="button"
-										class="model-row"
-										class:selected={selectedModelVersionIds.includes(version.id)}
-										onclick={() => toggleModel(version.id)}
-									>
-										<span>
-											<strong>{version.asset_name}</strong>
-											<em>{version.version} · {formatBytes(version.size_bytes)}</em>
-										</span>
-										<b data-status={cacheStatuses[version.id]?.status ?? 'missing'}>{cacheLabel(version.id)}</b>
-									</button>
-								{/each}
-							</div>
-							{#if cacheLoading}
-								<p class="micro">선택한 서버의 모델 캐시 상태를 확인하는 중입니다.</p>
-							{/if}
-						{/if}
-					</section>
-
-					{#if (selectedTemplate?.env_schema?.length ?? 0) > 0 || (selectedTemplate?.port_schema?.length ?? 0) > 0}
-						<section>
-							<h3>5. 환경/포트</h3>
-							<div class="two-col">
-								<div class="stack">
-									{#each selectedTemplate?.env_schema ?? [] as env}
-										<label class="field">
-											<span>{env.key}{env.required ? ' *' : ''}</span>
-											<input
-												type={env.type === 'password' ? 'password' : 'text'}
-												value={envValues[env.key] ?? ''}
-												oninput={(event) => {
-													envValues[env.key] = event.currentTarget.value;
-													envValues = envValues;
-												}}
-											/>
-										</label>
-									{/each}
-								</div>
-								<div class="stack">
-									{#each selectedTemplate?.port_schema ?? [] as port}
-										<label class="field">
-											<span>{port.description || `Port ${port.internal}`}</span>
-											<input
-												type="number"
-												min="1"
-												max="65535"
-												value={portValues[port.internal] ?? port.host_default}
-												oninput={(event) => {
-													portValues[port.internal] = Number(event.currentTarget.value);
-													portValues = portValues;
-												}}
-											/>
-										</label>
-									{/each}
-								</div>
-							</div>
-						</section>
-					{/if}
+								</td>
+							</tr>
+							<tr>
+								<th>자원 limits</th>
+								<td>
+									<ResourceLimitForm
+										bind:cpuPercent
+										bind:memoryMb
+										bind:workspaceGb
+										bind:useRecommendation={useResourceRecommendation}
+										recommendedCpuPercent={resourceRecommendation?.cpu_percent ?? selectedTemplate?.min_cpu_percent ?? 100}
+										recommendedMemoryMb={resourceRecommendation?.memory_mb ?? selectedTemplate?.min_memory_mb ?? 2048}
+										recommendedWorkspaceGb={resourceRecommendation?.workspace_gb ?? selectedTemplate?.min_workspace_gb ?? 10}
+										minCpuPercent={selectedTemplate?.min_cpu_percent ?? 100}
+										minMemoryMb={selectedTemplate?.min_memory_mb ?? 2048}
+										minWorkspaceGb={selectedTemplate?.min_workspace_gb ?? 10}
+										hostCpuCores={selectedAgentInfo?.cpu_cores ?? null}
+										hostMemoryMb={selectedAgentInfo?.ram_total_mb ?? null}
+										hostWorkspacePoolGb={selectedAgentInfo?.workspace_pool_total_gb ?? null}
+										hostWorkspacePoolFreeGb={selectedAgentInfo?.workspace_pool_free_gb ?? null}
+										hostWorkspaceHardEnforcement={selectedAgentInfo?.workspace_hard_enforcement ?? false}
+										loading={resourceLoading}
+									/>
+								</td>
+							</tr>
+							<tr>
+								<th>모델 자산</th>
+								<td>
+									{#if modelVersions.length === 0}
+										<span class="cfg-muted">등록된 모델 버전이 없습니다.</span>
+									{:else}
+										<div class="model-list">
+											{#each modelVersions as version (version.id)}
+												<button
+													type="button"
+													class="model-row"
+													class:selected={selectedModelVersionIds.includes(version.id)}
+													onclick={() => toggleModel(version.id)}
+												>
+													<span>
+														<strong>{version.asset_name}</strong>
+														<em>{version.version} · {formatBytes(version.size_bytes)}</em>
+													</span>
+													<b data-status={cacheStatuses[version.id]?.status ?? 'missing'}>{cacheLabel(version.id)}</b>
+												</button>
+											{/each}
+										</div>
+										{#if cacheLoading}
+											<p class="cfg-hint">선택한 서버의 모델 캐시 상태를 확인하는 중입니다.</p>
+										{/if}
+									{/if}
+								</td>
+							</tr>
+							{#each selectedTemplate?.env_schema ?? [] as env}
+								<tr>
+									<th>env: <code>{env.key}</code>{env.required ? ' *' : ''}</th>
+									<td>
+										<input
+											type={env.type === 'password' ? 'password' : 'text'}
+											value={envValues[env.key] ?? ''}
+											oninput={(event) => {
+												envValues[env.key] = event.currentTarget.value;
+												envValues = envValues;
+											}}
+										/>
+									</td>
+								</tr>
+							{/each}
+							{#each selectedTemplate?.port_schema ?? [] as port}
+								<tr>
+									<th>port: <code>{port.internal}</code></th>
+									<td>
+										<input
+											type="number"
+											min="1"
+											max="65535"
+											value={portValues[port.internal] ?? port.host_default}
+											oninput={(event) => {
+												portValues[port.internal] = Number(event.currentTarget.value);
+												portValues = portValues;
+											}}
+										/>
+										{#if port.description}<span class="cfg-hint">{port.description}</span>{/if}
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
 				{/if}
 			</div>
 
@@ -777,7 +806,7 @@
 
 	.modal {
 		width: min(980px, 94vw);
-		max-height: 90vh;
+		height: min(720px, 90vh);
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
@@ -892,6 +921,286 @@
 		gap: 10px;
 	}
 
+	.cfg-table {
+		width: 100%;
+		border-collapse: separate;
+		border-spacing: 0;
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		background: var(--bg-base);
+		overflow: hidden;
+	}
+
+	.cfg-table th {
+		padding: 10px 12px;
+		text-align: left;
+		vertical-align: top;
+		width: 160px;
+		min-width: 140px;
+		font-size: 11.5px;
+		font-weight: 800;
+		letter-spacing: 0.02em;
+		color: var(--text-muted);
+		background: rgba(13, 17, 23, 0.4);
+		border-bottom: 1px solid var(--border);
+		text-transform: uppercase;
+		white-space: nowrap;
+	}
+
+	.cfg-table td {
+		padding: 10px 12px;
+		border-bottom: 1px solid var(--border);
+		vertical-align: top;
+	}
+
+	.cfg-table tr:last-child th,
+	.cfg-table tr:last-child td {
+		border-bottom: none;
+	}
+
+	.cfg-table input,
+	.cfg-table select {
+		width: 100%;
+		font: inherit;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		background: var(--bg-base);
+		color: var(--text-primary);
+		padding: 6px 9px;
+	}
+
+	.cfg-table input:focus,
+	.cfg-table select:focus {
+		outline: none;
+		border-color: var(--accent);
+		box-shadow: 0 0 0 2px rgba(77, 191, 179, 0.18);
+	}
+
+	.cfg-hint {
+		display: block;
+		margin-top: 4px;
+		color: var(--text-muted);
+		font-size: 11px;
+	}
+
+	.cfg-muted {
+		color: var(--text-muted);
+		font-size: 12px;
+	}
+
+	.cfg-table .req {
+		color: var(--accent);
+		font-style: normal;
+		font-weight: 900;
+	}
+
+	.cfg-table th code {
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: 11px;
+		padding: 1px 4px;
+		background: rgba(100, 116, 139, 0.18);
+		border-radius: 3px;
+		color: var(--text-primary);
+		text-transform: none;
+		font-weight: 700;
+	}
+
+	.tpl-toolbar {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin-bottom: 10px;
+	}
+
+	.tpl-search {
+		flex: 1;
+		min-width: 0;
+		font: inherit;
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		background: var(--bg-base);
+		color: var(--text-primary);
+		padding: 8px 12px;
+	}
+
+	.tpl-search:focus {
+		outline: none;
+		border-color: var(--accent);
+		box-shadow: 0 0 0 3px rgba(77, 191, 179, 0.18);
+	}
+
+	.tpl-segmented {
+		display: inline-flex;
+		flex-shrink: 0;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		overflow: hidden;
+		background: var(--bg-base);
+	}
+
+	.tpl-segmented button {
+		padding: 6px 12px;
+		font: inherit;
+		font-size: 11.5px;
+		font-weight: 700;
+		color: var(--text-muted);
+		background: transparent;
+		border: none;
+		border-right: 1px solid var(--border);
+		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+	}
+
+	.tpl-segmented button:last-child {
+		border-right: none;
+	}
+
+	.tpl-segmented button:hover {
+		color: var(--text-primary);
+		background: rgba(77, 191, 179, 0.05);
+	}
+
+	.tpl-segmented button.active {
+		color: var(--accent);
+		background: rgba(77, 191, 179, 0.14);
+	}
+
+	.tpl-segmented .cnt {
+		padding: 1px 5px;
+		font-size: 10px;
+		color: var(--text-muted);
+		background: rgba(100, 116, 139, 0.18);
+		border-radius: 3px;
+	}
+
+	.tpl-segmented button.active .cnt {
+		color: var(--accent);
+		background: rgba(77, 191, 179, 0.20);
+	}
+
+	.tpl-flag-group {
+		display: inline-flex;
+		gap: 6px;
+		flex-shrink: 0;
+	}
+
+	.tpl-flag {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 5px 10px;
+		font-size: 11.5px;
+		font-weight: 700;
+		color: var(--text-muted);
+		background: transparent;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		cursor: pointer;
+		user-select: none;
+	}
+
+	.tpl-flag:hover {
+		color: var(--text-primary);
+		border-color: rgba(77, 191, 179, 0.4);
+	}
+
+	.tpl-flag.active {
+		color: var(--accent);
+		background: rgba(77, 191, 179, 0.12);
+		border-color: var(--accent);
+	}
+
+	.tpl-flag input[type='checkbox'] {
+		width: 13px;
+		height: 13px;
+		margin: 0;
+		accent-color: var(--accent);
+	}
+
+	.tpl-table-wrap {
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		overflow: auto;
+		max-height: 460px;
+		background: var(--bg-base);
+	}
+
+	.tpl-table {
+		width: 100%;
+		border-collapse: separate;
+		border-spacing: 0;
+		font-size: 12.5px;
+	}
+
+	.tpl-table thead th {
+		padding: 6px 10px;
+		text-align: left;
+		font-size: 10.5px;
+		font-weight: 800;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--text-muted);
+		border-bottom: 1px solid var(--border);
+		background: rgba(13, 17, 23, 0.95);
+		position: sticky;
+		top: 0;
+		z-index: 2;
+	}
+
+	.tpl-table tbody td {
+		padding: 8px 10px;
+		border-bottom: 1px solid var(--border);
+		vertical-align: middle;
+	}
+
+	.tpl-table tbody tr.tpl-row {
+		cursor: pointer;
+		transition: background 0.12s;
+	}
+
+	.tpl-table tbody tr.tpl-row:hover {
+		background: rgba(77, 191, 179, 0.06);
+	}
+
+	.tpl-table tbody tr.tpl-row strong {
+		font-size: 13px;
+		font-weight: 800;
+		color: var(--text-primary);
+	}
+
+	.tpl-table .col-meta {
+		white-space: nowrap;
+		color: var(--text-muted);
+		font-size: 11.5px;
+	}
+
+	.tpl-table .col-archs code {
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: 11px;
+		color: var(--text-primary);
+		background: rgba(100, 116, 139, 0.14);
+		padding: 1px 5px;
+		border-radius: 3px;
+	}
+
+	.tpl-table .col-archs code.muted {
+		color: var(--text-muted);
+	}
+
+	.tpl-table .col-pick {
+		width: 64px;
+		text-align: right;
+		white-space: nowrap;
+	}
+
+	.tpl-pick {
+		color: var(--accent);
+		font-size: 11.5px;
+		font-weight: 800;
+	}
+
 	.template-card,
 	.slice-tile,
 	.model-row,
@@ -906,10 +1215,11 @@
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
-		min-height: 120px;
+		height: 168px;
 		padding: 12px;
 		text-align: left;
 		color: var(--text-primary);
+		overflow: hidden;
 	}
 
 	.template-card:hover,
@@ -921,10 +1231,28 @@
 	.tpl-head {
 		justify-content: space-between;
 		gap: 10px;
+		flex-wrap: nowrap;
+		min-width: 0;
 	}
 
 	.tpl-head strong {
+		flex: 1 1 auto;
+		min-width: 0;
 		font-size: 14px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.tpl-head span {
+		flex-shrink: 0;
+	}
+
+	.template-card p {
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
 	}
 
 	.tpl-head span,

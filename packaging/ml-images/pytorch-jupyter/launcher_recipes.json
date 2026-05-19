@@ -1,0 +1,82 @@
+{
+  "recipes": [
+    {
+      "id": "auto-causal-lm",
+      "label": "일반 텍스트 LLM",
+      "description": "텍스트 in / 텍스트 out. AutoModelForCausalLM + AutoTokenizer 로 자동 로드.",
+      "model_class": "AutoModelForCausalLM",
+      "processor_class": "AutoTokenizer",
+      "input_kinds": [
+        "text"
+      ],
+      "app_template": "gradio_text_chat",
+      "architectures": [
+        "LlamaForCausalLM",
+        "MistralForCausalLM",
+        "Qwen2ForCausalLM",
+        "Qwen2_5ForCausalLM",
+        "Phi3ForCausalLM",
+        "GemmaForCausalLM",
+        "Gemma2ForCausalLM",
+        "GPTNeoXForCausalLM",
+        "MixtralForCausalLM"
+      ],
+      "trust_remote_code": false,
+      "extra_env": {},
+      "available": true,
+      "category": "chat"
+    },
+    {
+      "id": "qwen2-vl",
+      "label": "Qwen2-VL (이미지+텍스트)",
+      "description": "이미지+프롬프트를 받아 한국어로 답하는 멀티모달 chat. Qwen2-VL 계열 (2B/7B).",
+      "model_class": "Qwen2VLForConditionalGeneration",
+      "processor_class": "AutoProcessor",
+      "input_kinds": [
+        "image",
+        "text"
+      ],
+      "app_template": "gradio_vlm_chat",
+      "architectures": [
+        "Qwen2VLForConditionalGeneration"
+      ],
+      "trust_remote_code": false,
+      "extra_env": {},
+      "available": true,
+      "category": "chat"
+    },
+    {
+      "id": "llava-onevision",
+      "label": "LLaVA-OneVision (이미지+텍스트)",
+      "description": "이미지+프롬프트 멀티모달 chat. LLaVA-OneVision 계열.",
+      "model_class": "LlavaOnevisionForConditionalGeneration",
+      "processor_class": "AutoProcessor",
+      "input_kinds": [
+        "image",
+        "text"
+      ],
+      "app_template": "gradio_vlm_chat",
+      "architectures": [
+        "LlavaOnevisionForConditionalGeneration"
+      ],
+      "trust_remote_code": false,
+      "extra_env": {},
+      "available": true,
+      "category": "chat"
+    },
+    {
+      "id": "none",
+      "label": "자동 실행 안 함",
+      "description": "컨테이너는 jupyter만 띄우고, 모델 로드는 사용자가 노트북에서 직접 수행.",
+      "model_class": "",
+      "processor_class": "",
+      "input_kinds": [],
+      "app_template": "none",
+      "architectures": [],
+      "trust_remote_code": false,
+      "extra_env": {},
+      "available": true,
+      "category": "other"
+    }
+  ]
+}

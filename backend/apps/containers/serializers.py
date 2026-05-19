@@ -153,6 +153,11 @@ class MyContainerSerializer(ContainerSerializer):
         read_only=True,
         default="",
     )
+    launcher_recipe_id = serializers.CharField(
+        source="created_via_request.template.launcher_recipe_id",
+        read_only=True,
+        default="none",
+    )
 
     class Meta(ContainerSerializer.Meta):
         fields = ContainerSerializer.Meta.fields + [
@@ -164,6 +169,7 @@ class MyContainerSerializer(ContainerSerializer):
             "custom_env",
             "custom_ports",
             "selected_image",
+            "launcher_recipe_id",
         ]
 
 
@@ -204,6 +210,8 @@ class ContainerTemplateSerializer(serializers.ModelSerializer):
             "port_schema",
             "default_volumes",
             "default_model_version_ids",
+            "launcher_recipe_id",
+            "launcher_overrides",
             "compose_yaml",
             "created_by",
             "created_by_username",

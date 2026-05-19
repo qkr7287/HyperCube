@@ -113,6 +113,10 @@ class ModelUploadRequest(models.Model):
     version = models.CharField(max_length=80, default="v1")
     template_name = models.CharField(max_length=100, blank=True, default="")
     template_description = models.TextField(blank=True, default="")
+    # Inference recipe id picked in the upload wizard. Copied verbatim into
+    # the ContainerTemplate created at approval time.
+    launcher_recipe_id = models.CharField(max_length=64, blank=True, default="none")
+    launcher_overrides = models.JSONField(default=dict, blank=True)
     base_image = models.CharField(
         max_length=255,
         default="hypercube/ml-pytorch-jupyter:cuda12.4-airgap",

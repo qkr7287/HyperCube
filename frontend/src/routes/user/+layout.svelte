@@ -6,6 +6,7 @@
 	import { page } from '$app/stores';
 	import logoHypercube from '$lib/assets/logo_hypercube.png';
 	import { connectGlobal, disconnectGlobal, seedActiveAgents } from '$lib/stores/global-events';
+	import { userHeaderStore } from '$lib/stores/user-header';
 
 	let { children } = $props();
 	let ready = $state(false);
@@ -82,19 +83,43 @@
 		>
 			<img class="brand-logo" src={logoHypercube} alt="HyperCube" />
 		</span>
-		<nav class="nav">
-			<a
-				href={base + '/user'}
-				class="nav-link"
-				class:active={currentPath === `${base}/user` || currentPath === `${base}/user/`}
-			>대시보드</a>
-			<a
-				href={base + '/user/containers'}
-				class="nav-link"
-				class:active={currentPath.startsWith(`${base}/user/containers`)}
-			>내 컨테이너</a>
-		</nav>
+		<div class="hero-slot">
+			{#if $userHeaderStore}
+				{#if $userHeaderStore.title}
+					<div class="hero-title">
+						<strong>{$userHeaderStore.title}</strong>
+						{#if $userHeaderStore.subtitle}<em>{$userHeaderStore.subtitle}</em>{/if}
+					</div>
+				{/if}
+				{#if $userHeaderStore.kpis && $userHeaderStore.kpis.length > 0}
+					<div class="hero-kpis">
+						{#each $userHeaderStore.kpis as k (k.key)}
+							<span class="kpi-pill" data-tone={k.tone || 'default'} class:on={k.on} title={k.title || ''}>
+								<span class="kpi-dot"></span>
+								<span class="kpi-num">{k.value}</span>
+								<span class="kpi-label">{k.label}</span>
+							</span>
+						{/each}
+					</div>
+				{/if}
+			{/if}
+		</div>
 		<div class="right">
+			{#if $userHeaderStore?.actions && $userHeaderStore.actions.length > 0}
+				<div class="hero-actions">
+					{#each $userHeaderStore.actions as a, idx (idx)}
+						<button
+							class="hero-btn"
+							class:primary={a.variant === 'primary'}
+							onclick={a.onclick}
+							disabled={a.disabled}
+						>
+							{#if a.spinning}<span class="hero-btn-spin"></span>{/if}
+							{a.label}
+						</button>
+					{/each}
+				</div>
+			{/if}
 			<span class="user-name">{username}</span>
 			<button class="logout-btn" onclick={doLogout}>로그아웃</button>
 		</div>
@@ -145,34 +170,142 @@
 		max-width: 100%;
 	}
 
-	.nav {
+	.hero-slot {
 		display: flex;
-		gap: 6px;
-		flex: 0 1 auto;
-		justify-content: center;
+		align-items: center;
+		gap: 16px;
+		flex: 1 1 auto;
+		justify-content: flex-start;
 		min-width: 0;
+		padding-left: 20px;
 	}
 
-	.nav-link {
-		padding: 8px 14px;
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--text-secondary);
-		text-decoration: none;
-		border-radius: var(--radius-md);
-		transition: color 0.12s, background 0.12s, box-shadow 0.12s;
+	.hero-title {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+		flex-shrink: 0;
+	}
+
+	.hero-title strong {
+		font-size: 14px;
+		font-weight: 800;
+		color: var(--text-primary);
 		white-space: nowrap;
 	}
 
-	.nav-link:hover {
-		color: var(--text-primary);
-		background: rgba(21, 28, 39, 0.92);
+	.hero-title em {
+		font-style: normal;
+		font-size: 11.5px;
+		color: var(--text-muted);
+		white-space: nowrap;
 	}
 
-	.nav-link.active {
+	.hero-kpis {
+		display: flex;
+		gap: 8px;
+		flex-wrap: nowrap;
+		overflow: hidden;
+	}
+
+	.kpi-pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 4px 10px;
+		font-size: 11.5px;
+		font-weight: 700;
+		color: var(--text-muted);
+		background: rgba(13, 17, 23, 0.6);
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		white-space: nowrap;
+	}
+
+	.kpi-pill.on {
 		color: var(--text-primary);
-		background: rgba(21, 28, 39, 0.98);
-		box-shadow: inset 0 -2px 0 var(--accent);
+		border-color: rgba(77, 191, 179, 0.45);
+	}
+
+	.kpi-pill .kpi-dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: var(--text-muted);
+		flex-shrink: 0;
+	}
+
+	.kpi-pill[data-tone="container"] .kpi-dot { background: #22c55e; }
+	.kpi-pill[data-tone="request"] .kpi-dot { background: #f59e0b; }
+	.kpi-pill[data-tone="gpu"] .kpi-dot { background: #a855f7; }
+	.kpi-pill[data-tone="ws"] .kpi-dot { background: var(--accent); }
+
+	.kpi-pill:not(.on) .kpi-dot { background: rgba(100, 116, 139, 0.5); }
+
+	.kpi-num {
+		font-weight: 900;
+		color: var(--text-primary);
+	}
+
+	.kpi-pill:not(.on) .kpi-num { color: var(--text-muted); }
+
+	.kpi-label {
+		color: var(--text-muted);
+		font-size: 10.5px;
+	}
+
+	.hero-actions {
+		display: flex;
+		gap: 6px;
+	}
+
+	.hero-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 6px 12px;
+		font: inherit;
+		font-size: 11.5px;
+		font-weight: 700;
+		color: var(--text-primary);
+		background: transparent;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+
+	.hero-btn:hover:not(:disabled) {
+		border-color: var(--accent);
+		color: var(--accent);
+	}
+
+	.hero-btn.primary {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: var(--bg-base);
+	}
+
+	.hero-btn.primary:hover:not(:disabled) {
+		filter: brightness(1.08);
+	}
+
+	.hero-btn:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
+
+	.hero-btn-spin {
+		width: 10px;
+		height: 10px;
+		border: 2px solid currentColor;
+		border-top-color: transparent;
+		border-radius: 50%;
+		animation: hero-spin 0.8s linear infinite;
+	}
+
+	@keyframes hero-spin {
+		to { transform: rotate(360deg); }
 	}
 
 	.right {

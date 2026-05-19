@@ -96,6 +96,8 @@ class ModelUploadRequestSerializer(serializers.ModelSerializer):
             "version",
             "template_name",
             "template_description",
+            "launcher_recipe_id",
+            "launcher_overrides",
             "base_image",
             "requires_gpu",
             "workspace_kind",
@@ -146,6 +148,41 @@ class ModelUploadRequestSerializer(serializers.ModelSerializer):
         if not isinstance(value, list):
             raise serializers.ValidationError("tags must be a list")
         return [str(item) for item in value]
+
+    def to_internal_value(self, data):
+        # multipart/form-data 로 들어올 때 launcher_overrides 는 JSON string 으로
+        # 도착한다. dict 로 한 번 파싱해두면 ModelSerializer 의 JSONField 가
+        # 정상 처리한다.
+        raw = data.get("launcher_overrides") if hasattr(data, "get") else None
+        if isinstance(raw, str) and raw.strip():
+            import json
+            try:
+                parsed = json.loads(raw)
+                if hasattr(data, "_mutable"):
+                    mutable = data._mutable
+                    data._mutable = True
+                    data["launcher_overrides"] = parsed
+                    data._mutable = mutable
+                else:
+                    data = {**data, "launcher_overrides": parsed}
+            except json.JSONDecodeError as exc:
+                raise serializers.ValidationError(
+                    {"launcher_overrides": f"invalid JSON: {exc}"}
+                )
+        return super().to_internal_value(data)
+
+    def validate_launcher_overrides(self, value):
+        if not value:
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("launcher_overrides must be a JSON object")
+        allowed = {"model_class", "processor_class", "app_template", "trust_remote_code"}
+        unknown = set(value.keys()) - allowed
+        if unknown:
+            raise serializers.ValidationError(
+                f"unknown launcher_overrides keys: {sorted(unknown)}"
+            )
+        return value
 
     def create(self, validated_data):
         uploaded_file = validated_data.pop("file")

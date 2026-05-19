@@ -74,6 +74,16 @@ class ContainerTemplate(models.Model):
     port_schema = models.JSONField(default=list, blank=True)
     default_volumes = models.JSONField(default=list, blank=True)
     default_model_version_ids = models.JSONField(default=list, blank=True)
+    # Inference recipe id used by the base-image launcher to auto-start a
+    # gradio UI for the mounted model. "none" disables auto-launch. Source of
+    # truth for the id catalogue lives in
+    # apps.containers.launcher_recipes.LauncherRecipe (mirrored into the base
+    # image as /opt/hc/launcher_recipes.json).
+    launcher_recipe_id = models.CharField(max_length=64, blank=True, default="none")
+    # launcher_recipe_id == '__custom__' 일 때 사용자가 직접 입력한 model_class /
+    # processor_class / app_template / trust_remote_code 를 저장. 카탈로그 외 모델
+    # variant (SmolVLM, Phi-3-Vision 등) 를 즉시 자동 실행하기 위한 inline recipe.
+    launcher_overrides = models.JSONField(default=dict, blank=True)
 
     # compose 전용
     compose_yaml = models.TextField(blank=True, default="")

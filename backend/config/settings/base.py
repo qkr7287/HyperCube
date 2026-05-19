@@ -248,6 +248,18 @@ HC_MODEL_STORAGE_DIR = config("HC_MODEL_STORAGE_DIR", default=str(BASE_DIR / "mo
 HC_MODEL_IMPORT_DIR = config("HC_MODEL_IMPORT_DIR", default=str(BASE_DIR / "model-import"))
 MODEL_PREPARE_LEASE_SECONDS = config("MODEL_PREPARE_LEASE_SECONDS", default=86400, cast=int)
 
+# Workspace proxy forwards arbitrary multipart/binary bodies (image uploads to
+# the auto-launched gradio app, JupyterLab file drops, etc). The 2.5MB default
+# trips RequestDataTooBig the moment a user drops a photo into the AI UI, so
+# raise the limit to a value that comfortably covers normal multimodal inputs.
+# File-handler still spills to disk past FILE_UPLOAD_MAX_MEMORY_SIZE.
+DATA_UPLOAD_MAX_MEMORY_SIZE = config(
+    "DATA_UPLOAD_MAX_MEMORY_SIZE", default=200 * 1024 * 1024, cast=int
+)
+FILE_UPLOAD_MAX_MEMORY_SIZE = config(
+    "FILE_UPLOAD_MAX_MEMORY_SIZE", default=5 * 1024 * 1024, cast=int
+)
+
 # django-unfold (Admin 테마)
 UNFOLD = {
     "SITE_TITLE": "HyperCube Admin",

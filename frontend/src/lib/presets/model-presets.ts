@@ -14,10 +14,15 @@ export type ModelPreset = {
 	minMemoryMb: number;
 	minWorkspaceGb: number;
 	defaultMaxRuntimeHours: number;
+	available?: boolean;
 };
 
-// Keep only presets whose base_image actually exists in the registry.
-// Add a new preset here once its airgap image is built and pushed.
+// 실제 운영 가능한 환경. baseImage 가 registry 에 로드돼 있어야 함.
+// 새 환경 추가 절차:
+//   1) packaging/ml-images/<name>/ 에 Dockerfile + start.sh 작성
+//   2) bash packaging/ml-images/build-<name>.sh 로 빌드 (+ docker load on airgap)
+//   3) 아래 배열에 entry 추가
+// 변형(model_class 만 다른 모델)은 wizard 의 "직접 입력" recipe 로 별도 등록 없이 처리됨.
 export const MODEL_PRESETS: ModelPreset[] = [
 	{
 		id: 'pytorch-jupyter',
@@ -36,6 +41,7 @@ export const MODEL_PRESETS: ModelPreset[] = [
 		minMemoryMb: 4096,
 		minWorkspaceGb: 20,
 		defaultMaxRuntimeHours: 24,
+		available: true,
 	},
 ];
 

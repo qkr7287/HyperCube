@@ -47,10 +47,6 @@ fi
 
 # -----------------------------------------------------------------------------
 # Seed quickstart notebook.
-#
-# Copy the shipped quickstart notebook into /workspace if the user hasn't
-# replaced it yet. Lets the user open Jupyter → double-click 00-quickstart.ipynb
-# → Run All to see the gradio UI embedded via jupyter-server-proxy.
 # -----------------------------------------------------------------------------
 NOTEBOOK_SRC="/opt/hc/00-quickstart.ipynb"
 NOTEBOOK_DST="${WORKDIR}/00-quickstart.ipynb"
@@ -60,24 +56,24 @@ if [[ -f "${NOTEBOOK_SRC}" ]] && [[ ! -f "${NOTEBOOK_DST}" ]]; then
 fi
 
 # -----------------------------------------------------------------------------
-# Auto-launch Qwen2-VL gradio app in the background if we see its model.
+# Auto-launch the inference recipe selected at container create.
 #
-# Detected by directory name (qwen2-vl-2b-instruct). When matched, run the
-# launcher which loads transformers + serves a gradio UI on 127.0.0.1:7860.
-# jupyter-server-proxy makes it reachable at <jupyter base>/proxy/7860/.
+# HC_LAUNCHER_RECIPE + HC_MODEL_DIR are injected by the backend whenever the
+# template has a non-"none" launcher_recipe_id. /opt/hc/launch.py reads the
+# recipe id from launcher_recipes.json and loads the right transformers
+# class + gradio app, listening on 127.0.0.1:7860 (root_path=/proxy/7860 so
+# jupyter-server-proxy forwards <workspace>/proxy/7860/ correctly).
 # -----------------------------------------------------------------------------
-QWEN_DIR="${WORKDIR}/qwen2-vl-2b-instruct"
-LAUNCHER="/opt/hc/launch_qwen2vl.py"
-if [[ -d "${QWEN_DIR}" ]] && [[ -f "${LAUNCHER}" ]]; then
-  echo "[hc-entrypoint] launching Qwen2-VL gradio app on :7860 (background)"
-  HC_QWEN2VL_MODEL="${QWEN_DIR}" \
-    nohup python "${LAUNCHER}" \
-      >"${WORKDIR}/.hc-qwen2vl.log" 2>&1 &
+LAUNCHER="/opt/hc/launch.py"
+LAUNCHER_RECIPE="${HC_LAUNCHER_RECIPE:-none}"
+if [[ "${LAUNCHER_RECIPE}" != "none" ]] && [[ -f "${LAUNCHER}" ]]; then
+  echo "[hc-entrypoint] launching recipe=${LAUNCHER_RECIPE} model_dir=${HC_MODEL_DIR:-?} (background)"
+  nohup python "${LAUNCHER}" \
+    >"${WORKDIR}/.hc-launch.log" 2>&1 &
 fi
 
 # -----------------------------------------------------------------------------
-# Foreground: JupyterLab. ServerApp.allow_remote_access lets the HyperCube
-# workspace proxy talk to us across the bridge network.
+# Foreground: JupyterLab.
 # -----------------------------------------------------------------------------
 exec jupyter lab \
   --ip=0.0.0.0 \

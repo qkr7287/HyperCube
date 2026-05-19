@@ -14,6 +14,7 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
 from apps.common import command_router
@@ -577,8 +578,12 @@ class WorkspaceViewSet(ReadOnlyModelViewSet):
             return Response({"detail": "Workspace is not owned by this user"}, status=status.HTTP_403_FORBIDDEN)
         except ValidationError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        # Optional `path` lets the client target a subpath served by
+        # jupyter-server-proxy (e.g. "proxy/7860/" for the auto-launched gradio
+        # UI). Defaults to "lab" for the JupyterLab UI.
+        requested_path = (request.data.get("path") if hasattr(request, "data") else None) or "lab"
         return Response({
-            "url": build_workspace_open_url(container, ticket),
+            "url": build_workspace_open_url(container, ticket, path=str(requested_path)),
             "expiresInSeconds": workspace_ticket_ttl_seconds(),
         })
 
@@ -608,6 +613,21 @@ class WorkspaceViewSet(ReadOnlyModelViewSet):
     partial_update=extend_schema(summary="템플릿 부분 수정 (admin only)"),
     destroy=extend_schema(summary="템플릿 삭제 (admin only)"),
 )
+class LauncherRecipeListView(APIView):
+    """Read-only catalogue of inference recipes the base image knows about.
+
+    Source of truth: apps.containers.launcher_recipes. The wizard fetches this
+    so the recipe list stays in sync without hard-coding it in two places.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        from .launcher_recipes import list_recipes
+
+        return Response({"recipes": [r.as_dict() for r in list_recipes()]})
+
+
 class ContainerTemplateViewSet(ModelViewSet):
     queryset = ContainerTemplate.objects.select_related("created_by").all()
     serializer_class = ContainerTemplateSerializer
