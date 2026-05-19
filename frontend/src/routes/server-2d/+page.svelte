@@ -703,7 +703,9 @@
 		try {
 			let liveAgents: Agent[] = [];
 			try {
-				const response = await fetch(`${base}/api/agents/?status=approved&active=true&page_size=200&ordering=hostname`, {
+				// `active=true` 를 빼고 approved 전체를 가져온다 — fleet badge 분모(totalKnown)
+				// 가 root 페이지(/) 와 일치하도록. is_active 분기는 seedActiveAgents 에서 한다.
+				const response = await fetch(`${base}/api/agents/?status=approved&page_size=200&ordering=hostname`, {
 					headers: authHeaders(),
 				});
 				if (response.status === 401) {
@@ -717,7 +719,9 @@
 				liveAgents = [];
 			}
 			agents = liveAgents;
-			seedActiveAgents(liveAgents.map((agent: Agent) => agent.id));
+			seedActiveAgents(
+				liveAgents.filter((agent: Agent) => agent.is_active).map((agent: Agent) => agent.id),
+			);
 			// Seed the persisted transition log so the 실시간 이벤트 panel shows
 			// agent online/offline events the user might have missed (browser
 			// closed, backend restarted, ...). Live WS events will then prepend
@@ -737,11 +741,14 @@
 				/* ignore */
 			}
 			const saved = browser ? localStorage.getItem('hc_selected_server') : '';
+			// 처음 진입 시엔 살아있는 agent 부터 보여주는 게 직관적. offline 만 남으면 그대로.
+			const onlineAgents = agents.filter((agent) => agent.is_active);
+			const fallbackAgent = onlineAgents[0] ?? agents[0];
 			const preferred = selectedServerId && agents.some((agent) => agent.id === selectedServerId)
 				? selectedServerId
 				: saved && agents.some((agent) => agent.id === saved)
 					? saved
-					: agents[0]?.id;
+					: fallbackAgent?.id;
 			if (preferred) {
 				selectServer(preferred);
 			}
