@@ -3,6 +3,7 @@
 	import { base } from '$app/paths';
 	import { browser } from '$app/environment';
 	import InfoTooltip from '$lib/components/InfoTooltip.svelte';
+	import ModelRequestDetailModal from '$lib/components/ModelRequestDetailModal.svelte';
 
 	type ModelUploadRequest = {
 		id: string;
@@ -34,6 +35,39 @@
 	let loading = $state(false);
 	let processingId = $state('');
 	let errorMsg = $state('');
+	let search = $state('');
+	let selected = $state<ModelUploadRequest | null>(null);
+	type SortField = 'requester' | 'name' | 'file' | 'template' | 'status' | 'created_at';
+	let sortField = $state<SortField>('created_at');
+	let sortDir = $state<'asc' | 'desc'>('desc');
+
+	function setSort(f: SortField) {
+		if (sortField === f) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+		else { sortField = f; sortDir = f === 'created_at' ? 'desc' : 'asc'; }
+	}
+
+	let filteredRequests = $derived.by(() => {
+		const q = search.trim().toLowerCase();
+		const filtered = q
+			? requests.filter((r) => {
+					const hay = `${r.requester_username} ${r.name} ${r.original_filename ?? ''} ${r.template_name ?? ''} ${r.created_template_name ?? ''} ${r.framework ?? ''}`.toLowerCase();
+					return hay.includes(q);
+				})
+			: requests.slice();
+		const dir = sortDir === 'asc' ? 1 : -1;
+		return filtered.sort((a, b) => {
+			switch (sortField) {
+				case 'requester': return (a.requester_username || '').localeCompare(b.requester_username || '') * dir;
+				case 'name': return (a.name || '').localeCompare(b.name || '') * dir;
+				case 'file': return (a.original_filename || '').localeCompare(b.original_filename || '') * dir;
+				case 'template': return ((a.created_template_name || a.template_name || '') as string).localeCompare((b.created_template_name || b.template_name || '') as string) * dir;
+				case 'status': return (a.status || '').localeCompare(b.status || '') * dir;
+				case 'created_at':
+				default:
+					return (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) * dir;
+			}
+		});
+	});
 
 	function token(): string | null {
 		if (!browser) return null;
@@ -93,6 +127,13 @@
 		await review(row.id, 'reject', note);
 	}
 
+	async function approveFromModal(id: string, note: string) {
+		await review(id, 'approve', note);
+	}
+	async function rejectFromModal(id: string, note: string) {
+		await review(id, 'reject', note);
+	}
+
 	function onFilterChange(next: 'pending' | 'all') {
 		filter = next;
 		load();
@@ -147,6 +188,12 @@
 			<p class="subtitle">사용자가 브라우저로 업로드한 모델 파일을 검토하고 공유 모델/컨테이너 템플릿으로 등록합니다.</p>
 		</div>
 		<div class="controls">
+			<input
+				class="search-input"
+				type="search"
+				bind:value={search}
+				placeholder="검색 (제출자·모델·파일·템플릿)"
+			/>
 			<div class="filter-group">
 				<button
 					class="filter-btn"
@@ -173,69 +220,85 @@
 		<table>
 			<thead>
 				<tr>
-					<th>제출자</th>
-					<th>모델</th>
-					<th>파일</th>
-					<th>생성 템플릿</th>
-					<th>실행 조건</th>
-					<th class="col-status">상태</th>
-					<th class="col-time">제출</th>
-					<th class="col-actions"></th>
+					<th class="col-user sortable" class:active={sortField === 'requester'} onclick={() => setSort('requester')}>
+						제출자{sortField === 'requester' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+					</th>
+					<th class="col-model sortable" class:active={sortField === 'name'} onclick={() => setSort('name')}>
+						모델{sortField === 'name' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+					</th>
+					<th class="col-file sortable" class:active={sortField === 'file'} onclick={() => setSort('file')}>
+						파일{sortField === 'file' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+					</th>
+					<th class="col-template sortable" class:active={sortField === 'template'} onclick={() => setSort('template')}>
+						생성 템플릿{sortField === 'template' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+					</th>
+					<th class="col-spec">실행 조건</th>
+					<th class="col-status sortable" class:active={sortField === 'status'} onclick={() => setSort('status')}>
+						상태{sortField === 'status' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+					</th>
+					<th class="col-time sortable" class:active={sortField === 'created_at'} onclick={() => setSort('created_at')}>
+						제출{sortField === 'created_at' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+					</th>
+					<th class="col-detail">상세</th>
+					<th class="col-review">검토</th>
 				</tr>
 			</thead>
 			<tbody>
-				{#if !loading && requests.length === 0}
+				{#if !loading && filteredRequests.length === 0}
 					<tr class="empty-row">
 						<td colspan="8">
 							<div class="empty-inline">
 								<div class="empty-icon">📭</div>
 								<div class="empty-text">
-									{filter === 'pending' ? '대기 중인 모델 등록 요청이 없습니다.' : '모델 등록 요청 이력이 없습니다.'}
+									{search.trim() ? '검색 결과가 없습니다.' : (filter === 'pending' ? '대기 중인 모델 등록 요청이 없습니다.' : '모델 등록 요청 이력이 없습니다.')}
 								</div>
 							</div>
 						</td>
 					</tr>
 				{:else}
-					{#each requests as req (req.id)}
+					{#each filteredRequests as req (req.id)}
 						<tr>
-							<td>{req.requester_username}</td>
-							<td class="model-cell">
+							<td class="col-user">{req.requester_username}</td>
+							<td class="col-model cell-stack">
 								<strong>{req.name}</strong>
-								<span>{req.version} · {req.framework || '-'}{req.task ? ` · ${req.task}` : ''}</span>
+								<em>{req.version}{req.framework ? ` · ${req.framework}` : ''}{req.task ? ` · ${req.task}` : ''}</em>
 							</td>
-							<td class="file-cell">
-								<strong>{req.original_filename || '-'}</strong>
-								<span>{formatBytes(req.size_bytes)} · {req.sha256 ? req.sha256.slice(0, 12) : '-'}</span>
+							<td class="col-file cell-stack">
+								<strong title={req.original_filename}>{req.original_filename || '-'}</strong>
+								<em>{formatBytes(req.size_bytes)}{req.sha256 ? ` · ${req.sha256.slice(0, 8)}` : ''}</em>
 							</td>
-							<td class="template-cell">
-								<strong>{req.created_template_name || req.template_name || '-'}</strong>
-								<span>{req.base_image}</span>
+							<td class="col-template cell-stack">
+								<strong title={req.created_template_name || req.template_name || '-'}>{req.created_template_name || req.template_name || '-'}</strong>
+								<em title={req.base_image}>{req.base_image}</em>
 							</td>
-							<td class="dim">
-								{req.requires_gpu ? 'GPU' : 'CPU'} · RAM {req.min_memory_mb} MB · WS {req.min_workspace_gb} GB
+							<td class="col-spec dim">
+								{req.requires_gpu ? 'GPU' : 'CPU'} · {req.min_memory_mb}MB · {req.min_workspace_gb}GB
 							</td>
-							<td>
-								<span class="status-pill" style="background: {statusTone(req.status)};">
+							<td class="col-status">
+								<span class="status-pill" data-status={req.status} style="--tone: {statusTone(req.status)};">
 									{statusLabel(req.status)}
 								</span>
 							</td>
-							<td class="dim">{formatTime(req.created_at)}</td>
-							<td class="actions">
+							<td class="col-time dim">{formatTime(req.created_at)}</td>
+							<td class="col-detail">
+								<button class="detail-btn" onclick={() => selected = req}>상세</button>
+							</td>
+							<td class="col-review">
 								{#if req.status === 'pending'}
-									<button
-										class="approve-btn"
-										disabled={!!processingId}
-										onclick={() => review(req.id, 'approve', '')}
-									>
-										{processingId === req.id ? '처리 중' : '승인'}
-									</button>
-									<button
-										class="reject-btn"
-										disabled={!!processingId}
-										onclick={() => reject(req)}
-									>반려</button>
+									<div class="row-actions">
+										<button
+											class="approve-btn"
+											disabled={!!processingId}
+											onclick={(e) => { e.stopPropagation(); review(req.id, 'approve', ''); }}
+										>{processingId === req.id ? '…' : '승인'}</button>
+										<button
+											class="reject-btn"
+											disabled={!!processingId}
+											onclick={(e) => { e.stopPropagation(); reject(req); }}
+										>반려</button>
+									</div>
 								{:else}
-									<span class="dim">{req.reviewer_username || '-'}</span>
+									<span class="dim">{req.reviewer_username || '—'}</span>
 								{/if}
 							</td>
 						</tr>
@@ -246,6 +309,13 @@
 	</div>
 </div>
 
+<ModelRequestDetailModal
+	request={selected}
+	onClose={() => selected = null}
+	onApprove={approveFromModal}
+	onReject={rejectFromModal}
+/>
+
 <style>
 	/* Shared chrome via admin layout :global(). Panel keeps only its own
 	   row-cell layouts and approve/reject button colors. */
@@ -254,50 +324,81 @@
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
-	.table-wrap table {
-		min-width: 1120px;
+	.table-wrap :global(table) {
+		min-width: 1100px;
+		table-layout: fixed;
 	}
-	.table-wrap tbody td {
-		vertical-align: middle;
+	.table-wrap :global(tbody) {
+		display: table-row-group;
 	}
-	.model-cell,
-	.file-cell,
-	.template-cell {
-		display: grid;
-		gap: 3px;
+	.table-wrap :global(tbody tr) {
+		height: 50px;
+	}
+	.table-wrap :global(tbody td) {
+		vertical-align: middle !important;
+		padding: 6px 10px !important;
+	}
+	.cell-stack {
 		min-width: 0;
+		max-width: 100%;
+		line-height: 1.25;
 	}
-	.model-cell strong,
-	.file-cell strong,
-	.template-cell strong {
+	.cell-stack strong {
+		display: block;
+		font-size: 12.5px;
+		font-weight: 800;
 		color: var(--text-primary);
-		font-size: 12px;
-	}
-	.model-cell span,
-	.file-cell span,
-	.template-cell span,
-	.dim {
-		color: var(--text-muted);
-		font-size: 11px;
-	}
-	.template-cell span {
-		max-width: 260px;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
+	.cell-stack em {
+		display: block;
+		font-style: normal;
+		color: var(--text-muted);
+		font-size: 10.5px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.dim {
+		color: var(--text-muted);
+		font-size: 11px;
+	}
 	.status-pill {
 		display: inline-block;
-		padding: 2px 8px;
-		border-radius: 10px;
-		color: white;
-		font-size: 10px;
-		font-weight: 700;
+		padding: 3px 10px;
+		border-radius: 999px;
+		color: var(--tone);
+		background: color-mix(in srgb, var(--tone) 12%, transparent);
+		border: 1px solid color-mix(in srgb, var(--tone) 38%, transparent);
+		font-size: 10.5px;
+		font-weight: 800;
+		letter-spacing: 0.02em;
+		white-space: nowrap;
 	}
+
+	.detail-btn {
+		font: inherit;
+		font-size: 11px;
+		font-weight: 700;
+		padding: 4px 10px;
+		color: var(--text-primary);
+		background: var(--bg-tab);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.detail-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+	.table-wrap :global(tbody td) { text-align: center !important; }
+	.table-wrap :global(thead th) { text-align: center !important; }
 	.actions {
 		display: flex;
 		gap: 6px;
 		justify-content: flex-end;
+		align-items: center;
 	}
 	.approve-btn,
 	.reject-btn {
@@ -307,6 +408,7 @@
 		border-radius: var(--radius-sm);
 		cursor: pointer;
 		font-family: inherit;
+		white-space: nowrap;
 	}
 	.approve-btn {
 		background: rgba(34, 197, 94, 0.16);
@@ -318,14 +420,63 @@
 		border-color: rgba(239, 68, 68, 0.36);
 		color: #fca5a5;
 	}
-	.col-status {
-		width: 80px;
+	.search-input {
+		font: inherit;
+		font-size: 12px;
+		padding: 6px 10px;
+		min-width: 240px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		background: var(--bg-base);
+		color: var(--text-primary);
 	}
-	.col-time {
-		width: 150px;
+	.search-input:focus { outline: none; border-color: var(--accent); }
+
+	.table-wrap :global(thead th.sortable) { cursor: pointer; user-select: none; }
+	.table-wrap :global(thead th.sortable:hover) { color: var(--text-primary); }
+	.table-wrap :global(thead th.sortable.active) { color: var(--accent); }
+
+	.col-user { width: 100px; }
+	.col-model { width: 240px; }
+	.col-file { width: 280px; }
+	.col-template { width: auto; } /* absorbs the remaining horizontal slack */
+	.col-spec { width: 170px; white-space: nowrap; font-size: 10.5px; }
+	.col-status { width: 80px; text-align: center; }
+	.col-time { width: 150px; white-space: nowrap; font-size: 11px; }
+	.col-detail { width: 70px; }
+	.col-review { width: 140px; }
+	.row-actions {
+		display: inline-flex;
+		gap: 4px;
+		justify-content: center;
 	}
-	.col-actions {
-		width: 130px;
-		text-align: right;
+	.approve-btn, .reject-btn {
+		font: inherit;
+		font-size: 11px;
+		font-weight: 700;
+		padding: 4px 10px;
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+		white-space: nowrap;
 	}
+	.approve-btn {
+		color: #86efac;
+		background: rgba(34, 197, 94, 0.10);
+		border: 1px solid rgba(34, 197, 94, 0.40);
+	}
+	.approve-btn:hover:not(:disabled) {
+		background: rgba(34, 197, 94, 0.18);
+		border-color: rgba(34, 197, 94, 0.65);
+	}
+	.reject-btn {
+		color: #fca5a5;
+		background: rgba(239, 68, 68, 0.10);
+		border: 1px solid rgba(239, 68, 68, 0.40);
+	}
+	.reject-btn:hover:not(:disabled) {
+		background: rgba(239, 68, 68, 0.18);
+		border-color: rgba(239, 68, 68, 0.65);
+	}
+	.approve-btn:disabled, .reject-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+	.col-status :global(.status-pill) { min-width: 56px; text-align: center; }
 </style>

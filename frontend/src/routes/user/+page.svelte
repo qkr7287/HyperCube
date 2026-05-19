@@ -127,7 +127,7 @@
 	let username = $state('');
 	let toasts = $state<Array<{ id: number; kind: 'success' | 'error' | 'info'; text: string }>>([]);
 	let toastSeq = 0;
-	let sortField = $state<'name' | 'status' | 'cpu' | 'mem' | 'last_seen'>('last_seen');
+	let sortField = $state<'name' | 'status' | 'cpu' | 'mem' | 'gpu' | 'gpu_mem' | 'last_seen'>('last_seen');
 	let sortDir = $state<'asc' | 'desc'>('desc');
 	let historySortField = $state<'name' | 'status' | 'action' | 'created_at'>('created_at');
 	let historySortDir = $state<'asc' | 'desc'>('desc');
@@ -926,6 +926,10 @@ KPI — 컨테이너·요청·자원 합계
 				return (lastValue(cpuHistory, a.container_id) - lastValue(cpuHistory, b.container_id)) * dir;
 			case 'mem':
 				return (lastValue(memHistory, a.container_id) - lastValue(memHistory, b.container_id)) * dir;
+			case 'gpu':
+				return (lastValue(gpuUsageHistory, a.container_id) - lastValue(gpuUsageHistory, b.container_id)) * dir;
+			case 'gpu_mem':
+				return (lastValue(gpuMemHistory, a.container_id) - lastValue(gpuMemHistory, b.container_id)) * dir;
 			case 'last_seen':
 			default:
 				return (new Date(a.last_seen).getTime() - new Date(b.last_seen).getTime()) * dir;
@@ -1279,20 +1283,24 @@ KPI — 컨테이너·요청·자원 합계
 						MEM <small>(1H)</small>{sortField === 'mem' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
 						<span class="col-resize" onmousedown={(e) => startResize(e, 5, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</button>
-					<span
-						class="th"
+					<button
+						class="th sortable"
+						class:active={sortField === 'gpu'}
+						onclick={() => setSort('gpu')}
 						title={`컨테이너 GPU SM 사용률.\n분모: 할당된 GPU slice (full slice 는 host GPU 와 동일, MIG/partial slice 는 비례).\n최근 1시간 추세 — 약 2분 간격 30 포인트.\nGPU 슬라이스 미할당 컨테이너는 빈 칸 (—).`}
 					>
-						GPU 코어 <small>(1H)</small>
+						GPU 코어 <small>(1H)</small>{sortField === 'gpu' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
 						<span class="col-resize" onmousedown={(e) => startResize(e, 6, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
-					</span>
-					<span
-						class="th"
+					</button>
+					<button
+						class="th sortable"
+						class:active={sortField === 'gpu_mem'}
+						onclick={() => setSort('gpu_mem')}
 						title={`컨테이너 GPU VRAM 사용률.\n분모: 할당된 slice memory.\n최근 1시간 추세 — 약 2분 간격 30 포인트.\nGPU 슬라이스 미할당 컨테이너는 빈 칸 (—).`}
 					>
-						GPU VRAM <small>(1H)</small>
+						GPU VRAM <small>(1H)</small>{sortField === 'gpu_mem' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
 						<span class="col-resize" onmousedown={(e) => startResize(e, 7, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
-					</span>
+					</button>
 					<button class="th sortable" class:active={sortField === 'last_seen'} onclick={() => setSort('last_seen')}>
 						최근{sortField === 'last_seen' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
 						<span class="col-resize" onmousedown={(e) => startResize(e, 8, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
