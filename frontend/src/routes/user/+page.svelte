@@ -1235,12 +1235,16 @@ KPI — 컨테이너·요청·자원 합계
 					<button class="new-btn" onclick={() => openNewRequest(null)}>+ 새 요청 만들기</button>
 					<div class="empty-hints">
 						<div class="hint-card">
-							<strong>워크스페이스</strong>
-							<p>Jupyter Lab + GPU 1슬라이스로 빠르게 실험 환경 구성.</p>
+							<strong>ML 워크스페이스</strong>
+							<p>Jupyter Lab + GPU 컨테이너. Qwen 2.5 등 사전 등록 모델은 한 번에 추론 UI 까지 자동 launch.</p>
+						</div>
+						<div class="hint-card">
+							<strong>내 모델 업로드</strong>
+							<p>safetensors / GGUF 같은 weight 를 올리고 inference recipe 를 골라 바로 배포 (admin 승인 후).</p>
 						</div>
 						<div class="hint-card">
 							<strong>서비스 컨테이너</strong>
-							<p>Redis · Nginx · 자체 이미지 — 컴포즈 그룹도 지원.</p>
+							<p>Redis 등 일반 이미지로 빠른 실험. 자원 한도와 workspace quota 안에서 안전하게.</p>
 						</div>
 					</div>
 				{:else}
