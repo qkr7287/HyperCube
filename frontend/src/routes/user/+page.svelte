@@ -212,7 +212,7 @@
 
 	// idx:  0    1    2    3       4    5    6        7         8    9        10
 	//       상태 이름 서버 자원(1fr) CPU  MEM  GPU코어  GPU VRAM 최근 가동시간 액션
-	const CONTAINER_COLS_DEFAULT = [110, 240, 200, 290, 105, 105, 110, 115, 90, 110, 220];
+	const CONTAINER_COLS_DEFAULT = [110, 240, 200, 290, 105, 105, 110, 115, 90, 110, 230, 60];
 	// idx:  0    1    2    3            4    5    6        7    8
 	//       유형 이름 상태 템플릿(1fr)  서버 메모 검토자  시각 액션
 	const HISTORY_COLS_DEFAULT = [60, 260, 100, 240, 140, 75, 110, 170, 200];
@@ -1256,6 +1256,7 @@ KPI — 컨테이너·요청·자원 합계
 						<span class="col-resize" onmousedown={(e) => startResize(e, 9, 'container')} ondblclick={(e) => { e.stopPropagation(); resetColumns('container'); }} aria-hidden="true"></span>
 					</span>
 					<span class="th th-actions"><span>액션</span></span>
+					<span class="th th-settings"><span>설정</span></span>
 				</div>
 				<ul class="container-list" bind:this={containerListEl}>
 					{#each filteredContainers as c (c.container_id + ':' + (recentlyChanged[c.container_id] ?? 0))}
@@ -1391,8 +1392,8 @@ KPI — 컨테이너·요청·자원 합계
 										title="자동 실행된 모델의 gradio UI 열기"
 									>
 										<svg class="row-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-											<path d="M5 12h14" />
-											<path d="M13 6l6 6-6 6" />
+											<path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z" />
+											<path d="M18 14l.9 2.5L21 17l-2.1.9-.9 2.1-.9-2.1L15 17l2.1-.5L18 14z" />
 										</svg>
 										<span>{openingId === c.container_id ? '여는 중…' : 'AI UI'}</span>
 									</button>
@@ -1409,6 +1410,8 @@ KPI — 컨테이너·요청·자원 합계
 									</svg>
 									<span>{openingId === c.container_id ? '여는 중…' : 'Jupyter'}</span>
 								</button>
+							</div>
+							<div class="row-settings" onclick={(e) => e.stopPropagation()} role="presentation">
 								<button
 									class="row-btn row-btn-icon row-btn-more"
 									onclick={(e) => onRowMoreClick(e, c)}
@@ -1426,7 +1429,7 @@ KPI — 컨테이너·요청·자원 합계
 					{/each}
 					{#each Array(containerEmptyRows) as _, i (i)}
 						<li class="container-row empty-row" aria-hidden="true">
-							<span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+							<span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
 						</li>
 					{/each}
 				</ul>
@@ -2715,7 +2718,7 @@ KPI — 컨테이너·요청·자원 합계
 	.container-head,
 	.container-row {
 		display: grid;
-		grid-template-columns: var(--ct-cols, 110px 240px 200px minmax(290px, 1fr) 105px 105px 110px 115px 90px 110px 220px);
+		grid-template-columns: var(--ct-cols, 110px 240px 200px minmax(290px, 1fr) 105px 105px 110px 115px 90px 110px 230px 60px);
 		gap: 10px;
 		align-items: center;
 	}
@@ -2975,8 +2978,16 @@ KPI — 컨테이너·요청·자원 합계
 		align-items: center !important;
 	}
 
-	.th-actions {
+	.th-actions,
+	.th-settings {
 		justify-content: center;
+	}
+
+	.row-settings {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 100%;
 	}
 
 	.h-actions {
@@ -3051,15 +3062,21 @@ KPI — 컨테이너·요청·자원 합계
 	}
 
 	.row-btn-more {
-		color: var(--text-muted);
-		background: transparent;
-		border-color: var(--border);
+		color: var(--text-primary);
+		background: rgba(100, 116, 139, 0.16);
+		border-color: rgba(100, 116, 139, 0.4);
 		transition: color 0.12s, border-color 0.12s, background 0.12s;
 	}
 
 	.row-btn-more:hover {
-		color: var(--text-primary);
+		color: var(--accent);
+		background: rgba(77, 191, 179, 0.18);
 		border-color: var(--accent);
+	}
+
+	.row-btn-more .row-btn-ico {
+		width: 15px;
+		height: 15px;
 	}
 
 	/* row-btn-more now always visible (opacity rule removed). */
