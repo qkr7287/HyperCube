@@ -664,9 +664,13 @@
 	}
 	.chip-stack {
 		display: inline-flex;
-		align-items: center;
-		justify-content: flex-end;
-		gap: 4px;
+		/* 카드 폭이 좁아 (~172px 6-up) 라벨 + chip 두 개를 한 줄에 두면 chip 끼리도
+		   답답하고 label 도 압박받음. status chip 위 / limit chip 아래 column-stack
+		   으로 자체 정렬해서 head row 의 가로 부담을 줄임. */
+		flex-direction: column;
+		align-items: flex-end;
+		justify-content: flex-start;
+		gap: 2px;
 		min-width: 0;
 	}
 	.limit-chip {
