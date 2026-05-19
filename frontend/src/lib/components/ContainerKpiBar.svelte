@@ -668,7 +668,11 @@
 	.limit-chip {
 		display: inline-flex;
 		align-items: center;
-		max-width: 92px;
+		/* "limit 2 cores" / "limit 10 GB" 같이 흔한 라벨이 92px 에선 잘렸다.
+		   카드 폭이 좁아질 땐 chip 폭도 줄어드는 게 맞지만 92px 는 한국어/영문
+		   복합 라벨 기준으로 너무 작다. 120px 까지 허용하고, 그래도 안 들어가면
+		   ellipsis 로 떨어뜨려 title 로 풀텍스트를 노출 (hover). */
+		max-width: 120px;
 		padding: 2.5px 7px;
 		border-radius: 4px;
 		background: rgba(48, 213, 200, 0.08);
@@ -968,9 +972,10 @@
 	}
 	.foot-row {
 		display: grid;
-		/* 카드 안 row 정렬 일관성 — dot 9px / label 64px 고정 / pct 가변 / raw 우측.
-		   label 너비 고정으로 모든 row 의 pct 시작점이 동일해진다. */
-		grid-template-columns: 9px 64px minmax(0, 1fr) minmax(0, auto);
+		/* 카드 안 row 정렬 일관성 — dot / label / pct / raw.
+		   label 폭은 컨테이너 width 에 따라 줄어들도록 clamp — 좁은 카드(≤210px)
+		   에선 한글 부연(.ko) 가 잘려도 영문 약자만 보이게 하고, pct/raw 공간 확보. */
+		grid-template-columns: 9px clamp(48px, 8vw, 64px) minmax(0, 1fr) minmax(0, auto);
 		align-items: center;
 		gap: 7px;
 		min-width: 0;
@@ -986,6 +991,7 @@
 		align-items: baseline;
 		gap: 4px;
 		min-width: 0;
+		overflow: hidden;
 	}
 	.foot-row b .ab {
 		font-family: var(--font-mono);
@@ -1002,6 +1008,13 @@
 		color: var(--text-faint);
 		letter-spacing: 0;
 		white-space: nowrap;
+	}
+	/* 카드 폭이 매우 좁으면 영문 약자만 남기고 한글 부연 숨김 — pct/raw 가 가독 우선. */
+	@container kpi-card (max-width: 200px) {
+		.foot-row b .ko { display: none; }
+	}
+	@media (max-width: 1100px) {
+		.foot-row b .ko { display: none; }
 	}
 	.foot-row .pct {
 		font-style: normal;
