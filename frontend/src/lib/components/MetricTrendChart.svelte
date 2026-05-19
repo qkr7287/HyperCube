@@ -134,7 +134,12 @@
 			const effWindow = windowRange || auto.window;
 			const effBucket = bucket || auto.bucket;
 			const effBucketField = bucketField || FIELD_TO_BUCKET[metricField] || '';
-			const useBuckets = Boolean(effBucket && effWindow);
+			// metricExtractor 는 raw row 에서 per-index 값을 뽑는 용도라 bucket 응답
+			// (fleet-aggregate 만 있음) 에는 매칭되는 컬럼이 없다. 명시적인 bucketField
+			// 매핑이 없는데 extractor 만 있으면 raw rows 로 강제 fallback — 그래야
+			// per-GPU 사용률/VRAM/온도 차트가 "데이터 없음" 으로 안 죽는다.
+			const useBuckets = Boolean(effBucket && effWindow)
+				&& (effBucketField !== '' || !metricExtractor);
 			const limit = forRange === '7d' || forRange === '24h' ? 500 : 240;
 			const extra = extraQuery ? `&${extraQuery}` : '';
 			const url = useBuckets
