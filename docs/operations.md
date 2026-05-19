@@ -211,13 +211,13 @@ ssh hc-dev-63 "cd /home/agics/ts/HyperCube && docker compose logs -f backend"
 
 Either hit the server directly:
 ```
-http://192.168.0.63:3000/
+http://192.168.0.63:33000/
 ```
 
-Or keep the `localhost:3000` feel with a persistent SSH tunnel:
+Or keep the `localhost:33000` feel with a persistent SSH tunnel:
 ```bash
-ssh hc-dev-63 -L 3000:localhost:3000 -N &
-# then browse http://localhost:3000/
+ssh hc-dev-63 -L 33000:localhost:33000 -N &
+# then browse http://localhost:33000/
 ```
 
 ### Day-to-day

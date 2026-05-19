@@ -29,7 +29,7 @@ Expected:
 
 ## P0 Happy Path
 
-1. Open `http://192.168.0.63:3000/`.
+1. Open `http://192.168.0.63:33000/`.
 2. Confirm `/user/models` has a tiny available model version.
 3. Open `/user`, create a request from the modal:
    - template: `PyTorch Jupyter GPU Workspace`

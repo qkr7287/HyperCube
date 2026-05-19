@@ -129,7 +129,7 @@ services:
     container_name: hc-nginx
     restart: unless-stopped
     ports:
-      - "${HC_PORT:-7003}:7003"
+      - "${HC_PORT:-37003}:7003"
     depends_on:
       - backend
     networks:

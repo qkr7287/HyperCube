@@ -69,7 +69,7 @@ Commits (this repo): `d7be13f` (A) / `3414a73` (B) / `b50d692` (C) / Phase D.
    - 차트 panel + Process/Log/Event/Inspect 4 컴포넌트를 `<div class="bento">` 로 wrap, 각 grid-area 클래스 부여.
    - `.bento` grid: 12col, `grid-template-areas` 로 row1=charts(8)+logs(4), row2=process(5)+events(3)+inspect(4).
    - 미디어쿼리 3단계: ≥1440 bento 풀 / 1280~1439 차트풀폭→로그풀폭→하단3분할 / ≤980 1열 stack.
-3. 검증: 192.168.0.63:3000 dev 서버에서 1920/1280/768 viewport 직접 확인. 관리자 메인 옆 탭으로 두고 KPI pill 시각 일관성 검증 (라벨 폰트, value 크기, sparkline 높이, border/radius/배경).
+3. 검증: 192.168.0.63:33000 dev 서버에서 1920/1280/768 viewport 직접 확인. 관리자 메인 옆 탭으로 두고 KPI pill 시각 일관성 검증 (라벨 폰트, value 크기, sparkline 높이, border/radius/배경).
 
 **제외**: ECharts resize 처리, 라이프사이클 변경 (LogTailPanel stream 정책 등), 컨테이너 컨트롤 동작 변경. 모두 그대로.
 
@@ -396,7 +396,7 @@ Commits (this repo): `d7be13f` (A) / `3414a73` (B) / `b50d692` (C) / Phase D.
 
 (상세는 `CLAUDE.md` "핵심 룰" 참조)
 
-- 로컬에서 dev server 띄우지 말 것 (63번 sync). 검증은 항상 `http://192.168.0.63:3000`.
+- 로컬에서 dev server 띄우지 말 것 (63번 sync). 검증은 항상 `http://192.168.0.63:33000`.
 - `+page.svelte`는 NON-runes → `let` 사용 (`$state()` 금지). 컴포넌트(.svelte)만 runes.
 - Windows `\r\n` 으로 Edit 매칭 실패 시 `Write`로 전체 재작성.
 - Python backend는 serena LSP 미지원 → Read/Grep 유지.

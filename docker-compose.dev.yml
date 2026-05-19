@@ -17,11 +17,11 @@ services:
   # if you need something else.
   postgres:
     ports:
-      - "${DB_PORT:-15432}:5432"
+      - "${DB_PORT:-35432}:5432"
 
   redis:
     ports:
-      - "${REDIS_PORT:-16379}:6379"
+      - "${REDIS_PORT:-36379}:6379"
 
   backend:
     build:
@@ -33,7 +33,7 @@ services:
       sh -c "python manage.py migrate --noinput &&
              uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --reload --no-access-log --log-level warning"
     ports:
-      - "${BE_PORT:-8000}:8000"
+      - "${BE_PORT:-38000}:8000"
     environment:
       DJANGO_ENV: dev
       DEBUG: "true"
@@ -117,7 +117,7 @@ services:
       - /app/node_modules
     command: npm run dev -- --host 0.0.0.0 --port 3000
     ports:
-      - "${FE_PORT:-3000}:3000"
+      - "${FE_PORT:-33000}:3000"
     environment:
       API_TARGET: http://backend:8000
     depends_on:

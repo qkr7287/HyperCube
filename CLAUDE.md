@@ -69,9 +69,10 @@
 - 개발 superuser: `admin / agics12!@`
 - **dev 서버**: 192.168.0.63 (63번). 로컬 폴더 → 63번 sync → Docker bind-mount → hot-reload. SSH alias `hc-dev-63`, 소스 위치 `/home/agics/ts/HyperCube`
 - 16번 SSH: `ssh -i ~/.ssh/dcmtool_sync -p 2022 root@192.168.0.16`
-- 메인 대시보드 (dev): `http://192.168.0.63:3000`
-- Admin (dev): `http://192.168.0.63:8000/admin`
-- prod URL: `http://192.168.0.16:3334/hypercube`
+- 메인 대시보드 (dev): `http://192.168.0.63:33000`
+- Admin (dev): `http://192.168.0.63:38000/admin`
+- prod URL: `http://192.168.0.16:3334/hypercube` (서버 16번이 HC_PORT=3334 로 override; default 는 37003)
+- **포트 규칙**: 모든 default host port 에 `3` prefix — postgres `35432`, redis `36379`, backend `38000`, frontend `33000`, prod nginx `37003`. 컨테이너 안 포트는 표준 (5432/6379/8000/3000/7003) 그대로
 
 ## 현황 / 진행 상황
 

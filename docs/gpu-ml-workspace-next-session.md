@@ -33,8 +33,8 @@ Do not restart the discussion from generic GPU hosting. Continue from the design
 - Local Windows checkout is the authoritative editor/git workspace.
 - Mutagen sync mirrors this repo to `hc-dev-63:/home/agics/ts/HyperCube`.
 - Docker compose and containers run on `192.168.0.63`.
-- Frontend is expected at `http://192.168.0.63:3000/`.
-- Backend is expected at `http://192.168.0.63:8000/`.
+- Frontend is expected at `http://192.168.0.63:33000/`.
+- Backend is expected at `http://192.168.0.63:38000/`.
 - Do not start a competing local dev server on the Windows machine.
 - Always check `git status --short` before editing. The worktree may contain unrelated user changes.
 
