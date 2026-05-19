@@ -102,24 +102,35 @@
 						{/each}
 					</div>
 				{/if}
+				{#if $userHeaderStore.actions && $userHeaderStore.actions.length > 0}
+					<div class="hero-actions">
+						{#each $userHeaderStore.actions as a, idx (idx)}
+							<button
+								class="hero-btn"
+								class:primary={a.variant === 'primary'}
+								class:icon-only={a.variant === 'icon'}
+								onclick={a.onclick}
+								disabled={a.disabled}
+								title={a.label}
+							>
+								{#if a.spinning}<span class="hero-btn-spin"></span>{/if}
+								{#if a.variant === 'icon'}
+									<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+										<path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+										<path d="M21 3v5h-5" />
+										<path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+										<path d="M3 21v-5h5" />
+									</svg>
+								{:else}
+									{a.label}
+								{/if}
+							</button>
+						{/each}
+					</div>
+				{/if}
 			{/if}
 		</div>
 		<div class="right">
-			{#if $userHeaderStore?.actions && $userHeaderStore.actions.length > 0}
-				<div class="hero-actions">
-					{#each $userHeaderStore.actions as a, idx (idx)}
-						<button
-							class="hero-btn"
-							class:primary={a.variant === 'primary'}
-							onclick={a.onclick}
-							disabled={a.disabled}
-						>
-							{#if a.spinning}<span class="hero-btn-spin"></span>{/if}
-							{a.label}
-						</button>
-					{/each}
-				</div>
-			{/if}
 			<span class="user-name">{username}</span>
 			<button class="logout-btn" onclick={doLogout}>로그아웃</button>
 		</div>
@@ -288,6 +299,16 @@
 
 	.hero-btn.primary:hover:not(:disabled) {
 		filter: brightness(1.08);
+	}
+
+	.hero-btn.icon-only {
+		padding: 6px 8px;
+		color: var(--text-muted);
+	}
+
+	.hero-btn.icon-only:hover:not(:disabled) {
+		color: var(--accent);
+		border-color: var(--accent);
 	}
 
 	.hero-btn:disabled {

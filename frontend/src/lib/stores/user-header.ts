@@ -21,7 +21,7 @@ export type UserHeaderKpi = {
 export type UserHeaderAction = {
 	label: string;
 	onclick: () => void;
-	variant?: 'ghost' | 'primary';
+	variant?: 'ghost' | 'primary' | 'icon';
 	disabled?: boolean;
 	spinning?: boolean;
 };

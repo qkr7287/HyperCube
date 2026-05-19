@@ -1110,9 +1110,7 @@ KPI — 컨테이너·요청·자원 합계
 				{ key: 'ws', label: '워크스페이스', value: String(workspaceCount), tone: 'ws', on: workspaceCount > 0, title: '활성화된 워크스페이스' },
 			],
 			actions: [
-				{ label: refreshing ? '갱신 중…' : '새로고침', onclick: () => load({ silent: true }), variant: 'ghost', disabled: refreshing || loading, spinning: refreshing },
-				{ label: '모델 등록 요청', onclick: () => (modelUploadModalOpen = true), variant: 'ghost' },
-				{ label: '+ 새 요청', onclick: () => openNewRequest(null), variant: 'primary' },
+				{ label: refreshing ? '갱신 중…' : '새로고침', onclick: () => load({ silent: true }), variant: 'icon', disabled: refreshing || loading, spinning: refreshing },
 			],
 		});
 	});
@@ -1148,6 +1146,8 @@ KPI — 컨테이너·요청·자원 합계
 						<button class="search-clear" onclick={() => { search = ''; debouncedSearch = ''; searchInputEl?.focus(); }} aria-label="검색 초기화" title="검색 초기화 (Esc)">×</button>
 					{/if}
 				</div>
+				<button class="tab-action" onclick={() => (modelUploadModalOpen = true)}>모델 등록 요청</button>
+				<button class="tab-action" onclick={() => openNewRequest(null)}>+ 새 요청</button>
 			</div>
 		</section>
 
@@ -2355,6 +2355,27 @@ KPI — 컨테이너·요청·자원 합계
 		gap: 8px;
 		font-size: 12px;
 		color: var(--text-muted);
+	}
+
+	.tab-action {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 6px 12px;
+		font: inherit;
+		font-size: 12px;
+		font-weight: 700;
+		color: var(--accent);
+		background: rgba(77, 191, 179, 0.07);
+		border: 1px solid rgba(77, 191, 179, 0.35);
+		border-radius: 6px;
+		cursor: pointer;
+		transition: background 0.12s, border-color 0.12s, color 0.12s;
+	}
+
+	.tab-action:hover {
+		background: rgba(77, 191, 179, 0.15);
+		border-color: var(--accent);
 	}
 
 	.page-tabs {
