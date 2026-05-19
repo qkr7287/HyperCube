@@ -4,8 +4,26 @@
 브라우저에서 직접 돌려보는 가이드입니다. 예제 모델은 가벼우면서도 한국어를
 잘 다루는 **Qwen2-VL-2B-Instruct** (Apache 2.0, ~4 GB)입니다.
 
-다른 모델(SmolVLM, LLaVA-OneVision 등)도 같은 절차로 올릴 수 있습니다.
-모델 로드 코드 한 줄만 바꿔주면 됩니다.
+## 자동 실행에 대해
+
+`hypercube/ml-pytorch-jupyter:cuda12.4-airgap` 이미지는 시작될 때 다음을
+자동으로 합니다 (Phase 1, 2026-05-19~):
+
+1. `/workspace/models/*/*.tar.gz` 발견 시 `/workspace/<asset-slug>/`로 자동 추출
+2. 추출된 디렉터리가 `qwen2-vl-2b-instruct` 면 백그라운드로 `transformers` 로딩 +
+   `gradio` UI를 `127.0.0.1:7860`에 띄움 (`jupyter-server-proxy` 통해
+   `<workspace>/proxy/7860/` 로 노출)
+3. `/workspace/00-quickstart.ipynb` 시드 — Jupyter에서 한 셀 Run하면 gradio가
+   IFrame으로 임베드되어 노트북 안에서 바로 동작
+
+→ Qwen2-VL의 경우 사용자가 신청 → admin 승인 → **워크스페이스 URL 클릭만으로
+멀티모달 UI 바로 사용 가능**. 아래의 1~5단계는 모델 등록을 어떻게 하는지에 대한
+가이드이고, deploy 이후의 "노트북에서 셀 실행" 단계는 더 이상 필요 없습니다.
+
+Qwen2-VL 외 모델(SmolVLM, LLaVA-OneVision 등)은 현재 하드코딩된 자동 launcher가
+없어서 사용자가 직접 노트북에서 `from_pretrained` + `gradio.launch` 호출해야 합니다.
+Phase 2 (`docs/multimodal-auto-launch-handoff.md` 참고)에서 wizard로 추론 레시피를
+선택하면 임의 모델에 대해 같은 자동 launcher가 만들어지도록 일반화 예정.
 
 ## 1. 모델 파일 준비 (로컬에서)
 

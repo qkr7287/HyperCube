@@ -60,7 +60,7 @@
 
 - **Frontend unit/component**: `cd frontend && npm test` — Vitest. utils 30 + ContainerKpiBar 12 + FleetAgentCard 7 = 49건. `npm run test:watch` 도 있음.
 - **Backend**: `ssh hc-dev-63 "docker exec hc-backend python manage.py test apps.metrics.tests.test_viewsets.ContainerBucketsContractTest"` — 4건. `cpu_max` % 단위 contract.
-- **E2E**: `cd frontend && E2E_USER=user1 E2E_PASS='agics12!@' E2E_CONTAINER_ID=31334b38e52c npm run e2e` — Playwright. 3건. admin 으로 돌리면 컨테이너 owner 아니라 graceful skip.
+- **E2E**: `cd frontend && E2E_USER=user1 E2E_PASS='agics12!@' E2E_CONTAINER_ID=560f94bf39ff npm run e2e` — Playwright. 3건. admin 으로 돌리면 컨테이너 owner 아니라 graceful skip.
 - **타입 체크**: `cd frontend && npm run check` (svelte-check) — 회귀 lifecycle / 타입 오류.
 - **변경 후 권장 사이클**: 코드 → `npm test` (3-7초) → 필요시 `npm run check` → commit → push.
 
