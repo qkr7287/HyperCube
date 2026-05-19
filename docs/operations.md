@@ -4,27 +4,39 @@ Deployment state, day-2 procedures, and recovery notes.
 
 ---
 
-## Live deployments (as of 2026-04-21)
+## Live deployments (as of 2026-05-19)
 
-### Server 16 ? 192.168.0.16 ? HyperCube production
-- Public URL: `http://192.168.0.16:3334/`
-- Deploy folder: `/home/agics-ai/docker/hypercube`
-- Image tag pinned in `.env`: currently `sha-a92ed89`
-  (override to `latest` to track main automatically)
-- Container names: `hc-nginx`, `hc-backend`, `hc-celery-worker`, `hc-celery-beat`, `hc-postgres`, `hc-redis`
-- SPA mounts at root `/`. Django admin at `/django-admin/`.
-- Port 7003 on the host is **owned by `agdevblog_frontend`** (unrelated project) ? do not touch.
-- Former DCMTool stack at `/home/agics-ai/docker/DCMTool` is stopped via `docker compose down` (volumes preserved). Restart with `docker compose up -d` from that directory if you need to roll all the way back to the pre-HyperCube world.
-- DCMTool self-hosted runner (`actions.runner.dev-agics-DCMTool.agicsai-desktop`) is **stopped + disabled** ? nothing auto-redeploys the old DCMTool image.
+dev + prod 가 **63번 한 머신** 에 공존. compose project 와 container_name prefix
+로 격리. 16번 prod 는 종료 (꺼져있음, 폐기).
 
-### Server 41 ? 192.168.0.41 ? production agent
-- Container: `hypercube-agent-prod-agent-1` (running the fixed build `ac0daaf` with WS response queue)
-- Config: `BACKEND_URL=ws://192.168.0.16:3334`, `AGENT_HOSTNAME=server_41_prod`
-- SSH: `root@192.168.0.41:2022` (password auth)
-- Also has a stray local-test agent `hypercube-agent-agent-1` that tries to reach `192.168.0.47:8000`. Ignore unless told otherwise.
+### Server 63 — 192.168.0.63 — HyperCube dev + prod (공존)
 
-### Server 63 ? agent presence (partial)
-- Reports as registered; operational status to be confirmed when needed.
+| | dev | prod |
+|---|---|---|
+| Source 위치 | `/home/agics/ts/HyperCube` (mutagen sync 로컬에서) | `/docker/hypercube-prod` (image-only) |
+| Public URL | `http://192.168.0.63:33000/` | `http://192.168.0.63:37003/` |
+| Backend URL | `http://192.168.0.63:38000` (직노출) | `http://192.168.0.63:37003` (nginx reverse proxy) |
+| Compose project | `hypercube` | `hypercube-prod` |
+| Container prefix | `hc-*` (postgres / redis / backend / celery-worker / celery-beat / frontend / migrate-watcher) | `hcprod-*` (postgres / redis / backend / celery-worker / celery-beat / nginx) |
+| Image source | local build (Dockerfile.dev, bind-mount) | GHCR pull (`ghcr.io/qkr7287/hypercube-{backend,nginx}`) |
+| 자동 배포 | — (mutagen 으로 코드 sync, uvicorn reload) | main push → Build and push images → Deploy to 63 prod (self-hosted runner `hc63-prod-runner`) |
+| SSH | `agics@192.168.0.63:2022` (alias `hc-dev-63`) | 같음 |
+| 운영자 진입점 | `cd /home/agics/ts/HyperCube` | `cd /docker/hypercube-prod` |
+| .env | `.env.dev` | `.env` (Django secret / DB password / ALLOWED_HOSTS) |
+
+> **dev / prod compose 가 서로 다른 project name 이라 `docker compose down`
+> 명령은 디렉터리 단위로 격리됨.** 한 쪽이 다른 쪽을 떨어뜨릴 일 없음.
+> 단, GPU·`hc-ml-internal` 네트워크는 공유 — 사용자가 띄운 workspace
+> 컨테이너는 dev/prod 어느 backend 든 reach 가능.
+
+### Agent
+
+| 서버 | 위치 | 가리키는 backend | 비고 |
+|---|---|---|---|
+| 63번 (dev) | `hypercube-agent-dev-63` 컨테이너 | `ws://192.168.0.63:38000` (dev) | mutagen sync. agent repo 별도 (`qkr7287/HyperCube-agent`) |
+| 63번 (prod) | (TBD — agent 메인테이너가 prod URL 로 별도 인스턴스 띄움) | `ws://192.168.0.63:37003` (prod) | `docs/handoffs/agent-port-update.md` 참고 |
+
+옛 서버 (16번 / 41번 / DCMTool) 는 모두 폐기.
 
 ---
 
@@ -33,77 +45,96 @@ Deployment state, day-2 procedures, and recovery notes.
 ```
 HyperCube (private)
     main push
-       ?
-       ??? build-push-images.yml   ? ghcr.io/qkr7287/hypercube-{backend,nginx} (public)
-       ??? publish-deploy-bundle.yml ? qkr7287/hypercube-deploy (public)
-       ??? sync-to-dcmtool.yml     ? legacy DCMTool/dev mirror (no longer acted on)
-
-hypercube-deploy/main
-    (stopping point for now ? future: hypercube-deploy push
-     triggers self-hosted runner on server 16 to pull + up)
+       │
+       ├── build-push-images.yml    → ghcr.io/qkr7287/hypercube-{backend,nginx} (public)
+       │     ↓ (workflow_run chain)
+       ├── deploy-prod.yml          → self-hosted runner `hc63-prod-runner` 실행:
+       │                              cd /docker/hypercube-prod
+       │                              sed -i 's|IMAGE_TAG=.*|IMAGE_TAG=sha-<short>|' .env
+       │                              docker compose pull && up -d
+       │                              health check (curl /api/health/ 24×5s)
+       └── publish-deploy-bundle.yml → qkr7287/hypercube-deploy (token 미설정 시 no-op)
 ```
 
-- Images: **public** (repo stays private). If images ever flip back to private, toggle via Profile ? Packages ? `hypercube-*` ? Package settings ? Visibility ? Public.
-- Bundle sync currently needs secret `DEPLOY_BUNDLE_PAT` on `qkr7287/HyperCube`. Until that secret is set the bundle workflow is a no-op and you have to copy `deploy/docker-compose.yml` + `deploy/.env.example` manually.
+- Images: **public** (repo stays private). 토글: Profile → Packages → `hypercube-*` → Package settings → Visibility.
+- Bundle sync 는 `DEPLOY_BUNDLE_PAT` secret 필요 — 미설정이면 workflow 자체는 fail 하지만 deploy 와 별개라 prod 영향 X. 외부 appliance 배포 자동화 필요해지면 secret 추가.
 
 ---
 
-## Day-2 procedures (server 16)
+## Day-2 procedures (server 63 — prod)
 
 ### Update to latest main
+자동: main 에 push → Build and push images → Deploy to 63 prod workflow chain.
+
+수동 (워크플로우 안 돌리고 직접):
 ```bash
-ssh -i ~/.ssh/dcmtool_sync -p 2022 root@192.168.0.16
-cd /home/agics-ai/docker/hypercube
+ssh hc-dev-63
+cd /docker/hypercube-prod
 docker compose pull
 docker compose up -d
-docker compose logs -f backend   # optional ? watch the migrate + startup
+docker logs -f hcprod-backend   # optional — migrate + startup 모니터
 ```
-Migrations run automatically on container start. No extra steps for ordinary releases.
+Migrations run automatically on container start.
 
 ### Pin to a specific commit (rollback or freeze)
 ```bash
-cd /home/agics-ai/docker/hypercube
+ssh hc-dev-63
+cd /docker/hypercube-prod
 sed -i 's|^IMAGE_TAG=.*|IMAGE_TAG=sha-<7char>|' .env
 docker compose pull
 docker compose up -d
 ```
+또는 GitHub Actions 탭 → "Deploy to 63 prod" → Run workflow → sha 입력란에 7자.
 
 ### Back up the database
 ```bash
-cd /home/agics-ai/docker/hypercube
-docker compose exec postgres pg_dump -U hypercube hypercube \
-  > /home/agics-ai/docker/hypercube/backup-$(date +%F).sql
+ssh hc-dev-63
+docker exec hcprod-postgres pg_dump -U hypercube hypercube \
+  > /docker/hypercube-prod/backup-$(date +%F).sql
 ```
 
 ### Create another Django superuser
 ```bash
-docker compose exec backend python manage.py createsuperuser
+docker exec -it hcprod-backend python manage.py createsuperuser
 ```
 
 ### Reset password of an existing user
 ```bash
-docker compose exec backend python manage.py changepassword <username>
+docker exec hcprod-backend python manage.py changepassword <username>
 ```
+
+### dev 쪽과 헷갈리지 말 것
+`docker compose down` 은 **반드시 디렉터리 안에서**:
+- prod 만 내릴 때: `cd /docker/hypercube-prod && docker compose down`
+- dev 만 내릴 때: `cd /home/agics/ts/HyperCube && docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.dev down`
+
+상대 stack 영향 X (compose project 가 격리됨).
 
 ---
 
 ## Recovery
 
-### Stop HyperCube, restart legacy DCMTool
+### Prod 만 정지 (dev 영향 X)
 ```bash
-ssh -i ~/.ssh/dcmtool_sync -p 2022 root@192.168.0.16
-
-cd /home/agics-ai/docker/hypercube
-docker compose down                    # stop prod stack, keep volumes
-cd /home/agics-ai/docker/DCMTool
-docker compose up -d                   # bring old stack back (data intact)
-systemctl enable --now actions.runner.dev-agics-DCMTool.agicsai-desktop
+ssh hc-dev-63
+cd /docker/hypercube-prod
+docker compose down   # 볼륨 유지
+# 재시작: docker compose up -d
 ```
 
-### Full DB wipe (dev only ? production lose data!)
+### Full DB wipe (dev only — prod 에선 절대 금지)
 ```bash
-docker compose down -v                 # -v deletes volumes
-docker compose up -d                   # fresh DB, fresh migrations
+cd /home/agics/ts/HyperCube
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.dev down -v
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.dev up -d
+```
+
+### Self-hosted runner 가 죽었을 때
+```bash
+ssh hc-dev-63
+sudo systemctl status actions.runner.qkr7287-HyperCube.hc63-prod-runner.service
+sudo systemctl restart actions.runner.qkr7287-HyperCube.hc63-prod-runner.service
+# GitHub UI 에서 runner 가 다시 Idle 표시되는지 확인
 ```
 
 ---
@@ -122,15 +153,17 @@ editor, git, and browser stay local.
 - Source is visible on the server at `/home/agics/ts/HyperCube/` ? the
   same bind mounts as pure-local dev.
 
-**Port plan on server 63**
+**Port plan on server 63 (dev)**
 | purpose | host port | notes |
 |---|---|---|
-| frontend (Vite) | `3000` | free on 63 (collision-free) |
-| backend (uvicorn) | `8000` | free |
-| postgres | `15432` | dev default |
-| redis | `16379` | dev default |
+| frontend (Vite) | `33000` | "3" prefix default |
+| backend (uvicorn) | `38000` | |
+| postgres | `35432` | dev + prod 같은 default 지만 prod 는 host 노출 X |
+| redis | `36379` | |
 
 Override any of these via `.env.dev` (`FE_PORT`, `BE_PORT`, `DB_PORT`, `REDIS_PORT`).
+prod 는 같은 머신에서 `:37003` (nginx) 만 노출 — `cd /docker/hypercube-prod`
+참조.
 
 ### One-time setup (on your Windows PC)
 
