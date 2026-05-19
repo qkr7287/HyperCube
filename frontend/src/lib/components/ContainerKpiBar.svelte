@@ -32,14 +32,17 @@
 		network?: { rx?: number; tx?: number };
 		disk?: { read?: number; write?: number };
 		workspace?: {
-			path?: string;
-			device?: string;
-			projectId?: number;
+			path?: string | null;
+			device?: string | null;
+			projectId?: number | null;
 			hardGb?: number;
 			sizeGb?: number;
-			usedGb?: number;
-			availableGb?: number;
-			usedPct?: number;
+			usedGb?: number | null;
+			availableGb?: number | null;
+			usedPct?: number | null;
+			rwLayerGb?: number | null;
+			rootFsGb?: number | null;
+			source?: 'du' | 'rw-layer' | 'xfs-quota' | null;
 		} | null;
 		gpu?:
 			| {
@@ -139,13 +142,33 @@
 	let workspaceSizeGb = $derived(
 		asNumber(workspace?.hardGb) || asNumber(workspace?.sizeGb) || (workspaceGbLimit ?? 0),
 	);
-	let workspaceUsedGb = $derived(asNumber(workspace?.usedGb));
+	// usedGb 는 측정 안 됐을 때 null/undefined 가 정상이라 number coerce 전에
+	// raw 값을 살려둬야 "—" 분기가 가능하다 (asNumber 는 null → 0 으로 떨군다).
+	let workspaceUsedGbRaw = $derived<number | null>(
+		typeof workspace?.usedGb === 'number' && Number.isFinite(workspace.usedGb) ? workspace.usedGb : null,
+	);
+	let workspaceUsedGb = $derived(workspaceUsedGbRaw ?? 0);
+	let workspaceMeasured = $derived(workspaceUsedGbRaw !== null);
+	let workspaceSource = $derived<'du' | 'rw-layer' | 'xfs-quota' | null>(
+		workspace?.source ?? null,
+	);
+	let workspaceSourceLabel = $derived(
+		workspaceSource === 'rw-layer'
+			? 'RW 레이어 기준'
+			: workspaceSource === 'xfs-quota'
+				? 'XFS quota 기준'
+				: '',
+	);
 	let workspaceUsedPct = $derived(
-		asNumber(workspace?.usedPct) || (workspaceSizeGb > 0 ? (workspaceUsedGb / workspaceSizeGb) * 100 : 0),
+		workspaceMeasured
+			? (typeof workspace?.usedPct === 'number' && Number.isFinite(workspace.usedPct)
+					? workspace.usedPct
+					: workspaceSizeGb > 0 ? (workspaceUsedGb / workspaceSizeGb) * 100 : 0)
+			: 0,
 	);
 	let hasWorkspaceMetric = $derived(
 		workspaceSizeGb > 0
-			|| workspaceUsedGb > 0
+			|| workspaceMeasured
 			|| Boolean(workspace?.path)
 			|| Boolean(workspace?.device)
 			|| Boolean(workspaceGbLimit),
@@ -234,11 +257,13 @@
 		return formatBytesShort(memUsed);
 	}
 	function workspaceRawText(): string {
-		if (workspaceSizeGb > 0) return `${workspaceUsedGb.toFixed(1)} GB / ${workspaceSizeGb} GB`;
-		return `${workspaceUsedGb.toFixed(1)} GB`;
+		// usedGb 가 측정 안 됐으면 0 으로 떨어트리지 말고 "—" 로 명시.
+		const usedText = workspaceMeasured ? `${workspaceUsedGb.toFixed(1)} GB` : '—';
+		if (workspaceSizeGb > 0) return `${usedText} / ${workspaceSizeGb} GB`;
+		return usedText;
 	}
 	function workspaceUsedText() {
-		return `${workspaceUsedGb.toFixed(1)} GB`;
+		return workspaceMeasured ? `${workspaceUsedGb.toFixed(1)} GB` : '—';
 	}
 
 	// hover/focus 시 띄울 bar-tooltip key (예전 meter 의 detail tooltip 복원)
