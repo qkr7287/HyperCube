@@ -657,31 +657,18 @@
 		background: rgba(2, 6, 12, 0.42);
 		border: 1px solid var(--border-soft);
 		white-space: nowrap;
-		/* parent chip-stack 의 min-width:0 + flex 컨텍스트 안에서 자동 shrink
-		   되며 텍스트가 잘리던 문제. chip 은 자기 내용물 폭은 유지하고,
-		   필요한 공간 줄여야 할 땐 옆 .kpi-label 이 ellipsis 먼저 받도록. */
-		flex-shrink: 0;
 	}
 	.chip-stack {
 		display: inline-flex;
-		/* 카드 폭이 좁아 (~172px 6-up) 라벨 + chip 두 개를 한 줄에 두면 chip 끼리도
-		   답답하고 label 도 압박받음. status chip 위 / limit chip 아래 column-stack
-		   으로 자체 정렬해서 head row 의 가로 부담을 줄임. */
-		flex-direction: column;
-		align-items: flex-end;
-		justify-content: flex-start;
-		gap: 2px;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 4px;
 		min-width: 0;
 	}
 	.limit-chip {
 		display: inline-flex;
 		align-items: center;
-		flex-shrink: 0;
-		/* "limit 2 cores" / "limit 10 GB" 같이 흔한 라벨이 92px 에선 잘렸다.
-		   카드 폭이 좁아질 땐 chip 폭도 줄어드는 게 맞지만 92px 는 한국어/영문
-		   복합 라벨 기준으로 너무 작다. 120px 까지 허용하고, 그래도 안 들어가면
-		   ellipsis 로 떨어뜨려 title 로 풀텍스트를 노출 (hover). */
-		max-width: 120px;
+		max-width: 92px;
 		padding: 2.5px 7px;
 		border-radius: 4px;
 		background: rgba(48, 213, 200, 0.08);
@@ -714,13 +701,9 @@
 	   ======================================================================== */
 	.kpi-hero {
 		min-width: 0;
-		/* %와 raw 를 같은 행에 두면 카드 폭이 좁아질 때 raw 가 잘렸다. 두 줄로
-		   stack — % 큰 글씨 위, raw 작은 글씨 아래. 카드 폭과 무관하게 항상
-		   동일한 시각 hierarchy 유지. */
 		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 2px;
+		align-items: baseline;
+		gap: 6px;
 		color: var(--text-strong);
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums;
@@ -731,22 +714,19 @@
 	.hero-raw {
 		display: inline-flex;
 		align-items: baseline;
+		font-size: clamp(16px, 1.05vw, 21px);
 		font-weight: 700;
 		line-height: 1;
 		letter-spacing: -0.02em;
-		max-width: 100%;
 	}
 	.hero-pct {
-		font-size: clamp(16px, 1.05vw, 21px);
+		/* % 값은 KPI 의 헤드라인 — 절대 잘리지 않게 고정 폭 유지. */
 		flex: 0 0 auto;
 		white-space: nowrap;
 	}
 	.hero-raw {
-		/* hero-pct (21px) 의 보조 라인 — pct 와 같은 크기였던 게 좁은 카드에서
-		   잘리던 게 문제였지만 stacked 상태에선 자기 폭 갖고 있어서 풀-크기로
-		   다시 돌려도 안전. 13~16px 으로 가시성 보장. */
-		font-size: clamp(13px, 0.85vw, 16px);
-		color: var(--text-mid);
+		font-size: clamp(13px, 0.85vw, 17px);
+		flex: 1 1 auto;
 		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -765,8 +745,6 @@
 		margin-left: 2px;
 	}
 	.hero-sep {
-		/* hero 가 column-stack 으로 바뀌면서 row 구분자 dot 는 시각적으로 어색해짐. */
-		display: none;
 		color: var(--text-faint);
 		font-size: 13px;
 		font-weight: 400;
@@ -990,9 +968,9 @@
 	}
 	.foot-row {
 		display: grid;
-		/* dot / label / pct / raw — label 폭은 좁은 카드에서만 살짝 축소.
-		   desktop 에선 64px 유지해서 영문약자+한글부연 둘 다 들어가게. */
-		grid-template-columns: 9px clamp(56px, 5vw, 64px) minmax(0, 1fr) minmax(0, auto);
+		/* 카드 안 row 정렬 일관성 — dot 9px / label 64px 고정 / pct 가변 / raw 우측.
+		   label 너비 고정으로 모든 row 의 pct 시작점이 동일해진다. */
+		grid-template-columns: 9px 64px minmax(0, 1fr) minmax(0, auto);
 		align-items: center;
 		gap: 7px;
 		min-width: 0;
@@ -1008,7 +986,6 @@
 		align-items: baseline;
 		gap: 4px;
 		min-width: 0;
-		overflow: hidden;
 	}
 	.foot-row b .ab {
 		font-family: var(--font-mono);
@@ -1020,16 +997,11 @@
 	}
 	.foot-row b .ko {
 		font-family: system-ui, -apple-system, 'Segoe UI', 'Malgun Gothic', sans-serif;
-		font-size: 10.5px;
+		font-size: 9.5px;
 		font-weight: 500;
 		color: var(--text-faint);
 		letter-spacing: 0;
 		white-space: nowrap;
-	}
-	/* 카드 폭이 좁아서 한글 부연이 라벨 영역을 넘칠 정도면 숨김.
-	   1100px 이상 desktop 에선 평균/피크/대비 그대로 노출. */
-	@media (max-width: 1100px) {
-		.foot-row b .ko { display: none; }
 	}
 	.foot-row .pct {
 		font-style: normal;
