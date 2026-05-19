@@ -45,7 +45,7 @@
 	} from '$lib/utils/monitoring-range';
 	import logoHypercube from '$lib/assets/logo_hypercube.png';
 
-	type Agent = { id: string; hostname: string; ip_address: string; container_count?: number };
+	type Agent = { id: string; hostname: string; ip_address: string; container_count?: number; is_active?: boolean };
 	type DemoState = { systemInfo: any; containers: any[]; metrics: Map<string, any> };
 	type SystemHistoryRow = {
 		recorded_at: string;

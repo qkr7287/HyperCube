@@ -66,6 +66,9 @@ export type FleetSummary = {
 		network_tx_rate: number;
 		gpu_avg: number;
 		gpu_max: number;
+		gpu_memory_used_bytes?: number;
+		gpu_memory_total_bytes?: number;
+		gpu_memory_percent?: number;
 	};
 	operations_summary: {
 		processes_total: number;
@@ -145,6 +148,9 @@ export type FleetHistoryPoint = {
 	network_tx_rate: number;
 	gpu_avg: number;
 	gpu_max: number;
+	gpu_memory_used_bytes?: number;
+	gpu_memory_total_bytes?: number;
+	gpu_memory_percent?: number;
 };
 
 export type FleetAgentSeries = {
@@ -543,6 +549,11 @@ function buildSummary(rows: FleetAgentRow[]): FleetSummary {
 	const memory: number[] = [];
 	const disk: number[] = [];
 	const gpu: number[] = [];
+	// VRAM 합산 — root 페이지의 GPU 카드가 usage 만 보여주면 idle 상태(usage=0,
+	// VRAM=89%) 가 "GPU 안 도는 거 아닌가?" 처럼 보여 헷갈린다. used/total bytes 를
+	// 합산해서 fleet 전체 VRAM 점유율을 함께 노출.
+	let gpuVramUsed = 0;
+	let gpuVramTotal = 0;
 	const processes: number[] = [];
 	const logins: number[] = [];
 	const freshness = { fresh_agents: 0, warm_agents: 0, stale_agents: 0, expired_agents: 0 };
@@ -561,7 +572,11 @@ function buildSummary(rows: FleetAgentRow[]): FleetSummary {
 			cpu.push(row.latest.cpu_usage);
 			memory.push(row.latest.memory_usage);
 			disk.push(row.latest.disk_usage);
-			if (row.latest.gpu_count > 0) gpu.push(row.latest.gpu_usage);
+			if (row.latest.gpu_count > 0) {
+				gpu.push(row.latest.gpu_usage);
+				gpuVramUsed += Number(row.latest.gpu_memory_used ?? 0);
+				gpuVramTotal += Number(row.latest.gpu_memory_total ?? 0);
+			}
 			rx += row.latest.network_rx_rate;
 			tx += row.latest.network_tx_rate;
 			if (typeof row.latest.processes_total === 'number') processes.push(row.latest.processes_total);
@@ -591,6 +606,9 @@ function buildSummary(rows: FleetAgentRow[]): FleetSummary {
 			network_tx_rate: tx,
 			gpu_avg: avg(gpu),
 			gpu_max: max(gpu),
+			gpu_memory_used_bytes: gpuVramUsed,
+			gpu_memory_total_bytes: gpuVramTotal,
+			gpu_memory_percent: gpuVramTotal > 0 ? (gpuVramUsed / gpuVramTotal) * 100 : 0,
 		},
 		operations_summary: {
 			processes_total: sum(processes),
