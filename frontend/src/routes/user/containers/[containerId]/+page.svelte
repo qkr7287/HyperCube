@@ -2252,15 +2252,6 @@
 		min-height: 40px;
 		overflow: hidden;
 	}
-	.ops-flair::before {
-		content: '';
-		position: absolute;
-		inset: auto 12% 0 12%;
-		height: 36px;
-		background: radial-gradient(ellipse at center bottom, var(--flair-glow), transparent 70%);
-		pointer-events: none;
-		filter: blur(4px);
-	}
 	.ops-flair[data-status='running']    { --flair-color: rgba(52, 211, 153, 0.95); --flair-glow: rgba(16, 185, 129, 0.55); }
 	.ops-flair[data-status='paused']     { --flair-color: rgba(251, 191, 36, 0.95); --flair-glow: rgba(251, 191, 36, 0.45); }
 	.ops-flair[data-status='restarting'] { --flair-color: rgba(96, 165, 250, 0.95); --flair-glow: rgba(96, 165, 250, 0.5); }
