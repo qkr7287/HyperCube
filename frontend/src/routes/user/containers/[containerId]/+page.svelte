@@ -3468,60 +3468,6 @@
 		}
 	}
 
-	/* 1100~1279: hero + KPI 6 + ops-bar 를 한 줄에 다 욱여넣으면 KPI 카드의
-	   라벨이 잘리고 ops-bar 가 으스러진다. unified-bar 는 이미 flex-wrap: wrap
-	   이라 hero 한테 100% basis 만 주면 자연스럽게 두 줄로 떨어진다:
-	   hero 단독 한 줄 + (KPI / ops-bar) 한 줄. KPI 는 6 column 유지. */
-	@media (max-width: 1279px) and (min-width: 981px) {
-		.hero {
-			flex-basis: 100%;
-			max-width: none;
-		}
-		.kpi-row {
-			flex: 1.8 1 480px;
-			min-width: 480px;
-		}
-		.ops-bar {
-			flex: 0 0 300px;
-			min-width: 280px;
-			max-width: 340px;
-		}
-	}
-
-	/* ≤640: 작은 모바일 — KPI 2열로도 라벨이 잘리니 1열 stack 으로 떨어뜨리고
-	   차트/host-burden 도 더 컴팩트한 카드로. */
-	@media (max-width: 640px) {
-		.page {
-			padding: 10px 8px 18px;
-		}
-		.kpi-row :global(.kpi-bar) {
-			grid-template-columns: 1fr;
-		}
-		.chart-card {
-			min-height: 160px;
-		}
-		.hero h1 {
-			font-size: clamp(18px, 5vw, 22px);
-		}
-		.hero-image-text {
-			font-size: 11px;
-		}
-		.meta-chip,
-		.vital-chip {
-			font-size: 11px;
-		}
-		.ops-flair {
-			min-height: 28px;
-		}
-		.flair-cube {
-			width: 24px;
-			height: 24px;
-		}
-		.flair-label {
-			font-size: 9px;
-		}
-	}
-
 	/* viewport 세로가 짧으면 zero-scroll 정책을 해제하고 page 자체를 스크롤 가능.
 	   한 화면에 모두 담으려면 6 차트 카드(GPU 컨테이너)가 1/3씩 분할되어 찌부됨.
 	   세로 ≤ 900 환경(노트북 1366×768, 1600×900 등)은 scroll 허용 + 차트 카드
@@ -3539,6 +3485,57 @@
 		}
 		.area-charts {
 			min-height: 0;
+		}
+	}
+
+	/* 1280 ~ 1199: laptop / 작은 데스크탑.
+	   - unified-bar 가 한 줄에 못 들어가므로 hero 를 top, KPI + ops-bar 를 같은 줄로.
+	   - 호스트 부담 게이지 (감속/전력) 3 → 2 columns.
+	   - chart-grid 2 → 2 그대로지만 카드 높이 더 줄임. */
+	@media (max-width: 1279px) {
+		.unified-bar {
+			flex-wrap: wrap;
+		}
+		.hero {
+			flex: 1 1 100%;
+			min-width: 0;
+		}
+		.kpi-row {
+			flex: 2 1 480px;
+			min-width: 0;
+		}
+		.ops-bar {
+			flex: 1 1 240px;
+			min-width: 240px;
+			max-width: none;
+		}
+		.kpi-row :global(.kpi-bar) {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+		}
+		.kpi-row :global(.kpi) {
+			min-height: clamp(160px, 22vh, 195px);
+		}
+		.range-tools .range-tabs {
+			flex-wrap: wrap;
+		}
+	}
+
+	/* 980 ~ 1199: tablet-ish — bento 가 너무 좁아 차트가 한 줄에 두 개로 찌부됨.
+	   bento 를 2 row 로 단순화하고 sidebar tabs 를 charts 아래로 떨굼. */
+	@media (max-width: 1199px) {
+		.bento {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			grid-template-rows: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, auto);
+			grid-template-areas:
+				'charts charts'
+				'live tabs'
+				'burden burden';
+		}
+		.chart-grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+		.context-grid {
+			grid-template-columns: 1fr;
 		}
 	}
 
@@ -3653,6 +3650,55 @@
 
 		.live-stack {
 			grid-template-rows: minmax(260px, auto) minmax(260px, auto);
+		}
+	}
+
+	/* ≤768: 진짜 좁은 폭 (작은 태블릿 / 큰 모바일). 폰트·패딩 한 단 줄여 정보 밀도 유지. */
+	@media (max-width: 768px) {
+		.unified-bar {
+			gap: 8px;
+		}
+		.hero {
+			padding: 10px 12px 10px 14px;
+		}
+		.hero h1 {
+			font-size: 18px;
+		}
+		.kpi-row :global(.kpi-bar) {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+		.kpi-row :global(.kpi) {
+			min-height: clamp(150px, 26vh, 180px);
+		}
+		.ops-quick {
+			grid-template-columns: 1fr 1fr;
+		}
+		.ops-quick span:nth-child(3) {
+			grid-column: 1 / -1;
+		}
+		.ops-actions {
+			flex-wrap: wrap;
+		}
+		.bento,
+		.chart-grid {
+			grid-template-columns: 1fr;
+		}
+		.panel-header h2 {
+			font-size: 14px;
+		}
+	}
+
+	/* ≤420: 폰. 5개 vital chip 이 한 줄에 안 들어가니 wrap. KPI 1열. */
+	@media (max-width: 420px) {
+		.kpi-row :global(.kpi-bar) {
+			grid-template-columns: 1fr;
+		}
+		.hero-vitals,
+		.hero-meta {
+			flex-wrap: wrap;
+		}
+		.range-tabs {
+			flex-wrap: wrap;
 		}
 	}
 </style>
