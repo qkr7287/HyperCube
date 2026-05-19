@@ -221,6 +221,20 @@
 		return h > 0 ? `${d}일 ${h}시간` : `${d}일 가동`;
 	});
 	let containerPid = $derived<number | null>(inspectData?.state?.pid ?? null);
+
+	// ops-flair 의 hypercube 라벨 — 정보 라벨이 아니라 brand 표시. status 에 맞게.
+	function flairStatusText(status: string | undefined): string {
+		switch (status) {
+			case 'running':    return 'LIVE';
+			case 'paused':     return 'IDLE';
+			case 'restarting': return 'CYCLE';
+			case 'stopped':
+			case 'exited':
+			case 'dead':       return 'OFF';
+			case 'created':    return 'INIT';
+			default:           return '—';
+		}
+	}
 	// 마지막 동기화 신선도 — meta-chip 색상 분기용. 30초 이내 fresh, 2분 이내 default,
 	// 그 이상이면 stale 색으로 운영자가 즉시 인지하도록.
 	let syncFreshness = $derived.by<'fresh' | 'ok' | 'stale' | 'cold'>(() => {
@@ -1076,12 +1090,38 @@
 						<button class="ops-msg-close" onclick={dismissActionMsg} aria-label="닫기">✕</button>
 					</div>
 				{:else}
-					<!-- 하단 장식 — 정보 노출 X, 단순 시각 마감용 ribbon. status orb
-					     색과 호흡하는 fading dash + soft glow 로 박스 끝선을 강조한다. -->
+					<!-- 하단 장식 — HyperCube 의 tesseract (4D cube 의 3D shadow) 와이어프레임.
+					     중첩된 두 사각형 + 연결 edge 가 천천히 회전, status 색 stroke + 호흡 glow.
+					     running 일 때만 회전. stopped 면 정지된 채로 잔상만. -->
 					<div class="ops-flair" data-status={container.status} aria-hidden="true">
-						<span class="flair-dot"></span>
-						<span class="flair-dash"></span>
-						<span class="flair-dot"></span>
+						<svg class="flair-cube" viewBox="-24 -24 48 48" role="img" aria-label="hypercube">
+							<defs>
+								<filter id="ops-cube-glow" x="-50%" y="-50%" width="200%" height="200%">
+									<feGaussianBlur stdDeviation="1.2" result="blur" />
+									<feMerge>
+										<feMergeNode in="blur" />
+										<feMergeNode in="SourceGraphic" />
+									</feMerge>
+								</filter>
+							</defs>
+							<g class="cube-group" filter="url(#ops-cube-glow)">
+								<!-- outer square -->
+								<rect class="cube-edge outer" x="-16" y="-16" width="32" height="32" />
+								<!-- inner square (4D 의 안쪽 hypercube) -->
+								<rect class="cube-edge inner" x="-8" y="-8" width="16" height="16" />
+								<!-- 4D 연결 edge — 각 꼭짓점 ↔ 안쪽 꼭짓점 -->
+								<line class="cube-edge spoke" x1="-16" y1="-16" x2="-8" y2="-8" />
+								<line class="cube-edge spoke" x1="16"  y1="-16" x2="8"  y2="-8" />
+								<line class="cube-edge spoke" x1="16"  y1="16"  x2="8"  y2="8"  />
+								<line class="cube-edge spoke" x1="-16" y1="16"  x2="-8" y2="8"  />
+								<!-- 꼭짓점 dot — 호흡으로 살아있는 느낌 -->
+								<circle class="cube-node" cx="-16" cy="-16" r="1.4" />
+								<circle class="cube-node" cx="16"  cy="-16" r="1.4" />
+								<circle class="cube-node" cx="16"  cy="16"  r="1.4" />
+								<circle class="cube-node" cx="-16" cy="16"  r="1.4" />
+							</g>
+						</svg>
+						<span class="flair-label">{flairStatusText(container.status)}</span>
 					</div>
 				{/if}
 			</section>
@@ -2198,69 +2238,114 @@
 		margin-bottom: auto;
 	}
 
+	/* hypercube (tesseract) flair — 4D 큐브의 3D shadow 와이어프레임.
+	   회전 + 글로우 호흡 + 꼭짓점 점멸. 브랜드 표식 겸 "살아 있음" 마커. */
 	.ops-flair {
-		--flair-color: rgba(148, 163, 184, 0.7);
-		--flair-glow: rgba(148, 163, 184, 0.28);
+		--flair-color: rgba(148, 163, 184, 0.9);
+		--flair-glow: rgba(148, 163, 184, 0.45);
 		position: relative;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		gap: 10px;
-		padding: 10px 14px 8px;
-		min-height: 22px;
+		padding: 6px 12px 6px;
+		min-height: 40px;
+		overflow: hidden;
 	}
 	.ops-flair::before {
 		content: '';
 		position: absolute;
-		inset: auto 10% 0 10%;
-		height: 22px;
+		inset: auto 12% 0 12%;
+		height: 36px;
 		background: radial-gradient(ellipse at center bottom, var(--flair-glow), transparent 70%);
 		pointer-events: none;
-		filter: blur(2px);
+		filter: blur(4px);
 	}
-	.ops-flair[data-status='running']    { --flair-color: rgba(52, 211, 153, 0.95); --flair-glow: rgba(16, 185, 129, 0.42); }
-	.ops-flair[data-status='paused']     { --flair-color: rgba(251, 191, 36, 0.95); --flair-glow: rgba(251, 191, 36, 0.4); }
-	.ops-flair[data-status='restarting'] { --flair-color: rgba(96, 165, 250, 0.95); --flair-glow: rgba(96, 165, 250, 0.4); }
+	.ops-flair[data-status='running']    { --flair-color: rgba(52, 211, 153, 0.95); --flair-glow: rgba(16, 185, 129, 0.55); }
+	.ops-flair[data-status='paused']     { --flair-color: rgba(251, 191, 36, 0.95); --flair-glow: rgba(251, 191, 36, 0.45); }
+	.ops-flair[data-status='restarting'] { --flair-color: rgba(96, 165, 250, 0.95); --flair-glow: rgba(96, 165, 250, 0.5); }
 	.ops-flair[data-status='stopped'],
 	.ops-flair[data-status='exited'],
-	.ops-flair[data-status='dead']       { --flair-color: rgba(248, 113, 113, 0.9); --flair-glow: rgba(239, 68, 68, 0.36); }
-	.ops-flair .flair-dot {
-		position: relative;
-		width: 6px;
-		height: 6px;
-		border-radius: 50%;
-		background: var(--flair-color);
-		box-shadow:
-			0 0 0 2px rgba(255, 255, 255, 0.04),
-			0 0 10px var(--flair-color);
+	.ops-flair[data-status='dead']       { --flair-color: rgba(248, 113, 113, 0.85); --flair-glow: rgba(239, 68, 68, 0.4); }
+	.ops-flair[data-status='created']    { --flair-color: rgba(148, 163, 184, 0.85); --flair-glow: rgba(148, 163, 184, 0.35); }
+
+	.flair-cube {
+		width: 30px;
+		height: 30px;
 		flex: 0 0 auto;
+		overflow: visible;
 	}
-	.ops-flair .flair-dash {
-		position: relative;
-		flex: 1 1 auto;
-		height: 2px;
-		max-width: 220px;
-		border-radius: 999px;
-		background:
-			linear-gradient(
-				90deg,
-				transparent 0,
-				var(--flair-color) 22%,
-				var(--flair-color) 78%,
-				transparent 100%
-			);
-		opacity: 0.75;
+	.cube-group {
+		transform-origin: 0 0;
 	}
-	/* running 일 땐 점이 호흡 — 다른 상태는 정지 */
-	.ops-flair[data-status='running'] .flair-dot {
-		animation: flair-pulse 2.4s ease-in-out infinite;
+	.cube-edge {
+		fill: none;
+		stroke: var(--flair-color);
+		stroke-width: 1.4;
+		stroke-linecap: round;
+		stroke-linejoin: round;
 	}
-	.ops-flair[data-status='running'] .flair-dot:last-child {
-		animation-delay: 1.2s;
+	.cube-edge.outer { opacity: 0.95; }
+	.cube-edge.inner { opacity: 0.7; stroke-width: 1.1; }
+	.cube-edge.spoke { opacity: 0.55; stroke-dasharray: 1.6 1.8; }
+	.cube-node {
+		fill: var(--flair-color);
+		filter: drop-shadow(0 0 3px var(--flair-color));
 	}
-	@keyframes flair-pulse {
-		0%, 100% { opacity: 0.4; transform: scale(1); }
-		50%      { opacity: 1;   transform: scale(1.25); }
+
+	/* running — 큐브가 천천히 회전, 노드는 staggered 점멸 */
+	.ops-flair[data-status='running'] .cube-group {
+		animation: cube-spin 9s linear infinite;
+	}
+	.ops-flair[data-status='running'] .cube-node {
+		animation: cube-node-pulse 2.4s ease-in-out infinite;
+	}
+	.ops-flair[data-status='running'] .cube-node:nth-child(8)  { animation-delay: 0s;   }
+	.ops-flair[data-status='running'] .cube-node:nth-child(9)  { animation-delay: 0.6s; }
+	.ops-flair[data-status='running'] .cube-node:nth-child(10) { animation-delay: 1.2s; }
+	.ops-flair[data-status='running'] .cube-node:nth-child(11) { animation-delay: 1.8s; }
+	/* paused — 정지된 채 inner ↔ outer 만 조용히 호흡 */
+	.ops-flair[data-status='paused'] .cube-edge.inner {
+		animation: cube-breath 2.6s ease-in-out infinite;
+	}
+	.ops-flair[data-status='paused'] .cube-edge.outer {
+		animation: cube-breath 2.6s ease-in-out infinite 1.3s;
+	}
+	/* restarting — 평소보다 빠른 회전 + 깜빡임 */
+	.ops-flair[data-status='restarting'] .cube-group {
+		animation: cube-spin 2.2s linear infinite;
+	}
+	.ops-flair[data-status='restarting'] .cube-node {
+		animation: cube-node-pulse 1s ease-in-out infinite;
+	}
+	@keyframes cube-spin {
+		from { transform: rotate(0deg); }
+		to   { transform: rotate(360deg); }
+	}
+	@keyframes cube-node-pulse {
+		0%, 100% { transform: scale(1);   opacity: 0.45; }
+		50%      { transform: scale(1.7); opacity: 1;    }
+	}
+	@keyframes cube-breath {
+		0%, 100% { opacity: 0.3; }
+		50%      { opacity: 0.95; }
+	}
+
+	.flair-label {
+		font-size: 10px;
+		font-weight: 900;
+		letter-spacing: 0.22em;
+		color: var(--flair-color);
+		text-shadow: 0 0 8px var(--flair-glow);
+		font-variant-numeric: tabular-nums;
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	}
+	.ops-flair[data-status='running'] .flair-label {
+		animation: label-shimmer 3.2s ease-in-out infinite;
+	}
+	@keyframes label-shimmer {
+		0%, 100% { opacity: 0.72; }
+		50%      { opacity: 1;    }
 	}
 
 	/* 우측 액션 영역 — ContainerActions + limit icon btn */
