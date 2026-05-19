@@ -3488,6 +3488,57 @@
 		}
 	}
 
+	/* 1280 ~ 1199: laptop / 작은 데스크탑.
+	   - unified-bar 가 한 줄에 못 들어가므로 hero 를 top, KPI + ops-bar 를 같은 줄로.
+	   - 호스트 부담 게이지 (감속/전력) 3 → 2 columns.
+	   - chart-grid 2 → 2 그대로지만 카드 높이 더 줄임. */
+	@media (max-width: 1279px) {
+		.unified-bar {
+			flex-wrap: wrap;
+		}
+		.hero {
+			flex: 1 1 100%;
+			min-width: 0;
+		}
+		.kpi-row {
+			flex: 2 1 480px;
+			min-width: 0;
+		}
+		.ops-bar {
+			flex: 1 1 240px;
+			min-width: 240px;
+			max-width: none;
+		}
+		.kpi-row :global(.kpi-bar) {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+		}
+		.kpi-row :global(.kpi) {
+			min-height: clamp(160px, 22vh, 195px);
+		}
+		.range-tools .range-tabs {
+			flex-wrap: wrap;
+		}
+	}
+
+	/* 980 ~ 1199: tablet-ish — bento 가 너무 좁아 차트가 한 줄에 두 개로 찌부됨.
+	   bento 를 2 row 로 단순화하고 sidebar tabs 를 charts 아래로 떨굼. */
+	@media (max-width: 1199px) {
+		.bento {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			grid-template-rows: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, auto);
+			grid-template-areas:
+				'charts charts'
+				'live tabs'
+				'burden burden';
+		}
+		.chart-grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+		.context-grid {
+			grid-template-columns: 1fr;
+		}
+	}
+
 	/* ≤980: 1열 stack (모바일) */
 	@media (max-width: 980px) {
 		.page {
@@ -3599,6 +3650,55 @@
 
 		.live-stack {
 			grid-template-rows: minmax(260px, auto) minmax(260px, auto);
+		}
+	}
+
+	/* ≤768: 진짜 좁은 폭 (작은 태블릿 / 큰 모바일). 폰트·패딩 한 단 줄여 정보 밀도 유지. */
+	@media (max-width: 768px) {
+		.unified-bar {
+			gap: 8px;
+		}
+		.hero {
+			padding: 10px 12px 10px 14px;
+		}
+		.hero h1 {
+			font-size: 18px;
+		}
+		.kpi-row :global(.kpi-bar) {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+		.kpi-row :global(.kpi) {
+			min-height: clamp(150px, 26vh, 180px);
+		}
+		.ops-quick {
+			grid-template-columns: 1fr 1fr;
+		}
+		.ops-quick span:nth-child(3) {
+			grid-column: 1 / -1;
+		}
+		.ops-actions {
+			flex-wrap: wrap;
+		}
+		.bento,
+		.chart-grid {
+			grid-template-columns: 1fr;
+		}
+		.panel-header h2 {
+			font-size: 14px;
+		}
+	}
+
+	/* ≤420: 폰. 5개 vital chip 이 한 줄에 안 들어가니 wrap. KPI 1열. */
+	@media (max-width: 420px) {
+		.kpi-row :global(.kpi-bar) {
+			grid-template-columns: 1fr;
+		}
+		.hero-vitals,
+		.hero-meta {
+			flex-wrap: wrap;
+		}
+		.range-tabs {
+			flex-wrap: wrap;
 		}
 	}
 </style>
