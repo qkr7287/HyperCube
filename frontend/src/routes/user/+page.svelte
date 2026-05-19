@@ -1202,7 +1202,7 @@ KPI — 컨테이너·요청·자원 합계
 
 		{#if loading && containers.length === 0}
 			<div class="skel-table" style={containerColsStyle} aria-busy="true" aria-label="컨테이너 불러오는 중">
-				{#each Array(6) as _, i (i)}
+				{#each Array(12) as _, i (i)}
 					<div class="skel-row skel-row-container">
 						<span class="skel-cell"><span class="skel-pill"></span></span>
 						<span class="skel-cell skel-cell-stack">
@@ -1511,7 +1511,7 @@ KPI — 컨테이너·요청·자원 합계
 
 		{#if loading && requests.length === 0}
 			<div class="skel-table" style={historyColsStyle} aria-busy="true" aria-label="요청 이력 불러오는 중">
-				{#each Array(8) as _, i (i)}
+				{#each Array(12) as _, i (i)}
 					<div class="skel-row skel-row-history">
 						<span class="skel-cell"><span class="skel-pill" style="width: 44px"></span></span>
 						<span class="skel-cell"><span class="skel-bar" style="width: 70%"></span></span>
@@ -2725,6 +2725,16 @@ KPI — 컨테이너·요청·자원 합계
 		border-radius: 10px;
 		overflow: hidden;
 		padding: 0;
+		flex: 1;
+		min-height: 0;
+		/* 부모 col-flex 에 stretch 되면 row 가 위쪽에 깔리고 아래쪽이 통째로
+		   회색 빈 공간이 된다. 표 자체를 flex column 으로 잡고 ::after spacer 가
+		   남은 영역을 흡수해서 placeholder 가 표 같은 비율로 보이게. */
+		display: flex;
+		flex-direction: column;
+	}
+	.skel-table::after {
+		content: '';
 		flex: 1;
 		min-height: 0;
 	}
