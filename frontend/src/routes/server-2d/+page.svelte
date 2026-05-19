@@ -11,7 +11,13 @@
 		connect,
 		disconnect,
 	} from '$lib/stores/ws-store';
-	import { connectGlobal, disconnectGlobal, seedActiveAgents } from '$lib/stores/global-events';
+	import {
+		connectGlobal,
+		disconnectGlobal,
+		seedActiveAgents,
+		seedStatusEventsFromBackend,
+		statusEvents,
+	} from '$lib/stores/global-events';
 	import AdminHeader from '$lib/components/AdminHeader.svelte';
 	import ContainerDetailModal from '$lib/components/ContainerDetailModal.svelte';
 	import InfoTooltip from '$lib/components/InfoTooltip.svelte';
@@ -24,10 +30,8 @@
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import ContainersGridPanel from '$lib/components/server2d/ContainersGridPanel.svelte';
 	import StackLegendChips from '$lib/components/server2d/StackLegendChips.svelte';
-	import DonutChart from '$lib/components/server2d/DonutChart.svelte';
 	import HealthRadialGauge from '$lib/components/server2d/HealthRadialGauge.svelte';
-	import ResourceRadarChart from '$lib/components/server2d/ResourceRadarChart.svelte';
-	import StackBubbleChart from '$lib/components/server2d/StackBubbleChart.svelte';
+	import PowerTempGauge from '$lib/components/server2d/PowerTempGauge.svelte';
 	import EventLogStrip from '$lib/components/server2d/EventLogStrip.svelte';
 	import { view, resetViewForServerChange } from '$lib/stores/server2d-view.svelte';
 	import { resolveGroup, groupContainersByStack } from '$lib/utils/container-grouping';
@@ -212,6 +216,22 @@
 	let total = $derived(rows.length);
 	let totalNetwork = $derived(rows.reduce((sum, row) => sum + row.network, 0));
 	let gpuAverage = $derived(avg((systemInfo?.gpu ?? []).map((gpu: any) => Number(gpu.usage ?? 0))));
+
+	// PowerTempGauge 가 GPU 합산값 (전력) / 최대값 (온도) 으로 단일화해서 받음.
+	// 멀티 GPU 호스트도 한 게이지로 표시. measured value 가 하나도 없으면 null → "—" 로 표시.
+	function gpuAggregate(gpus: any, field: string): number | null {
+		if (!Array.isArray(gpus) || gpus.length === 0) return null;
+		const vals: number[] = [];
+		for (const g of gpus) {
+			const raw = g?.[field];
+			if (raw == null) continue;
+			const num = Number(raw);
+			if (Number.isFinite(num)) vals.push(num);
+		}
+		if (vals.length === 0) return null;
+		// 전력은 합산 (다중 GPU 총 W), 온도는 최대 (가장 뜨거운 GPU 기준).
+		return field === 'powerDrawW' ? vals.reduce((a, b) => a + b, 0) : Math.max(...vals);
+	}
 	let health = $derived(resolveHealth(systemInfo?.cpu?.usage ?? 0, systemInfo?.memory?.usage ?? 0, systemInfo?.disk?.usage ?? 0, gpuAverage, problem, isDemoServer || $wsConnected));
 	let healthScore = $derived.by(() => {
 		const cpu = Number(systemInfo?.cpu?.usage ?? 0);
@@ -228,6 +248,10 @@
 	let historyAnchorMs = $derived(historyPolledAt?.getTime() ?? Date.now());
 	let historyModel = $derived(buildHistoryModel(containerHistoryRows, stackHistoryRows, rows, selectedRange, historyAnchorMs));
 	let trendLabels = $derived(historyModel.buckets.map((bucket) => formatRangeTick(bucket, selectedRange)));
+	// historyModel.buckets 은 epoch seconds. ECharts time axis 는 ms 라 ×1000.
+	// 안 하면 [1779065880, …] 같은 값이 ms 로 해석돼 1970-01-21 부근에 점이 몰리고
+	// 라벨이 1개만 보이며 streaming 도 안 됨.
+	let trendTimestampsMs = $derived(historyModel.buckets.map((bucket) => bucket * 1000));
 	let systemTrend = $derived(buildSystemTrend(systemHistoryRows, selectedRange, historyAnchorMs));
 
 	let stackCpuSeries = $derived(
@@ -498,13 +522,63 @@
 				action: '용량 확보',
 			});
 		}
+		// Agent online/offline transitions — pulled from the global store
+		// so 1/N-down outages and reconnections appear in the dashboard's
+		// 실시간 이벤트 panel even if no toast was shown at the moment of
+		// transition. NOT filtered by selectedServerId on purpose: when
+		// only one of two agents is down, the operator is necessarily
+		// viewing the surviving one and still needs to see that the other
+		// one dropped.
+		for (const evt of $statusEvents) {
+			const at = evt.last_seen_at ? new Date(evt.last_seen_at) : new Date(evt.receivedAt);
+			if (evt.status === 'offline') {
+				events.push({
+					id: `agent-offline-${evt.server_id}-${evt.receivedAt}`,
+					severity: 'critical',
+					at,
+					stack: '시스템',
+					target: evt.hostname || 'Agent',
+					message: 'Agent 연결 끊김',
+					action: '점검 필요',
+				});
+			} else {
+				const reconnectedAfter = formatOfflineDuration(evt.previous_offline_seconds);
+				events.push({
+					id: `agent-online-${evt.server_id}-${evt.receivedAt}`,
+					severity: 'info',
+					at,
+					stack: '시스템',
+					target: evt.hostname || 'Agent',
+					message: reconnectedAfter
+						? `Agent 재연결 (${reconnectedAfter} 끊김)`
+						: 'Agent 재연결',
+				});
+			}
+		}
+
 		return events
 			.sort((a, b) => {
 				const weight = (sev: string) => (sev === 'critical' ? 0 : sev === 'warn' ? 1 : 2);
-				return weight(a.severity) - weight(b.severity);
+				const w = weight(a.severity) - weight(b.severity);
+				if (w !== 0) return w;
+				return b.at.getTime() - a.at.getTime();
 			})
 			.slice(0, 50);
 	});
+
+	function formatOfflineDuration(secs: number | null | undefined): string {
+		if (secs == null || secs < 0) return '';
+		if (secs < 60) return `${secs}초`;
+		if (secs < 3600) return `${Math.round(secs / 60)}분`;
+		if (secs < 86400) {
+			const h = Math.floor(secs / 3600);
+			const m = Math.round((secs % 3600) / 60);
+			return m > 0 ? `${h}시간 ${m}분` : `${h}시간`;
+		}
+		const d = Math.floor(secs / 86400);
+		const h = Math.round((secs % 86400) / 3600);
+		return h > 0 ? `${d}일 ${h}시간` : `${d}일`;
+	}
 
 	function topNamesBySeries(series: { label: string; values: number[] }[]): string[] {
 		return [...series]
@@ -644,6 +718,24 @@
 			}
 			agents = liveAgents;
 			seedActiveAgents(liveAgents.map((agent: Agent) => agent.id));
+			// Seed the persisted transition log so the 실시간 이벤트 panel shows
+			// agent online/offline events the user might have missed (browser
+			// closed, backend restarted, ...). Live WS events will then prepend
+			// on top of this baseline.
+			try {
+				const eventsRes = await fetch(`${base}/api/agents/status-events/?limit=20`, {
+					headers: authHeaders(),
+				});
+				if (eventsRes.ok) {
+					const ej = await eventsRes.json();
+					const events = ej.data ?? ej.results ?? ej ?? [];
+					if (Array.isArray(events) && events.length > 0) {
+						seedStatusEventsFromBackend(events);
+					}
+				}
+			} catch {
+				/* ignore */
+			}
 			const saved = browser ? localStorage.getItem('hc_selected_server') : '';
 			const preferred = selectedServerId && agents.some((agent) => agent.id === selectedServerId)
 				? selectedServerId
@@ -1598,7 +1690,7 @@
 			<section class="center">
 				<div class="panel snapshot">
 					<div class="panel-head">
-						<div class="panel-title">서버 스냅샷 <InfoTooltip text={`서버 한 대를 4개 그래프로 한눈에.\n\n• 도넛: 컨테이너 상태 분포\n• 원형 게이지: 종합 건강 점수\n• 레이더: 자원 6축 밸런스\n• 버블: 스택 CPU × 메모리 부하 (크기 = 컨테이너 수)`} placement="bottom-start" /></div>
+						<div class="panel-title">서버 스냅샷 <InfoTooltip text={`서버 한 대를 3개 카드로 한눈에.\n\n• 통합: 건강 점수 + 컨테이너 상태 + 자원 사용률 + 핫 스택\n• 전력: CPU package · GPU 전력 (W)\n• 온도: CPU package · GPU 온도 (°C)`} placement="bottom-start" /></div>
 						<div class="hot-inline" title="CPU + 메모리 + 트래픽을 합산한 부하 상위 3개 컨테이너. 클릭하면 상세가 열립니다.">
 							<span class="hot-label"><span class="flame">🔥</span> 부하 TOP 3</span>
 							{#each hottest.slice(0, 3) as row (row.id)}
@@ -1610,32 +1702,61 @@
 						</div>
 					</div>
 					<div class="snapshot-grid">
+						<div class="snap-cell unified">
+							<div class="snap-title">서버 통합</div>
+							<div class="snap-body unified-body">
+								<div class="health-col">
+									<HealthRadialGauge score={healthScore} label={healthLabel(health)} tone={healthTone} />
+								</div>
+								<div class="info-col">
+									<div class="ctr-strip">
+										{#each stateSegments as seg}
+											<span class="ctr-chip" data-tone={seg.label}>
+												<span class="ctr-dot" style:background={seg.color}></span>
+												<strong>{seg.value}</strong>
+												<span class="ctr-label">{seg.label}</span>
+											</span>
+										{/each}
+									</div>
+									<div class="res-bars">
+										{#each [
+											{ label: 'CPU', value: Number(systemInfo?.cpu?.usage ?? 0), color: '#30d5c8' },
+											{ label: 'MEM', value: Number(systemInfo?.memory?.usage ?? 0), color: '#60a5fa' },
+											{ label: 'DSK', value: Number(systemInfo?.disk?.usage ?? 0), color: '#a78bfa' },
+											{ label: 'GPU', value: gpuAverage, color: '#f472b6' },
+										] as bar}
+											<div class="res-row" title={`${bar.label} ${bar.value.toFixed(1)}%`}>
+												<span class="res-label">{bar.label}</span>
+												<div class="res-track">
+													<div class="res-fill" style:width={`${Math.max(0, Math.min(100, bar.value))}%`} style:background={bar.color}></div>
+												</div>
+												<span class="res-val">{bar.value.toFixed(0)}%</span>
+											</div>
+										{/each}
+									</div>
+								</div>
+							</div>
+						</div>
 						<div class="snap-cell">
-							<div class="snap-title">컨테이너 상태</div>
+							<div class="snap-title">전력</div>
 							<div class="snap-body">
-								<DonutChart
-									segments={stateSegments}
-									centerLabel="전체"
-									centerValue={String(total)}
+								<PowerTempGauge
+									title=""
+									unit="W"
+									cpu={{ label: 'CPU', value: systemInfo?.cpu?.packagePowerW ?? null, max: 150, warn: 95, crit: 130 }}
+									gpu={{ label: 'GPU', value: gpuAggregate(systemInfo?.gpu, 'powerDrawW'), max: 350, warn: 220, crit: 300 }}
 								/>
 							</div>
 						</div>
 						<div class="snap-cell">
-							<div class="snap-title">종합 건강 점수</div>
+							<div class="snap-title">온도</div>
 							<div class="snap-body">
-								<HealthRadialGauge score={healthScore} label={healthLabel(health)} tone={healthTone} />
-							</div>
-						</div>
-						<div class="snap-cell">
-							<div class="snap-title">자원 밸런스</div>
-							<div class="snap-body">
-								<ResourceRadarChart axes={radarAxes} primaryColor="#30d5c8" />
-							</div>
-						</div>
-						<div class="snap-cell">
-							<div class="snap-title">스택 부하 (CPU × MEM)</div>
-							<div class="snap-body">
-								<StackBubbleChart stacks={bubbleStacks} />
+								<PowerTempGauge
+									title=""
+									unit="°C"
+									cpu={{ label: 'CPU', value: systemInfo?.cpu?.tempC ?? null, max: 100, warn: 80, crit: 95 }}
+									gpu={{ label: 'GPU', value: gpuAggregate(systemInfo?.gpu, 'temperatureC'), max: 100, warn: 75, crit: 85 }}
+								/>
 							</div>
 						</div>
 					</div>
@@ -1657,6 +1778,8 @@
 								title={`CPU 평균 / ${rangeConfig.label}`}
 								help="모든 스택 CPU 평균."
 								labels={trendLabels}
+								timestamps={trendTimestampsMs}
+								tickInterval={rangeConfig.bucketSeconds * 1000}
 								unit="percent"
 								series={stackCpuSeries}
 								topNames={cpuTopNames}
@@ -1674,6 +1797,8 @@
 								title={`메모리 평균 / ${rangeConfig.label}`}
 								help="모든 스택 메모리 평균."
 								labels={trendLabels}
+								timestamps={trendTimestampsMs}
+								tickInterval={rangeConfig.bucketSeconds * 1000}
 								unit="percent"
 								series={stackMemorySeries}
 								topNames={memoryTopNames}
@@ -1691,6 +1816,8 @@
 								title={`트래픽 평균 / ${rangeConfig.label}`}
 								help="모든 스택 네트워크 트래픽."
 								labels={trendLabels}
+								timestamps={trendTimestampsMs}
+								tickInterval={rangeConfig.bucketSeconds * 1000}
 								unit="rate"
 								series={stackNetworkSeries}
 								topNames={networkTopNames}
@@ -1713,6 +1840,8 @@
 									title={`GPU 평균 / ${rangeConfig.label}`}
 									help="GPU usage 보고가 있는 컨테이너의 스택별 평균. usage=null(측정 불가)은 평균에서 제외."
 									labels={trendLabels}
+								timestamps={trendTimestampsMs}
+								tickInterval={rangeConfig.bucketSeconds * 1000}
 									unit="percent"
 									series={stackGpuSeries}
 									topNames={gpuTopNames}
@@ -2196,6 +2325,9 @@
 		padding: 10px 14px 12px;
 		align-items: stretch;
 		overflow: hidden;
+		/* 전체 페이지 글자/요소 가독성 살짝 키움. Chromium 의 zoom 은 layout 도
+		   같이 확대돼 click 좌표나 grid 비율이 그대로 유지된다. */
+		zoom: 1.06;
 	}
 
 	.panel {
@@ -2262,7 +2394,8 @@
 
 	.center {
 		display: grid;
-		grid-template-rows: minmax(0, 0.85fr) minmax(0, 1.85fr);
+		/* snapshot 은 max-height:200px 에 자체 cap. 나머지는 trend-events 가 모두 차지. */
+		grid-template-rows: auto minmax(0, 1fr);
 		gap: 8px;
 		min-width: 0;
 		min-height: 0;
@@ -2316,6 +2449,7 @@
 	.snapshot {
 		gap: 6px;
 		min-height: 0;
+		max-height: 200px;
 		overflow: hidden;
 	}
 
@@ -2400,13 +2534,99 @@
 
 	.snapshot-grid {
 		display: grid;
-		grid-template-columns: minmax(0, 0.78fr) minmax(0, 0.78fr) minmax(0, 0.95fr) minmax(0, 1.85fr);
+		grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr);
 		grid-template-rows: minmax(0, 1fr);
 		gap: 8px;
 		min-height: 0;
 		flex: 1;
 	}
 
+	.snap-cell.unified .unified-body {
+		display: grid;
+		grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+		gap: 10px;
+		min-height: 0;
+		height: 100%;
+	}
+	.health-col {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 0;
+	}
+	.info-col {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		gap: 8px;
+		min-width: 0;
+		min-height: 0;
+	}
+	.ctr-strip {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+	.ctr-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 2px 6px;
+		background: rgba(15, 23, 42, 0.6);
+		border: 1px solid rgba(100, 116, 139, 0.2);
+		border-radius: 4px;
+		font-size: 10px;
+		font-weight: 700;
+		color: var(--text-secondary);
+	}
+	.ctr-chip strong {
+		color: var(--text-primary);
+		font-size: 11px;
+		font-variant-numeric: tabular-nums;
+	}
+	.ctr-dot {
+		display: inline-block;
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+	}
+	.ctr-label {
+		font-size: 9.5px;
+		letter-spacing: 0.2px;
+	}
+	.res-bars {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+	}
+	.res-row {
+		display: grid;
+		grid-template-columns: 26px minmax(0, 1fr) 32px;
+		align-items: center;
+		gap: 6px;
+		font-size: 10px;
+		font-weight: 800;
+		color: var(--text-muted);
+	}
+	.res-label {
+		letter-spacing: 0.3px;
+	}
+	.res-track {
+		height: 6px;
+		background: rgba(100, 116, 139, 0.18);
+		border-radius: 3px;
+		overflow: hidden;
+	}
+	.res-fill {
+		height: 100%;
+		border-radius: 3px;
+		transition: width 0.4s ease;
+	}
+	.res-val {
+		text-align: right;
+		font-variant-numeric: tabular-nums;
+		color: var(--text-primary);
+	}
 	.snap-cell {
 		display: grid;
 		grid-template-rows: auto minmax(0, 1fr);
@@ -2577,7 +2797,9 @@
 		}
 
 		.snapshot-grid {
-			grid-template-columns: repeat(4, minmax(0, 1fr));
+			/* 3-cell (unified · power · temp) 비율 유지. 좁아진 폭에서도 unified
+			   가 dual-gauge 두 개 합한 만큼 차지하게 1.6 : 1 : 1. */
+			grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr);
 		}
 	}
 
@@ -2615,8 +2837,10 @@
 		}
 
 		.snapshot-grid {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
-			grid-template-rows: repeat(2, minmax(200px, 1fr));
+			/* 매우 좁은 화면 (≤1200px) — 3-cell 을 세로 stack. 가로 grid
+			   대신 한 줄씩 쌓아 가독성 우선. */
+			grid-template-columns: minmax(0, 1fr);
+			grid-template-rows: repeat(3, minmax(160px, auto));
 		}
 
 		.trend-grid {

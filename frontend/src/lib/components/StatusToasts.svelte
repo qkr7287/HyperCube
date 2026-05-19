@@ -1,23 +1,41 @@
+<script module lang="ts">
+	// 한 번 toast 로 띄운 이벤트 키를 기록. module scope 라 page 이동으로
+	// component 가 remount 돼도 dedup 이 유지된다 — 같은 agent_status_change
+	// 이벤트가 두 번 toast 되는 일을 막음.
+	const seenLocally = new Set<string>();
+</script>
+
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import { statusEvents, type AgentStatusEvent } from '$lib/stores/global-events';
 
 	const TOAST_TTL_MS = 8000;
+	// 라이브 이벤트로 간주할 receivedAt 신선도 (epoch ms 기준).
+	// 이보다 오래된 이벤트는 seed/historical 로 보고 toast 를 띄우지 않는다.
+	// 페이지 이동마다 component remount → store 첫 emission 으로 과거 offline
+	// 전환들이 다시 toast 로 뜨던 회귀를 막는다.
+	const FRESH_WINDOW_MS = 5000;
 
 	let nextLocalId = 1;
 	type ToastView = AgentStatusEvent & { localId: number };
 	let visible: ToastView[] = $state([]);
 
-	let lastEventCount = 0;
 	let timers = new Map<number, ReturnType<typeof setTimeout>>();
 
+	function eventKey(evt: AgentStatusEvent): string {
+		return `${evt.server_id}:${evt.status}:${evt.receivedAt}`;
+	}
+
 	const unsub = statusEvents.subscribe((events) => {
-		// 새로 추가된 이벤트만 toast로 띄움 (page mount 시 이전 history는 무시)
-		if (events.length > lastEventCount) {
-			const fresh = events.slice(0, events.length - lastEventCount);
-			fresh.forEach((evt) => addToast(evt));
+		const now = Date.now();
+		// 신선한 이벤트만 toast. 동일 이벤트 중복도 차단.
+		for (const evt of events) {
+			if (now - evt.receivedAt > FRESH_WINDOW_MS) continue;
+			const key = eventKey(evt);
+			if (seenLocally.has(key)) continue;
+			seenLocally.add(key);
+			addToast(evt);
 		}
-		lastEventCount = events.length;
 	});
 
 	function addToast(evt: AgentStatusEvent) {

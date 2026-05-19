@@ -15,8 +15,13 @@ from celery import shared_task
 from channels.layers import get_channel_layer
 from django.utils import timezone
 
-from apps.agents.models import Agent
-from apps.common import agent_presence
+from apps.agents.models import Agent, AgentStatusEvent
+from apps.agents.services.gpu_inventory import (
+    GPU_INVENTORY_SENTINEL,
+    build_gpu_inventory_request_id,
+    mark_agent_gpu_inventory_offline,
+)
+from apps.common import agent_presence, command_router
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +62,17 @@ def detect_offline_agents():
 
         if agent.last_seen_at is None or agent.last_seen_at < cutoff:
             agent_presence.clear_notified_active(server_id)
-            offline_at = (agent.last_seen_at or timezone.now()).isoformat()
+            occurred_at = agent.last_seen_at or timezone.now()
+            offline_at = occurred_at.isoformat()
+            # Persist BEFORE broadcasting so a refresh that lands between
+            # the broadcast and the DB write still surfaces the event in
+            # the dashboard's "최근 상태 변화" panel.
+            AgentStatusEvent.objects.create(
+                agent=agent,
+                hostname=agent.hostname,
+                status=AgentStatusEvent.Status.OFFLINE,
+                occurred_at=occurred_at,
+            )
             _push_global_event({
                 "type": "agent_status_change",
                 "status": "offline",
@@ -68,6 +83,45 @@ def detect_offline_agents():
             transitioned.append(agent.hostname)
 
     return f"offline transitions: {transitioned}"
+
+
+@shared_task
+def refresh_gpu_inventories():
+    """Ask connected approved agents for GPU inventory."""
+    layer = get_channel_layer()
+    sent = 0
+    marked_offline = 0
+    failed = 0
+
+    for agent in Agent.objects.filter(status=Agent.Status.APPROVED).only("id", "hostname"):
+        agent_id = str(agent.id)
+        agent_channel = command_router.get_agent_channel(agent_id)
+        if not agent_channel or layer is None:
+            mark_agent_gpu_inventory_offline(agent)
+            marked_offline += 1
+            continue
+
+        request_id = build_gpu_inventory_request_id(agent_id)
+        command_router.record_pending(request_id, GPU_INVENTORY_SENTINEL, agent_id)
+        payload = {
+            "type": "command",
+            "requestId": request_id,
+            "command": "system_info",
+            "params": {"subCommand": "gpu_inventory"},
+        }
+
+        try:
+            async_to_sync(layer.send)(agent_channel, {
+                "type": "ws.send",
+                "payload": payload,
+            })
+            sent += 1
+        except Exception:
+            logger.exception("[gpu-inventory] Failed to dispatch to agent %s", agent_id)
+            mark_agent_gpu_inventory_offline(agent)
+            failed += 1
+
+    return f"gpu inventory refresh sent={sent} offline={marked_offline} failed={failed}"
 
 
 @shared_task

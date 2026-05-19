@@ -11,7 +11,7 @@ services:
     container_name: hc-nginx
     restart: unless-stopped
     ports:
-      - "${HC_PORT:-7003}:7003"
+      - "${HC_PORT:-37003}:7003"
     depends_on:
       - backend
     networks:
@@ -30,6 +30,9 @@ services:
       DJANGO_ENV: prod
       DJANGO_SETTINGS_MODULE: config.settings.prod
       DEBUG: "false"
+    networks:
+      - hc-network
+      - hc-ml-internal
 
   celery-worker:
     build:
@@ -50,3 +53,8 @@ services:
     environment:
       DJANGO_ENV: prod
       DJANGO_SETTINGS_MODULE: config.settings.prod
+
+networks:
+  hc-ml-internal:
+    external: true
+    name: hc-ml-internal

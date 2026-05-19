@@ -77,12 +77,12 @@ services:
       POSTGRES_USER: hypercube
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
-      - "5432:5432"
+      - "35432:5432"   # host:container — default 35432 ("3" prefix 로 충돌 회피)
 
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "36379:6379"
 
   backend:
     depends_on:
@@ -108,7 +108,7 @@ services:
       - ./backend:/app          # 소스 코드 마운트 (핫리로드)
     command: python manage.py runserver 0.0.0.0:8000
     ports:
-      - "8000:8000"
+      - "38000:8000"   # host:container
 ```
 
 ### 예시: 배포 override (docker-compose.prod.yml)
@@ -120,9 +120,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     command: uvicorn config.asgi:application --host 0.0.0.0 --port 8000
-    ports:
-      - "8000:8000"
-    restart: unless-stopped
+    # backend 는 prod 에서 외부로 직접 노출하지 않음.
+    # nginx 컨테이너(host port 37003) 가 reverse proxy.
 ```
 
 ---

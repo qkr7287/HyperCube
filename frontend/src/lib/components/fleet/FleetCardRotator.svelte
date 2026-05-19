@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
-	import type { FleetAgentRow } from '$lib/stores/fleet-store';
+	import type { FleetAgentRow, TimeRange } from '$lib/stores/fleet-store';
 	import FleetAgentCard from './FleetAgentCard.svelte';
 
 	let {
@@ -10,13 +10,17 @@
 		onSelect = () => {},
 		onOpen2d,
 		onOpen3d,
+		canManage = false,
+		onDeleted,
 	}: {
 		agents?: FleetAgentRow[];
 		selectedId?: string | null;
-		range?: '1m' | '5m' | '1h' | '24h' | '7d';
+		range?: TimeRange;
 		onSelect?: (agentId: string) => void;
 		onOpen2d?: (agentId: string) => void;
 		onOpen3d?: (agentId: string) => void;
+		canManage?: boolean;
+		onDeleted?: (agentId: string) => void;
 	} = $props();
 
 	const INTERVAL_OPTIONS = [
@@ -140,6 +144,8 @@
 										{onSelect}
 										{onOpen2d}
 										{onOpen3d}
+										{canManage}
+										{onDeleted}
 									/>
 								{:else}
 									<div class="empty-slot" aria-label="빈 슬롯">

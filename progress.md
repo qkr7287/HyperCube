@@ -1,0 +1,255 @@
+# HyperCube Progress
+
+## Workspace quota slice — CLOSED 2026-05-16T10:35Z
+
+Slice signed off 2026-05-16T09:40Z. All 6 steps of
+`docs/runbooks/workspace-quota-full-validation.md` PASS with inline
+evidence. PR `qkr7287/HyperCube-agent#17` head `1e5e722` ready for
+review. Tracking issue `qkr7287/HyperCube-agent#16` closed.
+
+End-to-end live evidence (server-63, fresh deploy `cf4909eefb39` /
+project `13024536` / workspace_gb=10):
+
+- xfs_quota report immediately after deploy: `0   10G   10G` (out of the box, no manual fix)
+- in-container `df -h /workspace`: `10.0G   0   10.0G   0%`
+- `dd if=/dev/zero of=/workspace/big bs=1M count=11264` → ENOSPC at exactly `10737418240 bytes` (= 10 × 1024³)
+- Two neighbour quota containers (`70106824ba37` @ 5G, `4856610649d6` @ 2G) df unchanged during fill — per-project isolation proven in the agent-deployed environment.
+
+Earlier 1024× setquota unit bug in head `024028e` resolved in `1e5e722`
+by switching to `xfs_quota -x -c "limit -p bsoft=Ng bhard=Ng <id>"`
+across create / teardown / rollback.
+
+### Post-sign-off UI polish (commits 8c58bca, f1d11bb)
+
+- NewRequestModal: defensive `?.` on `selectedTemplate.*` inside the
+  `:else` branch — fixes `Cannot read properties of null (reading
+  'kind')` console error during back-to-template transition.
+- ContainerKpiBar Workspace footer: drop `/ Y GB` from AVG/PEAK rows
+  (denominator already in hero). Matches CPU/Memory pattern.
+- ContainerKpiBar CPU `formatCores` floor lowered to 0.005 — AVG no
+  longer shows "0 cores" when value is `0.016 cores`.
+- ContainerKpiBar grid: `clamp(140px, 7.5vw, 180px)` so all 6 metrics
+  (GPU containers) fit on a single 992px row at 1920px viewport.
+- `.hero-raw`: smaller font + ellipsis overflow as future-proofing.
+
+### Slice clean-up (this commit)
+
+Removed agent-facing handoff md and LVM-era archived runbooks that
+were superseded by the sign-off. Kept active spec + runbook + test
+reports + memory pointer. Git history holds the deleted files if
+needed.
+
+## Current Work - 2026-05-16 (workspace quota slice)
+
+### Decision (2026-05-16): LVM thin → XFS prjquota on loop file (option 4b)
+
+Per-container `/workspace` hard enforcement now ships via XFS project
+quota on a loop-mounted xfs file, not LVM thin volumes. Zero reboot /
+partition reshape; the operator runs a 5-line host setup once. The
+earlier LVM plan (and `qkr7287/HyperCube-agent#17`) is superseded.
+
+Self-contained agent rework prompt: `docs/agent-workspace-quota-handoff.md`.
+Full validation runbook: `docs/runbooks/workspace-quota-full-validation.md`.
+
+### Slice status
+
+- Backend: DONE — migrations `agents/0009_workspace_quota_capacity`,
+  `containers/0012_workspace_quota_metadata`; consumers / services /
+  serializers / admin / viewsets all renamed; legacy LVM wire still
+  accepted as transitional fallback.
+- Backend tests: 100/100 OK on hc-dev-63.
+- Frontend: DONE — `ResourceLimitForm` / `NewRequestModal` /
+  `ContainerKpiBar` / container detail copy all on the quota wire.
+- Frontend tests: 58/58 vitest OK; `svelte-check` 0 errors.
+- Docs: DONE — `agent-payload-contract.md`, `agent-protocol.md`,
+  `api.md`, `operations.md` all rewritten in quota terms with the
+  legacy LVM fallback documented.
+- Runbooks: `workspace-quota-preflight.sh` and
+  `workspace-quota-full-validation.md` shipped; old LVM runbooks moved
+  to `docs/runbooks/archived/` with supersede headers.
+
+### Stop-condition handoffs (external)
+
+1. ~~**Operator host setup**~~ — DONE 2026-05-16 on server-63 with a
+   200G loop file (sized to fit `/`'s 297G free, not the 2 TB
+   placeholder shown in earlier handoffs). Live evidence is in
+   `docs/test-reports/2026-05-16-workspace-quota-host-live-evidence.md`.
+   Re-mount survives only the current boot; fstab line not yet added
+   (operator chose to skip the optional reboot-survival entry).
+
+2. **HyperCube-agent PR #17 — REWORK PARTIALLY DEPLOYED (2026-05-16
+   17:30 KST) but blocked on setquota unit bug.** Agent dev pushed
+   head `024028e` and refreshed `hypercube-agent-dev-63` + `dev-16`
+   containers with `xfsprogs + quota`. Backend capacity row, recommend
+   API, create_container payload, hostConfig CPU/memory mapping,
+   workspace bind mount, project id assignment, prjquota mount state,
+   and Enforcement=ON all verified by core.
+   **Open blocker**: setquota is called with bytes where it expects
+   1 KiB blocks, so `workspace_gb=10` enforces `10 TiB` instead of
+   `10 GiB` (exactly 1024×). dd 10 GB succeeds without ENOSPC; manual
+   `xfs_quota -x -c "limit -p bhard=10g ${pid}"` immediately fixes
+   the report and produces clean ENOSPC at 10737418240 bytes. Reported
+   to agent dev in `qkr7287/HyperCube-agent#16` comment 4466315428.
+   Full sign-off blocked until a re-deploy with corrected unit math.
+
+### Live evidence — host-side hard enforcement (2026-05-16)
+
+Recorded on server-63 (`/dev/loop18` -> `/var/lib/hypercube/workspaces`,
+200 G XFS, mounted with `loop,prjquota`):
+
+- Project 1001 with `bhard=100m`: `dd ... count=150` stopped at 100 MiB
+  with `No space left on device` (104857600 bytes written, then ENOSPC).
+- Project 1002 with `bhard=200m` on the same mount: `dd ... count=150`
+  completed cleanly (157286400 bytes). Neighbour isolation proven.
+- Post-run `xfs_quota report -h` confirms `1001: 100M/100M` and
+  `1002: 150M/200M`. Cleanup trap restored both projects to `bhard=0`.
+
+### Live evidence — full slice (2026-05-16 17:30 KST)
+
+After agent PR #17 rework deploy on server-63 (`hypercube-agent-dev-63`
+container refreshed with `xfsprogs + quota`, bind mount of
+`/var/lib/hypercube/workspaces`):
+
+- Backend Agent rows:
+  - `server_63_dev`: pool_total=200, free=199, mount=`/var/lib/hypercube/workspaces`, hard_enforcement=true
+  - `server_16_dev` (no host setup, legacy mode): pool fields NULL, hard_enforcement=false  ✓ regression rule satisfied (no agent crash, available=false correctly signalled)
+- Request `a1ee6632-618d-4960-a0a7-3c8cf3f22cdb` (Redis template, workspace_gb=10) submitted via core POST + admin approve → deployed to container `70106824ba37` in <5s.
+- Backend `Container` row populated: `workspace_device=/var/lib/hypercube/workspaces/e22020af450e`, `workspace_project_id=1340189`, `workspace_gb_limit=10`.
+- Docker inspect: HostConfig.Memory=2147483648, CpuQuota=100000, CpuPeriod=100000; mount `e22020af450e -> /workspace` present.
+- `lsattr` shows project flag `1340189 -------------------P--` on the workspace dir.
+- `xfs_quota state -p`: Accounting ON, Enforcement ON.
+
+### Remaining acceptance (blocked on agent unit fix)
+
+- `xfs_quota report` for new project equals `hardGb` (currently `1024 × hardGb`).
+- `dd ... bs=1M count=$((hardGb*1024+1))` inside container ENOSPC at requested limit. **Mechanism proven manually**: after `xfs_quota -x -c "limit -p bhard=10g 1340189"`, dd 11 GB stopped at 10737418240 bytes ENOSPC.
+- Neighbour container on same host unaffected (host-side smoke test on 1001/1002 already proved this; needs a second deployed quota container after fix to repeat in-container).
+- `workspace-quota-preflight.sh` exits 0 — currently still FAIL on `[backend Agent capacity row]` because the script's check expects all rows to have non-null pool, but `server_16_dev` is legacy. **Preflight script needs a host-scoped variant** or the check should be agent-name-filtered. Track as a minor follow-up after agent fix.
+
+### Earlier LVM-thin work (superseded — kept for history)
+
+Core repo status before pivot: implemented, validated, committed, and
+pushed to `dev`. Full LVM thin end-to-end validation was blocked by
+server 63 host/agent runtime setup and the missing agent-side
+permission decision — the option-4b decision resolves both.
+
+Implementation baseline:
+
+```text
+7454fdd feat(containers): add resource limits and workspace quotas
+```
+
+Latest checked core commits before this progress refresh:
+
+```text
+867f87d docs(containers): record no-lvm hostconfig progress
+385a53c docs(containers): record no-lvm hostconfig validation
+a1b033c docs(containers): expand lvm progress preflight evidence
+93f439a docs(containers): expand latest lvm preflight evidence
+e4e9e9a docs(containers): clarify lvm audit compare baseline
+fce24b1 docs(containers): refresh lvm progress head evidence
+3e97028 docs(containers): refresh lvm audit head evidence
+ea9c259 docs(containers): link 2026-05-16 audit addendum
+c7fec88 docs(containers): add 2026-05-16 completion audit addendum
+8e81883 docs(containers): record 2026-05-16 lvm blocker recheck
+bf30668 chore(containers): normalize workspace service line endings
+e9e8394 fix(containers): clear unenforced legacy workspace quota
+1f12568 docs(containers): clarify template model path in audit
+```
+
+Implemented core scope:
+
+- Template resource weights and min floors.
+- Agent capacity columns and `capacity_report` handling.
+- Host-capacity resource recommendation helper and REST endpoint.
+- ContainerRequest CPU/memory/workspace fields and validation.
+- Container CPU/memory/workspace limit snapshots and workspace device fields.
+- Agent create payload `hostConfig`, LVM `workspace`, and `sharedMounts`.
+- Workspace metadata persistence from create result.
+- Legacy no-LVM mode keeps existing Jupyter workspace metadata while omitting
+  only LVM `sizeGb`, `mountTarget`, and `sharedMounts`.
+- Legacy no-LVM create responses keep CPU/memory limits but do not persist an
+  unenforced `workspace_gb_limit` unless the agent returns concrete workspace
+  metadata.
+- Live server-63 dry-run confirms `server_63_dev` keeps `hostConfig` but omits
+  LVM `sizeGb`, `mountTarget`, and `sharedMounts` while `lvm_pool_size_gb=None`.
+- Request modal resource-limit UI and recommendation prefill.
+- KPI cards and trend charts with quota/denominator display.
+- API, agent protocol, and payload contract docs.
+
+Validation on `server_63_dev`:
+
+```text
+backend: python manage.py test -> 111 tests OK
+backend targeted: apps.containers.tests.test_workspace_limit_metadata apps.common.tests.test_legacy_workspace_limits -> 2 tests OK
+backend targeted PR3 legacy/no-LVM hostConfig path -> 5 tests OK
+backend mypy: not applicable; no mypy config/dependency and hc-backend has no mypy module
+frontend: npm test -- --run -> 57 tests passed
+frontend: npm run check -> 0 errors, 193 warnings
+frontend: npm run e2e -> 3 passed
+migrations: agents.0008, containers.0010, containers.0011 applied
+```
+
+2026-05-16 LVM preflight from `/home/agics/ts/HyperCube`:
+
+```bash
+bash docs/runbooks/lvm-thin-workspace-preflight.sh hypercube-agent-dev-63 hc-backend
+```
+
+Current result:
+
+```text
+PREFLIGHT_EXIT:1
+FAIL host command 'lvcreate' is missing
+FAIL host command 'lvs' is missing
+FAIL host command 'lvremove' is missing
+FAIL /mnt/datasets is missing
+FAIL /mnt/models is missing
+FAIL /var/lib/hypercube/workspaces is missing
+FAIL host lvs unavailable; cannot inspect thin pool
+OK   agent container 'hypercube-agent-dev-63' exists
+FAIL agent command 'lvcreate' is missing
+FAIL agent command 'lvs' is missing
+OK   agent command 'mkfs.ext4' -> /usr/sbin/mkfs.ext4
+OK   agent command 'mount' -> /usr/bin/mount
+OK   agent command 'umount' -> /usr/bin/umount
+FAIL agent command 'lvremove' is missing
+FAIL agent lvs command failed
+sh: 1: lvs: not found
+backend Agent rows still show lvm_pool_size_gb=None for server_16_dev and server_63_dev
+```
+
+Core references:
+
+- `docs/test-reports/2026-05-15-container-resource-limits-core-validation.md`
+- `docs/test-reports/2026-05-15-container-resource-limits-completion-audit.md`
+- `docs/test-reports/2026-05-15-container-resource-limits-legacy-workspace-quota-fix.md`
+- `docs/test-reports/2026-05-16-container-resource-limits-completion-audit-addendum.md`
+- `docs/agent-lvm-thin-handoff.md`
+- `docs/runbooks/lvm-thin-workspace-host-setup.md`
+- `docs/runbooks/lvm-thin-workspace-preflight.sh`
+- HyperCube-agent tracking issue: `qkr7287/HyperCube-agent#16`
+
+Remaining blocker:
+
+- Full LVM thin workspace creation is not yet proven end-to-end.
+- Current `server_63_dev` host and `hypercube-agent-dev-63` both lack
+  `lvs/lvcreate/lvremove`; `lvm2`/thin pool setup is not present.
+- `/mnt/datasets`, `/mnt/models`, and `/var/lib/hypercube/workspaces` are not
+  present on `server_63_dev`, so the shared-mount/workspace-root part cannot be
+  validated yet.
+- Current Agent rows report `lvm_pool_size_gb=None`, so backend stays in legacy
+  mode and omits LVM `workspace` payloads for those agents.
+- HyperCube-agent issue #16 still has no `PERMISSION_OPTION=<1|2|3>` reply.
+
+Next completion gate:
+
+1. Agent/ops replies on HyperCube-agent #16 with `PERMISSION_OPTION=<1|2|3>`.
+2. Implement/deploy the selected HyperCube-agent permission path.
+3. Confirm `capacity_report` includes `disk.lvm.available=true` and
+   `thinPoolSizeGb`, or explicitly choose `PERMISSION_OPTION=3` legacy mode.
+4. Submit a new PyTorch Jupyter request and confirm backend sends
+   `hostConfig`, `workspace`, and `sharedMounts` when LVM is available.
+5. Confirm agent creates/mounts the LVM thin volume.
+6. Confirm backend stores `Container.workspace_device`.
+7. Confirm container `df /workspace` shows the requested workspace quota.

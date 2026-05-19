@@ -7,6 +7,7 @@
 
 	// fleet-store의 POLL_INTERVAL_MS와 동일해야 progress bar 정확도 유지.
 	const POLL_INTERVAL_MS: Record<RangeKey, number> = {
+		'10s': 10000,
 		'1m': 10000,
 		'5m': 30000,
 		'1h': 60000,

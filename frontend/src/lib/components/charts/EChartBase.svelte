@@ -23,6 +23,8 @@
 		height = '100%',
 		width = '100%',
 		ariaLabel = '',
+		group,
+		dataOnly = false,
 	}: {
 		option: EChartsOption;
 		notMerge?: boolean;
@@ -31,18 +33,43 @@
 		height?: string | number;
 		width?: string | number;
 		ariaLabel?: string;
+		// 같은 group 문자열을 가진 차트들끼리 axisPointer / tooltip 이 동기화된다.
+		// echarts.connect(group) 으로 horizontal cursor sync.
+		group?: string;
+		// true 면 후속 setOption 에서 replaceMerge 를 안 보냄 → series 의 stable identity
+		// 가 유지되어 valueAnimation 이 작동 (게이지 needle / 값 transition).
+		// series 가 동적으로 추가/제거되는 차트는 false (default) 로 두어야 stale series
+		// 가 남지 않는다. gauge 같이 "동일 series, data 만 갱신" 케이스용.
+		dataOnly?: boolean;
 	} = $props();
 
 	let host: HTMLDivElement | undefined = $state(undefined);
 	let inst: EChartsType | null = null;
 	let resizeObs: ResizeObserver | null = null;
 
+	let firstApply = true;
+
 	function applyOption(o: EChartsOption) {
 		if (!inst || inst.isDisposed()) return;
-		// notMerge:true 로 항상 통째 교체. ECharts 의 alpha-merge 가 이전 option
-		// 의 axis/series 를 누적 보관해 axis index 가 꼬이는 케이스가 있어
-		// (xAxis "0" not found 류) 매번 fresh option 으로 안전.
-		inst.setOption(o, { notMerge: true, lazyUpdate, replaceMerge });
+		// 첫 setOption 만 notMerge:true 로 깨끗하게 시작 — 이전 instance 의 잔여
+		// option (특히 prop 변경으로 series 개수가 바뀐 직후) 을 깔끔히 치움.
+		// 두 번째부터는 merge 모드로 series.data 만 diff → 실시간 streaming 처럼
+		// 점이 좌측으로 흐르는 smooth animation. series 는 id 기반 replaceMerge
+		// 로 추가/제거가 자유롭고 axis (특히 xAxis.data 새 array) 도 같은 호출에서
+		// merge 로 update 되어 dangling index 없음 (호버 tooltip 이 잘리지 않음).
+		if (firstApply) {
+			inst.setOption(o, { notMerge: true, lazyUpdate, replaceMerge });
+			firstApply = false;
+			return;
+		}
+		// dataOnly: replaceMerge 안 보냄 → series 가 stable identity 로 deepMerge.
+		// 결과: type/axisLine/pointer 같이 동일한 부분은 noop, data 만 transition.
+		if (dataOnly) {
+			inst.setOption(o, { notMerge: false, lazyUpdate });
+			return;
+		}
+		const mergeReplace = replaceMerge ?? 'series';
+		inst.setOption(o, { notMerge: false, lazyUpdate, replaceMerge: mergeReplace });
 	}
 
 	onMount(() => {
@@ -56,6 +83,10 @@
 			if (r.width <= 0 || r.height <= 0) return false;
 			if (!inst) {
 				inst = echarts.init(host, undefined, { renderer: 'canvas', useDirtyRect: true });
+				if (group) {
+					inst.group = group;
+					echarts.connect(group);
+				}
 				applyOption(option);
 			}
 			return true;

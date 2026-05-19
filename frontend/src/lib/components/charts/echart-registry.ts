@@ -13,6 +13,7 @@ import {
 	PieChart,
 	RadarChart,
 	ScatterChart,
+	GaugeChart,
 } from 'echarts/charts';
 import {
 	GridComponent,
@@ -23,6 +24,8 @@ import {
 	TitleComponent,
 	MarkLineComponent,
 	MarkAreaComponent,
+	DataZoomComponent,
+	DataZoomInsideComponent,
 } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 
@@ -31,6 +34,7 @@ echarts.use([
 	PieChart,
 	RadarChart,
 	ScatterChart,
+	GaugeChart,
 	GridComponent,
 	TooltipComponent,
 	LegendComponent,
@@ -39,6 +43,8 @@ echarts.use([
 	TitleComponent,
 	MarkLineComponent,
 	MarkAreaComponent,
+	DataZoomComponent,
+	DataZoomInsideComponent,
 	CanvasRenderer,
 ]);
 

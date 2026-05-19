@@ -40,6 +40,10 @@ interface InternalLink {
 	target: InternalNode;
 }
 
+interface LinkBoundsForce extends Force {
+	setLinks(next: InternalLink[]): LinkBoundsForce;
+}
+
 const LINK_DISTANCE_DEFAULT = 55;
 const LINK_DISTANCE_STACK_MEMBER = 38; // tighter so containers cluster inside their stack bubble
 const LINK_DISTANCE_HUB_MEMBER = 70;   // network/volume hubs sit a little farther out
@@ -118,10 +122,10 @@ function computeTopologySignature(entities: readonly LayoutEntityRef[], links: r
 	return `${ids}|${ls}`;
 }
 
-function createLinkBoundsForce(minDistance: number, maxDistance: number): Force<InternalNode, undefined> {
+function createLinkBoundsForce(minDistance: number, maxDistance: number): LinkBoundsForce {
 	let links: InternalLink[] = [];
 
-	const force = (alpha: number) => {
+	const force = ((alpha = 1) => {
 		for (const link of links) {
 			const { source, target } = link;
 			const sx = source.x ?? 0;
@@ -157,16 +161,14 @@ function createLinkBoundsForce(minDistance: number, maxDistance: number): Force<
 			source.y = sy + offsetY;
 			source.z = sz + offsetZ;
 		}
-	};
+	}) as LinkBoundsForce;
 
 	force.initialize = () => {};
-
-	return Object.assign(force, {
-		setLinks(next: InternalLink[]) {
-			links = next;
-			return force;
-		},
-	});
+	force.setLinks = (next: InternalLink[]) => {
+		links = next;
+		return force;
+	};
+	return force;
 }
 
 /**
@@ -214,7 +216,7 @@ export class ForceLayout {
 					return COLLIDE_RADIUS_DEFAULT;
 				}).strength(COLLIDE_STRENGTH),
 			)
-			.force('linkBounds', this.linkBoundsForce as unknown as Force<SimulationNode, undefined>)
+			.force('linkBounds', this.linkBoundsForce as Force)
 			.alphaDecay(0.035)
 			.velocityDecay(0.45);
 		this.sim.stop();

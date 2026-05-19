@@ -208,7 +208,7 @@
 						text: '고부하',
 						fill: 'rgba(248, 113, 113, 0.75)',
 						font: '700 10px system-ui',
-						textAlign: 'right',
+						align: 'right',
 					},
 				},
 				{
@@ -220,7 +220,7 @@
 						text: '여유',
 						fill: 'rgba(148, 163, 184, 0.55)',
 						font: '700 10px system-ui',
-						textAlign: 'left',
+						align: 'left',
 					},
 				},
 			],
@@ -230,7 +230,7 @@
 </script>
 
 <div class="bubble">
-	<EChartBase {option} ariaLabel="스택 부하 (CPU x 메모리) 버블 차트" />
+	<EChartBase {option} ariaLabel="스택 부하 (CPU x 메모리) 버블 차트" dataOnly />
 </div>
 
 <style>

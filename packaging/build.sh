@@ -1,33 +1,27 @@
 #!/usr/bin/env bash
-# Build the air-gapped installer (.run) for Ubuntu 24.04 LTS.
-# Output: dist/hypercube-<VERSION>-ubuntu2404.run
+# Build the air-gapped HyperCube installer (.sh).
 #
-# Requires on the build host:
-#   - docker (any version)
-#   - makeself (apt-get install makeself)
+# Output: dist/hypercube-<VERSION>.sh
 #
-# The build pulls Docker .debs inside an ubuntu:24.04 container, so the
-# build host distro/version does not matter — only docker + makeself do.
+# Docker engine is NOT bundled — the target host must have docker + compose
+# plugin installed first (apt/dnf/whatever the distro provides). This makes
+# the installer fully OS-agnostic: works on Ubuntu, RHEL, Rocky, AlmaLinux,
+# Debian, SUSE, etc., as long as docker is present.
+#
+# Build host requires:
+#   - docker (to pull/save HyperCube images)
+#   - makeself (to build the self-extractor)
 
 set -euo pipefail
 
 VERSION="${VERSION:-1.0}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
-UBUNTU_VERSION="${UBUNTU_VERSION:-24.04}"
-
-case "${UBUNTU_VERSION}" in
-    22.04) UBUNTU_CODENAME=jammy ;;
-    24.04) UBUNTU_CODENAME=noble ;;
-    *) echo "Unsupported UBUNTU_VERSION: ${UBUNTU_VERSION} (supported: 22.04, 24.04)" >&2; exit 1 ;;
-esac
-
-TARGET="ubuntu${UBUNTU_VERSION//./}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PKG_DIR="${REPO_ROOT}/packaging"
-WORK_DIR="${REPO_ROOT}/build/installer-${VERSION}-${TARGET}"
+WORK_DIR="${REPO_ROOT}/build/installer-${VERSION}"
 DIST_DIR="${REPO_ROOT}/dist"
-RUN_FILE="${DIST_DIR}/hypercube-${VERSION}-${TARGET}.run"
+RUN_FILE="${DIST_DIR}/hypercube-${VERSION}.sh"
 
 IMAGES=(
     "ghcr.io/qkr7287/hypercube-backend:${IMAGE_TAG}"
@@ -47,14 +41,7 @@ require makeself
 
 log "cleaning ${WORK_DIR}"
 rm -rf "${WORK_DIR}"
-mkdir -p "${WORK_DIR}/docker-debs" "${WORK_DIR}/images" "${WORK_DIR}/app"
-
-log "downloading Docker .debs for ${UBUNTU_CODENAME} inside ubuntu:${UBUNTU_VERSION} container"
-docker run --rm \
-    -v "${WORK_DIR}/docker-debs:/out" \
-    -v "${PKG_DIR}/download-docker-debs.sh:/download.sh:ro" \
-    -e "UBUNTU_CODENAME=${UBUNTU_CODENAME}" \
-    "ubuntu:${UBUNTU_VERSION}" bash /download.sh
+mkdir -p "${WORK_DIR}/images" "${WORK_DIR}/app"
 
 log "ensuring HyperCube images are present (pull only if missing)"
 for img in "${IMAGES[@]}"; do
@@ -74,10 +61,8 @@ cp "${REPO_ROOT}/deploy/docker-compose.yml" "${WORK_DIR}/app/"
 cp "${REPO_ROOT}/deploy/.env.example" "${WORK_DIR}/app/"
 cp "${PKG_DIR}/systemd/hypercube.service" "${WORK_DIR}/app/"
 
-log "staging installer scripts (substituting target codename)"
-sed -e "s/__CODENAME__/${UBUNTU_CODENAME}/g" \
-    -e "s/__VERSION__/${UBUNTU_VERSION} LTS/g" \
-    "${PKG_DIR}/install.sh" > "${WORK_DIR}/install.sh"
+log "staging installer scripts"
+cp "${PKG_DIR}/install.sh" "${WORK_DIR}/install.sh"
 cp "${PKG_DIR}/uninstall.sh" "${WORK_DIR}/uninstall.sh"
 cp "${PKG_DIR}/env-generate.sh" "${WORK_DIR}/env-generate.sh"
 chmod +x "${WORK_DIR}"/*.sh
@@ -86,8 +71,7 @@ log "writing version manifest"
 cat > "${WORK_DIR}/VERSION" <<EOF
 hypercube_version=${VERSION}
 image_tag=${IMAGE_TAG}
-target=${TARGET}
-ubuntu_codename=${UBUNTU_CODENAME}
+docker_engine=external (operator-installed)
 built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 built_from=$(git -C "${REPO_ROOT}" rev-parse --short HEAD 2>/dev/null || echo unknown)
 EOF
@@ -97,7 +81,7 @@ mkdir -p "${DIST_DIR}"
 makeself --gzip --notemp \
     "${WORK_DIR}" \
     "${RUN_FILE}" \
-    "HyperCube ${VERSION} (Ubuntu ${UBUNTU_VERSION})" \
+    "HyperCube ${VERSION}" \
     ./install.sh
 
 size=$(du -h "${RUN_FILE}" | cut -f1)

@@ -11,8 +11,10 @@ const UNITS = ['B', 'KB', 'MB', 'GB', 'TB'];
 
 export function formatBytes(bytes: number | undefined | null): string {
 	if (bytes == null || bytes === 0) return '0 B';
+	// 0 < |bytes| < 1 일 때 Math.log → 음수 idx → UNITS[-1]=undefined 버그.
+	// 단위 인덱스는 [0, UNITS.length-1] 로 clamp.
 	const i = Math.floor(Math.log(Math.abs(bytes)) / Math.log(1024));
-	const idx = Math.min(i, UNITS.length - 1);
+	const idx = Math.max(0, Math.min(i, UNITS.length - 1));
 	const value = bytes / Math.pow(1024, idx);
 	return `${value.toFixed(1)} ${UNITS[idx]}`;
 }
@@ -36,6 +38,8 @@ export interface GpuMetric {
 	memoryUsed: number;
 	usage: number;
 	temperature?: number;
+	temperatureC?: number | null;
+	powerDrawW?: number | null;
 }
 
 export interface SystemInfo {
@@ -53,6 +57,9 @@ export interface SystemInfo {
 		model: string;            // e.g. "Intel Xeon Silver 4210 × 2"
 		// Dynamic.
 		usage: number;            // % aggregate, thread-weighted
+		// Power / thermal — null when the agent host has no RAPL / thermal sensor access.
+		packagePowerW?: number | null;
+		tempC?: number | null;
 	};
 	memory: { total: string; used: string; free: string; usage: number };
 	disk: { total: string; used: string; free: string; usage: number };
@@ -73,7 +80,7 @@ export function transformSystemMetrics(msg: any): SystemInfo {
 	const docker = d.docker ?? {};
 	const logins = d.logins ?? {};
 	const procs = d.processes ?? {};
-	const gpu = Array.isArray(d.gpu) ? d.gpu : [];
+	const gpu: any[] = Array.isArray(d.gpu) ? d.gpu : [];
 
 	const memTotal = typeof mem.total === 'number' ? mem.total : 0;
 	const memUsed = typeof mem.used === 'number' ? mem.used : 0;
@@ -114,6 +121,8 @@ export function transformSystemMetrics(msg: any): SystemInfo {
 			efficiencyCores,
 			model: cpu.model ?? '',
 			usage: cpu.usage ?? 0,
+			packagePowerW: typeof cpu.packagePowerW === 'number' ? cpu.packagePowerW : null,
+			tempC: typeof cpu.tempC === 'number' ? cpu.tempC : null,
 		},
 		memory: {
 			total: formatBytes(memTotal),
@@ -156,6 +165,8 @@ export function transformSystemMetrics(msg: any): SystemInfo {
 				memoryUsed: typeof g.memoryUsed === 'number' ? g.memoryUsed : 0,
 				usage: typeof g.usage === 'number' ? g.usage : 0,
 				temperature: typeof g.temperature === 'number' ? g.temperature : undefined,
+				temperatureC: typeof g.temperatureC === 'number' ? g.temperatureC : null,
+				powerDrawW: typeof g.powerDrawW === 'number' ? g.powerDrawW : null,
 			}))
 			.sort((a, b) => a.index - b.index),
 	};
@@ -178,6 +189,10 @@ export function mergeSystemInfo(prev: SystemInfo, incoming: SystemInfo): SystemI
 			efficiencyCores: incoming.cpu.efficiencyCores || prev.cpu.efficiencyCores,
 			model: incoming.cpu.model || prev.cpu.model,
 			usage: incoming.cpu.usage || prev.cpu.usage,
+			// Delta tick 이 power/temp 만 안 보낼 수도 있음 → null/undefined 면 prev 유지.
+			// 0 도 의미 있는 값이라 falsy 단순 fallback 은 못 씀 (RAPL 시작 직후 0W 가능).
+			packagePowerW: incoming.cpu.packagePowerW ?? prev.cpu.packagePowerW ?? null,
+			tempC: incoming.cpu.tempC ?? prev.cpu.tempC ?? null,
 		},
 		memory: {
 			total: incoming.memory.total !== '0 B' ? incoming.memory.total : prev.memory.total,

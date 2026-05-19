@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HyperCube · Agent 통합 spec — 자원 한도 + LVM thin workspace</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg-2: #0f1620;
+    --panel: #161b22;
+    --panel-2: #1c232c;
+    --border: #2a323d;
+    --border-soft: #21282f;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --dim: #6e7681;
+    --accent: #4cc2ff;
+    --accent-2: #79c0ff;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --err: #f85149;
+    --magenta: #d2a8ff;
+    --code: #0e1419;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR",
+                 "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px 80px; }
+
+  .hero {
+    background: linear-gradient(135deg, #0f1620 0%, #18222b 60%, #0d1117 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 40px 24px 28px;
+    margin-bottom: 28px;
+  }
+  .hero-inner { max-width: 1100px; margin: 0 auto; }
+  .hero h1 {
+    font-size: 28px; margin: 0 0 6px;
+    letter-spacing: -0.5px;
+  }
+  .hero .sub {
+    color: var(--muted); font-size: 14px; margin-bottom: 18px;
+  }
+  .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 11.5px;
+    border-radius: 4px;
+    background: rgba(76,194,255,.12);
+    color: var(--accent);
+    border: 1px solid rgba(76,194,255,.3);
+    margin-right: 6px;
+    font-weight: 600;
+  }
+  .tag.warn { background: rgba(210,153,34,.12); color: var(--warn); border-color: rgba(210,153,34,.3); }
+  .tag.ok   { background: rgba(63,185,80,.12);  color: var(--ok);   border-color: rgba(63,185,80,.3); }
+  .tag.err  { background: rgba(248,81,73,.12);  color: var(--err);  border-color: rgba(248,81,73,.3); }
+  .tag.new  { background: rgba(210,168,255,.14); color: var(--magenta); border-color: rgba(210,168,255,.32); }
+
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-top: 18px;
+  }
+  @media (max-width: 920px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
+  .kpi {
+    background: rgba(255,255,255,.025);
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .kpi b {
+    display: block; color: var(--muted);
+    font-size: 11px; font-weight: 700;
+    letter-spacing: .04em; text-transform: uppercase;
+  }
+  .kpi strong {
+    display: block;
+    font-size: 17px; font-weight: 750;
+    margin-top: 4px;
+  }
+  .kpi.warn strong { color: var(--warn); }
+  .kpi.ok strong { color: var(--ok); }
+
+  section { margin-top: 36px; }
+  section > h2 {
+    font-size: 20px;
+    margin: 0 0 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-soft);
+    letter-spacing: -0.2px;
+  }
+  section h3 {
+    font-size: 15px;
+    color: var(--accent-2);
+    margin: 18px 0 8px;
+  }
+  section h4 {
+    font-size: 13.5px;
+    color: var(--text);
+    margin: 12px 0 6px;
+  }
+  p { margin: 8px 0; color: #cdd5dd; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 18px;
+    margin: 12px 0;
+  }
+  .panel.warn { border-color: rgba(210,153,34,.4); background: rgba(210,153,34,.04); }
+  .panel.err  { border-color: rgba(248,81,73,.4);  background: rgba(248,81,73,.04); }
+  .panel.ok   { border-color: rgba(63,185,80,.4);  background: rgba(63,185,80,.04); }
+  .panel.info { border-color: rgba(76,194,255,.4); background: rgba(76,194,255,.04); }
+
+  ul, ol { padding-left: 22px; color: #cdd5dd; }
+  ul li, ol li { margin: 4px 0; }
+  ul li::marker { color: var(--dim); }
+
+  code, .mono {
+    font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    font-size: 12.5px;
+  }
+  code {
+    background: var(--code);
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    padding: 1px 6px;
+    color: #f0d999;
+  }
+  pre {
+    background: var(--code);
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    font-size: 12.5px;
+    color: #d6deea;
+    line-height: 1.55;
+  }
+  pre .k { color: #ff7b72; }
+  pre .s { color: #a5d6ff; }
+  pre .c { color: #6e7681; font-style: italic; }
+  pre .n { color: #d2a8ff; }
+  pre .b { color: #f0d999; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0;
+    font-size: 13px;
+  }
+  th, td {
+    border: 1px solid var(--border-soft);
+    padding: 7px 10px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: var(--panel-2);
+    font-weight: 700;
+    color: var(--accent-2);
+  }
+
+  .phase {
+    border-left: 3px solid var(--accent);
+    padding-left: 14px;
+    margin: 14px 0;
+  }
+  .phase h4 { margin: 0 0 4px; }
+  .phase .step { color: var(--muted); font-size: 12.5px; margin-bottom: 8px; }
+
+  hr { border: 0; border-top: 1px solid var(--border-soft); margin: 24px 0; }
+
+  .toc {
+    background: var(--panel-2);
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-size: 13px;
+  }
+  .toc a { color: var(--accent-2); }
+  .toc ol { margin: 4px 0 0; padding-left: 22px; }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-inner">
+    <span class="tag">Agent repo 작업</span>
+    <span class="tag new">신규 기능</span>
+    <span class="tag warn">root 권한 필요</span>
+    <h1>Agent 통합 spec — 자원 한도 + LVM thin workspace</h1>
+    <div class="sub">
+      Backend 의 GPU workstation 임대 모델에서 컨테이너 자원 한도 (CPU / 메모리) 와 워크스페이스 디스크
+      격리 (LVM thin volume) 를 적용하기 위해 agent 측 작업 필요. 이 문서는 agent repo
+      (<code>qkr7287/HyperCube-agent</code>) 개발자가 self-contained 로 작업 가능하도록 spec /
+      메시지 포맷 / 실패 시나리오 / 테스트 방법까지 정리.
+    </div>
+    <div class="kpis">
+      <div class="kpi"><b>대상 repo</b><strong>HyperCube-agent</strong></div>
+      <div class="kpi"><b>새 기능</b><strong>4 가지</strong></div>
+      <div class="kpi warn"><b>권한</b><strong>root or sudo</strong></div>
+      <div class="kpi ok"><b>backward compat</b><strong>유지</strong></div>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+<div class="toc">
+  <b>목차</b>
+  <ol>
+    <li><a href="#bg">배경 — HyperCube 가 무엇인가</a></li>
+    <li><a href="#what">이번에 해야 할 일 (overview)</a></li>
+    <li><a href="#feat1">신규 1 — capacity_report 메시지</a></li>
+    <li><a href="#feat2">신규 2 — create_container HostConfig 확장</a></li>
+    <li><a href="#feat3">신규 3 — LVM thin volume 관리 (workspace 격리)</a></li>
+    <li><a href="#feat4">신규 4 — workspace 디스크 사용량 보고</a></li>
+    <li><a href="#install">신규 5 — install script 자동화</a></li>
+    <li><a href="#permission">권한 / 보안</a></li>
+    <li><a href="#failure">실패 시나리오 / rollback</a></li>
+    <li><a href="#test">테스트 / 검증</a></li>
+    <li><a href="#timeline">일정 / 우선순위</a></li>
+    <li><a href="#qa">협업 / 질문 채널</a></li>
+  </ol>
+</div>
+
+<!-- ============================ 1. 배경 ============================ -->
+<section id="bg">
+  <h2>1. 배경 — HyperCube 가 무엇인가</h2>
+  <p>
+    HyperCube 는 GPU 호스트를 다수 사용자에게 컨테이너 단위로 할당하는 <b>GPU workstation 임대</b>
+    플랫폼. Paperspace / RunPod / Vast.ai 와 동일한 모델. <b>K8s 같은 service orchestration 이 아님.</b>
+  </p>
+  <ul>
+    <li>사용자 1명 ↔ 컨테이너 1개 매핑</li>
+    <li>사용자는 컨테이너 안에서 Jupyter / ssh / terminal 로 작업</li>
+    <li>GPU slice (MIG 또는 통째) 가 컨테이너에 할당</li>
+    <li>구조: backend (Django, scheduler/API) + agent (per-host, docker control) + container</li>
+  </ul>
+
+  <h3>현재 문제 — 자원 한도 미적용</h3>
+  <div class="panel warn">
+    <ul>
+      <li>컨테이너 생성 시 CPU / 메모리 / 디스크 한도 명시 안 함 → host 전체 공유</li>
+      <li>한 사용자가 host 자원 다 점유 가능 → noisy neighbor / OOM</li>
+      <li>한 사용자가 host 디스크 채우면 docker daemon 까지 죽음</li>
+      <li>KPI 의 "X% 사용" 이 분모 (quota) 가 없어서 운영자 직관과 불일치</li>
+    </ul>
+  </div>
+
+  <h3>해결 방향</h3>
+  <ul>
+    <li>컨테이너 생성 시 <code>cpuQuota</code> / <code>memory</code> hard limit 적용 (cgroup)</li>
+    <li>워크스페이스 디스크 = <b>LVM thin volume per-container</b> (block-level 격리, MIG 단절)</li>
+    <li>데이터셋 / 모델 = NFS read-only mount (공유)</li>
+    <li>backend 가 추천값을 동적 계산하려면 agent 가 host capacity 보고 필요</li>
+  </ul>
+</section>
+
+<!-- ============================ 2. overview ============================ -->
+<section id="what">
+  <h2>2. 이번에 해야 할 일 (overview)</h2>
+  <table>
+    <thead><tr>
+      <th>#</th><th>기능</th><th>요약</th><th>우선순위</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td>1</td>
+        <td><code>capacity_report</code> 메시지</td>
+        <td>agent 시작 시 + 1시간 주기로 host 정적 사양 보고</td>
+        <td>P0 (필수)</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td><code>create_container</code> HostConfig 확장</td>
+        <td>backend 가 전달한 <code>memory</code> / <code>cpuQuota</code> 를 Dockerode 에 적용</td>
+        <td>P0</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td>LVM thin volume 관리</td>
+        <td>컨테이너 생성/삭제 시 lvcreate / mkfs / mount / lvremove</td>
+        <td>P0</td>
+      </tr>
+      <tr>
+        <td>4</td>
+        <td>workspace 디스크 사용량 보고</td>
+        <td>주기적 <code>df</code> 또는 <code>lvs</code> → backend</td>
+        <td>P1</td>
+      </tr>
+      <tr>
+        <td>5</td>
+        <td>install script 확장</td>
+        <td>설치 시 LVM thin pool 자동 셋업 + NFS mount</td>
+        <td>P0</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="panel info">
+    <b>전체 모습</b>
+<pre>backend → agent: create_container {
+  image, name, env, ports, ...,
+  hostConfig: { memory, memorySwap, cpuQuota, cpuPeriod, oomKillDisable: false },
+  workspace: { sizeGb, mountTarget: "/workspace" }
+}
+
+agent ↓
+  1. lvcreate -V {sizeGb}G -T vg0/thin_pool -n cid_{cid}
+  2. mkfs.ext4 /dev/vg0/cid_{cid}
+  3. mount /dev/vg0/cid_{cid} /var/lib/hypercube/workspaces/{cid}
+  4. docker createContainer({ HostConfig: {Memory, CpuQuota, ...,
+       Binds: ["/var/lib/hypercube/workspaces/{cid}:/workspace",
+               "/mnt/datasets:/datasets:ro",
+               "/mnt/models:/models:ro"]
+     }})
+  5. docker start
+  6. backend ← create_container_result { ok, workspace.device, workspace.mountPoint }
+</pre>
+  </div>
+</section>
+
+<!-- ============================ 3. capacity_report ============================ -->
+<section id="feat1">
+  <h2>3. 신규 1 — <code>capacity_report</code> 메시지</h2>
+  <p>
+    backend 가 추천 자원 한도를 <b>host 사양에 동적으로 맞추려면</b> agent 가 정적 capacity 를
+    보고해야 함. (시계열 메트릭 <code>system_metrics</code> 와 별개)
+  </p>
+
+  <h3>3.1 언제 보내나</h3>
+  <ul>
+    <li>agent 시작 직후 (backend WebSocket 연결 성공 시 1회)</li>
+    <li>이후 1시간 주기 (host 사양 변경 — RAM 추가, 디스크 교체 등 — 인지용)</li>
+    <li>또는 backend 가 <code>request_capacity</code> 명령 보낼 때 on-demand</li>
+  </ul>
+
+  <h3>3.2 메시지 포맷</h3>
+<pre><span class="c">// agent → backend WebSocket</span>
+{
+  <span class="s">"type"</span>: <span class="s">"capacity_report"</span>,
+  <span class="s">"agentId"</span>: <span class="s">"a1b2..."</span>,
+  <span class="s">"timestamp"</span>: <span class="s">"2026-05-15T15:00:00Z"</span>,
+  <span class="s">"data"</span>: {
+    <span class="s">"cpu"</span>: {
+      <span class="s">"cores"</span>: 24,                          <span class="c">// os.cpus().length</span>
+      <span class="s">"model"</span>: <span class="s">"Intel Xeon Gold 6248 @ 2.50GHz"</span>,  <span class="c">// os.cpus()[0].model</span>
+      <span class="s">"architecture"</span>: <span class="s">"x64"</span>              <span class="c">// process.arch</span>
+    },
+    <span class="s">"memory"</span>: {
+      <span class="s">"totalMb"</span>: 262144                      <span class="c">// Math.round(os.totalmem() / 1024 / 1024)</span>
+    },
+    <span class="s">"disk"</span>: {
+      <span class="s">"rootTotalGb"</span>: 3700,                   <span class="c">// df -B1G / 의 total</span>
+      <span class="s">"rootUsedGb"</span>: 120,
+      <span class="s">"filesystem"</span>: <span class="s">"ext4"</span>,               <span class="c">// df -T / 의 type</span>
+      <span class="s">"lvm"</span>: {
+        <span class="s">"available"</span>: <span class="k">true</span>,
+        <span class="s">"vg"</span>: <span class="s">"vg0"</span>,
+        <span class="s">"thinPool"</span>: <span class="s">"thin_pool"</span>,
+        <span class="s">"thinPoolSizeGb"</span>: 3000,              <span class="c">// lvs --units g vg0/thin_pool</span>
+        <span class="s">"thinPoolUsedGb"</span>: 432
+      }
+    },
+    <span class="s">"network"</span>: {
+      <span class="s">"primaryInterface"</span>: <span class="s">"eth0"</span>,
+      <span class="s">"speedMbps"</span>: 10000                     <span class="c">// ethtool eth0 | grep Speed</span>
+    },
+    <span class="s">"gpu"</span>: {
+      <span class="s">"count"</span>: 4,
+      <span class="s">"devices"</span>: [
+        {<span class="s">"index"</span>: 0, <span class="s">"model"</span>: <span class="s">"H100 80GB"</span>, <span class="s">"memoryMb"</span>: 81920, <span class="s">"migEnabled"</span>: <span class="k">false</span>},
+        ...
+      ]
+    },
+    <span class="s">"os"</span>: {
+      <span class="s">"distro"</span>: <span class="s">"Ubuntu 22.04"</span>,            <span class="c">// /etc/os-release</span>
+      <span class="s">"kernel"</span>: <span class="s">"5.15.0-91-generic"</span>,        <span class="c">// uname -r</span>
+      <span class="s">"cgroupVersion"</span>: <span class="s">"v2"</span>                <span class="c">// stat -fc %T /sys/fs/cgroup</span>
+    },
+    <span class="s">"agent"</span>: {
+      <span class="s">"version"</span>: <span class="s">"0.5.0"</span>,
+      <span class="s">"nodeVersion"</span>: <span class="s">"v20.11.1"</span>
+    }
+  }
+}</pre>
+
+  <div class="panel info">
+    <b>backend 가 받아 저장</b> — Agent 모델의 <code>cpu_cores</code>, <code>ram_total_mb</code>,
+    <code>disk_total_gb</code>, <code>lvm_pool_size_gb</code>, <code>nic_speed_mbps</code>,
+    <code>filesystem</code>, <code>capacity_updated_at</code> 컬럼 갱신.
+  </div>
+
+  <h3>3.3 실패 시 fallback</h3>
+  <ul>
+    <li><code>lvs</code> 명령 실패 시 → <code>lvm.available: false</code> 로 보고</li>
+    <li><code>ethtool</code> 없으면 → <code>speedMbps: null</code></li>
+    <li>모든 collection 은 graceful — 일부 실패해도 메시지는 보내야</li>
+  </ul>
+</section>
+
+<!-- ============================ 4. HostConfig ============================ -->
+<section id="feat2">
+  <h2>4. 신규 2 — <code>create_container</code> HostConfig 확장</h2>
+  <p>backend 가 <code>create_container</code> 명령에 자원 한도 옵션을 추가 전달.</p>
+
+  <h3>4.1 메시지 포맷 변경</h3>
+<pre><span class="c">// backend → agent</span>
+{
+  <span class="s">"type"</span>: <span class="s">"create_container"</span>,
+  <span class="s">"requestId"</span>: <span class="s">"req-..."</span>,
+  <span class="s">"data"</span>: {
+    <span class="s">"image"</span>: <span class="s">"hypercube/ml-pytorch-jupyter:cuda12.4-airgap"</span>,
+    <span class="s">"name"</span>: <span class="s">"ops-flow-1"</span>,
+    <span class="s">"env"</span>: { ... },
+    <span class="s">"ports"</span>: { ... },
+    <span class="s">"gpus"</span>: [<span class="s">"GPU-uuid-..."</span>],
+
+    <span class="c">// 신규 — 자원 한도</span>
+    <span class="s">"hostConfig"</span>: {
+      <span class="s">"memory"</span>:         17179869184,           <span class="c">// bytes (= 16 GB)</span>
+      <span class="s">"memorySwap"</span>:     17179869184,           <span class="c">// swap 비활성 (limit == swap)</span>
+      <span class="s">"cpuQuota"</span>:       400000,                <span class="c">// microseconds (4 cores = 4 * 100000)</span>
+      <span class="s">"cpuPeriod"</span>:      100000,                <span class="c">// 100 ms (default)</span>
+      <span class="s">"oomKillDisable"</span>: <span class="k">false</span>
+    },
+
+    <span class="c">// 신규 — workspace LVM thin volume</span>
+    <span class="s">"workspace"</span>: {
+      <span class="s">"sizeGb"</span>: 100,
+      <span class="s">"mountTarget"</span>: <span class="s">"/workspace"</span>
+    },
+
+    <span class="c">// 신규 — NFS 공유 mount</span>
+    <span class="s">"sharedMounts"</span>: [
+      {<span class="s">"source"</span>: <span class="s">"/mnt/datasets"</span>, <span class="s">"target"</span>: <span class="s">"/datasets"</span>, <span class="s">"readOnly"</span>: <span class="k">true</span>},
+      {<span class="s">"source"</span>: <span class="s">"/mnt/models"</span>,   <span class="s">"target"</span>: <span class="s">"/models"</span>,   <span class="s">"readOnly"</span>: <span class="k">true</span>}
+    ]
+  }
+}</pre>
+
+  <h3>4.2 Dockerode 매핑</h3>
+<pre><span class="c">// agent 측</span>
+<span class="k">const</span> hostConfig = {
+  <span class="s">"Memory"</span>:         data.hostConfig.memory,
+  <span class="s">"MemorySwap"</span>:     data.hostConfig.memorySwap,
+  <span class="s">"CpuQuota"</span>:       data.hostConfig.cpuQuota,
+  <span class="s">"CpuPeriod"</span>:      data.hostConfig.cpuPeriod,
+  <span class="s">"OomKillDisable"</span>: data.hostConfig.oomKillDisable,
+  <span class="s">"Binds"</span>: [
+    <span class="s">`${workspaceDevice}:${data.workspace.mountTarget}:rw`</span>,
+    ...data.sharedMounts.map(m => <span class="s">`${m.source}:${m.target}:${m.readOnly ? 'ro' : 'rw'}`</span>)
+  ],
+  <span class="c">// 기존 옵션 (NetworkMode, RestartPolicy, GPU device 등) 유지</span>
+};
+
+<span class="k">await</span> docker.createContainer({
+  <span class="s">"Image"</span>: data.image,
+  <span class="s">"name"</span>: data.name,
+  <span class="s">"Env"</span>: ...,
+  <span class="s">"HostConfig"</span>: hostConfig,
+  ...
+});</pre>
+
+  <h3>4.3 update-limits 명령 (이미 존재)</h3>
+  <p>
+    backend 의 <code>update-limits</code> action 이 이미 있음 (<code>docker update</code> live).
+    이 부분은 기존대로 동작 — Dockerode <code>container.update({Memory, CpuQuota})</code> 그대로.
+    HostConfig 가 create 시 잡혀있어도 update 가능.
+  </p>
+</section>
+
+<!-- ============================ 5. LVM thin ============================ -->
+<section id="feat3">
+  <h2>5. 신규 3 — LVM thin volume 관리</h2>
+  <p>
+    컨테이너 생성/삭제 시 workspace 가상 disk 를 동적 생성. 컨테이너는 자기 가상 disk 만 봄
+    (host 파일시스템 안 보임). MIG 가 GPU 를 partition 하듯 LVM thin 이 디스크를 block-level
+    partition.
+  </p>
+
+  <h3>5.1 생성 흐름 (create_container 안에서)</h3>
+<pre><span class="c">// agent 의 create_container handler 안</span>
+<span class="k">const</span> cid = container.id.slice(0, 12);       <span class="c">// e.g. "05eddec05865"</span>
+<span class="k">const</span> volumeName  = <span class="s">`cid_${cid}`</span>;
+<span class="k">const</span> volumePath  = <span class="s">`/dev/vg0/${volumeName}`</span>;
+<span class="k">const</span> mountPoint  = <span class="s">`/var/lib/hypercube/workspaces/${cid}`</span>;
+
+<span class="c">// 1. thin volume 생성</span>
+<span class="k">await</span> exec(<span class="s">`lvcreate -V ${data.workspace.sizeGb}G -T vg0/thin_pool -n ${volumeName}`</span>);
+
+<span class="c">// 2. filesystem 생성 (ext4 권장)</span>
+<span class="k">await</span> exec(<span class="s">`mkfs.ext4 -F ${volumePath}`</span>);
+
+<span class="c">// 3. mount point 생성 + mount</span>
+<span class="k">await</span> exec(<span class="s">`mkdir -p ${mountPoint}`</span>);
+<span class="k">await</span> exec(<span class="s">`mount ${volumePath} ${mountPoint}`</span>);
+
+<span class="c">// 4. ownership — 컨테이너 내부 사용자에 맞춰 (jovyan = 1000:100 등)</span>
+<span class="k">await</span> exec(<span class="s">`chown ${UID}:${GID} ${mountPoint}`</span>);
+
+<span class="c">// 5. docker createContainer 의 Binds 에 mountPoint 추가</span>
+hostConfig.Binds.push(<span class="s">`${mountPoint}:${data.workspace.mountTarget}:rw`</span>);
+
+<span class="c">// 6. backend 에 결과 보고</span>
+sendMessage({
+  <span class="s">"type"</span>: <span class="s">"create_container_result"</span>,
+  <span class="s">"data"</span>: {
+    <span class="s">"ok"</span>: <span class="k">true</span>,
+    <span class="s">"containerId"</span>: container.id,
+    <span class="s">"workspace"</span>: {
+      <span class="s">"device"</span>: volumePath,
+      <span class="s">"mountPoint"</span>: mountPoint,
+      <span class="s">"sizeGb"</span>: data.workspace.sizeGb
+    }
+  }
+});</pre>
+
+  <h3>5.2 삭제 흐름 (remove_container 안에서)</h3>
+<pre><span class="c">// 1. docker container 제거</span>
+<span class="k">await</span> docker.getContainer(cid).remove({force: <span class="k">true</span>});
+
+<span class="c">// 2. mount 해제</span>
+<span class="k">await</span> exec(<span class="s">`umount ${mountPoint}`</span>);
+<span class="k">await</span> exec(<span class="s">`rmdir ${mountPoint}`</span>);
+
+<span class="c">// 3. thin volume 제거</span>
+<span class="k">await</span> exec(<span class="s">`lvremove -f vg0/${volumeName}`</span>);</pre>
+
+  <h3>5.3 thin pool 모니터링</h3>
+  <p>
+    thin pool 은 over-provision 가능 → 실제 채워지면 모든 volume 이 read-only 로 떨어짐. 사전 알림 필수.
+  </p>
+  <ul>
+    <li><code>lvs --units g vg0/thin_pool</code> 결과의 <code>Data%</code> 가 80% 이상 → backend 에 warn 보고</li>
+    <li>90% 이상 → critical alert (즉시 admin 알림)</li>
+    <li><code>capacity_report</code> 와 별개로 <code>system_metrics</code> 메시지에 <code>lvm.thinPool.usedPct</code> 필드 추가 권장</li>
+  </ul>
+</section>
+
+<!-- ============================ 6. workspace 디스크 메트릭 ============================ -->
+<section id="feat4">
+  <h2>6. 신규 4 — workspace 디스크 사용량 보고</h2>
+  <p>
+    각 컨테이너의 workspace volume 사용량을 주기적으로 보고. backend 의 KPI 카드에 표시.
+  </p>
+
+  <h3>6.1 메시지 — 기존 <code>container_metrics</code> 확장</h3>
+<pre><span class="c">// agent → backend, 컨테이너 별 주기적 push</span>
+{
+  <span class="s">"type"</span>: <span class="s">"container_metrics"</span>,
+  <span class="s">"data"</span>: {
+    <span class="s">"containerId"</span>: <span class="s">"05eddec05865"</span>,
+    <span class="s">"cpu"</span>: { ... },
+    <span class="s">"memory"</span>: { ... },
+    <span class="s">"network"</span>: { ... },
+    <span class="s">"disk"</span>: { ... },
+
+    <span class="c">// 신규 — workspace volume 사용량</span>
+    <span class="s">"workspace"</span>: {
+      <span class="s">"device"</span>:       <span class="s">"/dev/vg0/cid_05eddec05865"</span>,
+      <span class="s">"sizeGb"</span>:       100,
+      <span class="s">"usedGb"</span>:       12,                   <span class="c">// df -B1G {mountPoint} 의 used</span>
+      <span class="s">"availableGb"</span>:  88,
+      <span class="s">"usedPct"</span>:      12.0
+    }
+  }
+}</pre>
+
+  <h3>6.2 수집 방법</h3>
+  <ul>
+    <li><code>df -B1G {mountPoint}</code> 출력 파싱 — 가장 단순</li>
+    <li>또는 <code>lvs --units g {volume}</code> 의 <code>Data%</code> — thin volume 의 실제 점유</li>
+    <li>수집 주기 = 기존 container_metrics 주기 (보통 10~30초) 와 동일</li>
+  </ul>
+</section>
+
+<!-- ============================ 7. install script ============================ -->
+<section id="install">
+  <h2>7. 신규 5 — install script 자동화</h2>
+  <p>
+    host 추가 시 운영자가 LVM 수동 셋업 안 하도록, agent install script 가 자동 처리.
+    "<code>curl ... | sudo bash</code>" 한 줄.
+  </p>
+
+  <h3>7.1 install 흐름</h3>
+<pre><span class="c">#!/bin/bash</span>
+<span class="c"># curl -fsSL https://hypercube.example/install.sh | sudo bash -s -- \</span>
+<span class="c">#   --backend-url wss://backend/ws \</span>
+<span class="c">#   --token AGENT_TOKEN \</span>
+<span class="c">#   --nfs-server 192.168.0.10 \</span>
+<span class="c">#   --thin-pool-size 80%</span>
+
+set -e
+
+<span class="c"># 1. 패키지 — Node.js, lvm2, nfs-common, ethtool, util-linux</span>
+apt-get update
+apt-get install -y nodejs lvm2 nfs-common ethtool
+
+<span class="c"># 2. LVM thin pool 자동 셋업 — 기존 vg0/thin_pool 없을 때만</span>
+<span class="k">if</span> ! lvs vg0/thin_pool &gt;/dev/null 2&gt;&amp;1; <span class="k">then</span>
+  <span class="c"># /dev/sdb 또는 free space 자동 감지 (별도 로직)</span>
+  pvcreate /dev/sdb
+  vgcreate vg0 /dev/sdb
+  lvcreate -L 80%VG -T vg0/thin_pool
+<span class="k">fi</span>
+
+<span class="c"># 3. NFS mount /mnt/datasets, /mnt/models (read-only)</span>
+mkdir -p /mnt/datasets /mnt/models
+echo <span class="s">"${NFS_SERVER}:/datasets /mnt/datasets nfs ro,noauto,x-systemd.automount 0 0"</span> &gt;&gt; /etc/fstab
+echo <span class="s">"${NFS_SERVER}:/models   /mnt/models   nfs ro,noauto,x-systemd.automount 0 0"</span> &gt;&gt; /etc/fstab
+mount /mnt/datasets
+mount /mnt/models
+
+<span class="c"># 4. workspace mount base</span>
+mkdir -p /var/lib/hypercube/workspaces
+
+<span class="c"># 5. agent 설치 — systemd 등록</span>
+curl -fsSL .../agent.tar.gz | tar -xz -C /opt/hypercube-agent
+cat &gt; /etc/systemd/system/hypercube-agent.service &lt;&lt;EOF
+[Service]
+ExecStart=/opt/hypercube-agent/agent
+Environment=BACKEND_URL=${BACKEND_URL}
+Environment=AGENT_TOKEN=${AGENT_TOKEN}
+User=root
+EOF
+systemctl enable --now hypercube-agent
+
+<span class="c"># 6. agent 시작 → backend 에 capacity_report 자동 전송</span></pre>
+
+  <h3>7.2 운영자가 결정하는 것</h3>
+  <ul>
+    <li>NFS server 주소 (<code>--nfs-server</code>)</li>
+    <li>thin pool 크기 비율 또는 절대값 (default 80%)</li>
+    <li>agent token (backend 에서 발급)</li>
+  </ul>
+  <p>그 외 모두 자동.</p>
+</section>
+
+<!-- ============================ 8. 권한 ============================ -->
+<section id="permission">
+  <h2>8. 권한 / 보안</h2>
+  <div class="panel warn">
+    <b>agent 가 root 권한 필요</b> — <code>lvcreate</code>, <code>mkfs</code>, <code>mount</code>,
+    <code>umount</code>, <code>lvremove</code> 는 root 만 가능.
+  </div>
+
+  <h3>8.1 옵션 비교</h3>
+  <table>
+    <thead><tr><th>옵션</th><th>설명</th><th>장점</th><th>단점</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>(A) agent process 자체가 root</b></td>
+        <td><code>systemd User=root</code></td>
+        <td>단순, 권한 issue 없음</td>
+        <td>process 전체가 root 권한 → 보안 영향</td>
+      </tr>
+      <tr>
+        <td><b>(B) sudo 화이트리스트</b></td>
+        <td>agent 는 일반 user, <code>/etc/sudoers.d/hypercube-agent</code> 에 lvcreate 등만 NOPASSWD</td>
+        <td>최소 권한 원칙</td>
+        <td>sudo 매번 호출 overhead, 설정 복잡</td>
+      </tr>
+      <tr>
+        <td><b>(C) helper binary (setuid)</b></td>
+        <td>agent → small helper binary (root setuid) → lvcreate</td>
+        <td>최소 권한, 명령 화이트리스트 강제</td>
+        <td>helper 코드 추가 작업</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    <b>권장: (A) — 단순함 우선.</b> agent host 는 backend 가 신뢰하는 인프라. multi-tenant 아님
+    (agent 자체는 한 호스트만 관리). 다만 install script 와 agent code 가 audit 가능해야.
+  </p>
+
+  <h3>8.2 명령 인젝션 방지</h3>
+  <ul>
+    <li>모든 <code>exec</code> 호출은 array form 사용 (<code>execFile</code>) — shell 통해 X</li>
+    <li>cid, volumeName 은 backend 에서 받지만 정규식 validate (<code>^[a-f0-9]{12}$</code>)</li>
+    <li>size 도 정수 validate</li>
+  </ul>
+</section>
+
+<!-- ============================ 9. 실패 ============================ -->
+<section id="failure">
+  <h2>9. 실패 시나리오 / rollback</h2>
+
+  <h3>9.1 생성 중 실패</h3>
+  <table>
+    <thead><tr><th>실패 단계</th><th>처리</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>lvcreate 실패 (thin pool full)</td>
+        <td>backend 에 result.ok=false + reason="thin_pool_full" 보고. backend 가 사용자에 안내</td>
+      </tr>
+      <tr>
+        <td>mkfs 실패</td>
+        <td>lvremove 로 rollback → result.ok=false</td>
+      </tr>
+      <tr>
+        <td>mount 실패</td>
+        <td>lvremove → rollback</td>
+      </tr>
+      <tr>
+        <td>docker createContainer 실패</td>
+        <td>umount + lvremove → rollback</td>
+      </tr>
+      <tr>
+        <td>docker start 실패</td>
+        <td>docker remove + umount + lvremove → rollback</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>9.2 운영 중 발생</h3>
+  <ul>
+    <li><b>OOM kill</b> — Docker event 로 감지 → backend 에 event 보고 (기존 흐름)</li>
+    <li><b>thin pool 90%+</b> — capacity_report / system_metrics 로 알림</li>
+    <li><b>volume corruption</b> — agent 가 mount 실패 감지 → backend 에 보고, 사용자 알림 + admin 개입</li>
+  </ul>
+
+  <h3>9.3 agent 재시작 / host reboot</h3>
+  <ul>
+    <li>기존 volume 들이 host reboot 후 살아있는지 확인 (<code>lvs</code>)</li>
+    <li>mount 가 fstab 또는 systemd mount unit 으로 등록되어야 자동 재마운트</li>
+    <li>또는 agent 시작 시 active container 의 workspace 들 자동 remount</li>
+  </ul>
+</section>
+
+<!-- ============================ 10. 테스트 ============================ -->
+<section id="test">
+  <h2>10. 테스트 / 검증</h2>
+
+  <h3>10.1 unit / integration (agent repo)</h3>
+  <ul>
+    <li>mock <code>exec</code> 으로 lvcreate / mkfs / mount 순서 검증</li>
+    <li>실패 단계별 rollback 호출 순서</li>
+    <li>capacity_report 메시지 schema validate</li>
+    <li>HostConfig 매핑 정확성</li>
+  </ul>
+
+  <h3>10.2 dev 환경 실측 (63번 host)</h3>
+  <ol>
+    <li>63번에 LVM thin pool 셋업 (운영팀 1회 작업 또는 install script 검증)</li>
+    <li>agent dev 빌드 → 63번에 배포</li>
+    <li>backend dev 에서 <code>create_container</code> with workspace.sizeGb=10 호출</li>
+    <li><code>lvs vg0</code> 으로 volume 생성 확인</li>
+    <li>컨테이너 안에서 <code>df /workspace</code> → 10G 보이는지</li>
+    <li>workspace 안에 1G 파일 생성 → lvs 의 Data% 가 증가하는지</li>
+    <li>컨테이너 stop / remove → volume 자동 회수 확인</li>
+  </ol>
+
+  <h3>10.3 부하 / OOM</h3>
+  <ul>
+    <li>메모리 limit 4 GB 컨테이너에서 <code>stress --vm 1 --vm-bytes 5G</code> → OOM kill 확인</li>
+    <li>docker event 가 backend 에 전달되는지</li>
+  </ul>
+</section>
+
+<!-- ============================ 11. 일정 ============================ -->
+<section id="timeline">
+  <h2>11. 일정 / 우선순위</h2>
+  <div class="phase">
+    <h4>Sprint 1 (1주) — P0 핵심</h4>
+    <ul>
+      <li>capacity_report 메시지 + 정보 수집 로직</li>
+      <li>HostConfig 매핑 (memory, cpuQuota)</li>
+      <li>install script 골격 (LVM pool 자동 셋업)</li>
+    </ul>
+  </div>
+  <div class="phase">
+    <h4>Sprint 2 (1주) — P0 LVM</h4>
+    <ul>
+      <li>create_container 의 lvcreate / mkfs / mount</li>
+      <li>remove_container 의 umount / lvremove</li>
+      <li>rollback 로직</li>
+      <li>NFS mount install script 통합</li>
+    </ul>
+  </div>
+  <div class="phase">
+    <h4>Sprint 3 (1주) — P1 모니터링</h4>
+    <ul>
+      <li>workspace 디스크 사용량 보고</li>
+      <li>thin pool usage 모니터링</li>
+      <li>실패 시나리오 통합 테스트</li>
+    </ul>
+  </div>
+  <p class="mono" style="color: var(--muted)">
+    총 ~3주 가정. backend 측 PR 2~3 과 병행. 통합 검증은 dev 63번에서.
+  </p>
+</section>
+
+<!-- ============================ 12. 협업 ============================ -->
+<section id="qa">
+  <h2>12. 협업 / 질문 채널</h2>
+  <ul>
+    <li>backend 쪽 기획서: <code>docs/container-resource-limits-기획.ko.html</code> (이 문서와 자매 spec)</li>
+    <li>agent 측 작업 요청 흐름: <code>docs/agent-channel.md</code></li>
+    <li>WebSocket / payload 표준: <code>docs/agent-payload-contract.md</code>, <code>docs/agent-protocol.md</code></li>
+    <li>스펙 변경 / 질문은 GitHub Issue (이 repo) 또는 backend repo Issue + 본 문서 link</li>
+    <li>통합 테스트는 dev 환경 63번 host 에서 backend 개발자와 동시 작업</li>
+  </ul>
+
+  <div class="panel ok">
+    <b>backend 측에서 보장</b>
+    <ul>
+      <li>backward compat — 기존 컨테이너 (workspace 없음) 도 동작</li>
+      <li>새 필드 (<code>hostConfig</code>, <code>workspace</code>, <code>sharedMounts</code>) 는 optional. agent 가 미지원이면 backend 가 fallback</li>
+      <li>WebSocket message schema 변경 시 양측 동시 배포 — backend 도 deploy 직전 마지막 점검 후 진행</li>
+    </ul>
+  </div>
+</section>
+
+<hr>
+<p style="color: var(--muted); font-size: 12.5px;">
+  HyperCube · Agent 통합 spec v0.1 · 2026-05-15 · 본 문서는
+  <code>docs/container-resource-limits-기획.ko.html</code> 의 agent 측 발췌
+</p>
+
+</div>
+</body>
+</html>

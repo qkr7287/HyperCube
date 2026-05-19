@@ -10,13 +10,72 @@
 		onSelect = () => {},
 		onOpen2d,
 		onOpen3d,
+		canManage = false,
+		onDeleted,
 	}: {
 		agent: FleetAgentRow;
 		selected?: boolean;
 		onSelect?: (agentId: string) => void;
 		onOpen2d?: (agentId: string) => void;
 		onOpen3d?: (agentId: string) => void;
+		// admin 만 톱니바퀴 메뉴 노출. backend (IsSuperAdmin=IsAdmin) 가 어차피
+		// 한 번 더 막지만, 일반 사용자에겐 안 보이는 게 UX 깔끔.
+		canManage?: boolean;
+		onDeleted?: (agentId: string) => void;
 	} = $props();
+
+	import { base } from '$app/paths';
+
+	let menuOpen = $state(false);
+	let modalOpen = $state(false);
+	let deleting = $state(false);
+	let deleteError = $state<string | null>(null);
+
+	function toggleMenu(e: MouseEvent) {
+		e.stopPropagation();
+		menuOpen = !menuOpen;
+		deleteError = null;
+	}
+
+	function closeMenu() {
+		menuOpen = false;
+	}
+
+	function openDeleteModal(e: MouseEvent) {
+		e.stopPropagation();
+		menuOpen = false;
+		modalOpen = true;
+		deleteError = null;
+	}
+
+	function closeModal() {
+		if (deleting) return;
+		modalOpen = false;
+	}
+
+	async function confirmDelete() {
+		deleting = true;
+		deleteError = null;
+		try {
+			const token = localStorage.getItem('hc_access_token') || '';
+			const res = await fetch(`${base}/api/agents/${agent.agent.id}/`, {
+				method: 'DELETE',
+				headers: { Authorization: `Bearer ${token}` },
+			});
+			if (res.status === 204 || res.ok) {
+				modalOpen = false;
+				onDeleted?.(agent.agent.id);
+			} else if (res.status === 403) {
+				deleteError = '권한이 없습니다 (admin 전용).';
+			} else {
+				deleteError = `삭제 실패 (HTTP ${res.status})`;
+			}
+		} catch (err) {
+			deleteError = String(err);
+		} finally {
+			deleting = false;
+		}
+	}
 
 	let hasGpu = $derived((agent.latest?.gpu_count ?? 0) > 0);
 
@@ -25,6 +84,25 @@
 		if (value >= warn) return 'warn';
 		return 'normal';
 	}
+
+	// GPU 온도: 실측 (gpu_temperature_max from agent). nvidia-smi 보고 안 들어오면 null.
+	// 전력: 실측 없음 → GPU 사용률 기반 선형 추정. idle 30W + (TDP−idle)·usage/100,
+	// TDP 기본값 300W (일반적 데이터센터 GPU 대표값). 모델 다양해서 실측과 ±100W 오차 가능.
+	const POWER_TDP_W = 300;
+	const POWER_IDLE_W = 30;
+	let gpuTemp = $derived<number | null>(agent.latest?.gpu_temperature ?? null);
+	let estimatedPowerW = $derived(
+		hasGpu
+			? POWER_IDLE_W + (POWER_TDP_W - POWER_IDLE_W) * (Math.max(0, Math.min(100, agent.latest?.gpu_usage ?? 0)) / 100)
+			: 0,
+	);
+	function tempLevel(t: number | null): 'normal' | 'warn' | 'danger' {
+		if (t == null) return 'normal';
+		if (t >= 85) return 'danger';
+		if (t >= 75) return 'warn';
+		return 'normal';
+	}
+	let gpuTempLevel = $derived(tempLevel(gpuTemp));
 
 	let cpuLevel = $derived(severity(agent.latest?.cpu_usage ?? 0, 70, 90));
 	let memLevel = $derived(severity(agent.latest?.memory_usage ?? 0, 75, 90));
@@ -142,15 +220,13 @@
 				{#if agent.agent.is_active}
 					<span class="live-dot" aria-hidden="true" title="Agent 실시간 연결 중"></span>
 				{/if}
-				<strong title={agent.agent.hostname}>{agent.agent.hostname}</strong>
-				<span class="ip-inline">{agent.agent.ip_address}</span>
-				<MetricHelp text={"각 막대 = 리소스 사용률(%)\n0% = 거의 안 씀, 100% = 완전 사용 중\n\n위험 임계\n• CPU 90% / 메모리 90%\n• 디스크 90% / GPU 95%"} />
-				<span class="meta">
-					<span class="health-tag {agent.health}">{healthLabel(agent.health)}</span>
-				</span>
+				<strong class="hostname" title={agent.agent.hostname}>{agent.agent.hostname}</strong>
 			</span>
+			<span class="ip-row">{agent.agent.ip_address}</span>
 		</div>
 		<div class="head-actions">
+			<span class="health-tag {agent.health}">{healthLabel(agent.health)}</span>
+			<MetricHelp text={"각 막대 = 리소스 사용률(%)\n0% = 거의 안 씀, 100% = 완전 사용 중\n\n위험 임계\n• CPU 90% / 메모리 90%\n• 디스크 90% / GPU 95%"} />
 			{#if onOpen2d}
 				{@const isSim = agent.agent.id.startsWith('sim-')}
 				<button
@@ -179,8 +255,62 @@
 					<span class="monitor-label">3D</span>
 				</button>
 			{/if}
+			{#if canManage}
+				<div class="settings-wrap" role="presentation" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
+					<button
+						type="button"
+						class="settings-btn"
+						aria-label="Agent 관리"
+						title="Agent 관리"
+						onclick={toggleMenu}
+					>
+						<span aria-hidden="true">⚙</span>
+					</button>
+					{#if menuOpen}
+						<div class="settings-menu" role="menu">
+							<button type="button" class="menu-item danger" onclick={openDeleteModal}>
+								Agent 삭제
+							</button>
+						</div>
+					{/if}
+				</div>
+			{/if}
 		</div>
 	</header>
+
+	{#if modalOpen}
+		<div
+			class="modal-backdrop"
+			role="presentation"
+			onclick={closeModal}
+			onkeydown={(e) => e.stopPropagation()}
+		>
+			<div
+				class="modal"
+				role="dialog"
+				aria-modal="true"
+				aria-labelledby="delete-agent-title-{agent.agent.id}"
+				onclick={(e) => e.stopPropagation()}
+			>
+				<h3 id="delete-agent-title-{agent.agent.id}" class="modal-title">Agent 삭제 확인</h3>
+				<p class="modal-body">
+					<strong>{agent.agent.hostname}</strong> 을(를) 정말 삭제하시겠습니까?<br />
+					이 동작은 되돌릴 수 없으며, 연결된 컨테이너·메트릭 이력도 함께 삭제됩니다.
+				</p>
+				{#if deleteError}
+					<div class="modal-error">{deleteError}</div>
+				{/if}
+				<div class="modal-actions">
+					<button type="button" class="modal-btn" disabled={deleting} onclick={closeModal}>
+						취소
+					</button>
+					<button type="button" class="modal-btn danger" disabled={deleting} onclick={confirmDelete}>
+						{deleting ? '삭제 중…' : '삭제'}
+					</button>
+				</div>
+			</div>
+		</div>
+	{/if}
 
 	<div class="compact-body">
 		<div class="metric-cards" class:has-gpu={hasGpu}>
@@ -202,6 +332,14 @@
 			<span class="ct-chip problem" class:active={(agent.containers.problem ?? 0) > 0} title="재시작·비정상(dead) 상태의 컨테이너">
 				<b>{agent.containers.problem ?? 0}</b> 이상
 			</span>
+			{#if hasGpu}
+				<span class="ct-chip thermal" data-level={gpuTempLevel} title={gpuTemp != null ? `GPU 최고 온도 (nvidia-smi 실측, 임계 75/85°C)` : 'nvidia-smi 가 온도값을 보내지 않음'}>
+					<b>{gpuTemp != null ? `${Math.round(gpuTemp)}°C` : '—'}</b> 온도
+				</span>
+				<span class="ct-chip power" title={`GPU 사용률 기반 추정치 · TDP ${POWER_TDP_W}W 가정 (실제 모델에 따라 ±100W 오차)`}>
+					<b>~{Math.round(estimatedPowerW)}W</b> 전력
+				</span>
+			{/if}
 			{#if agent.health_reasons.length > 0}
 				<span class="reason-chip" title={agent.health_reasons.map(humanizeReason).join(' · ')}>
 					{shortReason(agent.health_reasons[0])}
@@ -278,22 +416,21 @@
 	.title-line {
 		display: flex;
 		align-items: center;
-		flex-wrap: wrap;
+		flex-wrap: nowrap;
 		gap: 8px;
 		min-width: 0;
 		width: 100%;
 	}
-	.title-line .meta {
-		margin-left: auto;
-	}
-	.ip-inline {
+	.ip-row {
 		color: var(--text-muted);
 		font-size: var(--font-xs);
 		font-weight: 700;
 		font-variant-numeric: tabular-nums;
 		letter-spacing: 0;
+		line-height: 1.1;
+		padding-left: 15px; /* live-dot(7) + gap(8) 만큼 들여쓰기 */
 	}
-	.title strong {
+	.title strong.hostname {
 		color: var(--text-primary);
 		font-size: var(--font-sm);
 		font-weight: 800;
@@ -302,6 +439,7 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		min-width: 0;
+		flex: 0 1 auto;
 	}
 	.meta {
 		display: inline-flex;
@@ -312,10 +450,14 @@
 	}
 	.health-tag {
 		display: inline-flex;
-		padding: 2px 6px;
+		align-items: center;
+		padding: 2px 7px;
+		height: 22px;
 		border-radius: var(--radius-sm);
+		font-size: var(--font-xs);
 		font-weight: 800;
 		letter-spacing: 0.3px;
+		white-space: nowrap;
 	}
 	.health-tag.healthy { color: #34d399; background: rgba(52, 211, 153, 0.14); }
 	.health-tag.warning { color: #fbbf24; background: rgba(245, 158, 11, 0.18); }
@@ -325,8 +467,10 @@
 
 	.head-actions {
 		display: inline-flex;
+		align-items: center;
 		gap: 5px;
 		flex-wrap: nowrap;
+		flex-shrink: 0;
 	}
 	.monitor-btn {
 		height: clamp(20px, 1.35vw, 26px);
@@ -366,6 +510,143 @@
 		background: rgba(100, 116, 139, 0.1);
 		color: var(--text-muted);
 		border-color: rgba(100, 116, 139, 0.3);
+	}
+
+	.settings-wrap {
+		position: relative;
+		display: inline-flex;
+	}
+	.settings-btn {
+		width: 28px;
+		height: 28px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		border: 1px solid rgba(148, 163, 184, 0.55);
+		border-radius: var(--radius-sm, 4px);
+		background: rgba(148, 163, 184, 0.12);
+		color: var(--text-primary);
+		font-size: 15px;
+		line-height: 1;
+		cursor: pointer;
+		transition: background 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
+	}
+	.settings-btn:hover {
+		background: rgba(148, 163, 184, 0.28);
+		border-color: rgba(148, 163, 184, 0.9);
+		transform: rotate(30deg);
+	}
+	.settings-menu {
+		position: absolute;
+		top: calc(100% + 4px);
+		right: 0;
+		min-width: 140px;
+		padding: 4px;
+		background: var(--bg-card);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md, 6px);
+		box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+		z-index: 50;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.menu-item {
+		display: block;
+		width: 100%;
+		padding: 6px 10px;
+		border: none;
+		background: transparent;
+		color: var(--text-primary);
+		font-size: 12px;
+		text-align: left;
+		border-radius: 4px;
+		cursor: pointer;
+	}
+	.menu-item:hover:not(:disabled) {
+		background: var(--bg-tab);
+	}
+	.menu-item.danger {
+		color: #ef4444;
+	}
+	.menu-item.danger:hover:not(:disabled) {
+		background: rgba(239, 68, 68, 0.12);
+	}
+	.menu-item:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	.modal-backdrop {
+		position: fixed;
+		inset: 0;
+		background: rgba(2, 6, 23, 0.65);
+		backdrop-filter: blur(2px);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 200;
+	}
+	.modal {
+		min-width: 320px;
+		max-width: 440px;
+		background: var(--bg-card);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md, 8px);
+		padding: 18px 20px 14px;
+		box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+	}
+	.modal-title {
+		margin: 0 0 10px;
+		font-size: 14px;
+		font-weight: 800;
+		color: var(--text-primary);
+	}
+	.modal-body {
+		margin: 0 0 14px;
+		font-size: 12.5px;
+		line-height: 1.55;
+		color: var(--text-secondary);
+	}
+	.modal-body strong {
+		color: var(--text-primary);
+	}
+	.modal-error {
+		margin-bottom: 10px;
+		padding: 6px 10px;
+		font-size: 11.5px;
+		color: #ef4444;
+		background: rgba(239, 68, 68, 0.1);
+		border-radius: 4px;
+	}
+	.modal-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 8px;
+	}
+	.modal-btn {
+		padding: 6px 14px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm, 4px);
+		background: transparent;
+		color: var(--text-primary);
+		font-size: 12px;
+		font-weight: 700;
+		cursor: pointer;
+	}
+	.modal-btn:hover:not(:disabled) {
+		background: var(--bg-tab);
+	}
+	.modal-btn.danger {
+		border-color: rgba(239, 68, 68, 0.6);
+		background: rgba(239, 68, 68, 0.12);
+		color: #ef4444;
+	}
+	.modal-btn.danger:hover:not(:disabled) {
+		background: rgba(239, 68, 68, 0.22);
+	}
+	.modal-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 
 	.reason-chip {
@@ -517,6 +798,18 @@
 	.ct-chip.problem.active b {
 		color: #f87171;
 	}
+
+	/* GPU thermal chips — 온도(실측, severity) / 전력(추정, neutral). */
+	.ct-chip.thermal b { color: #fda4af; }
+	.ct-chip.thermal[data-level='warn'] {
+		background: rgba(251, 191, 36, 0.12);
+	}
+	.ct-chip.thermal[data-level='warn'] b { color: #fde68a; }
+	.ct-chip.thermal[data-level='danger'] {
+		background: rgba(239, 68, 68, 0.14);
+	}
+	.ct-chip.thermal[data-level='danger'] b { color: #fca5a5; }
+	.ct-chip.power b { color: #c4b5fd; }
 	.age-small {
 		margin-left: auto;
 		font-size: calc(var(--font-xs) - 1px);

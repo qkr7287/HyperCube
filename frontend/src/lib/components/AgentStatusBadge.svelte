@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { activeAgentIds, statusEvents, type AgentStatusEvent } from '$lib/stores/global-events';
 
 	let {
@@ -35,6 +35,22 @@
 	function closePanel() {
 		panelOpen = false;
 	}
+
+	function handleDocClick(e: MouseEvent) {
+		if (!panelOpen) return;
+		const target = e.target as HTMLElement | null;
+		if (!target) return;
+		// 패널 자체 또는 토글 버튼 클릭이면 그대로 둔다.
+		if (target.closest('.status-badge-wrap')) return;
+		panelOpen = false;
+	}
+
+	onMount(() => {
+		// capture 로 등록 — 다른 dropdown(예: AdminHeader user menu)의 stopPropagation
+		// 으로 인해 bubble 단계에서 doc click 이 막히는 걸 우회한다.
+		document.addEventListener('click', handleDocClick, true);
+		return () => document.removeEventListener('click', handleDocClick, true);
+	});
 
 	function formatTime(iso: string): string {
 		try {
@@ -82,7 +98,9 @@
 									<span class="evt-status">{evt.status === 'online' ? '재연결' : '연결 끊김'}</span>
 								</div>
 								<div class="evt-line2">
-									{relativeAge(evt.receivedAt)} · 마지막 데이터 {formatTime(evt.last_seen_at)}
+									<span class="evt-age">{relativeAge(evt.receivedAt)}</span>
+									<span class="evt-sep">·</span>
+									<span class="evt-when">마지막 데이터 {formatTime(evt.last_seen_at)}</span>
 								</div>
 							</div>
 						</div>
@@ -148,8 +166,10 @@
 		border-radius: var(--radius-md);
 		box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
 		padding: 12px;
-		/* 대시보드 다른 요소에 가려지지 않도록 확실히 위로. */
-		z-index: 9999;
+		/* 대시보드 콘텐츠보다는 위, 그러나 헤더 user dropdown 과는 같은 레이어
+		   범위 안에 두어 둘 다 열렸을 때 충돌하지 않게 한다. outside-click 핸들러가
+		   다른 트리거 클릭 시 자동으로 닫아준다. */
+		z-index: 200;
 	}
 	.panel-head {
 		display: flex;
@@ -225,8 +245,29 @@
 		color: var(--error);
 	}
 	.evt-line2 {
-		font-size: 10px;
-		color: var(--text-muted);
-		margin-top: 2px;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 11.5px;
+		color: var(--text-secondary);
+		margin-top: 3px;
+		letter-spacing: -0.005em;
+	}
+	.evt-age {
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+		color: #cbd5e1;
+	}
+	.event-row.offline .evt-age {
+		color: #fda4af;
+	}
+	.event-row:not(.offline) .evt-age {
+		color: #6ee7b7;
+	}
+	.evt-sep {
+		color: rgba(148, 163, 184, 0.45);
+	}
+	.evt-when {
+		color: var(--text-secondary);
 	}
 </style>

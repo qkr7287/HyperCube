@@ -5,8 +5,18 @@
 		message = '',
 		confirmLabel = 'Confirm',
 		confirmVariant = 'primary' as 'primary' | 'danger',
+		busy = false,
 		onconfirm = () => {},
 		oncancel = () => {},
+	}: {
+		open?: boolean;
+		title?: string;
+		message?: string;
+		confirmLabel?: string;
+		confirmVariant?: 'primary' | 'danger';
+		busy?: boolean;
+		onconfirm?: () => void;
+		oncancel?: () => void;
 	} = $props();
 </script>
 
@@ -17,12 +27,13 @@
 			<h3 class="dialog-title">{title}</h3>
 			<p class="dialog-message">{message}</p>
 			<div class="dialog-actions">
-				<button class="btn btn-cancel" onclick={oncancel}>Cancel</button>
+				<button class="btn btn-cancel" onclick={oncancel} disabled={busy}>Cancel</button>
 				<button
 					class="btn btn-confirm {confirmVariant}"
 					onclick={onconfirm}
+					disabled={busy}
 				>
-					{confirmLabel}
+					{busy ? '처리 중...' : confirmLabel}
 				</button>
 			</div>
 		</div>
@@ -103,5 +114,10 @@
 	}
 	.btn-confirm.danger:hover {
 		opacity: 0.9;
+	}
+
+	.btn:disabled {
+		opacity: 0.55;
+		cursor: not-allowed;
 	}
 </style>

@@ -79,7 +79,7 @@
 	{/if}
 	<div class="chart-wrap">
 		<div class="canvas-square">
-			<EChartBase {option} ariaLabel={title || '도넛 차트'} />
+			<EChartBase {option} ariaLabel={title || '도넛 차트'} dataOnly />
 			{#if centerLabel || centerValue}
 				<div class="center-label" aria-hidden="true">
 					<strong>{centerValue}</strong>

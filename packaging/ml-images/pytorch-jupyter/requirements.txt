@@ -1,0 +1,19 @@
+jupyterlab>=4.2,<5
+jupyter-server-proxy>=4.2,<5
+ipykernel>=6.29,<7
+ipywidgets>=8.1,<9
+matplotlib>=3.8,<4
+numpy>=1.26,<3
+pandas>=2.2,<3
+scikit-learn>=1.4,<2
+# Multimodal / LLM inference stack — keeps the airgap image self-contained
+# so workspace containers can load HuggingFace models (Qwen2-VL, LLaVA,
+# SmolVLM, etc.) and serve a gradio mini UI without external pip access.
+transformers>=4.45,<5
+accelerate>=0.34,<2
+safetensors>=0.4,<1
+sentencepiece>=0.2,<1
+protobuf>=4.25,<6
+pillow>=10.2,<12
+gradio>=4.44,<6
+qwen-vl-utils>=0.0.8,<1

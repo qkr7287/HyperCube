@@ -161,7 +161,7 @@
 					label="CPU 사용률 (%)"
 					color="#30d5c8"
 					unit="percent"
-					defaultRange="10m"
+					defaultRange="5m"
 				/>
 
 				<!-- Load Average explanation -->

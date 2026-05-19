@@ -50,8 +50,8 @@
 
 	const navItems = [
 		{ href: `${base}/`, label: '전체 서버 모니터링', match: '/' },
-		{ href: `${base}/admin/requests`, label: '서버 승인', match: '/admin/requests', badge: () => pending },
-		{ href: `${base}/admin/templates`, label: '템플릿', match: '/admin/templates' },
+		{ href: `${base}/admin/approvals`, label: '승인', match: '/admin/approvals', badge: () => pending },
+		{ href: `${base}/admin/catalog`, label: '카탈로그', match: '/admin/catalog' },
 		{ href: `${base}/server-2d`, label: '2D 관제 대시보드', match: '/server-2d' },
 		{ href: `${base}/server-3d`, label: '3D 상세 모니터링', match: '/server-3d' },
 	];
@@ -68,8 +68,9 @@
 	}
 
 	$effect(() => {
-		document.addEventListener('click', handleDocClick);
-		return () => document.removeEventListener('click', handleDocClick);
+		// capture 로 — 다른 dropdown 의 stopPropagation 에 막히지 않게.
+		document.addEventListener('click', handleDocClick, true);
+		return () => document.removeEventListener('click', handleDocClick, true);
 	});
 </script>
 

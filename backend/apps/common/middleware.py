@@ -50,9 +50,12 @@ class JWTAuthMiddleware(BaseMiddleware):
         query_string = scope.get("query_string", b"").decode()
         params = parse_qs(query_string)
         token_list = params.get("token", [])
+        auth_subprotocol, subprotocol_token = _auth_from_subprotocols(scope.get("subprotocols") or [])
 
-        if token_list:
-            token_str = token_list[0]
+        if token_list or subprotocol_token:
+            token_str = subprotocol_token or token_list[0]
+            if subprotocol_token:
+                scope["ws_accept_subprotocol"] = auth_subprotocol
             if token_str.startswith("agent_"):
                 scope["user"] = await get_agent_from_token(token_str)
                 scope["is_agent"] = True
@@ -64,3 +67,11 @@ class JWTAuthMiddleware(BaseMiddleware):
             scope["is_agent"] = False
 
         return await super().__call__(scope, receive, send)
+
+
+def _auth_from_subprotocols(subprotocols: list[str]) -> tuple[str, str]:
+    """Extract a WebSocket auth token from browser subprotocols."""
+    for index, protocol in enumerate(subprotocols):
+        if protocol in {"hypercube.jwt", "hypercube.agent"} and index + 1 < len(subprotocols):
+            return protocol, subprotocols[index + 1]
+    return "", ""

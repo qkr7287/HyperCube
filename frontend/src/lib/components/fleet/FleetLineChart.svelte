@@ -24,6 +24,8 @@
 	let {
 		title,
 		labels,
+		timestamps,
+		tickInterval,
 		series,
 		unit = 'percent',
 		help = '',
@@ -34,6 +36,11 @@
 	}: {
 		title: string;
 		labels: string[];
+		// epoch ms. 있으면 xAxis.type='time' 으로 부드러운 streaming (좌측 흘러감).
+		// 없으면 기존 category 동작 유지 (호환성).
+		timestamps?: number[];
+		// polling 주기 (ms). xAxis tick 을 그 간격으로 강제 + 라벨 정밀도 자동.
+		tickInterval?: number;
 		series: Series[];
 		unit?: 'percent' | 'rate';
 		help?: string;
@@ -45,8 +52,60 @@
 	} = $props();
 
 	let option = $derived<EChartsOption>(
-		buildOption(labels, series, unit, topNames, soloLabel, rightPadding),
+		buildOption(labels, timestamps, tickInterval, series, unit, topNames, soloLabel, rightPadding),
 	);
+
+	function pad2(n: number): string {
+		return n < 10 ? `0${n}` : `${n}`;
+	}
+
+	function formatAxisTimeShort(value: number, ts: number[] | undefined, intervalMs?: number): string {
+		const d = new Date(value);
+		const DAY = 86_400_000;
+		const HOUR = 3600_000;
+		const eff = intervalMs && intervalMs > 0
+			? intervalMs
+			: (Array.isArray(ts) && ts.length >= 2 ? ts[ts.length - 1] - ts[0] : 0);
+		if (eff > 0 && eff < 60_000) {
+			return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+		}
+		if (eff > 0 && eff < HOUR) {
+			return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+		}
+		if (eff > 0 && eff < DAY) {
+			return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+		}
+		if (eff >= DAY) {
+			return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}`;
+		}
+		return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+	}
+
+	function formatTooltipTime(value: number): string {
+		const d = new Date(value);
+		return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+	}
+
+	// bucket 시작/끝을 명시 — bucket epoch 가 자정/주 경계랑 안 떨어져서
+	// (UTC 기준 floor 라 KST 에선 목요일 09:00 같은 식으로 떨어짐) x축 라벨과
+	// 시각이 어긋나 보이는 문제 해결. 데이터 한 점은 [start, start+interval) 구간 평균.
+	function formatTooltipBucket(value: number, intervalMs: number | undefined): string {
+		if (!intervalMs || intervalMs <= 0) return formatTooltipTime(value);
+		const start = new Date(value);
+		const end = new Date(value + intervalMs);
+		const DAY = 86_400_000;
+		const HOUR = 3_600_000;
+		const fmtDay = (d: Date) => `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}`;
+		const fmtHM = (d: Date) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+		const fmtHMS = (d: Date) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+		if (intervalMs >= DAY) {
+			return `${fmtDay(start)} ~ ${fmtDay(end)}`;
+		}
+		if (intervalMs >= HOUR) {
+			return `${fmtDay(start)} ${fmtHM(start)} ~ ${fmtHM(end)}`;
+		}
+		return `${fmtHMS(start)} ~ ${fmtHMS(end)}`;
+	}
 
 	function formatValue(value: number, u: 'percent' | 'rate'): string {
 		if (u === 'percent') return `${value.toFixed(1)}%`;
@@ -74,14 +133,10 @@
 		return peak;
 	}
 
-	function percentAxisMax(list: Series[], soloName: string | null): number {
-		const peak = peakValue(list, soloName);
-		if (peak <= 0) return 5;
-		const padded = peak * 1.2;
-		const stops = [2, 5, 10, 15, 20, 30, 40, 50, 60, 80, 100];
-		for (const stop of stops) {
-			if (padded <= stop) return stop;
-		}
+	function percentAxisMax(_list: Series[], _soloName: string | null): number {
+		// 항상 0~100 고정 → 70/90 threshold band 가 시각 anchor 역할.
+		// 작은 값(0~5%)은 평탄해 보이지만 의미적으로 "안전 구간"이 분명히 전달됨.
+		// 정확한 수치는 endLabel/tooltip 으로 보완.
 		return 100;
 	}
 
@@ -105,6 +160,8 @@
 
 	function buildOption(
 		lbls: string[],
+		ts: number[] | undefined,
+		intervalMs: number | undefined,
 		seriesList: Series[],
 		u: 'percent' | 'rate',
 		tops: string[],
@@ -112,6 +169,7 @@
 		padRight: number,
 	): EChartsOption {
 		const yMax = u === 'percent' ? percentAxisMax(seriesList, soloName) : rateAxisMax(seriesList, soloName);
+		const useTimeAxis = Array.isArray(ts) && ts.length > 0;
 
 		const isHighlighted = (label: string): boolean => {
 			if (soloName) return label === soloName;
@@ -125,36 +183,72 @@
 			const forceHidden = !!soloName && item.label !== soloName;
 			const color = highlighted ? item.color : dimColor(item.color);
 			const showEndLabel = topSet.has(item.label) && !forceHidden;
+			// time axis 일 때 데이터는 [timestamp, value] 튜플. category 는 그대로 number[].
+			// 이게 ECharts streaming animation 의 핵심 — 각 점이 절대 시간 좌표를 가지면
+			// data 길이 바뀌어도 기존 점은 같은 자리에 머물고 새 점만 우측에 추가됨.
+			const rawValues = forceHidden || item.hidden ? [] : item.values;
+			const data = useTimeAxis
+				? rawValues.map((v, i) => [ts![i], v] as [number, number])
+				: rawValues;
 			return {
 				type: 'line' as const,
 				name: item.label,
-				data: forceHidden || item.hidden ? [] : item.values,
+				data,
 				smooth: 0.32,
 				symbol: 'none',
 				lineStyle: { color, width: highlighted ? 2.4 : 1.4 },
 				itemStyle: { color },
 				z: highlighted ? 10 : 1,
 				emphasis: { focus: 'series', lineStyle: { width: highlighted ? 3 : 2 } },
-				endLabel: showEndLabel
-					? {
-							show: true,
-							formatter: (p: any) => {
-								const v = Array.isArray(p.value) ? p.value[1] : p.value;
-								return `${item.label} ${formatValue(Number(v ?? 0), u)}`;
-							},
-							color,
-							backgroundColor: 'rgba(13, 17, 23, 0.78)',
-							borderColor: color,
-							borderWidth: 1,
-							borderRadius: 4,
-							padding: [3, 6],
-							fontSize: 10,
-							fontWeight: 700,
-							distance: 6,
-						}
-					: { show: false },
+				// endLabel 폐기 — chart head 의 StackLegendChips 가 색-이름 매핑 담당.
+				endLabel: { show: false },
 			};
-		});
+		}) as NonNullable<EChartsOption['series']>;
+
+		// Threshold band — percent 단위 차트에만 의미. yMax 가 70% 넘을 때만 warn
+		// band, 90% 넘을 때만 critical band 추가. yMax 가 5~10% 같이 낮은 평탄
+		// 구간에선 band 자체가 view 밖이라 그리지 않음 (시각 잡음 회피).
+		const thresholdSeries: any[] = [];
+		if (u === 'percent' && yMax > 70) {
+			const areas: any[] = [
+				[
+					{ yAxis: 70, itemStyle: { color: 'rgba(245, 158, 11, 0.10)' } },
+					{ yAxis: Math.min(90, yMax) },
+				],
+			];
+			if (yMax > 90) {
+				areas.push([
+					{ yAxis: 90, itemStyle: { color: 'rgba(239, 68, 68, 0.13)' } },
+					{ yAxis: Math.min(100, yMax) },
+				]);
+			}
+			thresholdSeries.push({
+				type: 'line',
+				name: '__threshold__',
+				data: [],
+				silent: true,
+				showInLegend: false,
+				tooltip: { show: false },
+				markArea: { silent: true, data: areas, label: { show: false } },
+				markLine: {
+					silent: true,
+					symbol: 'none',
+					data: [
+						{
+							yAxis: 70,
+							lineStyle: { color: 'rgba(245, 158, 11, 0.55)', type: 'dashed', width: 1 },
+							label: { show: true, position: 'insideStartTop', formatter: '70%', color: '#fbbf24', fontSize: 9, fontWeight: 700 },
+						},
+						...(yMax > 90 ? [{
+							yAxis: 90,
+							lineStyle: { color: 'rgba(239, 68, 68, 0.6)', type: 'dashed', width: 1 },
+							label: { show: true, position: 'insideStartTop', formatter: '90%', color: '#f87171', fontSize: 9, fontWeight: 700 },
+						}] : []),
+					],
+				},
+			});
+		}
+		const allSeries = [...(echSeries as any[]), ...thresholdSeries] as NonNullable<EChartsOption['series']>;
 
 		return {
 			animationDuration: 200,
@@ -163,7 +257,9 @@
 			grid: {
 				top: 8,
 				left: 8,
-				right: padRight > 0 ? padRight : 90, // endLabel 공간
+				// endLabel 제거 → 차트 영역 100% 사용. stack 식별은 chart head 의
+				// StackLegendChips 와 hover tooltip 으로 충분.
+				right: padRight > 0 ? padRight : 12,
 				bottom: 22,
 				containLabel: true,
 			},
@@ -174,40 +270,68 @@
 				borderColor: 'rgba(48, 213, 200, 0.35)',
 				borderWidth: 1,
 				textStyle: { color: '#cbd5e1', fontSize: 11 },
-				axisPointer: { type: 'line', lineStyle: { color: 'rgba(148, 163, 184, 0.3)' } },
+				axisPointer: { type: 'line', lineStyle: { color: 'rgba(148, 163, 184, 0.3)' }, snap: false },
 				formatter: (params: any) => {
 					const arr = Array.isArray(params) ? params : [params];
 					if (arr.length === 0) return '';
 					// soloLabel / topNames 필터 동등 — chart.js tooltip.filter
 					const filtered = arr.filter((p: any) => {
 						const name = p.seriesName ?? '';
+						// threshold dummy series 는 tooltip 에 등장 안 함
+						if (name === '__threshold__') return false;
 						if (soloName) return name === soloName;
 						if (tops.length === 0) return true;
 						return tops.includes(name);
 					});
 					if (filtered.length === 0) return '';
-					const title = filtered[0].axisValueLabel ?? '';
+					let title = '';
+					if (useTimeAxis) {
+						const tsValue = Number(filtered[0]?.axisValue);
+						title = Number.isFinite(tsValue) ? formatTooltipBucket(tsValue, intervalMs) : '';
+					} else {
+						title = filtered[0].axisValueLabel ?? '';
+					}
 					const lines = filtered.map((p: any) => {
-						const val = formatValue(Number(p.value ?? 0), u);
+						// time axis 의 series.data 는 [ts, val] 튜플 → value 가 배열
+						const rawVal = Array.isArray(p.value) ? p.value[1] : p.value;
+						const val = formatValue(Number(rawVal ?? 0), u);
 						return `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color};margin-right:6px"></span>${p.seriesName}: <strong>${val}</strong>`;
 					});
 					return `<div style="color:#e2e8f0;font-weight:700;margin-bottom:4px">${title}</div>${lines.join('<br/>')}`;
 				},
 			},
 			legend: { show: false },
-			xAxis: {
-				type: 'category',
-				data: lbls,
-				boundaryGap: false,
-				axisTick: { show: false },
-				axisLine: { show: false },
-				axisLabel: {
-					color: '#64748b',
-					hideOverlap: true,
-					fontSize: 10,
-				},
-				splitLine: { lineStyle: { color: 'rgba(100, 116, 139, 0.08)' } },
-			},
+			xAxis: useTimeAxis
+				? {
+						type: 'time',
+						...(intervalMs && intervalMs > 0
+							? { interval: intervalMs, minInterval: intervalMs }
+							: {}),
+						axisTick: { show: false },
+						axisLine: { show: false },
+						axisLabel: {
+							color: '#64748b',
+							hideOverlap: true,
+							fontSize: 10,
+							// timestamp 직접 포맷 — intervalMs 가 있으면 그 단위 기준,
+							// 없으면 ts span 으로 fallback.
+							formatter: (value: number) => formatAxisTimeShort(value, ts, intervalMs),
+						},
+						splitLine: { lineStyle: { color: 'rgba(100, 116, 139, 0.08)' } },
+					}
+				: {
+						type: 'category',
+						data: lbls,
+						boundaryGap: false,
+						axisTick: { show: false },
+						axisLine: { show: false },
+						axisLabel: {
+							color: '#64748b',
+							hideOverlap: true,
+							fontSize: 10,
+						},
+						splitLine: { lineStyle: { color: 'rgba(100, 116, 139, 0.08)' } },
+					},
 			yAxis: {
 				type: 'value',
 				min: 0,
@@ -221,7 +345,7 @@
 				},
 				splitLine: { lineStyle: { color: 'rgba(100, 116, 139, 0.12)' } },
 			},
-			series: echSeries,
+			series: allSeries,
 		};
 	}
 </script>
@@ -234,7 +358,7 @@
 		{/if}
 	</div>
 	<div class="body" class:loading>
-		<EChartBase {option} ariaLabel={title} />
+		<EChartBase {option} ariaLabel={title} dataOnly />
 	</div>
 </div>
 

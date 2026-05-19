@@ -68,10 +68,10 @@ export function resolveGroup(container: Labelable): GroupResult {
 	return { name: 'Unmanaged', source: 'unmanaged', rawValue: '' };
 }
 
-export interface GroupedProject {
+export interface GroupedProject<T extends Labelable = Labelable> {
 	name: string;
 	source: GroupSource;
-	containers: Labelable[];
+	containers: T[];
 	color: string;
 	stats: { total: number; running: number; stopped: number; paused: number };
 }
@@ -79,7 +79,7 @@ export interface GroupedProject {
 export function groupContainersByStack<T extends Labelable & { state?: string }>(
 	containers: T[],
 	colors: string[],
-): GroupedProject[] {
+): GroupedProject<T>[] {
 	const map = new Map<string, { source: GroupSource; items: T[] }>();
 
 	for (const container of containers) {

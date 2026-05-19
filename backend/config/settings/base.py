@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     "apps.agents",
     "apps.containers",
     "apps.metrics",
+    "apps.models_catalog",
 ]
 
 AUTH_USER_MODEL = "users.CustomUser"
@@ -194,9 +195,34 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.metrics.tasks.cleanup_old_metrics",
         "schedule": crontab(hour=3, minute=0),
     },
+    # 1h/24h/7d range 차트의 사전 집계. 매번 raw 위에서 GROUP BY 하면 28일 ×10M+
+    # rows 라 30s+ 걸려서 hourly/daily rollup 테이블로 누적. viewset 이 bucket 크기
+    # 보고 rollup 직접 읽음 → 첫 호출도 100ms 미만.
+    "compute-metrics-rollups-hourly": {
+        "task": "apps.metrics.tasks.compute_metrics_rollups",
+        "schedule": 300.0,
+        "kwargs": {"bucket_seconds": 3600, "lookback_buckets": 3},
+    },
+    "compute-metrics-rollups-daily": {
+        "task": "apps.metrics.tasks.compute_metrics_rollups",
+        "schedule": 1800.0,
+        "kwargs": {"bucket_seconds": 86400, "lookback_buckets": 3},
+    },
     "detect-offline-agents": {
         "task": "apps.agents.tasks.detect_offline_agents",
         "schedule": 30.0,
+    },
+    "refresh-gpu-inventories": {
+        "task": "apps.agents.tasks.refresh_gpu_inventories",
+        "schedule": 60.0,
+    },
+    "cleanup-expired-gpu-reservations": {
+        "task": "apps.containers.tasks.cleanup_expired_gpu_reservations_task",
+        "schedule": 60.0,
+    },
+    "cleanup-stale-model-prepare-jobs": {
+        "task": "apps.models_catalog.tasks.cleanup_stale_model_prepare_jobs_task",
+        "schedule": 60.0,
     },
     "archive-dormant-agents": {
         "task": "apps.agents.tasks.archive_dormant_agents",
@@ -211,6 +237,28 @@ CELERY_BEAT_SCHEDULE = {
 # Redis cache (직접 접근, Channel Layer와 분리: DB 1)
 REDIS_CACHE_URL = config("REDIS_CACHE_URL", default="redis://redis:6379/1")
 METRICS_RETENTION_DAYS = config("METRICS_RETENTION_DAYS", default=7, cast=int)
+WORKSPACE_TOKEN_TTL_SECONDS = config("WORKSPACE_TOKEN_TTL_SECONDS", default=86400, cast=int)
+WORKSPACE_TICKET_TTL_SECONDS = config("WORKSPACE_TICKET_TTL_SECONDS", default=60, cast=int)
+WORKSPACE_SESSION_TTL_SECONDS = config("WORKSPACE_SESSION_TTL_SECONDS", default=28800, cast=int)
+HC_GPU_SHARED_MODE_ENABLED = config("HC_GPU_SHARED_MODE_ENABLED", default=False, cast=bool)
+HC_MAX_ACTIVE_WORKSPACES_PER_USER = config("HC_MAX_ACTIVE_WORKSPACES_PER_USER", default=2, cast=int)
+HC_MAX_ACTIVE_GPU_SLICES_PER_USER = config("HC_MAX_ACTIVE_GPU_SLICES_PER_USER", default=1, cast=int)
+HC_MAX_WORKSPACE_RUNTIME_HOURS = config("HC_MAX_WORKSPACE_RUNTIME_HOURS", default=72, cast=int)
+HC_MODEL_STORAGE_DIR = config("HC_MODEL_STORAGE_DIR", default=str(BASE_DIR / "model-assets"))
+HC_MODEL_IMPORT_DIR = config("HC_MODEL_IMPORT_DIR", default=str(BASE_DIR / "model-import"))
+MODEL_PREPARE_LEASE_SECONDS = config("MODEL_PREPARE_LEASE_SECONDS", default=86400, cast=int)
+
+# Workspace proxy forwards arbitrary multipart/binary bodies (image uploads to
+# the auto-launched gradio app, JupyterLab file drops, etc). The 2.5MB default
+# trips RequestDataTooBig the moment a user drops a photo into the AI UI, so
+# raise the limit to a value that comfortably covers normal multimodal inputs.
+# File-handler still spills to disk past FILE_UPLOAD_MAX_MEMORY_SIZE.
+DATA_UPLOAD_MAX_MEMORY_SIZE = config(
+    "DATA_UPLOAD_MAX_MEMORY_SIZE", default=200 * 1024 * 1024, cast=int
+)
+FILE_UPLOAD_MAX_MEMORY_SIZE = config(
+    "FILE_UPLOAD_MAX_MEMORY_SIZE", default=5 * 1024 * 1024, cast=int
+)
 
 # django-unfold (Admin 테마)
 UNFOLD = {

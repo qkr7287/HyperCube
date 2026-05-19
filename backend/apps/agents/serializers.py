@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.utils import timezone
 from rest_framework import serializers
 
-from .models import Agent
+from .models import Agent, AgentStatusEvent, GpuDevice, GpuSlice
 
 # 메인 UI active 판정 grace (Backend tasks.py와 일치 시켜야 함)
 _ACTIVE_GRACE_SECONDS = 5 * 60
@@ -27,6 +27,19 @@ class AgentSerializer(serializers.ModelSerializer):
             "approved_at",
             "last_seen_at",
             "archived_at",
+            "cpu_cores",
+            "cpu_model",
+            "ram_total_mb",
+            "disk_total_gb",
+            "workspace_pool_total_gb",
+            "workspace_pool_free_gb",
+            "workspace_pool_mount",
+            "workspace_hard_enforcement",
+            "nic_speed_mbps",
+            "filesystem",
+            "target_users",
+            "safety_margin",
+            "capacity_updated_at",
             "is_active",
             "container_count",
         ]
@@ -40,6 +53,7 @@ class AgentSerializer(serializers.ModelSerializer):
             "approved_at",
             "last_seen_at",
             "archived_at",
+            "capacity_updated_at",
         ]
 
     def get_is_active(self, obj: Agent) -> bool:
@@ -54,5 +68,61 @@ class AgentStatusSerializer(serializers.ModelSerializer):
     class Meta:
         model = Agent
         fields = ["id", "status", "token"]
+
+
+class AgentStatusEventSerializer(serializers.ModelSerializer):
+    """Snapshot of one online/offline transition for the dashboard log."""
+
+    server_id = serializers.CharField(source="agent_id", read_only=True)
+
+    class Meta:
+        model = AgentStatusEvent
+        fields = [
+            "id",
+            "server_id",
+            "hostname",
+            "status",
+            "occurred_at",
+            "previous_offline_seconds",
+        ]
+
+
+class GpuSliceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GpuSlice
+        fields = [
+            "id",
+            "kind",
+            "device_id",
+            "label",
+            "mig_profile",
+            "memory_mb",
+            "allow_shared",
+            "status",
+            "last_seen_at",
+        ]
+
+
+class GpuDeviceSerializer(serializers.ModelSerializer):
+    slices = GpuSliceSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = GpuDevice
+        fields = [
+            "id",
+            "index",
+            "vendor",
+            "name",
+            "uuid",
+            "pci_bus_id",
+            "total_memory_mb",
+            "driver_version",
+            "cuda_version",
+            "mig_capable",
+            "mig_enabled",
+            "status",
+            "last_seen_at",
+            "slices",
+        ]
 
 

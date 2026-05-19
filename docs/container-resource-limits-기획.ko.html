@@ -1,0 +1,1175 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HyperCube · 컨테이너 자원 한도 / 템플릿 추천 기획</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg-2: #0f1620;
+    --panel: #161b22;
+    --panel-2: #1c232c;
+    --panel-3: #222b36;
+    --border: #2a323d;
+    --border-soft: #21282f;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --dim: #6e7681;
+    --accent: #4cc2ff;
+    --accent-2: #79c0ff;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --err: #f85149;
+    --magenta: #d2a8ff;
+    --code: #0e1419;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR",
+                 "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px 80px; }
+
+  .hero {
+    background: linear-gradient(135deg, #0f1620 0%, #18222b 60%, #0d1117 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 40px 24px 28px;
+    margin-bottom: 28px;
+  }
+  .hero-inner { max-width: 1100px; margin: 0 auto; }
+  .hero h1 {
+    font-size: 30px; margin: 0 0 6px;
+    letter-spacing: -0.5px;
+  }
+  .hero .sub {
+    color: var(--muted); font-size: 14px; margin-bottom: 18px;
+  }
+  .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 11.5px;
+    border-radius: 4px;
+    background: rgba(76,194,255,.12);
+    color: var(--accent);
+    border: 1px solid rgba(76,194,255,.3);
+    margin-right: 6px;
+    font-weight: 600;
+  }
+  .tag.warn { background: rgba(210,153,34,.12); color: var(--warn); border-color: rgba(210,153,34,.3); }
+  .tag.ok   { background: rgba(63,185,80,.12);  color: var(--ok);   border-color: rgba(63,185,80,.3); }
+  .tag.err  { background: rgba(248,81,73,.12);  color: var(--err);  border-color: rgba(248,81,73,.3); }
+
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-top: 18px;
+  }
+  @media (max-width: 920px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
+  .kpi {
+    background: rgba(255,255,255,.025);
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .kpi b {
+    display: block; color: var(--muted);
+    font-size: 11px; font-weight: 700;
+    letter-spacing: .04em; text-transform: uppercase;
+  }
+  .kpi strong {
+    display: block;
+    font-size: 17px; font-weight: 750;
+    margin-top: 4px;
+  }
+  .kpi.warn strong { color: var(--warn); }
+  .kpi.err strong { color: var(--err); }
+  .kpi.ok strong { color: var(--ok); }
+
+  section { margin-top: 36px; }
+  section > h2 {
+    font-size: 20px;
+    margin: 0 0 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-soft);
+    letter-spacing: -0.2px;
+  }
+  section h3 {
+    font-size: 15px;
+    color: var(--accent-2);
+    margin: 18px 0 8px;
+  }
+  p { margin: 8px 0; color: #cdd5dd; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 18px;
+    margin: 12px 0;
+  }
+  .panel.warn { border-color: rgba(210,153,34,.4); background: rgba(210,153,34,.04); }
+  .panel.err  { border-color: rgba(248,81,73,.4);  background: rgba(248,81,73,.04); }
+  .panel.ok   { border-color: rgba(63,185,80,.4);  background: rgba(63,185,80,.04); }
+
+  ul, ol { padding-left: 22px; color: #cdd5dd; }
+  ul li, ol li { margin: 4px 0; }
+  ul li::marker { color: var(--dim); }
+
+  code, .mono {
+    font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    font-size: 12.5px;
+  }
+  code {
+    background: var(--code);
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    padding: 1px 6px;
+    color: #f0d999;
+  }
+  pre {
+    background: var(--code);
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    font-size: 12.5px;
+    color: #d6deea;
+    line-height: 1.55;
+  }
+  pre .k { color: #ff7b72; }
+  pre .s { color: #a5d6ff; }
+  pre .c { color: #6e7681; font-style: italic; }
+  pre .n { color: #d2a8ff; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0;
+    font-size: 13px;
+  }
+  th, td {
+    border: 1px solid var(--border-soft);
+    padding: 7px 10px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: var(--panel-2);
+    font-weight: 700;
+    color: var(--accent-2);
+  }
+  td.mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+  td.num  { text-align: right; font-variant-numeric: tabular-nums; }
+
+  .phase {
+    border-left: 3px solid var(--accent);
+    padding-left: 14px;
+    margin: 14px 0;
+  }
+  .phase.p2 { border-left-color: var(--magenta); }
+  .phase.p3 { border-left-color: var(--ok); }
+  .phase h4 { margin: 0 0 4px; font-size: 14px; }
+  .phase .step { color: var(--muted); font-size: 12.5px; margin-bottom: 8px; }
+
+  .checklist li::marker { color: var(--ok); }
+  .risklist li::marker { color: var(--err); }
+
+  hr { border: 0; border-top: 1px solid var(--border-soft); margin: 24px 0; }
+
+  .toc {
+    background: var(--panel-2);
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-size: 13px;
+  }
+  .toc a { color: var(--accent-2); }
+  .toc ol { margin: 4px 0 0; padding-left: 22px; }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-inner">
+    <span class="tag">기획</span>
+    <span class="tag warn">설계 단계</span>
+    <span class="tag">v0.3</span>
+    <span class="tag ok">agent 자동 셋업</span>
+    <h1>컨테이너 자원 한도 + 템플릿 기반 추천</h1>
+    <div class="sub">
+      HyperCube 의 본질은 <b>GPU workstation 임대</b>. 사용자 1명에게 컨테이너 1개를 할당,
+      그 안에서 작업. K8s 같은 service orchestration 이 아님 (Paperspace / RunPod /
+      Lambda Labs 와 동일한 모델). 현재는 CPU·메모리·디스크 한도가 미설정(unlimited) 이라
+      noisy-neighbor 위험 + KPI 의 의미 약화. 템플릿별 권장 한도 + workspace 디스크 격리
+      (LVM thin) + 데이터셋 공유 (NFS) 로 정돈.
+    </div>
+    <div class="kpis">
+      <div class="kpi">
+        <b>use case</b>
+        <strong>GPU workstation 임대</strong>
+      </div>
+      <div class="kpi ok">
+        <b>workspace 격리</b>
+        <strong>LVM thin volume</strong>
+      </div>
+      <div class="kpi ok">
+        <b>공유 자원</b>
+        <strong>NFS read-only</strong>
+      </div>
+      <div class="kpi">
+        <b>orchestration</b>
+        <strong>K8s 안 씀 (자체 backend + agent)</strong>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+<div class="toc">
+  <b>목차</b>
+  <ol>
+    <li><a href="#bg">배경 + use case</a></li>
+    <li><a href="#cur">현 상태 분석</a></li>
+    <li><a href="#scope">변경 범위 (CPU / 메모리 / 디스크)</a></li>
+    <li><a href="#rec">추천 알고리즘</a></li>
+    <li><a href="#feasibility">기술 검증 (cgroup / Docker / LVM)</a></li>
+    <li><a href="#plan">단계별 구현 plan</a></li>
+    <li><a href="#verify">검증 / 테스트</a></li>
+    <li><a href="#risk">위험 / mitigation</a></li>
+    <li><a href="#floor">OOM 방지 hard floor</a></li>
+    <li><a href="#kpi-impact">KPI / 추이 차트 변경 영향</a></li>
+    <li><a href="#scaling">Host 확장 path (1 → 20 host)</a></li>
+    <li><a href="#decisions">결정 사항 (네트워크 / 디스크)</a></li>
+  </ol>
+</div>
+
+<!-- ============================ 1. 배경 ============================ -->
+<section id="bg">
+  <h2>1. 배경 + use case</h2>
+
+  <h3>1.1 우리가 만드는 건 무엇인가</h3>
+  <div class="panel ok">
+    <b>HyperCube = GPU workstation 임대 플랫폼</b>
+    <ul>
+      <li>사용자 1명 ↔ 컨테이너 1개 매핑 (replica 없음)</li>
+      <li>사용자가 컨테이너 안에서 Jupyter / ssh / terminal 로 작업</li>
+      <li>컨테이너는 long-running session, 사용자가 stop / start 통제</li>
+      <li>GPU slice (MIG 또는 통째) 가 컨테이너에 할당</li>
+      <li>유사 모델: <b>Paperspace, RunPod, Vast.ai, Lambda Labs, Jarvislabs</b></li>
+    </ul>
+  </div>
+  <p>
+    <b>K8s 같은 service orchestration 이 아님.</b> autoscaling, multi-replica, load balancer,
+    자동 healing 모두 우리 use case 에 무의미. 표준 패턴은
+    <b>backend (scheduler) + agent (per-host docker control) + 컨테이너 (사용자 workspace)</b>
+    구조. K8s 가 해결하는 문제 (다 host scheduling, service mesh, HA) 는 우리에게 없음.
+  </p>
+
+  <h3>1.2 현 상태 문제</h3>
+  <p>
+    컨테이너 생성 시 <code>cpu_quota</code>·<code>memory_limit</code>·<code>disk_quota</code>
+    중 어느 것도 명시 안 함. Docker default = unlimited → 한 컨테이너가 host 자원을 다 점유 가능.
+  </p>
+  <div class="panel warn">
+    <b>구체적 문제</b>
+    <ul>
+      <li>한 사용자가 학습 시 RAM burst → 다른 컨테이너 OOM 으로 죽음 (noisy neighbor)</li>
+      <li>KPI 의 "메모리 2.40 %" 는 사실상 <em>host 전체 15.5 GB 중 386 MB</em> →
+          "내 quota 의 X%" 라는 운영자 직관과 불일치</li>
+      <li>한 사용자가 host 디스크를 100 GB 데이터셋 + checkpoint 들로 채움 → docker daemon write 실패 → <b>전체 서비스 down</b></li>
+      <li>자원 회계 / 과금 측정 불가</li>
+    </ul>
+  </div>
+  <p>
+    목표는 <b>(a)</b> 컨테이너 요청 시 자원 한도를 1급 시민으로 편입, <b>(b)</b> 템플릿별
+    근거 있는 default 를 추천, <b>(c)</b> KPI 가 "quota 의 X%" 라는 명확한 의미를 갖게 함,
+    <b>(d)</b> workspace 디스크를 <b>LVM thin volume</b> 으로 컨테이너별 완전 격리 (MIG-level
+    단절).
+  </p>
+</section>
+
+<!-- ============================ 2. 현 상태 ============================ -->
+<section id="cur">
+  <h2>2. 현 상태 분석</h2>
+  <table>
+    <thead><tr>
+      <th>자원</th><th>현재 분모</th><th>limit 명시 가능?</th><th>현 컨테이너 (예시)</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td>CPU %</td>
+        <td><code>cpu.cores_quota</code></td>
+        <td>생성 시 X, 사후 <code>update-limits</code> O</td>
+        <td>quota 미설정 → host 12 cores</td>
+      </tr>
+      <tr>
+        <td>메모리 %</td>
+        <td><code>memory.limit</code></td>
+        <td>생성 시 X, 사후 <code>update-limits</code> O</td>
+        <td>limit 미설정 → cgroup default ≈ host 15.5 GB</td>
+      </tr>
+      <tr>
+        <td>네트워크</td>
+        <td>누적 bytes (분모 없음)</td>
+        <td>도입 안 함 (§12 결정)</td>
+        <td>모니터링 only</td>
+      </tr>
+      <tr>
+        <td>디스크 (워크스페이스)</td>
+        <td>LVM thin volume 의 가상 disk 용량</td>
+        <td><b>LVM thin per-container 로 격리 (도입)</b></td>
+        <td>현재 host 공유 → 격리로 전환 예정</td>
+      </tr>
+      <tr>
+        <td>디스크 (데이터셋 / 모델)</td>
+        <td>—</td>
+        <td>NFS read-only 공유 mount</td>
+        <td>호스트 NAS</td>
+      </tr>
+      <tr>
+        <td>GPU 코어 %</td>
+        <td>nvidia-smi PID util</td>
+        <td>slice/GPU 통째 할당으로 자동 quota</td>
+        <td>이미 정확 ✓</td>
+      </tr>
+      <tr>
+        <td>GPU VRAM %</td>
+        <td>GPU 전체 <code>memoryTotal</code></td>
+        <td>slice/GPU 통째 할당으로 자동 quota</td>
+        <td>이미 정확 ✓</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>코드 인용 — 한도 처리가 없는 위치</h3>
+  <ul>
+    <li><code>backend/apps/containers/serializers.py:230–327</code>
+        <code>ContainerRequestSerializer</code> — <code>cpu_percent</code>, <code>memory_mb</code> 필드 없음.
+        사용자가 만들 때 자원 선택 못 함.</li>
+    <li><code>backend/apps/containers/services/deployment.py:81–120</code>
+        <code>_build_create_payload</code> — agent 로 <code>Memory</code>, <code>CpuQuota</code> 전달 안 함.</li>
+    <li><code>backend/apps/containers/viewsets.py:388–442</code>
+        <code>update-limits</code> 액션은 이미 존재 — 사후 변경 흐름 OK. <b>생성 시 적용 흐름이 빠진 상태.</b></li>
+  </ul>
+</section>
+
+<!-- ============================ 3. 변경 범위 ============================ -->
+<section id="scope">
+  <h2>3. 변경 범위</h2>
+
+  <h3>3.1 Template 모델 — 권장 한도 필드 추가</h3>
+  <p>각 워크스페이스 템플릿에 baseline 한도 저장.</p>
+<pre><span class="c"># backend/apps/templates/models.py</span>
+<span class="k">class</span> <span class="n">Template</span>(<span class="n">models</span>.<span class="n">Model</span>):
+    name = models.CharField(max_length=120)
+    image = models.CharField(max_length=240)
+    <span class="c"># ... 기존 필드</span>
+    recommended_cpu_percent = models.PositiveIntegerField(
+        default=400,                  <span class="c"># 4 cores = 100*4</span>
+        help_text=<span class="s">"100 = 1 vCPU. 0 = unlimited"</span>,
+    )
+    recommended_memory_mb = models.PositiveIntegerField(
+        default=16384,                <span class="c"># 16 GB</span>
+        help_text=<span class="s">"MB 단위. 0 = unlimited"</span>,
+    )
+    min_cpu_percent = models.PositiveIntegerField(default=200)   <span class="c"># 2 cores</span>
+    min_memory_mb   = models.PositiveIntegerField(default=4096)  <span class="c"># 4 GB (이미지가 못 돌아가는 하한)</span></pre>
+
+  <h3>3.2 Request 스키마 — 사용자 override 허용</h3>
+<pre><span class="c"># backend/apps/containers/serializers.py</span>
+<span class="k">class</span> <span class="n">ContainerRequestSerializer</span>(...):
+    <span class="c"># 새 옵션 필드 — 미지정 시 template.recommended_* 사용</span>
+    cpu_percent = serializers.IntegerField(required=<span class="k">False</span>, min_value=0, max_value=10000)
+    memory_mb   = serializers.IntegerField(required=<span class="k">False</span>, min_value=0)
+
+    <span class="k">def</span> validate(self, data):
+        tmpl = data.get(<span class="s">'template'</span>)
+        cpu  = data.get(<span class="s">'cpu_percent'</span>,  tmpl.recommended_cpu_percent  <span class="k">if</span> tmpl <span class="k">else</span> 0)
+        mem  = data.get(<span class="s">'memory_mb'</span>,    tmpl.recommended_memory_mb    <span class="k">if</span> tmpl <span class="k">else</span> 0)
+        <span class="k">if</span> tmpl <span class="k">and</span> cpu &lt; tmpl.min_cpu_percent:
+            <span class="k">raise</span> serializers.ValidationError({<span class="s">'cpu_percent'</span>: <span class="s">f'최소 {tmpl.min_cpu_percent} 필요'</span>})
+        <span class="k">if</span> tmpl <span class="k">and</span> mem &lt; tmpl.min_memory_mb:
+            <span class="k">raise</span> serializers.ValidationError({<span class="s">'memory_mb'</span>: <span class="s">f'최소 {tmpl.min_memory_mb} MB 필요'</span>})
+        data[<span class="s">'cpu_percent'</span>], data[<span class="s">'memory_mb'</span>] = cpu, mem
+        <span class="k">return</span> data</pre>
+
+  <h3>3.3 Agent Payload — 생성 시 한도 전달</h3>
+  <p><code>create_container</code> 명령에 <code>HostConfig</code> 필드 추가.</p>
+<pre><span class="c"># backend/apps/containers/services/deployment.py _build_create_payload</span>
+payload = {
+    <span class="s">"image"</span>: ...,
+    <span class="s">"name"</span>: ...,
+    <span class="s">"env"</span>: ...,
+    <span class="s">"ports"</span>: ...,
+    <span class="s">"hostConfig"</span>: {
+        <span class="s">"memory"</span>:        memory_mb * 1024 * 1024,   <span class="c"># bytes</span>
+        <span class="s">"memorySwap"</span>:    memory_mb * 1024 * 1024,   <span class="c"># swap 비활성 (limit = swap)</span>
+        <span class="s">"cpuQuota"</span>:      cpu_percent * 1000,        <span class="c"># microseconds per period</span>
+        <span class="s">"cpuPeriod"</span>:     100000,                    <span class="c"># 100ms (default)</span>
+        <span class="s">"oomKillDisable"</span>: <span class="k">False</span>,                  <span class="c"># OOM kill 허용 (안전)</span>
+    },
+}</pre>
+  <p class="mono" style="color: var(--muted)">
+    Agent 측 (별도 repo) 도 <code>HostConfig</code> 파싱 → Dockerode <code>createContainer({HostConfig})</code> 호출
+    추가 필요. <code>docs/agent-channel.md</code> 흐름으로 Issue 생성.
+  </p>
+
+  <h3>3.4 UI — 컨테이너 요청 form</h3>
+  <ul>
+    <li>템플릿 선택 시 추천값 미리 채움</li>
+    <li>"추천 사용 / 직접 입력" 토글</li>
+    <li>직접 입력 시 <code>min_*</code> 미만은 차단 (서버 validate 와 동일 규칙)</li>
+    <li>CPU 슬라이더: 1 ~ host cores, step 0.5</li>
+    <li>메모리 슬라이더: 1 GB ~ host total - 4 GB, step 1 GB</li>
+    <li>예상 점유율 미리보기: "host 의 X%" 같이</li>
+  </ul>
+
+  <h3>3.5 Container 모델 — 한도 기록</h3>
+  <p>현재는 <code>update-limits</code> 이력이 별도 저장 안 됨. KPI 의 "quota 의 X%" 의미가 일관되려면 컨테이너 모델에 현재 limit 도 저장.</p>
+<pre><span class="c"># backend/apps/containers/models.py</span>
+<span class="k">class</span> <span class="n">Container</span>(...):
+    <span class="c"># ...</span>
+    cpu_percent_limit  = models.PositiveIntegerField(null=<span class="k">True</span>, blank=<span class="k">True</span>)
+    memory_mb_limit    = models.PositiveIntegerField(null=<span class="k">True</span>, blank=<span class="k">True</span>)
+    workspace_gb_limit = models.PositiveIntegerField(null=<span class="k">True</span>, blank=<span class="k">True</span>)
+    workspace_device   = models.CharField(max_length=120, null=<span class="k">True</span>, blank=<span class="k">True</span>)
+                                <span class="c"># 예: "/dev/vg0/cid_05eddec"</span>
+    limit_updated_at   = models.DateTimeField(null=<span class="k">True</span>, blank=<span class="k">True</span>)</pre>
+
+  <h3>3.6 Agent host capacity 자동 수집 (system_info)</h3>
+  <p>
+    추천값을 host 사양에 동적으로 맞추려면 backend 가 각 host 의 정적 capacity (cpu_cores,
+    ram_total, disk_total, lvm_pool_size, gpu_count 등) 를 알아야 함. <b>하드코딩 X — agent
+    가 자동 보고.</b>
+  </p>
+  <div class="panel">
+    <b>현 상태</b>
+    <ul>
+      <li>✓ <code>system_metrics</code> 메시지로 시계열 메트릭 (CPU%, mem used 등) 은 보고 중 (<code>SystemMetricsHistory</code>)</li>
+      <li>✗ <b>정적 host capacity</b> (cpu_cores, ram_total_mb, disk_total_gb 등) Agent 모델 저장 필드 없음</li>
+      <li>✗ <b>scheduler 없음</b> — 사용자가 <code>target_agent</code> 수동 지정 (<code>ContainerRequest.target_agent</code>)</li>
+    </ul>
+  </div>
+
+  <h4>이번 PR 에 추가</h4>
+<pre><span class="c"># backend/apps/agents/models.py — Agent 모델 정적 capacity 컬럼 추가</span>
+<span class="k">class</span> <span class="n">Agent</span>(<span class="n">models</span>.<span class="n">Model</span>):
+    <span class="c"># 기존 hostname, ip_address, status, token, registered_at ...</span>
+    cpu_cores       = models.PositiveIntegerField(null=<span class="k">True</span>)
+    cpu_model       = models.CharField(max_length=120, blank=<span class="k">True</span>)
+    ram_total_mb    = models.PositiveIntegerField(null=<span class="k">True</span>)
+    disk_total_gb   = models.PositiveIntegerField(null=<span class="k">True</span>)
+    lvm_pool_size_gb = models.PositiveIntegerField(null=<span class="k">True</span>)   <span class="c"># thin pool 크기</span>
+    nic_speed_mbps  = models.PositiveIntegerField(null=<span class="k">True</span>)
+    filesystem      = models.CharField(max_length=32, blank=<span class="k">True</span>)    <span class="c"># ext4 / xfs / zfs</span>
+    capacity_updated_at = models.DateTimeField(null=<span class="k">True</span>)</pre>
+
+  <h4>Agent 측 동작 (별도 repo, Issue 로 요청)</h4>
+  <ul>
+    <li>agent 시작 시 1회 + 일정 주기 (예: 1시간) 마다 host 사양 수집:
+      <ul>
+        <li><code>os.cpus().length</code>, <code>os.totalmem()</code> (Node.js)</li>
+        <li><code>df -B1G /</code>, <code>lsblk -d</code></li>
+        <li><code>lvs vg0/thin_pool</code> (pool 존재 여부 + 크기)</li>
+        <li><code>ethtool {iface}</code> (NIC speed)</li>
+        <li><code>df -T /var/lib/docker</code> (filesystem)</li>
+      </ul>
+    </li>
+    <li>새 message type <code>capacity_report</code> 또는 기존 <code>system_metrics</code> 첫 frame 에 포함</li>
+    <li>backend 가 받아서 Agent 모델 컬럼 갱신</li>
+  </ul>
+
+  <p class="mono" style="color: var(--muted)">
+    이로써 host 추가 시 <b>agent install 한 줄</b> 만으로 backend 가 자동으로 host 사양을 알게 됨.
+    하드코딩 / 별도 조사 / 운영자 입력 모두 불필요.
+  </p>
+
+  <h4>backend scheduler (PR 후속)</h4>
+  <ul>
+    <li>지금은 사용자가 <code>target_agent</code> 수동 지정 — 1~2 host 환경에선 OK</li>
+    <li>host 늘면 backend 가 자동 선택해야:
+      <ul>
+        <li>GPU 빈자리 (gpu_slice 의 allocated 안 된 것)</li>
+        <li>RAM 여유 (host 의 ram_total - 그 host 에 띄운 컨테이너들 limit 합)</li>
+        <li>workspace pool 여유 (lvm_pool_size - 그 host 의 volume 합)</li>
+        <li>사용자 affinity (이전에 쓰던 host 우선)</li>
+      </ul>
+    </li>
+    <li>현 PR 범위 아님 — Phase 1 (3~10 host) 에 추가</li>
+  </ul>
+
+  <h3>3.7 워크스페이스 디스크 격리 — LVM thin volume</h3>
+  <p>
+    각 컨테이너에 <b>가상 block device (LVM thin volume)</b> 를 1 개 발급. 컨테이너는 자기
+    volume 만 봄 → host 디스크 구조 / 다른 컨테이너 작업물 노출 0. MIG 가 GPU 를 partition 하듯
+    LVM thin 이 디스크를 partition.
+  </p>
+
+  <h4>구조</h4>
+<pre>host /
+├─ /var/lib/docker            <span class="c"># Docker image / overlay layer (host 공유, 변경 없음)</span>
+├─ /dev/vg0/                  <span class="c"># LVM Volume Group</span>
+│  └─ thin_pool               <span class="c"># thin pool (예: 2 TB, host disk 의 대부분)</span>
+│     ├─ cid_05eddec          <span class="c"># 컨테이너별 thin volume (가상 100 GB)</span>
+│     ├─ cid_a1b2c3d4
+│     └─ ...
+├─ /var/lib/hypercube/workspaces/
+│  ├─ 05eddec/                <span class="c"># mount point per-container</span>
+│  └─ a1b2c3d4/
+├─ /mnt/datasets              <span class="c"># NFS read-only (공유 데이터셋)</span>
+└─ /mnt/models                <span class="c"># NFS read-only (HuggingFace cache 등)</span>
+</pre>
+
+  <h4>Agent 측 책임 (별도 repo, Issue 로 요청)</h4>
+  <ul>
+    <li>컨테이너 생성 시:
+      <ol>
+        <li><code>lvcreate -V {gb}G -T vg0/thin_pool -n cid_{cid}</code></li>
+        <li><code>mkfs.ext4 /dev/vg0/cid_{cid}</code></li>
+        <li><code>mount /dev/vg0/cid_{cid} /var/lib/hypercube/workspaces/{cid}</code></li>
+        <li>docker run 에 <code>-v /var/lib/hypercube/workspaces/{cid}:/workspace</code> +
+            <code>-v /mnt/datasets:/datasets:ro</code> + <code>-v /mnt/models:/models:ro</code></li>
+      </ol>
+    </li>
+    <li>컨테이너 삭제 시 unmount → <code>lvremove vg0/cid_{cid}</code></li>
+    <li>실패 rollback (mkfs 후 mount 실패 시 lvremove)</li>
+    <li>thin pool 사용량 모니터링 (over-provision 위험 — 모든 volume 합 &gt; pool size 가능)</li>
+  </ul>
+
+  <h4>Backend 측 변경</h4>
+  <ul>
+    <li>Template 에 <code>recommended_workspace_gb</code>, <code>min_workspace_gb</code> 추가</li>
+    <li>ContainerRequest 에 <code>workspace_gb</code> 옵션 필드</li>
+    <li>Container 모델에 <code>workspace_gb_limit</code>, <code>workspace_device</code> 저장</li>
+    <li>Agent payload 의 <code>create_container</code> 에 <code>workspace.sizeGb</code> 전달</li>
+    <li>current-metrics 응답에 workspace 디스크 사용량 (<code>workspace.used</code>, <code>workspace.total</code>) 포함</li>
+  </ul>
+
+  <h4>왜 LVM thin 인가</h4>
+  <ul>
+    <li>완전 격리 — 컨테이너는 자기 가상 disk 만 봄, host 파일시스템 안 보임</li>
+    <li>thin provisioning — volume 100 GB 줘도 실제 쓴 만큼만 host 점유 (over-provision 가능)</li>
+    <li>단순 — Linux 표준, 운영팀 대부분 익숙, kernel module 추가 불필요</li>
+    <li>가벼움 — RAM 사용 없음 (ZFS 의 ARC cache 1~4 GB 와 대조)</li>
+    <li>확장 시 호환 — 미래 K8s 도입 시 OpenEBS LocalPV 의 backend 로 그대로 활용 가능</li>
+  </ul>
+
+  <h4>대안 비교 (참고)</h4>
+  <table>
+    <thead><tr>
+      <th>방식</th>
+      <th>격리</th>
+      <th>운영 복잡도</th>
+      <th>선정 여부</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td>bind-mount + XFS quota</td>
+        <td>약함 (host dir 노출)</td>
+        <td>낮음</td>
+        <td>❌ 격리 부족</td>
+      </tr>
+      <tr>
+        <td><b>LVM thin volume</b></td>
+        <td><b>강함 (block-level)</b></td>
+        <td>중간</td>
+        <td>✅ <b>선정</b></td>
+      </tr>
+      <tr>
+        <td>ZFS dataset</td>
+        <td>강함 + 압축/snapshot</td>
+        <td>중간 + 학습</td>
+        <td>❌ 운영팀 친숙도 + RAM 사용</td>
+      </tr>
+      <tr>
+        <td>devicemapper Docker</td>
+        <td>강함</td>
+        <td>높음 (deprecated)</td>
+        <td>❌ 비추천</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================ 4. 추천 ============================ -->
+<section id="rec">
+  <h2>4. 추천 알고리즘</h2>
+
+  <div class="phase">
+    <h4>Phase 1 — agent capacity 기반 동적 공식 (지금 적용)</h4>
+    <div class="step">
+      하드코딩 X. backend 가 <b>각 host 의 agent 보고 capacity</b> + <b>가정 동시 사용자 수</b>
+      로 추천값 동적 계산. 운영팀이 정하는 건 "템플릿 weight (자원 비중)" 와 "host 당 동시
+      사용자 수" 두 가지 파라미터만.
+    </div>
+
+    <h5>공식</h5>
+<pre><span class="c"># backend 가 agent.cpu_cores, agent.ram_total_mb 활용</span>
+host_capacity_cpu  = agent.cpu_cores * 100        <span class="c"># 12 cores → 1200 percent</span>
+host_capacity_ram  = agent.ram_total_mb            <span class="c"># 예: 256000 MB</span>
+host_capacity_disk = agent.lvm_pool_size_gb        <span class="c"># 예: 3000 GB</span>
+
+<span class="c"># 운영 파라미터 (admin 설정, 호스트 단위)</span>
+target_users_per_host = 8                          <span class="c"># 가정 동시 사용자 수</span>
+safety_margin         = 0.80                       <span class="c"># 호스트 자원의 80% 만 분배</span>
+
+<span class="c"># 1 사용자 fair-share baseline</span>
+fair_cpu_per_user  = (host_capacity_cpu  * safety_margin) / target_users_per_host
+fair_ram_per_user  = (host_capacity_ram  * safety_margin) / target_users_per_host
+fair_disk_per_user = (host_capacity_disk * safety_margin) / target_users_per_host
+
+<span class="c"># 템플릿 weight 로 분배 (예: PyTorch Jupyter = cpu 1.0 / ram 1.5 / disk 1.0)</span>
+recommended_cpu_percent  = round(fair_cpu_per_user  * template.cpu_weight  / 100) * 100
+recommended_memory_mb    = round(fair_ram_per_user  * template.ram_weight  / 1024) * 1024
+recommended_workspace_gb = round(fair_disk_per_user * template.disk_weight / 10)   * 10</pre>
+
+    <h5>예시 — agent 보고: cpu=24 cores, ram=256 GB, lvm_pool=3 TB</h5>
+    <table>
+      <thead><tr>
+        <th>템플릿</th>
+        <th>weight (cpu/ram/disk)</th>
+        <th>추천 (8명 동시 가정)</th>
+      </tr></thead>
+      <tbody>
+        <tr><td>데이터 탐색</td><td>0.5 / 0.5 / 0.5</td>
+            <td>1.5 cores · 16 GB · 188 GB</td></tr>
+        <tr><td>PyTorch Jupyter</td><td>1.0 / 1.0 / 1.0</td>
+            <td>3 cores · 32 GB · 375 GB</td></tr>
+        <tr><td>대규모 학습</td><td>1.5 / 2.0 / 1.5</td>
+            <td>4.5 cores · 64 GB · 562 GB</td></tr>
+        <tr><td>LLM Inference</td><td>1.5 / 1.0 / 0.5</td>
+            <td>4.5 cores · 32 GB · 188 GB</td></tr>
+      </tbody>
+    </table>
+    <p class="mono" style="color: var(--muted)">
+      → host 사양 바뀌면 추천값 자동 갱신. 새 host 추가 시 그 host capacity 로 재계산.
+      운영팀은 template weight 와 target_users_per_host 만 관리.
+    </p>
+
+    <h5>Template 모델 확장</h5>
+<pre><span class="c"># backend/apps/templates/models.py</span>
+<span class="k">class</span> <span class="n">Template</span>(<span class="n">models</span>.<span class="n">Model</span>):
+    name = models.CharField(max_length=120)
+    <span class="c"># ...</span>
+    cpu_weight  = models.FloatField(default=1.0)   <span class="c"># 자원 비중 (1.0 = fair share)</span>
+    ram_weight  = models.FloatField(default=1.0)
+    disk_weight = models.FloatField(default=1.0)
+    min_cpu_percent  = models.PositiveIntegerField(default=100)   <span class="c"># 이미지 hard floor</span>
+    min_memory_mb    = models.PositiveIntegerField(default=2048)
+    min_workspace_gb = models.PositiveIntegerField(default=10)</pre>
+
+    <h5>운영 파라미터 (host 별 또는 글로벌)</h5>
+<pre><span class="c"># backend/apps/agents/models.py — Agent 모델 운영 파라미터 추가</span>
+<span class="k">class</span> <span class="n">Agent</span>(<span class="n">models</span>.<span class="n">Model</span>):
+    <span class="c"># 기존 capacity 필드 ...</span>
+    target_users   = models.PositiveIntegerField(default=4)    <span class="c"># 가정 동시 사용자</span>
+    safety_margin  = models.FloatField(default=0.8)            <span class="c"># 자원 분배 비율</span></pre>
+
+    <p>운영자는 admin 페이지에서 host 별 <code>target_users</code> 만 조정. 그 외 자동.</p>
+  </div>
+
+  <div class="phase p2">
+    <h4>Phase 2 — history 기반 동적 추천 (3~6 개월 후)</h4>
+    <div class="step">KPI 의 평균/피크 데이터 활용. 이미 메트릭 수집 중.</div>
+    <ul>
+      <li>지난 30일 메모리 피크 × 1.2 = 추천 limit</li>
+      <li>CPU 평균 × 2 + safety = 추천 quota</li>
+      <li>"최근 N 일간 OOM 회수 ≥ 1" 이면 자동 +20% 상향 알림</li>
+      <li>사용자 history 부족 (신규) 시 Phase 1 fallback</li>
+    </ul>
+  </div>
+
+  <div class="phase p3">
+    <h4>Phase 3 — LLM 추정 (선택)</h4>
+    <div class="step">노트북 / requirements.txt / 코드 정적 분석. 우선순위 낮음.</div>
+    <ul>
+      <li>imports 에 transformers / lightning → 학습 워크로드</li>
+      <li>모델 카드 (config.json) 의 hidden_size 등으로 메모리 추정</li>
+      <li>현 단계에선 over-engineering. Phase 2 충분히 검증 후 검토.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================ 5. 기술 검증 ============================ -->
+<section id="feasibility">
+  <h2>5. 기술 검증 — cgroup / Docker</h2>
+  <table>
+    <thead><tr>
+      <th>자원</th>
+      <th>Docker 옵션</th>
+      <th>동작</th>
+      <th>주의</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td>CPU hard cap</td>
+        <td><code>--cpu-quota</code> / <code>--cpu-period</code></td>
+        <td>quota 도달 시 throttle (kill X)</td>
+        <td>안전</td>
+      </tr>
+      <tr>
+        <td>CPU share (가중)</td>
+        <td><code>--cpu-shares</code></td>
+        <td>경합 시 가중치 분배</td>
+        <td>한도 아님. 현재 안 씀</td>
+      </tr>
+      <tr>
+        <td>메모리 hard limit</td>
+        <td><code>--memory</code></td>
+        <td>도달 시 <strong>OOM kill</strong></td>
+        <td>safety margin 20~30% 필수</td>
+      </tr>
+      <tr>
+        <td>memory swap</td>
+        <td><code>--memory-swap</code></td>
+        <td><code>= limit</code> 시 swap 비활성</td>
+        <td>OOM 으로 빠르게 fail → 안전</td>
+      </tr>
+      <tr>
+        <td>live update</td>
+        <td><code>docker update</code></td>
+        <td>재시작 없이 변경</td>
+        <td>이미 <code>update-limits</code> 에서 사용</td>
+      </tr>
+      <tr>
+        <td>디스크 용량 (overlay2)</td>
+        <td><code>--storage-opt size=...</code></td>
+        <td>devicemapper / btrfs 만 지원</td>
+        <td>overlay2 에서 안 됨. 우회: LVM thin volume bind-mount</td>
+      </tr>
+      <tr>
+        <td><b>디스크 용량 (LVM thin)</b></td>
+        <td><code>lvcreate -V {gb}G</code> + mkfs + mount + <code>-v /vol:/workspace</code></td>
+        <td><b>block-level 격리, MIG 단절</b></td>
+        <td>thin pool over-provision 모니터링 필요</td>
+      </tr>
+      <tr>
+        <td>디스크 I/O rate</td>
+        <td><code>--device-read-bps</code> 등</td>
+        <td>I/O bytes/sec 제한</td>
+        <td>가능. 우선순위 낮음</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="panel err">
+    <b>⚠ OOM kill 주의</b>
+    <ul>
+      <li>메모리 limit 도달 시 컨테이너 SIGKILL → 사용자 작업 손실</li>
+      <li>대책: <b>(a)</b> 추천값에 safety margin 20~30%, <b>(b)</b> 메모리 사용량 임계 (75%, 90%) 시 alert, <b>(c)</b> KPI 의 warn/danger threshold 와 일치</li>
+      <li>cgroup v2 환경이면 <code>memory.high</code>(soft) + <code>memory.max</code>(hard) 분리 가능 → 점진적 throttle 후 OOM. v1 은 hard 만</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================ 6. 단계별 구현 ============================ -->
+<section id="plan">
+  <h2>6. 단계별 구현 plan</h2>
+
+  <div class="phase">
+    <h4>PR 0 — Agent install script 확장 (host 셋업 자동화)</h4>
+    <div class="step">
+      운영자가 host 마다 수동으로 lvcreate 같은 거 안 해도 되게 <b>agent install script
+      한 줄</b>로 host 셋업 자동. 사용자 의도: "agent 설치하면 host 사양 가져와서 자동 추천".
+    </div>
+    <ul>
+      <li>install script (agent repo) 의 책임:
+        <ul>
+          <li>host 디스크 감지 → 사용 가능한 free space 일부를 LVM thin pool 로 구성 (또는 admin 이 size 만 명시)</li>
+          <li><code>/var/lib/hypercube/workspaces/</code> 디렉토리 준비</li>
+          <li><code>/mnt/datasets</code>, <code>/mnt/models</code> NFS mount (NAS 주소만 환경변수로)</li>
+          <li>thin pool autoextend 설정 (over-provision 안전망)</li>
+          <li>agent 자체 (Node.js process) 설치 + systemd 등록</li>
+          <li>backend 에 capacity_report (cpu_cores / ram_total_mb / disk_total_gb / lvm_pool_size_gb / nic_speed_mbps / filesystem) 자동 전송</li>
+        </ul>
+      </li>
+      <li>실행 예 (가정): <code>curl -fsSL hypercube.com/install.sh | sudo bash -s -- --backend-url ... --nfs-server ...</code></li>
+      <li>운영자가 결정하는 것 = NAS 주소 + 기본 thin pool 비율 (default 디스크의 80%) 뿐</li>
+      <li>backup 전략은 별도 정책 (사용자 책임 / git 권장, 또는 LVM snapshot 주기 — 운영팀 결정)</li>
+    </ul>
+    <p class="mono" style="color: var(--muted)">
+      → host 추가 시 install 한 줄로 LVM thin pool + NFS mount + agent 모두 셋업. backend 가
+      자동으로 host capacity 인지하고 추천 공식에 즉시 반영.
+    </p>
+  </div>
+
+  <div class="phase">
+    <h4>PR 1 — Template weight 필드 + Agent capacity 필드 + Migration</h4>
+    <div class="step">
+      <b>하드코딩된 baseline 값 X</b>. Template 에 weight 비중, Agent 에 capacity 컬럼.
+      추천은 backend 가 두 값 조합으로 계산.
+    </div>
+    <ul>
+      <li><b>Template 모델</b>: <code>cpu_weight</code>, <code>ram_weight</code>, <code>disk_weight</code>, <code>min_cpu_percent</code>, <code>min_memory_mb</code>, <code>min_workspace_gb</code></li>
+      <li><b>Agent 모델</b>: <code>cpu_cores</code>, <code>cpu_model</code>, <code>ram_total_mb</code>, <code>disk_total_gb</code>, <code>lvm_pool_size_gb</code>, <code>nic_speed_mbps</code>, <code>filesystem</code>, <code>target_users</code>, <code>safety_margin</code>, <code>capacity_updated_at</code></li>
+      <li><b>capacity_report 메시지 처리</b>: <code>backend/apps/common/consumers.py</code> 에 새 message type 추가, Agent 모델 업데이트</li>
+      <li><b>추천 계산 helper</b>: <code>backend/apps/containers/services/recommend.py</code> (신규) — agent + template + target_users 받아 동적 계산</li>
+      <li>files: <code>backend/apps/templates/models.py</code>, <code>backend/apps/agents/models.py</code>, <code>migrations/000X_template_weights.py</code>, <code>migrations/000Y_agent_capacity.py</code></li>
+      <li>fixture: 템플릿별 weight (예: PyTorch Jupyter = 1.0/1.0/1.0, 학습 = 1.5/2.0/1.5)</li>
+      <li>admin 페이지에 노출</li>
+    </ul>
+  </div>
+
+  <div class="phase">
+    <h4>PR 2 — ContainerRequest 스키마 + 생성 흐름</h4>
+    <div class="step">
+      request 에 <code>cpu_percent</code>, <code>memory_mb</code> 옵션 추가.
+      미지정 시 template default 적용. <code>Container.cpu_percent_limit</code>,
+      <code>memory_mb_limit</code> 저장.
+    </div>
+    <ul>
+      <li>files: <code>serializers.py</code>, <code>viewsets.py</code>, <code>services/deployment.py</code>, <code>models.py</code></li>
+      <li>backward compat: 기존 request (한도 미지정) 도 동작 — template default 자동 사용</li>
+    </ul>
+  </div>
+
+  <div class="phase">
+    <h4>PR 3 — Agent payload 확장 (HostConfig + workspace)</h4>
+    <div class="step">
+      backend → agent <code>create_container</code> 에 <code>hostConfig.memory</code>,
+      <code>cpuQuota</code>, <code>workspace.sizeGb</code> 전달. Agent 가 lvcreate + mkfs +
+      mount 수행. Agent repo 작업 필요.
+    </div>
+    <ul>
+      <li>backend files: <code>backend/apps/common/consumers.py</code>, <code>services/deployment.py</code></li>
+      <li>docs sync: <code>docs/agent-payload-contract.md</code>, <code>docs/agent-protocol.md</code> 업데이트</li>
+      <li>Agent repo: <code>docs/agent-channel.md</code> 절차로 Issue 생성 → PR
+        <ul>
+          <li>새 명령: lvcreate / mkfs / mount per-container</li>
+          <li>delete 시 unmount + lvremove</li>
+          <li>실패 시 rollback (mkfs 후 mount 실패 → lvremove)</li>
+          <li>thin pool 사용량 메트릭 보고 (over-provision 모니터링)</li>
+        </ul>
+      </li>
+    </ul>
+  </div>
+
+  <div class="phase">
+    <h4>PR 4 — UI / 요청 form</h4>
+    <div class="step">
+      sveltekit form 에 자원 한도 슬라이더 + "추천 / 직접 입력" 토글. 미리보기.
+    </div>
+    <ul>
+      <li>files: <code>frontend/src/routes/user/containers/new/+page.svelte</code> 등</li>
+      <li>새 컴포넌트: <code>ResourceLimitForm.svelte</code> (slider + 추천 chip)</li>
+      <li>호스트 메타 (host total cores/memory) 표시 → "host 의 X%" 미리보기</li>
+    </ul>
+  </div>
+
+  <div class="phase p2">
+    <h4>PR 5 — KPI 분모 표시 명확화</h4>
+    <div class="step">
+      한도 명시된 컨테이너는 "quota 의 X%", 한도 없는 컨테이너는 "host 대비 X% (limit 없음)" 안내.
+    </div>
+    <ul>
+      <li>files: <code>frontend/src/lib/components/ContainerKpiBar.svelte</code></li>
+      <li>한도 없는 카드의 chip 에 <code>(unlimited)</code> 또는 ⚠ 표시</li>
+    </ul>
+  </div>
+
+  <div class="phase p3">
+    <h4>(선택) PR 6 — Phase 2 history 기반 추천</h4>
+    <div class="step">
+      KPI 데이터로 동적 추천. 3~6개월 후.
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 7. 검증 ============================ -->
+<section id="verify">
+  <h2>7. 검증 / 테스트</h2>
+  <ul class="checklist">
+    <li><b>Unit</b> — template 의 min/recommended 필드 validate. 사용자 override 시 min 미만 reject</li>
+    <li><b>Integration</b> — request → backend → agent payload 까지 HostConfig 전달 확인 (mock)</li>
+    <li><b>E2E (Playwright)</b> — 컨테이너 생성 form 에 추천값 prefill, 변경 후 limit 적용 확인 (docker inspect)</li>
+    <li><b>실측</b> — 메모리 90% 도달 시 OOM kill 동작 확인 (load test)</li>
+    <li><b>회귀</b> — 기존 update-limits API 동작 그대로 유지</li>
+    <li><b>KPI 일치</b> — 한도 명시 후 KPI 의 분모 변경 (host → quota) 정상 반영</li>
+  </ul>
+</section>
+
+<!-- ============================ 8. 위험 ============================ -->
+<section id="risk">
+  <h2>8. 위험 / mitigation</h2>
+  <ol class="risklist">
+    <li>
+      <b>OOM kill 로 사용자 작업 손실</b>
+      <ul>
+        <li>mitigation: 추천값에 safety margin 20~30%, KPI 85%+ 시 사용자 알림, 자동 limit ↑ 옵션</li>
+      </ul>
+    </li>
+    <li>
+      <b>over-provision (한도 너무 크게 잡힘) → 동시 사용자 수 감소</b>
+      <ul>
+        <li>mitigation: admin 의 "host 점유 미리보기", 동시 N명 가정 시뮬레이션</li>
+      </ul>
+    </li>
+    <li>
+      <b>Agent payload 변경으로 구버전 agent 가 한도 무시</b>
+      <ul>
+        <li>mitigation: agent 버전 체크 → 구버전이면 backend 에서 update-limits 폴백</li>
+      </ul>
+    </li>
+    <li>
+      <b>기존 컨테이너 (한도 없음) 의 KPI 의미 혼란</b>
+      <ul>
+        <li>mitigation: 카드 chip 에 <code>(unlimited)</code> 표시, 운영팀이 backfill 스크립트로 일괄 적용</li>
+      </ul>
+    </li>
+    <li>
+      <b>cgroup v1 / v2 환경 차이 (memory.high 미지원)</b>
+      <ul>
+        <li>mitigation: host kernel 확인 → v2 면 high+max 사용, v1 이면 max 만</li>
+      </ul>
+    </li>
+  </ol>
+</section>
+
+<!-- ============================ OOM 방지 hard floor ============================ -->
+<section id="floor">
+  <h2>9. OOM 방지 hard floor</h2>
+  <p>
+    메모리 limit 이 너무 작으면 컨테이너가 시작도 못 하거나, 시작 직후 OOM kill 로 죽음.
+    사용자가 임의로 너무 낮은 값을 넣지 못하게 <b>이중 floor</b> 적용.
+  </p>
+
+  <h3>9.1 두 단계 floor</h3>
+  <table>
+    <thead><tr>
+      <th>층위</th>
+      <th>출처</th>
+      <th>의미</th>
+      <th>위반 시</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td><b>(A) 이미지 hard floor</b></td>
+        <td><code>Template.min_memory_mb</code> 등</td>
+        <td>이 이미지가 idle 상태로 떠있기만 해도 필요한 RSS. 사용자가 절대 못 내릴 한계.</td>
+        <td>API <code>400</code> reject. 운영팀이 결정.</td>
+      </tr>
+      <tr>
+        <td><b>(B) 워크로드 safety floor</b></td>
+        <td>추천값 × 0.6 (예시 계수)</td>
+        <td>사용자가 추천보다 낮춰도 안전한 범위.</td>
+        <td>UI warning ("작업 손실 위험"), 저장은 허용.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>9.2 추천값 + safety margin</h3>
+<pre><span class="c"># 기획안 산식</span>
+recommended_memory_mb = baseline_workload_peak_mb * 1.25   <span class="c"># 25% safety</span>
+min_memory_mb         = max(image_idle_rss_mb,             <span class="c"># 이미지 자체 floor</span>
+                            recommended_memory_mb * 0.6)   <span class="c"># 워크로드 floor</span></pre>
+  <p>
+    예: PyTorch Jupyter 의 idle RSS ≈ 1.5 GB, 추천 16 GB → min = max(1.5, 9.6) = <b>9.6 GB</b>.
+    사용자가 9.6 GB 미만 입력 시 UI warning + API reject.
+  </p>
+
+  <h3>9.3 컨테이너 모델의 anti-OOM 로직</h3>
+  <ul>
+    <li>메모리 사용량 KPI <b>85%</b> 이상 5분 지속 → 사용자에게 알림 ("limit 가까움")</li>
+    <li><b>90%</b> 이상 → admin 알림 + 자동 limit ↑ 옵션 (사용자 동의 후)</li>
+    <li>OOM kill 이력 (<code>oom_count</code>) 누적 시 다음 생성 추천에서 ×1.5 자동 적용</li>
+  </ul>
+
+  <h3>9.4 cgroup v2 의 high / max 두 단계</h3>
+  <p>
+    host 가 cgroup v2 라면 <code>memory.high</code> (soft, throttle) + <code>memory.max</code>
+    (hard, OOM) 분리 가능. v1 은 hard 만.
+  </p>
+  <ul>
+    <li><b>memory.high</b> = recommended × 0.9 → 도달 시 throttle (작업은 살아있음, 느려짐)</li>
+    <li><b>memory.max</b> = recommended × 1.1 → 도달 시 OOM kill (true hard limit)</li>
+    <li>이 패턴으로 user 가 "느려진다 → 한도 늘려달라" 요청할 시간을 줌</li>
+  </ul>
+
+  <div class="panel ok">
+    <b>요약</b> — 이중 floor + 85/90% 알림 + cgroup v2 의 high/max 분리 = OOM kill 거의 0.
+    floor 가 너무 빡빡하면 동시 사용자 수 감소 trade-off 있음. 운영 데이터로 조정.
+  </div>
+</section>
+
+<!-- ============================ KPI / 추이 차트 영향 ============================ -->
+<section id="kpi-impact">
+  <h2>10. KPI / 추이 차트 변경 영향</h2>
+  <div class="panel ok">
+    <b>핵심:</b> KPI 의 % 계산식 자체는 <em>코드 수정 거의 없음</em>. backend 가 이미
+    <code>cpu.usage / cpu.cores_quota</code>, <code>memory.usage / memory.limit</code> 로
+    분모를 quota/limit 기준으로 잡고 있어, limit 설정 즉시 KPI 가 자동으로 정확해짐.
+    <br><b>하지만</b> 분모가 무엇인지 명시 표시는 필요.
+  </div>
+
+  <h3>10.1 카드 ( <code>ContainerKpiBar.svelte</code> ) 수정</h3>
+  <ul>
+    <li><b>chip 영역</b>에 limit 정보 추가:
+      <br>limit 명시 → <code>limit 4 cores</code> / <code>limit 16 GB</code> / <code>limit 100 GB</code>
+      <br>미설정 → <code>unlimited ⚠</code> (host 전체 대비라는 hint)
+    </li>
+    <li><b>raw 분모 노출</b>:
+      <br>현 hero: <code>2.40 % · 386M</code>
+      <br>변경: <code>2.40 % · 386M / 16G</code> (= used / limit)
+    </li>
+    <li><b>워크스페이스 디스크 카드 추가</b> (또는 기존 디스크 카드 확장):
+      <br>현재 누적 I/O bytes 만 표시 → workspace 사용량 (예: <code>12 GB · 12 / 100 GB</code>) + I/O rate 분리
+    </li>
+    <li><b>range bar 의 warn/crit</b> 위치는 그대로 70/90%. quota 대비라 의미 명확.</li>
+    <li><b>tooltip</b> 안에 "분모: 4 cores quota" 한 줄 추가.</li>
+  </ul>
+
+  <h3>10.2 추이 차트 ( <code>UserMetricChart.svelte</code> ) 수정</h3>
+  <ul>
+    <li>y축 label: <code>CPU %</code> → <code>CPU % (of 4 cores quota)</code></li>
+    <li>제목 위 sub-title: <code>분모: cpu_quota = 400 (= 4 cores)</code></li>
+    <li>limit 없는 컨테이너: <code>(분모: host 전체)</code> 회색 hint</li>
+    <li>차트의 max line (100%) 의 의미가 "quota 풀 사용" 으로 명확</li>
+  </ul>
+
+  <h3>10.3 영향 받는 파일</h3>
+  <table>
+    <thead><tr><th>파일</th><th>변경</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>backend/apps/containers/models.py</code></td>
+        <td><code>cpu_percent_limit</code>, <code>memory_mb_limit</code> 필드 추가 (PR 2)</td>
+      </tr>
+      <tr>
+        <td><code>backend/apps/containers/serializers.py</code></td>
+        <td>current-metrics 응답에 limit 같이 포함 (1줄)</td>
+      </tr>
+      <tr>
+        <td><code>frontend/src/lib/components/ContainerKpiBar.svelte</code></td>
+        <td>chip 에 limit 표시, hero raw 에 분모 추가, tooltip 강화</td>
+      </tr>
+      <tr>
+        <td><code>frontend/src/routes/user/containers/[containerId]/+page.svelte</code></td>
+        <td>UserMetricChart 에 분모 정보 prop 전달</td>
+      </tr>
+      <tr>
+        <td><code>frontend/src/lib/components/UserMetricChart.svelte</code></td>
+        <td>y축 label / sub-title 에 분모 노출</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>10.4 backward compat</h3>
+  <ul>
+    <li>limit 미설정 컨테이너도 그대로 동작 (chip = unlimited)</li>
+    <li>기존 KPI 수치 변하지 않음 — backend 계산 그대로</li>
+    <li>migration 시점 자동 backfill 불필요</li>
+  </ul>
+</section>
+
+<!-- ============================ 미결 ============================ -->
+<!-- ============================ 11. Host 확장 path ============================ -->
+<section id="scaling">
+  <h2>11. Host 확장 path (1 → 20 host)</h2>
+  <p>
+    GPU workstation 임대 모델은 K8s 같은 service orchestration 없이도 host 수십 대까지 확장 가능.
+    아래 단계별로 우리 구조에 추가만 하면 됨.
+  </p>
+
+  <div class="phase">
+    <h4>Phase 0 — 현재 (1~2 host)</h4>
+    <ul>
+      <li>backend (Django) 1 인스턴스</li>
+      <li>agent 가 각 host 에 1 개씩</li>
+      <li>컨테이너는 backend 가 host 선택 후 agent 에 명령</li>
+      <li>workspace = LVM thin per-host</li>
+      <li>데이터셋 / 모델 = NFS read-only mount</li>
+    </ul>
+  </div>
+
+  <div class="phase">
+    <h4>Phase 1 — 3~10 host</h4>
+    <ul>
+      <li><b>host 추가 = agent install 한 줄</b> — LVM pool 자동 셋업, NFS mount, capacity 자동 보고</li>
+      <li>backend host 선택 scheduler 정교화 (GPU 빈자리 + RAM 여유 + lvm_pool 여유 + 사용자 affinity)</li>
+      <li>NFS HA 도입 (NAS 이중화 또는 keepalived)</li>
+      <li>backend 모니터링 dashboard (모든 host KPI 통합)</li>
+    </ul>
+  </div>
+
+  <div class="phase">
+    <h4>Phase 2 — 10~20 host (H100 × 4 × 20 = 80 GPU)</h4>
+    <ul>
+      <li>backend cluster (HA) — backend 2~3 인스턴스 + PostgreSQL HA</li>
+      <li>WebSocket fan-out 확장 (agent connection 수 ↑)</li>
+      <li>host scheduler 의 GPU-aware 최적화 (MIG slice 효율 배치)</li>
+      <li>운영자 admin 페이지 강화 (host 별 자원, over-provision 경고)</li>
+      <li>이 규모도 <b>K8s 없이 가능</b>. Paperspace / RunPod / Vast.ai 가 이 패턴.</li>
+    </ul>
+  </div>
+
+  <div class="phase p3">
+    <h4>Phase 3 — 50+ host (검토만)</h4>
+    <ul>
+      <li>K8s 도입 검토 — 단 service hosting 으로 use case 가 확장될 때만 의미</li>
+      <li>workstation 임대 모델 유지하면 자체 backend + agent 가 여전히 적합</li>
+      <li>현 시점에선 over-engineering, plan 안 함</li>
+    </ul>
+  </div>
+
+  <div class="panel ok">
+    <b>핵심:</b> LVM thin + NFS + 자체 scheduler 구조는 host 20대까지 충분히 scale.
+    K8s 가 풀어야 할 문제 (분산 service orchestration) 가 우리 use case 에 없으므로
+    K8s 도입을 미래에도 강제할 이유 없음.
+  </div>
+</section>
+
+<!-- ============================ 12. 결정 사항 ============================ -->
+<section id="decisions">
+  <h2>12. 결정 사항</h2>
+
+  <h3>12.1 네트워크 한도 — <span class="tag ok">결정: 도입 안 함</span></h3>
+  <div class="panel">
+    <ul>
+      <li><b>이유 1</b>: airgap + 내부 NAS 환경. 외부 트래픽 거의 없음. NIC 가 거의 항상 여유.</li>
+      <li><b>이유 2</b>: ML 워크로드는 burst 가 정상 (데이터셋 sync, 체크포인트 upload). rate limit 잡으면 사용자 작업 자체가 느려짐.</li>
+      <li><b>이유 3</b>: CPU / 메모리 / 디스크가 진짜 병목. 거기 먼저 통제.</li>
+      <li><b>적용</b>: rate limit X. 누적 RX/TX 모니터링 only (이미 KPI 카드에 있음).
+        admin 알림 — 5 분 평균 &gt; 500 MB/s (NIC 50% 가정) 시 알림. 실측 후 임계 조정.</li>
+      <li><b>재검토 트리거</b>: 데이터셋 sync 충돌이 운영 중 실제로 자주 보고됨 → Phase 2 에 rate limit 도입.</li>
+    </ul>
+  </div>
+
+  <h3>12.2 디스크 용량 — <span class="tag ok">결정: LVM thin volume per-container + NFS 공유</span></h3>
+  <div class="panel">
+    <ul>
+      <li><b>이유 1</b>: 한 사용자가 host 디스크 채우면 docker daemon 까지 죽음 — 최우선 격리 필요.</li>
+      <li><b>이유 2</b>: bind-mount 는 host 디렉토리 노출 → 진짜 격리 아님. MIG 마냥 단절 위해 block-level 격리 필요.</li>
+      <li><b>이유 3</b>: ZFS 는 더 강력하지만 RAM 비용 + 운영 학습. LVM thin 으로 충분.</li>
+      <li><b>적용</b>:
+        <ul>
+          <li>workspace = LVM thin volume per-container (가상 100 GB 등)</li>
+          <li>데이터셋 = <code>/mnt/datasets</code> NFS read-only mount</li>
+          <li>모델 = <code>/mnt/models</code> NFS read-only mount</li>
+          <li>Docker image / overlay layer = host 공유 (변경 없음)</li>
+        </ul>
+      </li>
+      <li><b>재검토 트리거</b>: 운영팀이 snapshot / clone 자주 필요 → ZFS 로 마이그.</li>
+    </ul>
+  </div>
+
+</section>
+
+<hr>
+<p style="color: var(--muted); font-size: 12.5px;">
+  HyperCube · v0.3 기획안 · 작성 2026-05-15 · use case = GPU workstation 임대 · workspace 격리 = LVM thin · agent install 한 줄로 host 자동 셋업 · 단계별 PR 로 점진 적용
+</p>
+
+</div>
+</body>
+</html>

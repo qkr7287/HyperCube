@@ -43,18 +43,18 @@ export function statusLabel(status?: string | null): string {
 
 export function statusTone(status?: string | null): string {
 	return ({
-		running: '#22c55e',
+		running: '#5fba85',
 		stopped: '#64748b',
-		paused: '#f59e0b',
-		exited: '#ef4444',
-		created: '#3b82f6',
-		restarting: '#8b5cf6',
-		dead: '#ef4444',
-		pending: '#f59e0b',
-		approved: '#3b82f6',
-		deploying: '#8b5cf6',
-		deployed: '#22c55e',
-		failed: '#ef4444',
+		paused: '#d4a25b',
+		exited: '#d97070',
+		created: '#6c9bd0',
+		restarting: '#a087d9',
+		dead: '#d97070',
+		pending: '#d4a25b',
+		approved: '#6c9bd0',
+		deploying: '#a087d9',
+		deployed: '#5fba85',
+		failed: '#d97070',
 		rejected: '#64748b',
 	} as Record<string, string>)[status ?? ''] ?? '#64748b';
 }

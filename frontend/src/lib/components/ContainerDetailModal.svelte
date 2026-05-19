@@ -26,8 +26,8 @@
 		container: Container | null;
 		agentId?: string;
 		accessToken?: string;
-		onClose: () => void;
-		onStateChange: () => void;
+		onClose?: () => void;
+		onStateChange?: () => void;
 	} = $props();
 
 	let activeTab = $state<'info' | 'metrics' | 'logs'>('info');

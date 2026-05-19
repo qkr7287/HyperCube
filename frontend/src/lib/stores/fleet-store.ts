@@ -185,6 +185,7 @@ export const lastFleetUpdate = writable<Date | null>(null);
 // Bucket size — 조회 단위 그대로 사용. range 라벨이 곧 bucket 크기.
 // 1m = 1분 단위, 5m = 5분 단위, 1h = 1시간 단위, 24h = 1일 단위, 7d = 1주일 단위.
 const BUCKET_SECONDS: Record<TimeRange, number> = {
+	'10s': 10,
 	'1m': 60,        // 1분 bucket
 	'5m': 300,       // 5분 bucket
 	'1h': 3600,      // 1시간 bucket
@@ -193,6 +194,7 @@ const BUCKET_SECONDS: Record<TimeRange, number> = {
 };
 // 차트에 표시할 bucket 개수. raw row 부담을 고려해 24h/7d는 더 적게.
 export const SPARKLINE_POINTS: Record<TimeRange, number> = {
+	'10s': 10,
 	'1m': 10,   // 1분 × 10 = 10분 창
 	'5m': 10,   // 5분 × 10 = 50분 창
 	'1h': 12,   // 1시간 × 12 = 12시간 창
@@ -201,6 +203,7 @@ export const SPARKLINE_POINTS: Record<TimeRange, number> = {
 };
 // Backend retention에 맞춘 raw data 요청 범위. bucket × points 보다 조금 더 넉넉히.
 const API_RANGE: Record<TimeRange, string> = {
+	'10s': '10m',
 	'1m': '30m',
 	'5m': '6h',
 	'1h': '24h',
@@ -208,11 +211,12 @@ const API_RANGE: Record<TimeRange, string> = {
 	'7d': '7d',
 };
 // raw row 상한. backend `limit` 한도(2000)에 맞춰 모두 2000으로 클램프.
-const RANGE_LIMITS: Record<TimeRange, number> = { '1m': 500, '5m': 2000, '1h': 2000, '24h': 2000, '7d': 2000 };
+const RANGE_LIMITS: Record<TimeRange, number> = { '10s': 600, '1m': 500, '5m': 2000, '1h': 2000, '24h': 2000, '7d': 2000 };
 // Per-agent 상세 history에서 사용할 bucket 개수.
-const HISTORY_LIMITS: Record<TimeRange, number> = { '1m': 30, '5m': 24, '1h': 24, '24h': 7, '7d': 4 };
+const HISTORY_LIMITS: Record<TimeRange, number> = { '10s': 30, '1m': 30, '5m': 24, '1h': 24, '24h': 7, '7d': 4 };
 // Poll 주기 — bucket 크기에 맞춰 점점 느리게. 너무 자주 polling 하면 백엔드 부담.
 const POLL_INTERVAL_MS: Record<TimeRange, number> = {
+	'10s': 10000,    // 10s
 	'1m': 10000,     // 10s
 	'5m': 30000,     // 30s
 	'1h': 60000,     // 1 min

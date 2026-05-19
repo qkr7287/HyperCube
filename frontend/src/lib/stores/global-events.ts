@@ -37,10 +37,10 @@ let attempts = 0;
 const RECONNECT_BASE = 3000;
 const RECONNECT_MAX = 30000;
 
-function url(token: string): string {
+function url(): string {
 	if (!browser) return '';
 	const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-	return `${protocol}//${location.host}${base}/ws/global/?token=${token}`;
+	return `${protocol}//${location.host}${base}/ws/global/`;
 }
 
 export function connectGlobal(token: string) {
@@ -50,7 +50,7 @@ export function connectGlobal(token: string) {
 		disconnectGlobal();
 	}
 	currentToken = token;
-	ws = new WebSocket(url(token));
+	ws = new WebSocket(url(), ['hypercube.jwt', token]);
 	ws.onopen = () => {
 		attempts = 0;
 		globalConnected.set(true);
@@ -103,16 +103,20 @@ export function seedActiveAgents(ids: string[]) {
  * "1/2 인데 최근 상태 변화는 없음" 처럼 빠진 것처럼 보임.
  * is_active === false 인 agent 는 last_seen_at 시각으로 offline 전환이 이미
  * 일어났다는 걸 유도해 synthetic 이벤트로 넣는다.
+ *
+ * 정확한 transition 이력은 `seedStatusEventsFromBackend` 가 별도 fetch 로
+ * 가져오므로 가능하면 그 쪽이 우선이다 — 이 함수는 endpoint 가 빈 응답을
+ * 줄 때 (e.g. 새 설치 첫 mount) 의 fallback 정도 역할.
  */
 export function seedStatusEvents(
 	agents: Array<{ id: string; hostname: string; is_active: boolean; last_seen_at: string | null }>,
 ) {
 	const synth: AgentStatusEvent[] = agents
 		.filter((a) => !a.is_active && a.last_seen_at)
-		.map((a) => {
+		.map((a): AgentStatusEvent => {
 			const ts = new Date(a.last_seen_at as string).getTime();
 			return {
-				type: 'agent_status_change',
+				type: 'agent_status_change' as const,
 				status: 'offline' as const,
 				server_id: a.id,
 				hostname: a.hostname,
@@ -126,6 +130,41 @@ export function seedStatusEvents(
 		.sort((a, b) => b.receivedAt - a.receivedAt)
 		.slice(0, MAX_EVENTS);
 	statusEvents.set(synth);
+}
+
+/**
+ * Replace the live store with the backend's persisted transition log
+ * (`/api/agents/status-events/`). Calls during mount, before the WS
+ * connects — guarantees the dashboard's "최근 상태 변화" panel reflects
+ * events that fired while the browser was closed or the backend was
+ * down. Live WS deltas continue to prepend on top after this seed.
+ */
+export type BackendStatusEvent = {
+	id: number;
+	server_id: string;
+	hostname: string;
+	status: 'online' | 'offline';
+	occurred_at: string;
+	previous_offline_seconds: number | null;
+};
+
+export function seedStatusEventsFromBackend(events: BackendStatusEvent[]) {
+	const mapped: AgentStatusEvent[] = events
+		.map((e) => {
+			const ts = new Date(e.occurred_at).getTime();
+			return {
+				type: 'agent_status_change' as const,
+				status: e.status,
+				server_id: String(e.server_id),
+				hostname: String(e.hostname ?? ''),
+				last_seen_at: e.occurred_at,
+				previous_offline_seconds: e.previous_offline_seconds,
+				receivedAt: Number.isFinite(ts) ? ts : Date.now(),
+			};
+		})
+		.sort((a, b) => b.receivedAt - a.receivedAt)
+		.slice(0, MAX_EVENTS);
+	statusEvents.set(mapped);
 }
 
 function handleEvent(msg: any) {

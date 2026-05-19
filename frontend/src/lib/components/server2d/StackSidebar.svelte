@@ -30,7 +30,13 @@
 	const sortDir = $derived(view.stackSortDir);
 	const focusPaused = $derived(view.stackFocusPaused);
 
-	let focusIndex = $state(0);
+	// Track the focused stack by NAME, not by sort position. Live metric
+	// updates re-sort the list every few seconds, and a position-based
+	// focus would jump to whichever stack happened to slot into the same
+	// index after the sort — looking like the progress bar was randomly
+	// resetting and the highlight was randomly hopping. Name-based
+	// tracking keeps focus glued to one stack until it advances.
+	let focusedStack = $state<string | null>(null);
 	let focusProgress = $state(0);
 	let focusStartedAt = $state(Date.now());
 	let focusOwnedSolo = $state(false);
@@ -50,8 +56,9 @@
 		focusProgress = 0;
 		focusStartedAt = Date.now();
 		if (wasPaused) {
-			const target = sorted[focusIndex]?.name ?? null;
+			const target = focusedStack ?? sorted[0]?.name ?? null;
 			if (target) {
+				focusedStack = target;
 				focusOwnedSolo = true;
 				view.soloStack = target;
 			}
@@ -115,19 +122,28 @@
 
 	const focusedName = $derived.by(() => {
 		if (sorted.length === 0) return null;
-		const safeIdx = Math.max(0, Math.min(sorted.length - 1, focusIndex));
-		return sorted[safeIdx]?.name ?? null;
+		// Honour the tracked name first (survives reorders); fall back to
+		// the first sorted entry when the focus hasn't been seeded yet or
+		// the previously-focused stack disappeared.
+		if (focusedStack && sorted.some((s) => s.name === focusedStack)) {
+			return focusedStack;
+		}
+		return sorted[0]?.name ?? null;
 	});
 
 	function advanceFocus() {
 		if (sorted.length === 0) {
-			focusIndex = 0;
+			focusedStack = null;
 			return;
 		}
-		focusIndex = (focusIndex + 1) % sorted.length;
+		const currentIdx = focusedStack
+			? sorted.findIndex((s) => s.name === focusedStack)
+			: -1;
+		const nextIdx = (currentIdx + 1) % sorted.length;
+		const next = sorted[nextIdx]?.name ?? null;
+		focusedStack = next;
 		focusProgress = 0;
 		focusStartedAt = Date.now();
-		const next = sorted[focusIndex]?.name ?? null;
 		if (next) {
 			focusOwnedSolo = true;
 			view.soloStack = next;
@@ -158,7 +174,11 @@
 	});
 
 	$effect(() => {
-		if (focusIndex >= sorted.length) focusIndex = 0;
+		// Drop the tracked focus name when its stack disappears so the
+		// derived focusedName falls back to the first sorted entry.
+		if (focusedStack && !sorted.some((s) => s.name === focusedStack)) {
+			focusedStack = null;
+		}
 	});
 
 	$effect(() => {
@@ -181,18 +201,19 @@
 	});
 
 	$effect(() => {
+		// User clicked a different stack while focus rotation owned the
+		// solo state — surrender ownership and pause focus. Compares by
+		// stack name so live re-sorts of the list don't trigger a false
+		// positive (the previous index-based check fired every time the
+		// metric-driven sort shifted entries around).
 		const current = view.soloStack;
 		if (!focusOwnedSolo) return;
-		const expected = sorted[focusIndex]?.name ?? null;
-		if (current === expected) return;
+		if (current === focusedStack) return;
 		focusOwnedSolo = false;
 		if (!view.stackFocusPaused) view.stackFocusPaused = true;
 		focusProgress = 0;
 		focusStartedAt = Date.now();
-		if (current) {
-			const idx = sorted.findIndex((s) => s.name === current);
-			if (idx >= 0) focusIndex = idx;
-		}
+		if (current) focusedStack = current;
 	});
 
 	onMount(() => {
@@ -295,7 +316,10 @@
 		</div>
 		<small class="focus-count">
 			{#if sorted.length > 0 && focusRunning}
-				{Math.min(focusIndex + 1, sorted.length)} / {sorted.length}
+				{Math.min(
+					(focusedName ? sorted.findIndex((s) => s.name === focusedName) : -1) + 1 || 1,
+					sorted.length,
+				)} / {sorted.length}
 			{:else if sorted.length > 0}
 				{sorted.length}
 			{/if}

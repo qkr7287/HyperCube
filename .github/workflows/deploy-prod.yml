@@ -1,15 +1,19 @@
-# 16번 prod 자동 배포.
+# 63번 prod 자동 배포.
 #
-# Build and push images workflow 가 main 에서 성공하면, 16번 self-hosted
-# runner (label: hc16-prod) 가 /home/agics-ai/docker/hypercube 에서
-# IMAGE_TAG 갱신 + docker compose pull && up -d 실행.
+# main 이 움직이면 (또는 수동 trigger 시) 63번 self-hosted runner
+# (label: hc63-prod) 가 PROD_DIR 에서 IMAGE_TAG 갱신 + docker compose
+# pull && up -d 실행.
+#
+# 63번에는 dev (hypercube project, hc-* 컨테이너) 와 prod (hypercube-prod
+# project, hcprod-* 컨테이너) 가 한 머신에서 공존. 같은 GPU·네트워크 인프라
+# 공유, 다른 docker compose project 로 격리.
 #
 # Migration 은 backend container entrypoint 가 자동 처리 (manage.py migrate).
 #
-# 수동 실행: GitHub Actions 탭에서 "Deploy to 16 prod" → Run workflow.
-#  - sha 입력란에 특정 commit 으로 pin 가능. 비우면 latest main HEAD.
+# 수동 실행: GitHub Actions 탭 → "Deploy to 63 prod" → Run workflow.
+#  - sha 입력란에 특정 commit 으로 pin 가능. 비우면 main HEAD.
 
-name: Deploy to 16 prod
+name: Deploy to 63 prod
 
 on:
   workflow_run:
@@ -27,12 +31,12 @@ jobs:
   deploy:
     # 자동 trigger 면 build 가 success 일 때만. 수동 trigger 는 무조건.
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-    runs-on: [self-hosted, hc16-prod]
+    runs-on: [self-hosted, hc63-prod]
     timeout-minutes: 15
 
     env:
-      PROD_DIR: /home/agics-ai/docker/hypercube
-      HEALTHCHECK_URL: http://localhost:3334/hypercube/
+      PROD_DIR: /home/agics/docker/hypercube-prod
+      HEALTHCHECK_URL: http://localhost:37003/api/health/
 
     steps:
       - name: Determine target SHA
@@ -78,17 +82,17 @@ jobs:
             sleep 5
           done
           echo "Health check failed. Backend logs:"
-          docker logs hc-backend --tail 80 || true
+          docker logs hcprod-backend --tail 80 || true
           exit 1
 
       - name: Migration log tail
         if: always()
-        run: docker logs hc-backend --tail 30 2>&1 | grep -E "Applying|migrat|ERROR" | tail -20 || true
+        run: docker logs hcprod-backend --tail 30 2>&1 | grep -E "Applying|migrat|ERROR" | tail -20 || true
 
       - name: Summary
         if: always()
         run: |
-          echo "### Deploy to 16 prod" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Deploy to 63 prod" >> "$GITHUB_STEP_SUMMARY"
           echo "- Image tag: \`sha-${{ steps.target.outputs.short }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- URL: $HEALTHCHECK_URL" >> "$GITHUB_STEP_SUMMARY"
           echo "- Status: ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"

@@ -13,6 +13,14 @@ Bidirectional command routing over WebSocket. 명령은 두 출처에서 발행�
 
 응답은 `command_response` (최종 결과) 또는 `command_progress` (진행률, 장기 명령 한정). 자세한 envelope과 routing 동작은 `agent-payload-contract.md` 참조.
 
+Agent가 backend에 직접 push하는 telemetry 메시지 중 `capacity_report`는
+command 응답이 아니다. `MonitoringConsumer`가 수신 즉시 `Agent.cpu_cores`,
+`ram_total_mb`, `disk_total_gb`, `workspace_pool_total_gb`,
+`workspace_pool_free_gb`, `workspace_pool_mount`,
+`workspace_hard_enforcement`, `nic_speed_mbps`, `filesystem`,
+`capacity_updated_at`을 갱신한다. 전체 schema는
+`agent-payload-contract.md`의 `type: capacity_report`를 따른다.
+
 ## Envelope
 
 ```
@@ -134,10 +142,12 @@ Agent   → Backend → Browser: {"type": "command_progress", "requestId": "<uui
 **params**
 | field      | type   | required | notes                                                    |
 |------------|--------|----------|----------------------------------------------------------|
-| subCommand | string | yes      | `cpu_detail` \| `processes` \| `network_detail` \| `users` |
+| subCommand | string | yes      | `cpu_detail` \| `processes` \| `network_detail` \| `users` \| `gpu_inventory` |
 | sortBy     | string | no       | `processes`만 — `cpu` (default) 또는 `mem`                 |
 
 Invalid `subCommand` → `"Invalid subCommand: <x>. Valid: cpu_detail, processes, network_detail, users"`.
+
+Current valid set also includes `gpu_inventory`.
 
 #### 4.1 `cpu_detail`
 
@@ -232,6 +242,200 @@ Invalid `subCommand` → `"Invalid subCommand: <x>. Valid: cpu_detail, processes
 
 ---
 
+#### 4.5 `gpu_inventory`
+
+Backend dispatches this subCommand from Celery beat with a request id prefixed
+by `gpu-inventory:`. The response is consumed by HyperCube core inventory
+upsert logic and is not interpreted as a `ContainerRequest` response.
+
+**request**
+
+```json
+{
+  "type": "command",
+  "requestId": "gpu-inventory:<agent_id>:<uuid>",
+  "command": "system_info",
+  "params": { "subCommand": "gpu_inventory" }
+}
+```
+
+**success.data**
+
+```json
+{
+  "gpus": [
+    {
+      "index": 0,
+      "vendor": "NVIDIA",
+      "name": "NVIDIA GeForce RTX 4090",
+      "uuid": "GPU-...",
+      "pciBusId": "00000000:82:00.0",
+      "totalMemoryMb": 24564,
+      "driverVersion": "550.54.15",
+      "cudaVersion": "12.4",
+      "migCapable": false,
+      "migEnabled": false,
+      "slices": [
+        {
+          "kind": "full",
+          "deviceId": "GPU-...",
+          "profile": "",
+          "memoryMb": 24564
+        }
+      ]
+    }
+  ]
+}
+```
+
+If `nvidia-smi` or NVIDIA runtime discovery is unavailable, return
+`command_response { success:false, error:"nvidia-smi not available" }`.
+HyperCube core marks existing inventory for that agent offline and keeps other
+agent metrics working. If a host has no GPU, return `success:true` with
+`data.gpus=[]`.
+
+### 5. `logs_subscribe` / `logs_unsubscribe`
+
+Live log tail. 단발 명령이 아니라 long-running stream 시작/종료. `logs_subscribe`
+의 `requestId` 가 그대로 `streamId` 로 사용되고, 이후 모든 `log_chunk` /
+`log_stream_end` 메시지가 이 streamId 를 참조.
+
+#### `logs_subscribe` — params
+
+| field        | type    | required | default | notes                                         |
+|--------------|---------|----------|---------|-----------------------------------------------|
+| containerId  | string  | yes      |         | full ID 또는 short ID                         |
+| tail         | number  | no       | 100     | 시작 전 backfill 라인 수. 0 = 현재 시점부터만. |
+| since        | string  | no       |         | ISO8601 또는 relative (`5m`, `1h`, `30s`)     |
+| timestamps   | boolean | no       | true    | Docker timestamp prefix 포함                  |
+
+**즉시 응답**: `command_response { success:true, data:{ streamId, subscribed:true } }`. 이후 라인이 들어올 때마다 `log_chunk` 메시지가 흐름. 자연 종료 시 `log_stream_end` 1회.
+
+#### `logs_unsubscribe` — params
+
+| field    | type   | required | notes                                  |
+|----------|--------|----------|----------------------------------------|
+| streamId | string | yes      | 종료할 subscribe 의 `streamId` |
+
+**응답**: `command_response { success:true, data:{ ended:true, streamId } }`. unknown streamId 도 `success:true` (idempotent — agent 결정).
+
+`logs_unsubscribe` 로 인한 종료에는 `log_stream_end` emit 안 함.
+
+#### 메시지 schema
+
+`log_chunk`, `log_stream_end` 의 정확한 schema 와 backend routing 동작은
+`agent-payload-contract.md` 참조. 두 메시지 모두 **flat envelope** (data/timestamp 없음).
+
+---
+
+### 6. `container_processes`
+
+컨테이너 내부 프로세스 목록 (host 관찰 기반, minimal image 도 동작).
+
+**params**
+
+| field        | type   | required | default | notes                          |
+|--------------|--------|----------|---------|--------------------------------|
+| containerId  | string | yes      |         | full ID 또는 short ID          |
+| sortBy       | string | no       | `cpu`   | `cpu` \| `mem`. 그 외 → cpu fallback |
+| limit        | number | no       | 20      | 1~100 clamp                    |
+
+**success.data**
+
+```jsonc
+{
+  "containerId": "abc123def456",   // 12자 short ID
+  "total": 42,                     // limit 적용 전 전체 process 수
+  "processes": [
+    {
+      "pid": 1234,                  // host PID
+      "name": "redis-server",
+      "command": "redis-server *:6379",
+      "cpu_percent": 1.2,           // 코어 합산 (Docker stats 와 동일 정의)
+      "memory_rss": 12582912,       // bytes (RSS)
+      "state": "S",                 // /proc/<pid>/stat 의 state code
+      "user": "999"                 // uid (string)
+    }
+  ]
+}
+```
+
+**errors** — `containerId is required` / `container_not_found` / `container_not_running` (stopped 만, paused 는 정상 처리) / `permission_denied` / Dockerode 에러.
+
+**구현 (agent)**: `dockerode container.top()` 우선 (호스트 ps 사용 — 컨테이너 내부 ps 무관) + `/proc/<pid>/stat` 100ms 간격 2회 sample 로 CPU% 계산 + `/proc/<pid>/status` VmRSS 읽음. CLK_TCK=100 가정 (Linux x86/x64).
+
+---
+
+### 7. `exec_open` / `exec_input` / `exec_resize` / `exec_close`
+
+Web 기반 console (B4 Console exec). 컨테이너 안에 shell 을 띄워 양방향 stdin/stdout
+스트림을 WS 로 노출. `logs_subscribe` 패턴과 동일하게 `exec_open` 의 `requestId`
+가 그대로 `execId`(== streamId) 로 사용되어 이후 모든 `exec_chunk` / `exec_end`
+메시지가 이 키로 라우팅됨. 정책: 본인 소유 컨테이너에 한해 console 가능, 명령
+차단 없음 (Portainer 모델). 세션 audit 은 backend `ConsoleSession` 모델에만 기록.
+
+#### `exec_open` — params
+
+| field        | type    | required | default       | notes                                |
+|--------------|---------|----------|---------------|--------------------------------------|
+| containerId  | string  | yes      |               | full 또는 short ID                    |
+| cmd          | string[] | no      | `["/bin/sh"]` | 실행 명령. 예: `["/bin/bash"]`, `["sh","-lc","ls"]` |
+| user         | string  | no       |               | `--user` 옵션. UID 또는 `uid:gid`     |
+| tty          | boolean | no       | true          | TTY 할당 여부                          |
+| env          | string[] | no      |               | `["KEY=VAL", ...]`                    |
+| cols         | number  | no       | 80            | 초기 터미널 width                       |
+| rows         | number  | no       | 24            | 초기 터미널 height                      |
+
+**즉시 응답** (`command_response`):
+
+```json
+{ "success": true, "data": { "execId": "<requestId>", "ready": true } }
+```
+
+이후 stdout/stderr 가 발생할 때마다 `exec_chunk` 메시지가 흐름. 자연 종료
+(shell exit) 시 `exec_end` 1회.
+
+**errors** — `containerId is required`, `container_not_found`, `container_not_running`,
+`cmd_not_found` (`exec /bin/bash: no such file or directory`), dockerode 에러.
+
+#### `exec_input` — params
+
+| field    | type   | required | notes                                                        |
+|----------|--------|----------|--------------------------------------------------------------|
+| execId   | string | yes      | exec_open 의 requestId                                       |
+| data     | string | yes      | **base64** encoded raw bytes (binary safe, Ctrl 키 / UTF-8) |
+
+응답: `command_response { success: true, data: { execId, wrote: <bytes> } }`.
+unknown execId → `success: false, error: "unknown execId"`.
+
+#### `exec_resize` — params
+
+| field   | type   | required | notes      |
+|---------|--------|----------|------------|
+| execId  | string | yes      |            |
+| cols    | number | yes      | 1~500      |
+| rows    | number | yes      | 1~200      |
+
+응답: `command_response { success: true, data: { execId, resized: true } }`.
+
+#### `exec_close` — params
+
+| field   | type   | required | notes                       |
+|---------|--------|----------|-----------------------------|
+| execId  | string | yes      | 종료할 exec 의 execId       |
+
+응답: `command_response { success: true, data: { execId, closed: true } }`.
+unknown execId 도 `success: true` (idempotent — agent 결정). `exec_close` 로
+인한 종료에는 `exec_end` 도 emit (exitCode 전달 필요).
+
+#### 메시지 schema
+
+`exec_chunk`, `exec_end` 의 정확한 schema 와 backend routing 동작은
+`agent-payload-contract.md` 참조. 두 메시지 모두 **flat envelope** (data/timestamp
+없음, `log_chunk` 와 동일 형식).
+
+---
+
 ## Commands — 컨테이너 배포 (Backend dispatch)
 
 `apps.containers.viewsets.ContainerRequestViewSet.approve`에서 admin이 요청을 승인하면 자동 발송.
@@ -277,6 +481,22 @@ Docker Compose 프로젝트 배포. `ContainerTemplate.kind == "compose"`인 템
 | env      | object  | no       | env vars                             |
 | ports    | array   | no       | `[{"HostPort": "8080", "ContainerPort": "80"}, ...]` (dict 형식만) |
 | volumes  | array   | no       | template의 default_volumes            |
+
+Additional optional GPU parameter for ML Workspace Track 2:
+
+```json
+{
+  "gpus": [
+    { "deviceId": "GPU-...", "kind": "full" }
+  ]
+}
+```
+
+Empty or missing `gpus` means no GPU. When `gpus` is present, HyperCube core has
+already reserved the selected `GpuSlice` rows. Agent must fail clearly if a
+requested `deviceId` is not present or NVIDIA runtime setup is missing. Core
+moves the allocation from `reserved` to `active` only after this command
+succeeds; failure marks reserved allocations failed.
 
 **success.data**
 ```json
@@ -326,7 +546,217 @@ Backend → Agent dispatch (`ContainerRequestViewSet._dispatch_to_agent`):
 3. `channel_layer.send(agent_channel, {"type": "ws.send", "payload": {...command...}})`
 4. Agent 응답 시 위 routing 표대로 처리. browser_channel이 `__api__`이면 forward 생략, DB 갱신만.
 
+### 8. `update_container`
+
+컨테이너 자원 한도 / 재시작 정책 즉시 변경 (재시작 없음). Portainer container
+settings parity. Dockerode `container.update()` 호출.
+
+**params**
+
+| field | type | required | notes |
+|-------|------|----------|-------|
+| containerId | string | yes | full 또는 short ID |
+| memory_mb | number | no | MB. 0 = unlimited. 미전송 = 변경 X |
+| cpu_percent | number | no | 100 = 1 core. 0 = unlimited |
+| restart_policy | string | no | `no` \| `on-failure` \| `unless-stopped` \| `always` |
+| restart_max_retry | number | no | on-failure 일 때만 의미 |
+
+**success.data**
+
+```json
+{
+  "containerId": "abc123def456",
+  "warnings": [],
+  "updated": { "memory_mb": 256, "cpu_percent": 50, "restart_policy": "unless-stopped" }
+}
+```
+
+errors: `containerId is required`, `container_not_found`, dockerode 에러 forward.
+
+agent 구현: `Memory = memory_mb * 1024 * 1024`, `CpuPeriod = 100000`,
+`CpuQuota = cpu_percent * 1000`, `RestartPolicy = { Name, MaximumRetryCount }`.
+
+---
+
 ## 변경 이력
 
+- 2026-05-11: `update_container` (P0 — Resource limit edit) 추가. memory/cpu/restart 한 명령 patch. dockerode container.update() 위임.
+- 2026-05-11: `exec_open` / `exec_input` / `exec_resize` / `exec_close` (B4 Console exec) 추가. `execId == streamId` 라우팅 패턴 (`logs_subscribe` 재사용).
 - 2026-04-29 (`7f82ff8`): `compose_up`, `create_container`, `delete_container` 추가 (Backend dispatch). routing 동작 표 추가.
 - 2026-03-31: 초안 (Browser-issued 4개 command).
+## Workspace/Jupyter extension
+
+`create_container.params.workspace` is optional. Existing agents must preserve
+the old behavior when it is absent.
+
+Resource-limit create requests also include `params.hostConfig`:
+
+```json
+{
+  "hostConfig": {
+    "memory": 17179869184,
+    "memorySwap": 17179869184,
+    "cpuQuota": 400000,
+    "cpuPeriod": 100000,
+    "oomKillDisable": false
+  },
+  "workspace": {
+    "hardGb": 100,
+    "mountTarget": "/workspace"
+  },
+  "sharedMounts": [
+    {"source": "/mnt/datasets", "target": "/datasets", "readOnly": true},
+    {"source": "/mnt/models", "target": "/models", "readOnly": true}
+  ]
+}
+```
+
+`workspace.hardGb` and `sharedMounts` are omitted when the target Agent has no
+workspace quota pool (`workspace_pool_total_gb` null). The backend accepts both
+legacy `command_response` and the agent sprint message `create_container_result`.
+Include `requestId` whenever possible; if it is absent, backend only updates an
+already-known `Container` by `containerId` and `data.workspace.path`
+(`data.workspace.device` is still accepted as a legacy alias).
+
+```json
+{
+  "workspace": {
+    "kind": "jupyter",
+    "token": "<plaintext token, do not log>",
+    "port": 8888,
+    "baseUrl": "/workspace/<container-request-id>/",
+    "workdir": "/workspace"
+  },
+  "networkPolicy": "internal_only"
+}
+```
+
+The agent should inject the token/base URL/port into the image runtime and
+return workspace reachability metadata. For normal workspaces, bind the
+workspace port to a host port reachable from HyperCube backend and return:
+
+```json
+{
+  "workspace": {
+    "kind": "jupyter",
+    "hostPort": 39021,
+    "internalPort": 8888,
+    "baseUrl": "/workspace/<container-request-id>/",
+    "health": {}
+  }
+}
+```
+
+For `networkPolicy=internal_only`, the agent must not publish the workspace
+port on the host. The workspace container should be attached to the shared
+Docker internal network used by the backend, and the backend will reach it via
+Docker DNS:
+
+```json
+{
+  "workspace": {
+    "kind": "jupyter",
+    "hostPort": null,
+    "internalPort": 8888,
+    "baseUrl": "/workspace/<container-request-id>/",
+    "health": {
+      "networkPolicy": "internal_only",
+      "networkName": "hc-ml-internal"
+    }
+  }
+}
+```
+
+The backend falls back to `<container name>:<internalPort>` for internal-only
+workspace upstreams. `hc-backend` must be joined to `hc-ml-internal` for this
+path to work.
+
+The backend stores only `workspace_token_ref` in Postgres
+(`workspace_runtime_expires_at` / `workspace_token_expires_at` are kept on the
+model for backwards-compat but are always `NULL` under the lifecycle-bound
+workspace model). The plaintext token exists in Redis without a TTL and in
+the agent command payload only; it is removed from Redis when the container
+is deleted.
+
+## Model Prepare Extension
+
+`prepare_model_assets` is a separate command. It is never folded into
+`create_container`. HyperCube core uses `ModelPrepareJob.id` as the
+`requestId`, so every `command_progress` and final `command_response` for a
+prepare operation must echo that job id.
+
+Example command:
+
+```json
+{
+  "type": "command",
+  "requestId": "<model-prepare-job-id>",
+  "command": "prepare_model_assets",
+  "params": {
+    "jobId": "<model-prepare-job-id>",
+    "transferMode": "backend_stream",
+    "assets": [
+      {
+        "versionId": "<model-version-id>",
+        "assetSlug": "tiny-local-model",
+        "version": "v1",
+        "sizeBytes": 1234,
+        "sha256": "<sha256>",
+        "checksum": "<sha256>",
+        "source": {
+          "type": "backend_stream",
+          "contentUrl": "/api/model-versions/<model-version-id>/content/",
+          "auth": "agent_bearer",
+          "sha256": "<sha256>",
+          "checksum": "<sha256>",
+          "sizeBytes": 1234
+        },
+        "mountPath": "/workspace/models/tiny-local-model@v1"
+      }
+    ]
+  }
+}
+```
+
+The agent must call the content URL with its approved agent token in an
+Authorization bearer header. The token must not be placed in a query string.
+The agent writes to a temp path, verifies SHA256, then atomically moves into its
+local cache.
+
+`assets[].sha256` is the canonical checksum. `assets[].checksum`,
+`assets[].source.sha256`, and `assets[].source.checksum` are sent as
+compatibility aliases for agent builds that validate the checksum near the
+stream source object.
+
+Successful response:
+
+```json
+{
+  "type": "command_response",
+  "requestId": "<model-prepare-job-id>",
+  "success": true,
+  "data": {
+    "cachePath": "/var/lib/hypercube-agent/model-cache/tiny-local-model/v1",
+    "sha256": "<sha256>"
+  }
+}
+```
+
+After all prepare jobs for a `ContainerRequest` are ready, the backend dispatches
+`create_container` with:
+
+```json
+{
+  "modelMounts": [
+    {
+      "versionId": "<model-version-id>",
+      "assetSlug": "tiny-local-model",
+      "sourcePath": "/var/lib/hypercube-agent/model-cache/tiny-local-model/v1",
+      "mountPath": "/workspace/models/tiny-local-model@v1",
+      "readOnly": true,
+      "sha256": "<sha256>",
+      "sizeBytes": 1234
+    }
+  ]
+}
+```

@@ -85,9 +85,9 @@ export class NetworkHub extends Hub {
 	private visibleTrafficLevel = 0;
 	private pulseTime = 0;
 	private readonly baseScale = new THREE.Vector3(1, 1, 1);
-	private readonly anchorBox = new THREE.Box3();
-	private readonly anchorCenter = new THREE.Vector3();
-	private readonly anchorSize = new THREE.Vector3();
+	private readonly coreAnchorBox = new THREE.Box3();
+	private readonly coreAnchorCenter = new THREE.Vector3();
+	private readonly coreAnchorSize = new THREE.Vector3();
 	private readonly baseOpacity = 0.9;
 	private readonly baseEmissiveIntensity = 0.45;
 
@@ -112,8 +112,24 @@ export class NetworkHub extends Hub {
 				const mesh = child as THREE.Mesh;
 				if (!mesh.isMesh) return;
 				mesh.material = cloneMaterialSet(mesh.material, materials);
-				mesh.renderOrder = 12;
 			});
+			// At rest, the hub renders in the OPAQUE pass (same as
+			// StackHub / VolumeHub). Earlier this stayed in the transparent
+			// pass at all times because tick() unconditionally set
+			// `transparent = true`, and that pass sorts by camera distance —
+			// the GroupMesh membrane (also transparent, depthWrite:false)
+			// then "won" the sort whenever the hub sat behind it, so the
+			// hub appeared to layer ON TOP of the membrane regardless of z.
+			// Forcing opaque + depthWrite here puts the hub firmly into the
+			// opaque pass; tick() flips back to transparent only while the
+			// dim/focus fade or traffic FX is actively modulating opacity.
+			for (const mat of materials) {
+				mat.transparent = false;
+				mat.opacity = 1;
+				mat.depthTest = true;
+				mat.depthWrite = true;
+				mat.needsUpdate = true;
+			}
 		} else {
 			const mat = new THREE.MeshStandardMaterial(params);
 			object = new THREE.Mesh(FALLBACK_GEOMETRY, mat);
@@ -217,7 +233,8 @@ export class NetworkHub extends Hub {
 		group.add(crownGroup);
 		group.add(rippleGroup);
 		group.add(latticeGroup);
-		group.renderOrder = 12;
+		// (renderOrder is set by Entity ctor; explicit assignment here is
+		// redundant and was misleading — see traverse comment above.)
 
 		super(group);
 		this.id = `network:${data.name}`;
@@ -244,17 +261,17 @@ export class NetworkHub extends Hub {
 
 	override getWorldAnchor(): THREE.Vector3 {
 		this.coreObject.updateMatrixWorld(true);
-		this.anchorBox.setFromObject(this.coreObject);
-		if (!this.anchorBox.isEmpty()) {
-			this.anchorBox.getSize(this.anchorSize);
-			this.anchorCenter.set(
-				(this.anchorBox.min.x + this.anchorBox.max.x) * 0.5,
-				this.anchorBox.min.y + this.anchorSize.y * NetworkHub.ANCHOR_HEIGHT_RATIO,
-				(this.anchorBox.min.z + this.anchorBox.max.z) * 0.5
+		this.coreAnchorBox.setFromObject(this.coreObject);
+		if (!this.coreAnchorBox.isEmpty()) {
+			this.coreAnchorBox.getSize(this.coreAnchorSize);
+			this.coreAnchorCenter.set(
+				(this.coreAnchorBox.min.x + this.coreAnchorBox.max.x) * 0.5,
+				this.coreAnchorBox.min.y + this.coreAnchorSize.y * NetworkHub.ANCHOR_HEIGHT_RATIO,
+				(this.coreAnchorBox.min.z + this.coreAnchorBox.max.z) * 0.5
 			);
-			return this.anchorCenter;
+			return this.coreAnchorCenter;
 		}
-		return this.coreObject.getWorldPosition(this.anchorCenter);
+		return this.coreObject.getWorldPosition(this.coreAnchorCenter);
 	}
 
 	setFxMode(mode: NetworkHubFxMode): void {
@@ -302,11 +319,21 @@ export class NetworkHub extends Hub {
 
 		const dim = this.currentOpacity;
 		const boost = this.currentEmissiveBoost;
+		// Only flip into the transparent pass when something is actually
+		// modulating the hub's opacity (dim fade or traffic-driven brighten).
+		// Otherwise leave the GLB materials in the opaque pass so the depth
+		// buffer correctly orders them against the GroupMesh membrane.
+		const needsAlpha = dim < 0.999 || displayLevel > 0.001 || !this.usesTemplate;
+		const targetOpacity = needsAlpha
+			? THREE.MathUtils.clamp(this.baseOpacity + displayLevel * 0.06, 0.25, 1) * dim
+			: 1;
 		for (const mat of this.materials) {
-			mat.transparent = true;
-			mat.needsUpdate = true;
-			mat.opacity =
-				THREE.MathUtils.clamp(this.baseOpacity + displayLevel * 0.06, 0.25, 1) * dim;
+			const wantTransparent = needsAlpha;
+			if (mat.transparent !== wantTransparent) {
+				mat.transparent = wantTransparent;
+				mat.needsUpdate = true;
+			}
+			mat.opacity = targetOpacity;
 			if (!this.usesTemplate) {
 				mat.emissiveIntensity =
 					(this.baseEmissiveIntensity + displayLevel * 0.62 + pulse * displayLevel * 0.28) *
