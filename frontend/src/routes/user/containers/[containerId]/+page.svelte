@@ -1966,17 +1966,20 @@
 	   caption 라벨이 좌측 상단, 메인 영역은 단순 row. */
 	.ops-bar {
 		margin-top: 0;
-		padding: clamp(7px, 0.45vw, 9px) clamp(6px, 0.45vw, 9px);
+		padding: clamp(6px, 0.4vw, 8px) clamp(6px, 0.45vw, 9px);
 		border-radius: 10px;
 		background:
 			linear-gradient(135deg, rgba(48, 213, 200, 0.09), transparent 38%),
 			linear-gradient(180deg, rgba(13, 17, 23, 0.55), rgba(18, 23, 32, 0.98)),
 			rgba(18, 23, 32, 0.98);
 		border: 1px solid var(--border);
+		/* space-between 은 box 가 KPI 높이에 stretch 되면서 row 사이에 과도한
+		   빈 공간을 만든다. content 를 top 으로 정렬하고 explicit gap 으로만
+		   간격을 잡으면 카드/액션이 한 덩어리로 묶여 보인다. */
 		display: grid;
 		grid-template-rows: auto auto auto;
-		align-content: space-between;
-		gap: 6px;
+		align-content: start;
+		gap: 7px;
 		flex: 0.55 1 280px;
 		min-width: 260px;
 		max-width: 360px;
@@ -1993,7 +1996,7 @@
 		justify-content: space-between;
 		gap: 8px;
 		min-width: 0;
-		padding-bottom: 5px;
+		padding-bottom: 4px;
 		border-bottom: 1px solid rgba(100, 116, 139, 0.14);
 	}
 
@@ -2091,17 +2094,17 @@
 	.ops-quick {
 		display: grid;
 		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 6px;
+		gap: 5px;
 		width: 100%;
 	}
 	.ops-quick span {
 		display: flex;
 		flex-direction: column;
 		justify-content: center;
-		gap: 3px;
+		gap: 2px;
 		min-width: 0;
-		min-height: 46px;
-		padding: 5px 8px;
+		min-height: 0;
+		padding: 4px 7px;
 		border-radius: 8px;
 		background: rgba(2, 6, 12, 0.3);
 		border: 1px solid rgba(100, 116, 139, 0.14);
@@ -2117,7 +2120,7 @@
 	.ops-quick b {
 		display: block;
 		color: var(--text-muted);
-		font-size: 11px;
+		font-size: 10.5px;
 		font-weight: 900;
 		letter-spacing: 0;
 	}
