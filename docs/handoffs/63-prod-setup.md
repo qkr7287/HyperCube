@@ -9,7 +9,7 @@
 |---|---|---|
 | Compose project | `hypercube` | `hypercube-prod` |
 | Container name | `hc-postgres`, `hc-backend`, ... | `hcprod-postgres`, `hcprod-backend`, ... |
-| Source 위치 | `/home/agics/ts/HyperCube` (mutagen sync) | `/home/agics/docker/hypercube-prod` (image-only) |
+| Source 위치 | `/home/agics/ts/HyperCube` (mutagen sync) | `/docker/hypercube-prod` (image-only) |
 | 포트 노출 | frontend 33000 / backend 38000 / pg 35432 / redis 36379 | nginx **37003** (단일) |
 | 네트워크 | `hc-network` (project-scoped) + `hc-ml-internal` (external 공유) | 동일 — external `hc-ml-internal` 만 공유 |
 | GHCR image | (build 안 함, source bind-mount) | `ghcr.io/qkr7287/hypercube-{backend,nginx}:latest` |
@@ -18,11 +18,11 @@
 
 ## 1. 한 번만 — prod 디렉터리 + .env
 
-이미 `/home/agics/docker/hypercube-prod/{docker-compose.yml,.env}` 가 복사돼 있다. .env 를 실제 값으로 채워야 함:
+이미 `/docker/hypercube-prod/{docker-compose.yml,.env}` 가 복사돼 있다. .env 를 실제 값으로 채워야 함:
 
 ```bash
 ssh hc-dev-63
-cd /home/agics/docker/hypercube-prod
+cd /docker/hypercube-prod
 # secret 생성:
 python3 -c "import secrets; print(secrets.token_urlsafe(50))"   # → DJANGO_SECRET_KEY 에 붙여넣기
 python3 -c "import secrets; print(secrets.token_urlsafe(24))"   # → DB_PASSWORD 에 붙여넣기
@@ -71,7 +71,7 @@ main 에 머지된 직후, GitHub Actions 탭 → "Deploy to 63 prod" → Run wo
 또는 수동으로 63에서:
 
 ```bash
-cd /home/agics/docker/hypercube-prod
+cd /docker/hypercube-prod
 docker compose pull
 docker compose up -d
 docker ps --filter "name=hcprod-"   # hcprod-postgres hcprod-redis hcprod-backend hcprod-celery-* hcprod-nginx 다 Up
@@ -93,7 +93,7 @@ main 에 push (또는 PR 머지) → `Build and push images` workflow 가 GHCR �
 
 - `docker compose down` 할 때 **반드시 디렉터리를 명시**:
   - dev: `cd /home/agics/ts/HyperCube && docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.dev down`
-  - prod: `cd /home/agics/docker/hypercube-prod && docker compose down`
+  - prod: `cd /docker/hypercube-prod && docker compose down`
   - 둘은 다른 compose project 라 한쪽 명령이 다른 쪽 영향 X.
 - prod 컨테이너는 `hcprod-*` prefix 라 dev 의 `hc-*` 와 절대 충돌 X.
 - `hc-ml-internal` 네트워크는 공유 — agent / 사용자 workspace 컨테이너가 둘 다 reach 가능.

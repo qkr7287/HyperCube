@@ -35,7 +35,7 @@ jobs:
     timeout-minutes: 15
 
     env:
-      PROD_DIR: /home/agics/docker/hypercube-prod
+      PROD_DIR: /docker/hypercube-prod
       HEALTHCHECK_URL: http://localhost:37003/api/health/
 
     steps:
