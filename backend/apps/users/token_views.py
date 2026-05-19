@@ -11,9 +11,18 @@ from .token_serializers import CustomTokenObtainPairSerializer
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
-    """로그인: JWT access + refresh 토큰 발급 (user 정보 포함)"""
+    """로그인: JWT access + refresh 토큰 발급 (user 정보 포함).
+
+    DRF 의 ``DEFAULT_AUTHENTICATION_CLASSES`` 에 ``SessionAuthentication`` 이
+    포함돼 있어 모든 unsafe POST 가 CSRF 검증을 거치는데, 외부 IP/포트포워딩
+    (예: 106.255.245.242:3334 → 192.168.0.63:37003) 으로 접속하면 그 Origin
+    이 ``CSRF_TRUSTED_ORIGINS`` 에 없는 한 403 으로 끊긴다. 로그인 endpoint
+    는 정의상 인증 자체를 받는 자리라 session 인증 의존이 의미가 없으므로
+    인증 클래스를 비워 CSRF 체인 자체를 우회한다.
+    """
 
     serializer_class = CustomTokenObtainPairSerializer
+    authentication_classes: list = []
 
 
 class LogoutView(APIView):
