@@ -240,7 +240,14 @@ def _workspace_quota_payload(req_obj: ContainerRequest) -> dict | None:
     if not req_obj.workspace_gb:
         return None
     agent = req_obj.target_agent
-    if not agent or not getattr(agent, "workspace_pool_total_gb", None):
+    # pool 보고 + hard enforcement (prjquota) 둘 다 있어야 quota payload 를 보낸다.
+    # prjquota 없는 mount 에 보내면 agent 의 xfs_quota 호출이 실패해 create 가
+    # 죽으므로, enforce 가능한 호스트에만 보낸다.
+    if (
+        not agent
+        or not getattr(agent, "workspace_pool_total_gb", None)
+        or not getattr(agent, "workspace_hard_enforcement", False)
+    ):
         return None
     # mountTarget 은 템플릿의 data_mount_path 로 — ML 워크스페이스는 /workspace,
     # Redis 는 /data 등 컨테이너마다 데이터 경로가 다르다. 템플릿이 없거나 값이

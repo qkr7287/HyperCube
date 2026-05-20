@@ -1047,7 +1047,13 @@ def _container_limit_defaults_from_request(req, updated_at) -> dict:
 def _agent_supports_workspace_quota(agent) -> bool:
     if agent is None:
         return False
-    return bool(getattr(agent, "workspace_pool_total_gb", None))
+    # pool 이 있어도 hard enforcement (prjquota 마운트) 가 아니면 quota 한도는
+    # 실제로 강제되지 않는다. agent 도 prjquota 없는 mount 에 xfs_quota 를
+    # 걸려다 create 가 실패하므로, 두 조건을 모두 요구한다.
+    return bool(
+        getattr(agent, "workspace_pool_total_gb", None)
+        and getattr(agent, "workspace_hard_enforcement", False)
+    )
 
 
 def _command_response_from_create_result(data: dict) -> dict:
