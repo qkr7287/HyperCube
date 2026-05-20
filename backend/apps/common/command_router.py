@@ -7,6 +7,8 @@
 
 import json
 import logging
+import time
+import uuid
 from typing import Optional
 
 from apps.common.redis_client import get_redis_client
@@ -63,6 +65,45 @@ def pop_pending(request_id: str) -> Optional[dict]:
     except json.JSONDecodeError:
         logger.warning("Malformed pending entry for %s", request_id)
         return None
+
+
+def dispatch_command_and_wait(
+    server_id: str, command: str, params: dict, *, timeout: int = 15
+) -> dict:
+    """REST 컨텍스트에서 Agent 로 command 발송 + 응답 동기 대기.
+
+    Agent 오프라인이면 즉시 fail, timeout 도달 시 success=False/error="timeout".
+    """
+    from asgiref.sync import async_to_sync
+    from channels.layers import get_channel_layer
+
+    agent_channel = get_agent_channel(server_id)
+    if not agent_channel:
+        return {"success": False, "error": "agent_offline"}
+
+    request_id = str(uuid.uuid4())
+    record_pending(request_id, REST_SENTINEL, server_id)
+    payload = {
+        "type": "command",
+        "requestId": request_id,
+        "command": command,
+        "params": params,
+    }
+    try:
+        async_to_sync(get_channel_layer().send)(
+            agent_channel, {"type": "ws.send", "payload": payload}
+        )
+    except Exception:
+        logger.exception("[cmd] dispatch failed cmd=%s", command)
+        return {"success": False, "error": "dispatch_failed"}
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        resp = fetch_response(request_id)
+        if resp is not None:
+            return resp
+        time.sleep(0.1)
+    return {"success": False, "error": "timeout"}
 
 
 def store_response(request_id: str, response: dict, ttl: int = RESPONSE_TTL) -> None:

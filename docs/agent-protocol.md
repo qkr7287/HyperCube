@@ -294,6 +294,28 @@ HyperCube core marks existing inventory for that agent offline and keeps other
 agent metrics working. If a host has no GPU, return `success:true` with
 `data.gpus=[]`.
 
+### 4b. `host_port_scan`
+
+호스트의 TCP LISTEN 포트 목록. `params` 없음.
+
+```json
+{
+  "type": "command_response",
+  "requestId": "<uuid>",
+  "success": true,
+  "data": {
+    "ports": [
+      { "port": 22, "proto": "tcp" },
+      { "port": 8888, "proto": "tcp" }
+    ]
+  }
+}
+```
+
+agent 가 `/proc/net/tcp{,6}` 를 파싱해 LISTEN 상태 포트만 보고. `ports` 는
+오름차순 정렬 + IPv4/IPv6 중복 제거. backend 의 `/api/agents/{id}/used-ports/`
+가 이 결과를 HyperCube-managed 포트와 합쳐 `coverage=full` 로 응답한다.
+
 ### 5. `logs_subscribe` / `logs_unsubscribe`
 
 Live log tail. 단발 명령이 아니라 long-running stream 시작/종료. `logs_subscribe`

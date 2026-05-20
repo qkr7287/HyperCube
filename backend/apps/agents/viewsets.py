@@ -252,23 +252,45 @@ class AgentViewSet(ModelViewSet):
     @extend_schema(
         summary="Agent host port usage",
         description=(
-            "Host ports HyperCube knows to be in use on this agent — running "
-            "containers and pending/approved requests. Does not include ports "
-            "held by non-HyperCube processes (coverage=hypercube-only)."
+            "Host ports in use on this agent. Combines HyperCube-managed ports "
+            "(running containers + pending/approved requests) with an on-demand "
+            "host_port_scan of the agent's TCP LISTEN ports. coverage=full when "
+            "the agent answered the scan, hypercube-only when it did not."
         ),
     )
     @action(detail=True, methods=["get"], url_path="used-ports")
     def used_ports(self, request, pk=None):
+        from apps.common import command_router
         from apps.containers.services.host_ports import collect_managed_host_ports
 
         agent = self.get_object()
         seen: dict[tuple, dict] = {}
         for entry in collect_managed_host_ports(agent):
             seen.setdefault((entry["port"], entry["proto"]), entry)
+
+        # agent 의 host_port_scan 으로 host 전체 TCP LISTEN 포트를 합친다.
+        # 오프라인/타임아웃이면 HyperCube-known 포트만으로 응답.
+        coverage = "hypercube-only"
+        scan = command_router.dispatch_command_and_wait(
+            str(agent.id), "host_port_scan", {}
+        )
+        if scan.get("success"):
+            for entry in (scan.get("data") or {}).get("ports", []):
+                try:
+                    port = int(entry["port"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                proto = str(entry.get("proto") or "tcp")
+                seen.setdefault(
+                    (port, proto),
+                    {"port": port, "proto": proto, "source": "host-scan"},
+                )
+            coverage = "full"
+
         ports = sorted(seen.values(), key=lambda entry: entry["port"])
         return Response({
             "agent": str(agent.id),
             "hostname": agent.hostname,
             "used_ports": ports,
-            "coverage": "hypercube-only",
+            "coverage": coverage,
         })

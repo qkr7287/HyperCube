@@ -11,7 +11,7 @@ verify: cd backend && python -c "from config.urls import urlpatterns; print('\n'
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
 | `/api/agents/{id}/gpus/` | GET | Authenticated | Latest GPU devices and allocatable slices reported by the Agent. |
-| `/api/agents/{id}/used-ports/` | GET | Authenticated | Host ports HyperCube knows to be in use on the agent (running containers + pending/approved requests). Response: `{agent, hostname, used_ports:[{port,proto,source}], coverage}`. `coverage=hypercube-only` — non-HyperCube processes are not included. |
+| `/api/agents/{id}/used-ports/` | GET | Authenticated | Host ports in use on the agent. HyperCube-managed ports (running containers + pending/approved requests) merged with an on-demand `host_port_scan`. Response: `{agent, hostname, used_ports:[{port,proto,source}], coverage}`. `coverage=full` when the agent answered the scan, `hypercube-only` when offline/timeout. |
 
 ## GPU Allocation Request Fields
 
