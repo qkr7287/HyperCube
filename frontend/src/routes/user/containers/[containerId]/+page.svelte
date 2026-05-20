@@ -1425,6 +1425,9 @@
 			onclose={() => (limitModalOpen = false)}
 			onsaved={() => {
 				showActionMsg('자원 한도 수정 완료', 'success', 3500);
+				// loadDetail 로 container 를 refetch 해야 KPI limit chip 이 새 값으로
+				// 갱신된다 (chip 은 container.cpu_percent_limit 등에서 읽음).
+				loadDetail();
 				loadInspect({ silent: true });
 			}}
 		/>
