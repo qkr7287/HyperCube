@@ -157,7 +157,7 @@ describe('ContainerKpiBar', () => {
 		expect(hero.textContent).toMatch(/M/);
 	});
 
-	it('shows quota limit chips and used over limit raw text', () => {
+	it('hero raw text shows used over quota limit', () => {
 		const { container } = render(ContainerKpiBar, {
 			props: {
 				...baseProps,
@@ -167,16 +167,14 @@ describe('ContainerKpiBar', () => {
 		});
 		const cpuCard = container.querySelectorAll('.kpi')[0] as HTMLElement;
 		const memCard = container.querySelectorAll('.kpi')[1] as HTMLElement;
-		expect(cpuCard.querySelector('.limit-chip')?.textContent).toContain('limit 4 cores');
-		expect(memCard.querySelector('.limit-chip')?.textContent).toContain('limit 16 GB');
 		expect(cpuCard.querySelector('.kpi-hero')?.textContent).toContain('/ 4 cores');
 		expect(memCard.querySelector('.kpi-hero')?.textContent).toContain('/ 16G');
 	});
 
-	it('shows unlimited when container limit fields are missing', () => {
+	it('hero raw shows a bare value (no "/ limit") when limit fields are missing', () => {
 		const { container } = render(ContainerKpiBar, { props: baseProps });
 		const cpuCard = container.querySelectorAll('.kpi')[0] as HTMLElement;
-		expect(cpuCard.querySelector('.limit-chip')?.textContent).toContain('unlimited');
+		expect(cpuCard.querySelector('.kpi-hero')?.textContent ?? '').not.toContain('/');
 	});
 
 	it('disk card shows workspace quota usage when workspace metric exists', () => {
@@ -194,7 +192,8 @@ describe('ContainerKpiBar', () => {
 		const cards = container.querySelectorAll('.kpi');
 		expect(cards.length).toBe(4);
 		expect(screen.getByText('디스크')).toBeInTheDocument();
-		expect([...container.querySelectorAll('.limit-chip')].some((el) => el.textContent?.includes('limit 100 GB'))).toBe(true);
+		const diskCard = cards[3] as HTMLElement;
+		expect(diskCard.querySelector('.kpi-hero')?.textContent).toContain('/ 100 GB');
 	});
 
 	it('falls back to legacy sizeGb wire from a pre-rework agent', () => {

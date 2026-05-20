@@ -373,9 +373,6 @@
 				<span class="kpi-chip" data-level={opts.level} title="상태 {levelLabel(opts.level)}">
 					{levelLabel(opts.level)}
 				</span>
-				{#if opts.limitText}
-					<span class="limit-chip" title={opts.denominatorText || opts.limitText}>{opts.limitText}</span>
-				{/if}
 			</span>
 		</header>
 
@@ -649,11 +646,23 @@
 		--border-soft: rgba(100, 116, 139, 0.18);
 		--font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(clamp(140px, 7.5vw, 180px), 1fr));
+		/* 카드별 폭 차등 — CPU·메모리는 절대값 텍스트가 길어 넓게, 네트워크는
+		   내용이 짧아 좁게. minmax 의 min 이 kpi-bar 최소폭을 지탱(이게 없으면
+		   grid 가 쪼그라듦), fr 은 여유 폭 분배. 4 카드(GPU 無) 기본 +
+		   6 카드(.with-gpu) 분기. ≤1279 는 아래 media query 가 3-col override. */
+		grid-template-columns:
+			minmax(180px, 1.18fr) minmax(180px, 1.18fr)
+			minmax(135px, 0.82fr) minmax(155px, 0.86fr);
 		grid-template-rows: auto auto auto auto;
 		column-gap: clamp(4px, 0.3vw, 6px);
 		row-gap: 8px;
 		align-content: stretch;
+	}
+	.kpi-bar.with-gpu {
+		grid-template-columns:
+			minmax(164px, 1.14fr) minmax(164px, 1.14fr)
+			minmax(134px, 0.86fr) minmax(140px, 1fr)
+			minmax(140px, 1fr) minmax(140px, 1fr);
 	}
 
 	.kpi {
@@ -696,7 +705,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 6px;
+		gap: 4px;
 	}
 	.kpi-label {
 		display: inline-flex;
@@ -729,21 +738,6 @@
 		gap: 4px;
 		min-width: 0;
 	}
-	.limit-chip {
-		display: inline-flex;
-		align-items: center;
-		max-width: 92px;
-		padding: 2.5px 7px;
-		border-radius: 4px;
-		background: rgba(48, 213, 200, 0.08);
-		border: 1px solid rgba(48, 213, 200, 0.24);
-		color: rgba(226, 232, 240, 0.9);
-		font-size: 10px;
-		font-weight: 800;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
 	.kpi-chip[data-level='normal'] {
 		color: #6ee7b7;
 		background: rgba(16, 185, 129, 0.06);
@@ -766,7 +760,9 @@
 	.kpi-hero {
 		min-width: 0;
 		display: flex;
-		align-items: baseline;
+		/* hero-raw 가 2줄로 wrap 될 때 % 값(hero-pct)이 2줄 높이의 세로 가운데
+		   오도록 center 정렬. (1줄일 땐 시각 차이 없음) */
+		align-items: center;
 		gap: 6px;
 		color: var(--text-strong);
 		font-family: var(--font-mono);
@@ -789,12 +785,15 @@
 		white-space: nowrap;
 	}
 	.hero-raw {
-		font-size: clamp(13px, 0.85vw, 17px);
+		/* clamp 최소값을 낮춰 좁은 카드(노트북 폭)에서만 폰트가 작아짐. */
+		font-size: clamp(10.5px, 0.8vw, 17px);
 		flex: 1 1 auto;
 		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		/* 폭이 모자라면 잘라내지 말고 2줄로 wrap — 오른쪽이 통째로 사라지는
+		   것보다 줄바꿈이 낫다. 공백에서만 끊김(keep-all). */
+		white-space: normal;
+		line-height: 1.2;
+		word-break: keep-all;
 	}
 	.hero-pct .num,
 	.hero-raw .num {
@@ -1032,13 +1031,15 @@
 	}
 	.foot-row {
 		display: grid;
-		/* 카드 안 row 정렬 일관성 — dot 9px / label 64px 고정 / pct 가변 / raw 우측.
-		   label 너비 고정으로 모든 row 의 pct 시작점이 동일해진다. */
-		grid-template-columns: 9px 64px minmax(0, 1fr) minmax(0, auto);
+		/* dot 9px / label 48px 고정(모든 row pct 시작점 동일) / pct 는 auto —
+		   max-content 라 % 값이 절대 안 짤린다. raw 가 1fr 로 남은 폭을 먹고,
+		   좁으면 raw 만 ellipsis (보조 정보라 degrade 우선순위 최하). */
+		grid-template-columns: 9px 48px auto minmax(0, 1fr);
 		align-items: center;
-		gap: 7px;
+		gap: 4px;
 		min-width: 0;
-		font-size: clamp(11.5px, 0.7vw, 13px);
+		/* clamp 최소값 down — 좁은 카드에서 foot 텍스트(특히 raw) 짤림 완화. */
+		font-size: clamp(10px, 0.62vw, 13px);
 		font-weight: 600;
 		color: var(--text-mid);
 		white-space: nowrap;

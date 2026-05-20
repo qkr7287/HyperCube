@@ -447,7 +447,10 @@ per-container 전력은 직접 측정 불가능 — 절대값 신뢰 X, 추세·
 		display: grid;
 		grid-template-columns: repeat(3, minmax(0, 1fr));
 		gap: 6px;
-		min-height: 0;
+		/* collapse 방지 floor — 부모가 height 를 주지 않는 레이아웃(모바일 1열,
+		   auto 행)에서 게이지가 0 으로 접히는 것만 막는다. viewport-fit 레이아웃
+		   에선 행 height 가 충분하므로 이 값이 거의 안 쓰임. */
+		min-height: 150px;
 	}
 
 	.gauge-card {

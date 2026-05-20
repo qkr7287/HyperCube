@@ -37,6 +37,20 @@
 		yAxisLabel?: string;
 		denominatorText?: string;
 	} = $props();
+
+	// 반응형 범례 — 해상도(viewport 폭)가 좁아지면 범례를 끈다. 범례가 차지하던
+	// 상단 공간(grid.top)을 plot 에 양보해 짧은 차트에서도 그래프가 덜 눌린다.
+	// series 이름은 hover tooltip 에서 계속 확인 가능.
+	let viewportWidth = $state(typeof window !== 'undefined' ? window.innerWidth : 1920);
+	$effect(() => {
+		const onResize = () => {
+			viewportWidth = window.innerWidth;
+		};
+		window.addEventListener('resize', onResize, { passive: true });
+		return () => window.removeEventListener('resize', onResize);
+	});
+	// >=1440: 기존 자동 동작(undefined → series 2개 이상이면 표시). <1440: 강제 off.
+	let showLegend = $derived<boolean | undefined>(viewportWidth >= 1440 ? undefined : false);
 </script>
 
 <div class="chart-shell" style="--chart-h: {height}px">
@@ -46,7 +60,7 @@
 			{#if denominatorText}<em>{denominatorText}</em>{/if}
 		</div>
 	{/if}
-	<EChartLine {labels} {tooltipLabels} {timestamps} {tickInterval} series={datasets} {yFormat} height="100%" {group} {enableZoom} {markLines} yAxisName={yAxisLabel} />
+	<EChartLine {labels} {tooltipLabels} {timestamps} {tickInterval} series={datasets} {yFormat} height="100%" {group} {enableZoom} {markLines} {showLegend} yAxisName={yAxisLabel} />
 </div>
 
 <style>
