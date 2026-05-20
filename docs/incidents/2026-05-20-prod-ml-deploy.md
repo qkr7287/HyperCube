@@ -127,3 +127,22 @@ prod fleet (41/63) 에서 Qwen2.5 0.5B ML 컨테이너를 처음 띄우는 과�
 - **63 prod**: `redis-prod-test`, `redis-prod-test-2` — Redis 정상.
 - prod ML E2E (요청 → 승인 → prepare → deploy → Web UI) 는 41 위에서 완성.
   단 prepare 단계의 수동 READY 마크 (4-2) 가 자동화되기 전까지는 운영자 개입 필요.
+
+## 7. 후속 수정 검증 완료 (2026-05-20)
+
+incident 의 근본 원인이 HyperCube PR #32 + agent PR #32/#33 으로 수정·배포됨.
+dev 에서 end-to-end 재검증 완료:
+
+- **prepare self-heal**: watchdog + requeue + reconnect 시 `query_model_cache`
+  무손실 복구 → prepare job stuck 시 운영자 수동 READY 마크 불필요.
+- **host port 충돌 해소**: 요청 시 workspace host port 지정 가능. 41번에
+  ML 워크스페이스 2개 공존 검증 — `qwen-prod-test`(host 8888) 와 dev
+  `hc-8130c844`(host 8890) 가 동시 실행, 포트 충돌 없음.
+- **cross-host Web UI**: `network_policy=none` + host port 8890 으로 41번
+  (backend 63 과 다른 docker daemon) 컨테이너의 JupyterLab Web UI 가 502
+  없이 정상 로드 확인.
+- **used-ports**: `host_port_scan` 으로 host 전체 LISTEN 포트 표시 (coverage=full).
+- workspace ticket TTL 60 → 300s.
+
+incident 의 핵심 미해결 항목(#1·#2·#3·#5, 1-A·1-B)은 모두 해소. 남은 항목:
+#4(ML 이미지 fleet 배포 자동화), CUDA OOM(단일 GPU dev/prod 공유).
