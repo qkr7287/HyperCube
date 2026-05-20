@@ -269,7 +269,10 @@
 		return memoryMbLimit ? `limit ${formatGb(memoryMbLimit)} GB` : 'unlimited ⚠';
 	}
 	function workspaceLimitChip(): string {
-		return workspaceGbLimit ? `limit ${workspaceGbLimit} GB` : 'unlimited ⚠';
+		// quota 미설정 시 layer 모드와 동일하게 'no quota'. 디스크 quota 는
+		// XFS pquota 호스트에서만 enforce 되고 fleet-wide dormant 라, CPU/메모리
+		// 처럼 'unlimited ⚠' 경고를 띄우면 과하다.
+		return workspaceGbLimit ? `limit ${workspaceGbLimit} GB` : 'no quota';
 	}
 	function cpuRawText(): string {
 		if (cpuQuotaCores) return `${formatCores(cpuNowCores)} / ${formatCoreLimit(cpuQuotaCores)}`;
@@ -317,7 +320,7 @@
 		return '';
 	}
 	function diskCardDenominator(): string {
-		if (diskMode === 'workspace') return workspaceGbLimit ? `${workspaceGbLimit} GB quota` : 'unlimited';
+		if (diskMode === 'workspace') return workspaceGbLimit ? `${workspaceGbLimit} GB quota` : 'no quota';
 		if (diskMode === 'layer') return 'container layer';
 		return 'agent 보고 대기';
 	}
