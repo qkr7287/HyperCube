@@ -600,7 +600,6 @@
 		container?.template_name || container?.selected_image || container?.image || '요청 이미지',
 	);
 	let rangeLabel = $derived(RANGE_OPTIONS.find((o) => o.key === selectedRange)?.label ?? '');
-	let chartGroup = $derived(`hc-container-${containerId}`);
 	let cpuQuotaCores = $derived(container?.cpu_percent_limit ? container.cpu_percent_limit / 100 : null);
 	let cpuAxisLabel = $derived(cpuQuotaCores ? `CPU % (of ${formatCoreLimit(cpuQuotaCores)} quota)` : 'CPU % (of host 전체)');
 	let cpuDenominatorText = $derived(
@@ -789,9 +788,9 @@
 	}
 
 	// 임계 markLine: CPU/Memory % 차트 위에 80% (warn) / 90% (danger) horizontal.
+	// 위험 임계선 — 80% 단일 주황선. (90/100 이 시각적으로 너무 가까워 90% 빨강선 제거)
 	const THRESHOLD_LINES: MarkLineEntry[] = [
-		{ yAxis: 80, label: '경고 80%', color: '#eab308' },
-		{ yAxis: 90, label: '위험 90%', color: '#ef4444' },
+		{ yAxis: 80, label: '위험 80%', color: '#f97316' },
 	];
 	// CPU/Memory 차트 markLines = events vertical + thresholds horizontal 결합.
 	let percentChartMarkLines = $derived<MarkLineEntry[]>([
@@ -1141,10 +1140,7 @@
 		<div class="bento">
 		<section class="panel bento-area area-charts">
 			<div class="panel-header compact">
-				<h2>성능 지표 추이<InfoTooltip text={timeSeriesHelp + '\n\n차트 위에 마우스를 올리면 모든 차트의 같은 시각이 함께 표시됩니다. 휠/드래그로 줌.'} placement="bottom-start" /></h2>
-				<span class="sync-chip" title="4개 차트가 함께 hover · zoom · marker 동기화됩니다">
-					<span class="sync-icon" aria-hidden="true">⤬</span> 동기화
-				</span>
+				<h2>성능 지표 추이<InfoTooltip text={timeSeriesHelp + '\n\n각 차트에 마우스를 올리면 해당 차트의 값이 표시됩니다. 휠/드래그로 줌.'} placement="bottom-start" /></h2>
 				<div class="range-tools" title="갱신 주기 — polling + 차트 x축 tick 간격 + 표시 단위(모두 같음). 항상 마지막 {CHART_POINTS}개 점 = 갱신 주기 × {CHART_POINTS} 범위. 상단 ops-bar 의 selector 와 자동 동기화.">
 					<span class="tick-label">갱신 주기</span>
 					<div class="range-tabs">
@@ -1164,13 +1160,13 @@
 					<div class="chart-head">
 						<h3>CPU 사용률</h3>
 					</div>
-					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} tickInterval={tickIntervalMs} datasets={cpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} yAxisLabel={cpuAxisLabel} denominatorText={cpuDenominatorText} />
+					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} tickInterval={tickIntervalMs} datasets={cpuDatasets} yFormat="percent" enableZoom markLines={percentChartMarkLines} yAxisLabel={cpuAxisLabel} denominatorText={cpuDenominatorText} />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
 						<h3>메모리 사용률</h3>
 					</div>
-					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} tickInterval={tickIntervalMs} datasets={memoryDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} yAxisLabel={memoryAxisLabel} denominatorText={memoryDenominatorText} />
+					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} tickInterval={tickIntervalMs} datasets={memoryDatasets} yFormat="percent" enableZoom markLines={percentChartMarkLines} yAxisLabel={memoryAxisLabel} denominatorText={memoryDenominatorText} />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
@@ -1180,7 +1176,7 @@
 							<button class:active={networkMode === 'rate'} onclick={() => (networkMode = 'rate')}>속도</button>
 						</div>
 					</div>
-					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} tickInterval={tickIntervalMs} datasets={networkDatasets} yFormat={networkFormat} group={chartGroup} enableZoom markLines={chartMarkLines} />
+					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} tickInterval={tickIntervalMs} datasets={networkDatasets} yFormat={networkFormat} enableZoom markLines={chartMarkLines} />
 				</div>
 				<div class="chart-card">
 					<div class="chart-head">
@@ -1190,14 +1186,14 @@
 							<button class:active={diskMode === 'rate'} onclick={() => (diskMode = 'rate')}>속도</button>
 						</div>
 					</div>
-					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} tickInterval={tickIntervalMs} datasets={diskDatasets} yFormat={diskFormat} group={chartGroup} enableZoom markLines={chartMarkLines} />
+					<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} tickInterval={tickIntervalMs} datasets={diskDatasets} yFormat={diskFormat} enableZoom markLines={chartMarkLines} />
 				</div>
 				{#if hasGpuHistory || (currentGpuUsage !== null && currentGpuUsage !== undefined)}
 					<div class="chart-card">
 						<div class="chart-head">
 							<h3>GPU 코어 사용률</h3>
 						</div>
-						<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} tickInterval={tickIntervalMs} datasets={gpuDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
+						<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} tickInterval={tickIntervalMs} datasets={gpuDatasets} yFormat="percent" enableZoom markLines={percentChartMarkLines} />
 					</div>
 				{/if}
 				{#if hasGpuMemHistory || (currentGpuMemPct !== null && currentGpuMemPct !== undefined)}
@@ -1205,7 +1201,7 @@
 						<div class="chart-head">
 							<h3>GPU 메모리 (VRAM)</h3>
 						</div>
-						<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} tickInterval={tickIntervalMs} datasets={gpuMemDatasets} yFormat="percent" group={chartGroup} enableZoom markLines={percentChartMarkLines} />
+						<UserMetricChart labels={historyLabels} tooltipLabels={historyTooltipLabels} timestamps={historyTimestamps} tickInterval={tickIntervalMs} datasets={gpuMemDatasets} yFormat="percent" enableZoom markLines={percentChartMarkLines} />
 					</div>
 				{/if}
 			</div>
@@ -2509,6 +2505,8 @@
 	.bento {
 		display: grid;
 		grid-template-columns: repeat(12, minmax(0, 1fr));
+		/* viewport-fit — 한 화면에 다 담고 page 스크롤 없음. row 는 viewport 비율
+		   분배(minmax 0). 큰 화면일수록 차트가 비율로 커진다. */
 		grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
 		grid-template-areas:
 			"charts charts charts charts charts live live live live tabs tabs tabs"
@@ -2655,32 +2653,11 @@
 		color: var(--text-secondary);
 	}
 
-	.sync-chip {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		margin-right: auto;
-		padding: 2px 7px;
-		border-radius: var(--radius-full);
-		background: rgba(48, 213, 200, 0.1);
-		border: 1px solid rgba(48, 213, 200, 0.28);
-		color: var(--accent);
-		font-size: 10.5px;
-		font-weight: 800;
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
-		cursor: help;
-		user-select: none;
-	}
-	.sync-icon {
-		font-size: 12px;
-		line-height: 1;
-	}
-
 	.range-tools {
 		display: inline-flex;
 		align-items: center;
 		gap: 8px;
+		margin-left: auto;
 		cursor: help;
 	}
 	.tick-label {
@@ -3470,26 +3447,6 @@
 				"charts charts charts charts charts live live live live tabs tabs tabs"
 				"charts charts charts charts charts live live live live tabs tabs tabs"
 				"burden burden burden burden burden live live live live tabs tabs tabs";
-		}
-	}
-
-	/* viewport 세로가 짧으면 zero-scroll 정책을 해제하고 page 자체를 스크롤 가능.
-	   한 화면에 모두 담으려면 6 차트 카드(GPU 컨테이너)가 1/3씩 분할되어 찌부됨.
-	   세로 ≤ 900 환경(노트북 1366×768, 1600×900 등)은 scroll 허용 + 차트 카드
-	   floor 보장으로 가독성 회복. */
-	@media (max-height: 900px) {
-		.page {
-			overflow-y: auto;
-		}
-		.bento {
-			overflow: visible;
-			grid-template-rows: minmax(220px, auto) minmax(180px, auto) minmax(180px, auto);
-		}
-		.chart-card {
-			min-height: 150px;
-		}
-		.area-charts {
-			min-height: 0;
 		}
 	}
 

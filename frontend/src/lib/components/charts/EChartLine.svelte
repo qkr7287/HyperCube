@@ -115,6 +115,9 @@
 		return `${value.toFixed(d)}%`;
 	}
 
+	// percent 차트 y축 고정 눈금 — 0/30/50/80/100 (위험 임계 80% 포함).
+	const PERCENT_TICKS = [0, 30, 50, 80, 100];
+
 	function buildMarkLine(marks: MarkLineEntry[]) {
 		if (!marks.length) return undefined;
 		return {
@@ -157,10 +160,14 @@
 			animationDurationUpdate: 600,
 			animationEasingUpdate: 'cubicInOut',
 			grid: {
-				top: showLegendResolved ? 28 : 6,
+				/* containLabel:true 라 top/bottom 은 legend·axis label '바깥' 여백.
+				   범례 표시 시엔 top 을 충분히(30) 줘 범례가 plot 의 '100%' 축
+				   라벨과 겹치지 않게 한다. 범례 없을 땐 4 로 plot 최대 확보.
+				   bottom 은 항상 최소화 — markLine(80/90%) 안 겹쳐 보이게. */
+				top: showLegendResolved ? 30 : 4,
 				left: 4,
 				right: 6,
-				bottom: hasDateLabels ? 24 : 18,
+				bottom: hasDateLabels ? 6 : 4,
 				containLabel: true,
 			},
 			// 같은 group 의 차트 간 axisPointer/tooltip 동기화는 EChartBase 의
@@ -268,17 +275,19 @@
 					fontSize: 9,
 					hideOverlap: true,
 					margin: 4,
-					// axis tick 은 정수로만 표시 (0% / 25% / 50% / 75% / 100%). 소수점은
-					// tooltip 에서. 좁은 차트에서 "0.00%" 같은 7 글자 라벨이 5 줄로
-					// 들어가면 무조건 겹친다.
+					// percent 차트는 0/30/50/80/100 고정 눈금 (customValues, ECharts 5.5+).
+					// 90/100 처럼 너무 가까운 눈금을 피하고 위험 임계(80%) 를 눈금에 포함.
+					...(fmt === 'percent' ? { customValues: PERCENT_TICKS } : {}),
+					// 소수점은 tooltip 에서. 좁은 차트에서 "0.00%" 라벨은 겹친다.
 					formatter: (v: number) =>
 						fmt === 'percent' ? `${Math.round(v)}%` : formatValue(v, fmt, decimals),
 				},
 				axisLine: { show: false },
 				axisTick: { show: false },
-				splitLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.05)' } },
-				/* percent 차트 yAxis 라벨 자릿수 통일 — split 4 면 0/25/50/75/100 */
-				splitNumber: fmt === 'percent' ? 4 : undefined,
+				splitLine: {
+					lineStyle: { color: 'rgba(255, 255, 255, 0.05)' },
+					...(fmt === 'percent' ? { customValues: PERCENT_TICKS } : {}),
+				},
 			},
 			series: seriesList.map((ds, i) => ({
 				// id 는 ECharts 가 두 setOption 사이에서 같은 series 인지 식별하는 키.
