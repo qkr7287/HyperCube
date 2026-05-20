@@ -180,13 +180,19 @@
 			? workspace.rootFsGb
 			: null,
 	);
-	// 디스크 카드 소스 우선순위: workspace quota 사용량 → 컨테이너 layer 크기.
+	// 디스크 카드 소스 — agent 의 `source` 필드가 1차 기준.
+	//   du / xfs-quota → /workspace quota 실측 (ML workspace 컨테이너)
+	//   rw-layer       → 컨테이너 writable layer 크기 (Redis 등 일반 컨테이너)
+	// source 가 없을 땐 quota 한도 유무로 fallback. usedGb=0 도 valid 측정값
+	// 이라 measured 만으로 workspace 모드를 단정하지 않는다.
 	let diskMode = $derived<'workspace' | 'layer' | 'pending'>(
-		workspaceMeasured || workspaceSizeGb > 0
+		workspaceSource === 'du' || workspaceSource === 'xfs-quota' || workspaceSizeGb > 0
 			? 'workspace'
-			: rwLayerGbRaw !== null
+			: workspaceSource === 'rw-layer' || rwLayerGbRaw !== null
 				? 'layer'
-				: 'pending',
+				: workspaceMeasured
+					? 'workspace'
+					: 'pending',
 	);
 	// 디스크 카드는 모든 컨테이너에 항상 표시 (quota 없어도 적재량/대기 상태).
 	let hasWorkspaceMetric = $derived(true);
@@ -301,7 +307,7 @@
 		if (diskMode === 'workspace') return workspaceRawText();
 		if (diskMode === 'layer') {
 			const rw = `${(rwLayerGbRaw ?? 0).toFixed(2)} GB`;
-			return rootFsGbRaw && rootFsGbRaw > 0 ? `${rw} / ${rootFsGbRaw.toFixed(1)} GB` : rw;
+			return rootFsGbRaw && rootFsGbRaw > 0 ? `${rw} / ${rootFsGbRaw.toFixed(2)} GB` : rw;
 		}
 		return '측정 대기';
 	}
