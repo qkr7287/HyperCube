@@ -17,12 +17,16 @@
 		open = false,
 		containerId,
 		inspectData = null as any,
+		cpuPercentLimit = null,
+		memoryMbLimit = null,
 		onclose = () => {},
 		onsaved = () => {},
 	}: {
 		open?: boolean;
 		containerId: string;
 		inspectData?: any;
+		cpuPercentLimit?: number | null;
+		memoryMbLimit?: number | null;
 		onclose?: () => void;
 		onsaved?: () => void;
 	} = $props();
@@ -43,8 +47,22 @@
 		const memBytes: number = hc.Memory ?? hc.memory ?? 0;
 		const cpuQuota: number = hc.CpuQuota ?? hc.cpuQuota ?? 0;
 		const cpuPeriod: number = hc.CpuPeriod ?? hc.cpuPeriod ?? 100000;
-		memoryMb = memBytes > 0 ? Math.round(memBytes / (1024 * 1024)) : 0;
-		cpuPercent = cpuQuota > 0 && cpuPeriod > 0 ? Math.round((cpuQuota / cpuPeriod) * 100) : 0;
+		// inspect 의 hostConfig 가 있으면 그 실측값, 없으면 container 의 limit
+		// snapshot 으로 fallback (inspect 응답은 hostConfig 를 안 싣는다).
+		// 어느 쪽도 한도가 없으면 빈 값 — 0 은 저장이 거부되므로, 한도 없는
+		// 컨테이너에서 다른 필드만 바꿔 저장하려면 빈 값(=변경 안 함)이어야 한다.
+		memoryMb =
+			memBytes > 0
+				? Math.round(memBytes / (1024 * 1024))
+				: memoryMbLimit && memoryMbLimit > 0
+					? memoryMbLimit
+					: '';
+		cpuPercent =
+			cpuQuota > 0 && cpuPeriod > 0
+				? Math.round((cpuQuota / cpuPeriod) * 100)
+				: cpuPercentLimit && cpuPercentLimit > 0
+					? cpuPercentLimit
+					: '';
 		const rp = (hc.RestartPolicy?.Name || hc.restartPolicy?.name || 'no') as RestartPolicy;
 		restartPolicy = ['no', 'on-failure', 'unless-stopped', 'always'].includes(rp) ? rp : 'no';
 		restartMaxRetry = hc.RestartPolicy?.MaximumRetryCount ?? 0;

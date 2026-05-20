@@ -1422,6 +1422,8 @@
 			open={limitModalOpen}
 			containerId={container.container_id}
 			{inspectData}
+			cpuPercentLimit={container.cpu_percent_limit}
+			memoryMbLimit={container.memory_mb_limit}
 			onclose={() => (limitModalOpen = false)}
 			onsaved={() => {
 				showActionMsg('자원 한도 수정 완료', 'success', 3500);
