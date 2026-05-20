@@ -559,8 +559,9 @@ rotate existing agent tokens after that migration.
 | Area | Quirk | Impact |
 |---|---|---|
 | `/user/containers` time series | `7d` range actually returns the **last ~2 h** because `limit=240` is hard-capped. No downsampling yet. | Graphs for long ranges look truncated ? visual only, no data loss. |
-| Port validation | Neither frontend nor backend pre-checks whether the requested host port is free on the target agent. | Collisions surface as `failed` requests with the Docker error in `progress_message`. Fix needs agent-side netstat. |
-| Agent WS response delivery | Prior to `ac0daaf` a disconnect mid-`compose_up` would strand the request in `deploying`. Fixed with an outbound queue + reconnect drain. Safety net on the server side (auto-heal stuck requests) is **not** implemented. | If you see `deploying` stuck >5 min, check agent logs; otherwise the queue fix handles it. |
+| Port validation | (해소 2026-05-20, PR #32) ML 워크스페이스는 요청 시 host port 지정 가능 (`ContainerRequest.workspace_host_port`). `GET /api/agents/{id}/used-ports/` 가 `host_port_scan` 으로 host LISTEN 포트를 보여줘 NewRequestModal 이 충돌을 사전 경고. | 한 호스트에 ML 워크스페이스 다수 공존 가능. backend serializer 가 확실한 충돌은 거부. |
+| Agent WS response delivery | Prior to `ac0daaf` a disconnect mid-`compose_up` would strand the request in `deploying`. Fixed with an outbound queue + reconnect drain. (model prepare 는 별도로 PR #32 의 progress watchdog + reconnect reconcile 로 auto-heal 됨.) | If you see `deploying` stuck >5 min, check agent logs; otherwise the queue fix handles it. |
+| dev agent 재빌드 | dev agent(`hypercube-agent-dev-*`)는 이미지 pull 이 아니라 로컬 빌드라, agent repo PR 머지만으로는 컨테이너가 안 바뀐다. | 새 agent 코드 반영하려면 `docker compose -f docker-compose.dev.yml up -d --build agent` 필요. prod agent 는 GHCR pull 이라 무관. |
 | Legacy agent on 41 | `hypercube-agent-agent-1` keeps retrying an old `192.168.0.47:8000` backend. Harmless, but noisy in logs. | Skip, or remove if you want clean logs. |
 
 ---
