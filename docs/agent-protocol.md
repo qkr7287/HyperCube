@@ -294,6 +294,28 @@ HyperCube core marks existing inventory for that agent offline and keeps other
 agent metrics working. If a host has no GPU, return `success:true` with
 `data.gpus=[]`.
 
+### 4b. `host_port_scan`
+
+호스트의 TCP LISTEN 포트 목록. `params` 없음.
+
+```json
+{
+  "type": "command_response",
+  "requestId": "<uuid>",
+  "success": true,
+  "data": {
+    "ports": [
+      { "port": 22, "proto": "tcp" },
+      { "port": 8888, "proto": "tcp" }
+    ]
+  }
+}
+```
+
+agent 가 `/proc/net/tcp{,6}` 를 파싱해 LISTEN 상태 포트만 보고. `ports` 는
+오름차순 정렬 + IPv4/IPv6 중복 제거. backend 의 `/api/agents/{id}/used-ports/`
+가 이 결과를 HyperCube-managed 포트와 합쳐 `coverage=full` 로 응답한다.
+
 ### 5. `logs_subscribe` / `logs_unsubscribe`
 
 Live log tail. 단발 명령이 아니라 long-running stream 시작/종료. `logs_subscribe`
@@ -624,12 +646,20 @@ already-known `Container` by `containerId` and `data.workspace.path`
     "kind": "jupyter",
     "token": "<plaintext token, do not log>",
     "port": 8888,
+    "hostPort": 8889,
     "baseUrl": "/workspace/<container-request-id>/",
     "workdir": "/workspace"
   },
   "networkPolicy": "internal_only"
 }
 ```
+
+`port` is the container-internal workspace port. `hostPort` is optional — when
+present (the user picked a host port at request time), the agent must publish
+the workspace on exactly that host port. When `hostPort` is absent, the agent
+keeps its existing behavior (publish on the internal port, or whatever default
+it chose). Backend omits the key when the user did not specify one, so older
+agents remain compatible.
 
 The agent should inject the token/base URL/port into the image runtime and
 return workspace reachability metadata. For normal workspaces, bind the
@@ -741,6 +771,53 @@ Successful response:
   }
 }
 ```
+
+`prepare_model_assets` must be idempotent: if the agent's local cache already
+holds a verified copy of the asset (sha256 + size match), it returns success
+immediately without re-downloading. The backend relies on this to safely
+re-dispatch stalled jobs.
+
+### `query_model_cache`
+
+A lightweight status probe used to recover stalled prepare jobs without
+re-downloading. The backend sends it when an agent reconnects with an
+in-flight prepare job (a `command_response` may have been lost on the dropped
+socket). `requestId` is the `ModelPrepareJob.id`.
+
+```json
+{
+  "type": "command",
+  "requestId": "<model-prepare-job-id>",
+  "command": "query_model_cache",
+  "params": {
+    "versionId": "<model-version-id>",
+    "sha256": "<sha256>",
+    "sizeBytes": 1234,
+    "expectedCachePath": "/var/lib/hypercube-agent/model-cache/tiny-local-model/v1"
+  }
+}
+```
+
+`expectedCachePath` may be empty — the agent then resolves the cache location
+by `versionId`. The agent re-hashes the file and responds:
+
+```json
+{
+  "type": "command_response",
+  "requestId": "<model-prepare-job-id>",
+  "success": true,
+  "data": {
+    "status": "ready",
+    "cachePath": "/var/lib/hypercube-agent/model-cache/tiny-local-model/v1",
+    "sha256": "<sha256>",
+    "sizeBytes": 1234
+  }
+}
+```
+
+`status` is `ready` (sha256 + size match — backend completes the job with no
+re-download), `partial` (truncated/mismatch), or `missing`. For `partial` and
+`missing` the backend re-dispatches `prepare_model_assets`.
 
 After all prepare jobs for a `ContainerRequest` are ready, the backend dispatches
 `create_container` with:

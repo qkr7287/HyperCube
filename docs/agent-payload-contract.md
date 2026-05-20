@@ -659,10 +659,16 @@ When a template enables ML workspace access, backend `create_container` includes
   "kind": "jupyter",
   "token": "<plaintext token, do not log>",
   "port": 8888,
+  "hostPort": 8889,
   "baseUrl": "/workspace/<container-request-id>/",
   "workdir": "/workspace"
 }
 ```
+
+`hostPort` is optional — present only when the user picked a host port at
+request time. The agent must publish the workspace on exactly that host port;
+when the key is absent, keep existing behavior. See `agent-protocol.md`
+§"Workspace" for full semantics.
 
 Agent success response should include `data.workspace.internalPort`,
 `baseUrl`, `kind`, and optional `health`. For normal workspace networking,
@@ -717,3 +723,9 @@ For `prepare_model_assets`, `assets[].sha256` is canonical. The backend also
 sends `assets[].checksum`, `assets[].source.sha256`, and
 `assets[].source.checksum` as compatibility aliases. Agent implementations
 should accept the canonical field and may use the aliases only as fallback.
+
+`prepare_model_assets` must be idempotent — a cache hit (verified sha256 +
+size) returns success without re-downloading. The backend probes stalled jobs
+with the `query_model_cache` command (`data:{status, cachePath, sha256,
+sizeBytes}`, `status` ∈ `ready`/`partial`/`missing`); see `agent-protocol.md`
+§"Model Prepare Extension" for the full shape.

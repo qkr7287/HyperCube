@@ -70,25 +70,38 @@ prod fleet (41/63) 에서 Qwen2.5 0.5B ML 컨테이너를 처음 띄우는 과�
 
 ## 4. 시스템 차원 미해결 이슈 (별도 슬라이스 트래킹)
 
-1. **❌ frontend race** — `NewRequestModal` 가 modelVersions 로드 전 select 가능 →
-   `selectedModelVersionIds` 빈 채로 제출. 모달 진입을 로드 완료까지 막거나,
-   제출 직전 템플릿 `default_model_version_ids` 재적용.
-2. **❌ agent → backend prepare command_response 라우팅** —
-   `_route_command_response` (`backend/apps/common/consumers.py:492`) 가 `__api__`
-   채널일 때 `browser_channel.startswith("__")` 분기로 False 반환 → 그 후
-   `_update_request_from_response` → `handle_prepare_response` 가 호출돼야
-   함에도 prepare job 이 안 갱신됨. agent 가 command_response 를 실제로 emit
-   하는지 / WS 라우팅이 끊기는지 공동 디버깅 필요. (agent dev 가 "별도 backend
-   handler 버그" 로 인지)
-3. **❌ prepare progress bytes_done 미누적** — agent 가 chunk 마다 progress emit
-   한다는데 backend job 의 bytes_done 이 0 에서 안 올라감.
-   `handle_prepare_progress` (`backend/apps/models_catalog/prepare.py:164`) 가
-   받는 payload 의 `bytesDone`/`bytes_done` 키와 agent emit 키 일치 확인.
+1. **✅ frontend race** — (2026-05-20 수정) `NewRequestModal.selectTemplate` 이
+   modelVersions 가 불완전해도 `default_model_version_ids` 를 버리지 않고 보존,
+   제출 직전 `resolveSubmitModelIds` 로 재적용 + 모델 목록 미수신 시 제출 차단.
+   default 모델 누락 시 경고 배너. `lib/utils/request-model.ts` (Vitest 10건).
+2. **✅ agent → backend prepare command_response 라우팅** — backend 코드 점검
+   결과 `__api__` 경로는 `_update_request_from_response` 폴백으로 정상 처리됨
+   (핸들러 버그 없음). 실제 원인은 agent 가 응답을 안 보냈거나 WS lost.
+   (2026-05-20) backend **self-heal** + agent 연동 완료:
+   - `ModelPrepareJob.last_progress_at` watchdog (`MODEL_PREPARE_PROGRESS_TIMEOUT_SECONDS`,
+     기본 900s) 으로 stuck 감지 → `requeue_prepare_job` 재dispatch
+     (`MODEL_PREPARE_MAX_ATTEMPTS` 초과 시 FAILED).
+   - agent reconnect edge (`reconcile_agent_prepare_jobs`) 에서 재다운로드 대신
+     `query_model_cache` command 로 cache 상태 조회 → `status=ready` 면 무손실
+     즉시 완료, `missing`/`partial` 이면 requeue.
+   - agent 측 `prepare_model_assets` 멱등성 (sha256 일치 시 skip) + `query_model_cache`
+     command 구현 완료 (qkr7287/hypercube-agent dev).
+   운영자 수동 READY 마크 불필요.
+3. **✅ prepare progress bytes_done 미누적** — backend `handle_prepare_progress`
+   는 `bytesDone`/`bytes_done` 둘 다 수용 — 계약서와 일치, backend 버그 없음.
+   agent 가 camelCase `data.bytesDone` 로 emit 하도록 수정 완료. watchdog(2번)이
+   bytes_done=0 이어도 stuck 을 잡으므로 운영 리스크도 이중 해소.
 4. **❌ ML 이미지 fleet 배포 자동화 부재** — 새 prod 호스트 합류마다
    `docker save`/`load` 수동. GHCR pull 흐름 또는 airgap 이미지 배포 runbook 필요.
-5. **❌ workspace ticket TTL 60초** — 1-A.
+5. **✅ workspace ticket TTL** — (2026-05-20) `WORKSPACE_TICKET_TTL_SECONDS`
+   60 → 300.
 6. **❌ edgexpert-4cc8 (32번) agent 수동 갱신 남음** — GPU 없는 호스트라 현재
    영향 없음.
+
+추가 (2026-05-20): 1-B(cross-host `internal_only` 502)는 템플릿
+`network_policy` 기본값을 `none` 으로 변경 + `TemplateEditorModal` 에 정책
+셀렉트/멀티호스트 경고 노출 + `issue_workspace_open_ticket` 진단 메시지로
+제품화. 기존 템플릿 row 는 data migration 없이 유지.
 
 ---
 

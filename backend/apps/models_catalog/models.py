@@ -273,6 +273,11 @@ class ModelPrepareJob(models.Model):
     lease_expires_at = models.DateTimeField(null=True, blank=True)
     dispatched_at = models.DateTimeField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
+    # 마지막 progress(또는 dispatch) 시각. lease 와 별개로, agent 가
+    # 침묵한 시간을 재는 watchdog 기준점.
+    last_progress_at = models.DateTimeField(null=True, blank=True)
+    # progress timeout 으로 stuck 판정돼 재dispatch 된 횟수.
+    attempt_count = models.PositiveSmallIntegerField(default=0)
     completed_at = models.DateTimeField(null=True, blank=True)
     failed_at = models.DateTimeField(null=True, blank=True)
     error = models.TextField(blank=True, default="")
