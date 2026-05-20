@@ -15,6 +15,7 @@ from apps.containers.tests.factories import create_agent, create_request, create
 from apps.models_catalog.models import ModelAsset, ModelPrepareJob, ModelVersionCache
 from apps.models_catalog.prepare import (
     cleanup_stale_model_prepare_jobs,
+    handle_model_cache_query_response,
     handle_prepare_response,
     reconcile_agent_prepare_jobs,
 )
@@ -371,20 +372,72 @@ class PrepareJobWatchdogTest(APITestCase):
         self.assertEqual(handled, 1)
         self.assertEqual(job.status, ModelPrepareJob.Status.FAILED)
 
-    @patch("apps.models_catalog.prepare.dispatch_prepare_job", return_value=True)
-    def test_reconcile_agent_requeues_stuck_job_on_reconnect(self, mocked_dispatch):
+    @patch("apps.models_catalog.prepare.dispatch_model_cache_query", return_value=True)
+    def test_reconcile_agent_queries_cache_on_reconnect(self, mocked_query):
+        # 재접속 시 재다운로드 대신 query_model_cache 로 cache 상태부터 조회.
         job = self._make_job(last_progress_offset=1000, attempt_count=0)
         recovered = reconcile_agent_prepare_jobs(str(self.agent.id))
-        job.refresh_from_db()
         self.assertEqual(recovered, 1)
-        self.assertEqual(job.status, ModelPrepareJob.Status.QUEUED)
-        self.assertEqual(job.attempt_count, 1)
+        mocked_query.assert_called_once()
 
-    @patch("apps.models_catalog.prepare.dispatch_prepare_job", return_value=True)
-    def test_reconcile_leaves_healthy_job_untouched(self, mocked_dispatch):
+    @patch("apps.models_catalog.prepare.dispatch_model_cache_query", return_value=True)
+    def test_reconcile_leaves_healthy_job_untouched(self, mocked_query):
         job = self._make_job(last_progress_offset=10)
         recovered = reconcile_agent_prepare_jobs(str(self.agent.id))
         job.refresh_from_db()
         self.assertEqual(recovered, 0)
         self.assertEqual(job.status, ModelPrepareJob.Status.PREPARING)
+        mocked_query.assert_not_called()
+
+    def test_cache_query_ready_completes_job_without_redownload(self):
+        cache = ModelVersionCache.objects.create(
+            agent=self.agent,
+            version=self.version,
+            status=ModelVersionCache.Status.PREPARING,
+            size_bytes=self.version.size_bytes,
+            sha256=self.version.sha256,
+        )
+        job = self._make_job(last_progress_offset=1000)
+        job.cache = cache
+        job.save(update_fields=["cache"])
+
+        handled = handle_model_cache_query_response({
+            "requestId": str(job.id),
+            "success": True,
+            "data": {
+                "status": "ready",
+                "cachePath": "/var/lib/hypercube-agent/model-cache/wd-model/v1",
+                "sha256": self.version.sha256,
+            },
+        })
+
+        self.assertTrue(handled)
+        job.refresh_from_db()
+        self.assertEqual(job.status, ModelPrepareJob.Status.READY)
+
+    @patch("apps.models_catalog.prepare.dispatch_prepare_job", return_value=True)
+    def test_cache_query_missing_requeues_job(self, mocked_dispatch):
+        job = self._make_job(last_progress_offset=1000, attempt_count=0)
+        handled = handle_model_cache_query_response({
+            "requestId": str(job.id),
+            "success": True,
+            "data": {"status": "missing"},
+        })
+        self.assertTrue(handled)
+        job.refresh_from_db()
+        self.assertEqual(job.status, ModelPrepareJob.Status.QUEUED)
+        self.assertEqual(job.attempt_count, 1)
+        mocked_dispatch.assert_called_once()
+
+    @patch("apps.models_catalog.prepare.dispatch_prepare_job", return_value=True)
+    def test_cache_query_partial_fails_after_max_attempts(self, mocked_dispatch):
+        job = self._make_job(last_progress_offset=1000, attempt_count=3)
+        handled = handle_model_cache_query_response({
+            "requestId": str(job.id),
+            "success": True,
+            "data": {"status": "partial"},
+        })
+        self.assertTrue(handled)
+        job.refresh_from_db()
+        self.assertEqual(job.status, ModelPrepareJob.Status.FAILED)
         mocked_dispatch.assert_not_called()

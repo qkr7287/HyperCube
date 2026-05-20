@@ -742,6 +742,53 @@ Successful response:
 }
 ```
 
+`prepare_model_assets` must be idempotent: if the agent's local cache already
+holds a verified copy of the asset (sha256 + size match), it returns success
+immediately without re-downloading. The backend relies on this to safely
+re-dispatch stalled jobs.
+
+### `query_model_cache`
+
+A lightweight status probe used to recover stalled prepare jobs without
+re-downloading. The backend sends it when an agent reconnects with an
+in-flight prepare job (a `command_response` may have been lost on the dropped
+socket). `requestId` is the `ModelPrepareJob.id`.
+
+```json
+{
+  "type": "command",
+  "requestId": "<model-prepare-job-id>",
+  "command": "query_model_cache",
+  "params": {
+    "versionId": "<model-version-id>",
+    "sha256": "<sha256>",
+    "sizeBytes": 1234,
+    "expectedCachePath": "/var/lib/hypercube-agent/model-cache/tiny-local-model/v1"
+  }
+}
+```
+
+`expectedCachePath` may be empty — the agent then resolves the cache location
+by `versionId`. The agent re-hashes the file and responds:
+
+```json
+{
+  "type": "command_response",
+  "requestId": "<model-prepare-job-id>",
+  "success": true,
+  "data": {
+    "status": "ready",
+    "cachePath": "/var/lib/hypercube-agent/model-cache/tiny-local-model/v1",
+    "sha256": "<sha256>",
+    "sizeBytes": 1234
+  }
+}
+```
+
+`status` is `ready` (sha256 + size match — backend completes the job with no
+re-download), `partial` (truncated/mismatch), or `missing`. For `partial` and
+`missing` the backend re-dispatches `prepare_model_assets`.
+
 After all prepare jobs for a `ContainerRequest` are ready, the backend dispatches
 `create_container` with:
 

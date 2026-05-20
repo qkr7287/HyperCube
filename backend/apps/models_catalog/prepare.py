@@ -24,6 +24,10 @@ ACTIVE_PREPARE_STATUSES = (
     ModelPrepareJob.Status.PREPARING,
 )
 
+# query_model_cache command_response 를 _route_command_response 가 일반 browser
+# forward 대신 cache-query 핸들러로 보내도록 표시하는 sentinel browser_channel.
+MODEL_CACHE_QUERY_SENTINEL = "__model_cache_query__"
+
 
 def model_prepare_lease_seconds() -> int:
     return int(getattr(settings, "MODEL_PREPARE_LEASE_SECONDS", 24 * 60 * 60))
@@ -171,6 +175,53 @@ def dispatch_prepare_job(job: ModelPrepareJob) -> bool:
         return False
 
 
+def dispatch_model_cache_query(job: ModelPrepareJob) -> bool:
+    """stuck job 의 cache 상태를 agent 에 조회 (query_model_cache command).
+
+    WS 끊김으로 prepare 응답이 유실됐을 때, 재다운로드 없이 상태만 확인해
+    무손실 복구하기 위함. 응답은 handle_model_cache_query_response 가 처리한다.
+    """
+    job = ModelPrepareJob.objects.select_related(
+        "agent", "version", "version__asset", "cache"
+    ).get(id=job.id)
+    agent_channel = command_router.get_agent_channel(str(job.agent_id))
+    if not agent_channel:
+        return False
+
+    now = timezone.now()
+    # watchdog 한 주기 유예 — query 응답 도착 시간을 확보한다. 응답이 끝내
+    # 안 오면 cleanup_stale 이 다음 timeout 에 requeue 로 폴백한다.
+    job.last_progress_at = now
+    job.save(update_fields=["last_progress_at", "updated_at"])
+
+    version = job.version
+    command_router.record_pending(
+        str(job.id), MODEL_CACHE_QUERY_SENTINEL, str(job.agent_id)
+    )
+    payload = {
+        "type": "command",
+        "requestId": str(job.id),
+        "command": "query_model_cache",
+        "params": {
+            "versionId": str(version.id),
+            "sha256": version.sha256,
+            "sizeBytes": version.size_bytes,
+            # 빈 문자열이면 agent 가 versionId 기준 cache 규칙으로 찾는다.
+            "expectedCachePath": (job.cache.cache_path if job.cache else "") or "",
+        },
+    }
+    try:
+        async_to_sync(get_channel_layer().send)(agent_channel, {
+            "type": "ws.send",
+            "payload": payload,
+        })
+        logger.info("[model-prepare] query_model_cache for job %s", job.id)
+        return True
+    except Exception:
+        logger.exception("[model-prepare] failed to query cache for job %s", job.id)
+        return False
+
+
 def handle_prepare_progress(data: dict) -> bool:
     request_id = data.get("requestId")
     if not request_id:
@@ -234,6 +285,45 @@ def handle_prepare_response(data: dict) -> bool:
             _dispatch_ready_waiters(job)
     else:
         fail_prepare_job(job, str(data.get("error") or "model preparation failed"))
+    return True
+
+
+def handle_model_cache_query_response(data: dict) -> bool:
+    """query_model_cache 응답 처리 — stuck job 무손실 복구.
+
+    status=ready 면 재다운로드 없이 job 을 완료 처리, missing/partial 이면
+    재다운로드가 필요하므로 requeue (시도 한도 초과 시 FAILED).
+    """
+    request_id = data.get("requestId")
+    if not request_id:
+        return False
+    try:
+        job = ModelPrepareJob.objects.select_related(
+            "cache", "version", "version__asset"
+        ).get(id=request_id)
+    except (ModelPrepareJob.DoesNotExist, ValueError, TypeError):
+        return False
+
+    # 이미 완료/실패한 job 이면 무시 (늦게 도착한 응답).
+    if job.status not in ACTIVE_PREPARE_STATUSES:
+        return True
+
+    body = data.get("data") or {}
+    cache_status = body.get("status")
+    if cache_status == "ready":
+        try:
+            _mark_prepare_job_ready(job, body)
+        except ValidationError as exc:
+            fail_prepare_job(job, str(exc))
+        else:
+            _dispatch_ready_waiters(job)
+    elif (job.attempt_count or 0) >= model_prepare_max_attempts():
+        fail_prepare_job(
+            job, f"model cache {cache_status or 'missing'} and retry limit reached"
+        )
+    else:
+        # missing / partial / unknown → 재다운로드 필요.
+        requeue_prepare_job(job)
     return True
 
 
@@ -301,8 +391,9 @@ def reconcile_agent_prepare_jobs(agent_id, *, now=None) -> int:
     """agent 재접속 시 호출 — 그 agent 의 stuck prepare job 을 즉시 복구.
 
     WS 끊김으로 prepare 응답이 유실되면 job 이 progress 중간에 멈춘다.
-    cleanup_stale 의 progress watchdog 과 같은 기준이되, 다음 주기(최대
-    60초)를 기다리지 않고 reconnect 즉시 적용한다.
+    재접속 직후엔 재다운로드 대신 query_model_cache 로 cache 상태부터
+    조회한다 (무손실 복구). query 응답이 끝내 안 오면 cleanup_stale 의
+    progress watchdog 이 다음 timeout 에 requeue 로 폴백한다.
     """
     now = now or timezone.now()
     progress_deadline = now - timedelta(seconds=model_prepare_progress_timeout_seconds())
@@ -321,7 +412,7 @@ def reconcile_agent_prepare_jobs(agent_id, *, now=None) -> int:
                 "model preparation stalled — agent reconnected without progress",
             )
         else:
-            requeue_prepare_job(job, now=now)
+            dispatch_model_cache_query(job)
     return len(jobs)
 
 

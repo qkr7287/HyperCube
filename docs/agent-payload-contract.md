@@ -717,3 +717,9 @@ For `prepare_model_assets`, `assets[].sha256` is canonical. The backend also
 sends `assets[].checksum`, `assets[].source.sha256`, and
 `assets[].source.checksum` as compatibility aliases. Agent implementations
 should accept the canonical field and may use the aliases only as fallback.
+
+`prepare_model_assets` must be idempotent — a cache hit (verified sha256 +
+size) returns success without re-downloading. The backend probes stalled jobs
+with the `query_model_cache` command (`data:{status, cachePath, sha256,
+sizeBytes}`, `status` ∈ `ready`/`partial`/`missing`); see `agent-protocol.md`
+§"Model Prepare Extension" for the full shape.

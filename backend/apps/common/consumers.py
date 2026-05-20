@@ -534,9 +534,14 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
             return True
 
         from apps.agents.services.gpu_inventory import GPU_INVENTORY_SENTINEL
+        from apps.models_catalog.prepare import MODEL_CACHE_QUERY_SENTINEL
 
         if browser_channel == GPU_INVENTORY_SENTINEL:
             await self._apply_gpu_inventory_response(data, pending)
+            return True
+
+        if browser_channel == MODEL_CACHE_QUERY_SENTINEL:
+            await self._apply_model_cache_query_response(data)
             return True
 
         if browser_channel.startswith("__"):
@@ -560,6 +565,18 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
                 command_router.remove_stream(request_id)
 
         return False
+
+    @database_sync_to_async
+    def _apply_model_cache_query_response(self, data: dict):
+        from apps.models_catalog.prepare import handle_model_cache_query_response
+
+        try:
+            handle_model_cache_query_response(data)
+        except Exception:
+            logger.exception(
+                "[model-prepare] failed to apply cache query response %s",
+                data.get("requestId"),
+            )
 
     @database_sync_to_async
     def _apply_gpu_inventory_response(self, data: dict, pending: dict):
