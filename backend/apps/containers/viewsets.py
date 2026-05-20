@@ -441,26 +441,33 @@ class MyContainerViewSet(ReadOnlyModelViewSet):
         body = request.data or {}
         params: dict = {"containerId": container.container_id}
 
-        # memory_mb 1MB 이상. 0 이면 unlimited (params 에 0 그대로 전달, agent 해석).
+        # memory_mb: 1MB 이상. unlimited(0) 은 허용 안 함 — 모든 컨테이너는 한도를
+        # 가진다는 정책이라, 요청 폼뿐 아니라 사후 조정에서도 0 을 차단한다.
         mem_raw = body.get("memory_mb")
         if mem_raw is not None:
             try:
                 mem = int(mem_raw)
             except (TypeError, ValueError):
                 return Response({"detail": "memory_mb must be integer"}, status=status.HTTP_400_BAD_REQUEST)
-            if mem < 0:
-                return Response({"detail": "memory_mb must be >= 0"}, status=status.HTTP_400_BAD_REQUEST)
+            if mem < 1:
+                return Response(
+                    {"detail": "memory_mb must be >= 1 (unlimited is not allowed)"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             params["memory_mb"] = mem
 
-        # cpu_percent: 100 = 1 core. 0 = unlimited.
+        # cpu_percent: 100 = 1 core. unlimited(0) 은 허용 안 함 (memory_mb 와 동일 정책).
         cpu_raw = body.get("cpu_percent")
         if cpu_raw is not None:
             try:
                 cpu = int(cpu_raw)
             except (TypeError, ValueError):
                 return Response({"detail": "cpu_percent must be integer"}, status=status.HTTP_400_BAD_REQUEST)
-            if cpu < 0 or cpu > 10000:
-                return Response({"detail": "cpu_percent must be 0~10000"}, status=status.HTTP_400_BAD_REQUEST)
+            if cpu < 1 or cpu > 10000:
+                return Response(
+                    {"detail": "cpu_percent must be 1~10000 (unlimited is not allowed)"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             params["cpu_percent"] = cpu
 
         # restart_policy
