@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-05-18 (server-2d 스냅샷 4→3 cell + 전력/온도 게이지 + threshold band; fleet card 기어 메뉴/agent 삭제; metrics rollup tables. 본 roadmap 은 /user/containers 페이지 중심 — server-2d 작업은 progress 메모리 참조)
+last-updated: 2026-05-20 (자원 한도 강제 + 한도 수정 모달 P0 완료; 디스크 KPI chip 일관성 no quota; unlimited(0) 차단. 상세는 progress 메모리)
 status: living document — 세션마다 갱신
 benchmark: Portainer container detail UI
 related-pages: /user/containers/[containerId]
@@ -13,17 +13,17 @@ related-pages: /user/containers/[containerId]
 
 **기능 단위**: D / A1 / B1 / B2 / B3 / B4 / C1 모두 완료. Portainer parity 100%.
 **B4 (Console exec)**: HyperCube + agent dev 모두 완료, end-to-end 검증 통과.
-**P0 (Resource limit edit)**: HyperCube backend + frontend 모두 완료. **agent issue #13 머지 대기**.
+**P0 (Resource limit edit)**: ✅ 완료. agent `update_container` (#30) 머지·prod 검증 완료 — 재시작 없이 cpu/memory/restart 변경. unlimited(0) 차단 + 디스크 KPI chip `no quota` 일관화 포함 (PR #28/#29/#30).
 **레이아웃 / UI**: L1 12-col bento + L2 4축 polish + Phase E viewport-fit + 폴리싱 다수.
 **Hero / KPI quality up (2026-05-15)**: accent stripe, gradient h1, status pulse, vital chip icons, KPI status-line + Δ pill + scope dot + value tint + meter glow, 운영 요약 footer, admin fleet 카드 GPU 온도/전력.
 **자동 테스트 인프라 (2026-05-15)**: Vitest (utils 30 + ContainerKpiBar 12 + FleetAgentCard 7) + Playwright E2E (3) + Django backend bucket contract (4) = **56 green**.
 
-**평가**: 시작 44/60 (73%) → 5/11 53.5/60 (89%) → **현재 56/60 (93%)**. agent #13 머지 시 Portainer parity 10/10.
+**평가**: 시작 44/60 (73%) → 5/11 53.5/60 (89%) → **현재 56/60 (93%)**. agent #30 머지로 **Portainer parity 10/10 달성**.
 
 ## 다음 세션 시작점
 
-1. **agent issue #13** (`update_container` memory/cpu/restart) — agent repo 별도 세션. main 머지 후 HyperCube 검증.
-2. **dev → main 머지 + prod 배포** — 누적 commits 다수, prod `http://192.168.0.63:37003/` 적용 (16번 폐기 후 63번 prod 로 이전 완료, 자동 배포).
+1. **inspect API hostConfig 누락** — inspect 응답에 `hostConfig` 가 없어 한도 수정 모달 prefill 이 container limit snapshot fallback 으로 동작. backend inspect 가 hostConfig(Memory/CpuQuota/RestartPolicy)를 실으면 정석 + restart policy prefill 도 가능.
+2. **XFS prjquota 인프라 셋업** — `data_mount_path` quota payload 는 준비됐으나 호스트 prjquota 미설정이라 fleet-wide dormant. XFS 셋업 시 디스크 한도 실제 enforce.
 3. (필요 시 polish) Logs 검색 강화, 차트 zoom reset, 1920+ inspect 4col, /user/containers/[id] 페이지 자체 E2E 확장.
 
 ## 핵심 코딩 룰 (반복 실수 방지)
@@ -404,6 +404,7 @@ Commits (this repo): `d7be13f` (A) / `3414a73` (B) / `b50d692` (C) / Phase D.
 
 ## 변경 이력
 
+- 2026-05-20: **P0 (Resource limit edit) 완료** — agent `update_container` (#30) 머지·prod 검증. 한도 수정 모달이 재시작 없이 cpu/memory/restart 적용. unlimited(0) 생성 경로 차단 (update-limits API + 모달 UI), 디스크 KPI chip `no quota` 일관화, 모달 prefill container snapshot fallback + onsaved refetch. PR #28/#29/#30. Portainer parity 10/10.
 - 2026-05-11: **종합 폴리싱 sweep 25 commits** — viewport-fit (zero scroll), KPI bar+ops 한 row 통합, 운영 인사이트 chip (restart/OOM/health), danger value pulse, EventList severity tone, KPI trend inline, ContainerLimitModal (P0 resource limit edit + agent issue #13 발행), Inspect cards stretch (잘림 fix), polling 깜빡임 fix (silent flag), ECharts streaming smooth (notMerge:false + id), range tabs segmented control. 평가 44/60→53.5/60 (89%).
 - 2026-05-11: **L2 — 4축 UI 폴리싱** 완료 (Phase A~D 4 commit). StateBox / AgentStatusIndicator 신규 컴포넌트, --radius-panel 14px 토큰 통일, agent offline banner / dismissible toast, chart sync chip.
 - 2026-05-11: B4 (Console exec / xterm) HyperCube 측 구현 완료 — `ConsoleSession` 모델 / migration 0004 / WS routing (exec_chunk·exec_end + browser disconnect cleanup) / REST `/console-sessions/` / frontend `ConsolePanel.svelte` (xterm.js) / bento area-console row 3 추가. agent repo 작업 issue #12 발행 후 dev branch 머지 완료, end-to-end 검증 통과 (verify-redis-2 alpine `/bin/sh`).
