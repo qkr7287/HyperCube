@@ -61,3 +61,6 @@ docs/plans/
 hc-airgap-test*
 frontend/test-results/
 frontend/playwright-report/
+
+# Agent repo worktrees / one-off scratch (local only)
+.agent-*
