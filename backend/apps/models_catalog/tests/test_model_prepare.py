@@ -1,5 +1,6 @@
 import os
 import tempfile
+from datetime import timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -12,7 +13,11 @@ from rest_framework.test import APITestCase
 from apps.containers.models import ContainerRequest
 from apps.containers.tests.factories import create_agent, create_request, create_template, create_user
 from apps.models_catalog.models import ModelAsset, ModelPrepareJob, ModelVersionCache
-from apps.models_catalog.prepare import handle_prepare_response
+from apps.models_catalog.prepare import (
+    cleanup_stale_model_prepare_jobs,
+    handle_prepare_response,
+    reconcile_agent_prepare_jobs,
+)
 from apps.models_catalog.services import save_uploaded_model_version
 
 
@@ -284,3 +289,102 @@ class ModelPrepareAPITest(APITestCase):
         self.assertEqual(result["version"], str(self.version.id))
         self.assertEqual(result["status"], ModelVersionCache.Status.READY)
         self.assertEqual(result["mountPath"], "/workspace/models/tiny-local-model@v1")
+
+
+@override_settings(
+    MODEL_PREPARE_LEASE_SECONDS=3600,
+    MODEL_PREPARE_PROGRESS_TIMEOUT_SECONDS=900,
+    MODEL_PREPARE_MAX_ATTEMPTS=3,
+)
+class PrepareJobWatchdogTest(APITestCase):
+    """progress 무응답 watchdog + reconnect reconcile."""
+
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.storage_override = override_settings(
+            HC_MODEL_STORAGE_DIR=os.path.join(self.tempdir.name, "storage"),
+            HC_MODEL_IMPORT_DIR=os.path.join(self.tempdir.name, "import"),
+        )
+        self.storage_override.enable()
+        self.user = create_user(role="user", username="wd-user")
+        self.agent = create_agent(
+            hostname="wd-agent", ip_address="10.2.2.2", token="agent_wd_token"
+        )
+        self.asset = ModelAsset.objects.create(
+            owner=self.user, name="Watchdog Model", slug="wd-model"
+        )
+        self.version = save_uploaded_model_version(
+            asset=self.asset,
+            uploaded_file=SimpleUploadedFile("wd.bin", b"watchdog model bytes"),
+            version="v1",
+            uploaded_by=self.user,
+            metadata={},
+        )
+
+    def tearDown(self):
+        self.storage_override.disable()
+        self.tempdir.cleanup()
+
+    def _make_job(self, *, last_progress_offset, attempt_count=0, lease_offset=3600):
+        now = timezone.now()
+        return ModelPrepareJob.objects.create(
+            agent=self.agent,
+            version=self.version,
+            status=ModelPrepareJob.Status.PREPARING,
+            bytes_total=self.version.size_bytes,
+            last_progress_at=now - timedelta(seconds=last_progress_offset),
+            attempt_count=attempt_count,
+            lease_expires_at=now + timedelta(seconds=lease_offset),
+        )
+
+    def test_recent_progress_job_is_left_alone(self):
+        job = self._make_job(last_progress_offset=10)
+        handled = cleanup_stale_model_prepare_jobs()
+        job.refresh_from_db()
+        self.assertEqual(handled, 0)
+        self.assertEqual(job.status, ModelPrepareJob.Status.PREPARING)
+
+    @patch("apps.models_catalog.prepare.dispatch_prepare_job", return_value=True)
+    def test_stalled_job_is_requeued(self, mocked_dispatch):
+        job = self._make_job(last_progress_offset=1000, attempt_count=0)
+        handled = cleanup_stale_model_prepare_jobs()
+        job.refresh_from_db()
+        self.assertEqual(handled, 1)
+        self.assertEqual(job.status, ModelPrepareJob.Status.QUEUED)
+        self.assertEqual(job.attempt_count, 1)
+        mocked_dispatch.assert_called_once()
+
+    @patch("apps.models_catalog.prepare.dispatch_prepare_job", return_value=True)
+    def test_stalled_job_fails_after_max_attempts(self, mocked_dispatch):
+        job = self._make_job(last_progress_offset=1000, attempt_count=3)
+        handled = cleanup_stale_model_prepare_jobs()
+        job.refresh_from_db()
+        self.assertEqual(handled, 1)
+        self.assertEqual(job.status, ModelPrepareJob.Status.FAILED)
+        mocked_dispatch.assert_not_called()
+
+    def test_lease_expired_job_fails(self):
+        # lease 만료 job 은 STALE 을 거쳐 fail_prepare_job 으로 FAILED 가 된다.
+        job = self._make_job(last_progress_offset=10, lease_offset=-10)
+        handled = cleanup_stale_model_prepare_jobs()
+        job.refresh_from_db()
+        self.assertEqual(handled, 1)
+        self.assertEqual(job.status, ModelPrepareJob.Status.FAILED)
+
+    @patch("apps.models_catalog.prepare.dispatch_prepare_job", return_value=True)
+    def test_reconcile_agent_requeues_stuck_job_on_reconnect(self, mocked_dispatch):
+        job = self._make_job(last_progress_offset=1000, attempt_count=0)
+        recovered = reconcile_agent_prepare_jobs(str(self.agent.id))
+        job.refresh_from_db()
+        self.assertEqual(recovered, 1)
+        self.assertEqual(job.status, ModelPrepareJob.Status.QUEUED)
+        self.assertEqual(job.attempt_count, 1)
+
+    @patch("apps.models_catalog.prepare.dispatch_prepare_job", return_value=True)
+    def test_reconcile_leaves_healthy_job_untouched(self, mocked_dispatch):
+        job = self._make_job(last_progress_offset=10)
+        recovered = reconcile_agent_prepare_jobs(str(self.agent.id))
+        job.refresh_from_db()
+        self.assertEqual(recovered, 0)
+        self.assertEqual(job.status, ModelPrepareJob.Status.PREPARING)
+        mocked_dispatch.assert_not_called()

@@ -20,6 +20,7 @@
 	let portSchemaJson = $state('[]');
 	let defaultVolumesJson = $state('[]');
 	let composeYaml = $state('');
+	let networkPolicy = $state<'none' | 'internal_only' | 'custom'>('none');
 	let busy = $state(false);
 	let errorMsg = $state('');
 
@@ -35,11 +36,13 @@
 				portSchemaJson = JSON.stringify(template.port_schema ?? [], null, 2);
 				defaultVolumesJson = JSON.stringify(template.default_volumes ?? [], null, 2);
 				composeYaml = template.compose_yaml ?? '';
+				networkPolicy = template.network_policy ?? 'none';
 			} else {
 				name = ''; description = ''; kind = 'simple'; image = '';
 				imageOptionsJson = '[]'; envSchemaJson = '[]';
 				portSchemaJson = '[]'; defaultVolumesJson = '[]';
 				composeYaml = '';
+				networkPolicy = 'none';
 			}
 			errorMsg = '';
 		}
@@ -69,7 +72,7 @@
 		busy = true;
 		errorMsg = '';
 		try {
-			const data: any = { name, description, kind };
+			const data: any = { name, description, kind, network_policy: networkPolicy };
 			if (kind === 'simple') {
 				data.image = image;
 				data.image_options = tryParseJson(imageOptionsJson, 'image_options');
@@ -119,6 +122,22 @@
 					<button class:active={kind === 'simple'} onclick={() => kind = 'simple'}>Simple (단일 이미지)</button>
 					<button class:active={kind === 'compose'} onclick={() => kind = 'compose'}>Docker Compose</button>
 				</div>
+			</div>
+
+			<div class="field">
+				<label for="tpl-netpolicy">네트워크 정책</label>
+				<select id="tpl-netpolicy" bind:value={networkPolicy}>
+					<option value="none">none (호스트 포트 publish)</option>
+					<option value="internal_only">internal_only (Docker 내부망)</option>
+					<option value="custom">custom</option>
+				</select>
+				{#if networkPolicy === 'internal_only'}
+					<div class="netpolicy-warn">
+						internal_only 는 backend 와 agent 가 같은 Docker daemon 일 때만 동작합니다.
+						다른 호스트의 agent 에 배포하면 Web UI 가 502 가 됩니다. 멀티호스트 fleet
+						에서는 none 을 사용하세요.
+					</div>
+				{/if}
 			</div>
 
 			{#if kind === 'simple'}
@@ -211,14 +230,23 @@
 		font-size: 12px; font-weight: 600; color: var(--text-secondary);
 	}
 	.hint { font-weight: 400; color: var(--text-muted); font-size: 10px; }
-	.field input, .field textarea {
+	.field input, .field textarea, .field select {
 		background: var(--bg-base); border: 1px solid var(--border);
 		border-radius: var(--radius-sm); padding: 8px 12px;
 		color: var(--text-primary); font-family: 'JetBrains Mono', monospace;
 		font-size: 12px; resize: vertical;
 	}
-	.field input:focus, .field textarea:focus {
+	.field input:focus, .field textarea:focus, .field select:focus {
 		outline: none; border-color: var(--accent);
+	}
+	.netpolicy-warn {
+		margin-top: 4px;
+		padding: 6px 8px;
+		border-radius: var(--radius-sm);
+		background: var(--state-warn-bg, rgba(234, 179, 8, 0.12));
+		color: var(--state-warn-fg, #b45309);
+		font-size: 11px;
+		line-height: 1.5;
 	}
 
 	.kind-toggle {

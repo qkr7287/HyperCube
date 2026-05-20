@@ -238,7 +238,8 @@ CELERY_BEAT_SCHEDULE = {
 REDIS_CACHE_URL = config("REDIS_CACHE_URL", default="redis://redis:6379/1")
 METRICS_RETENTION_DAYS = config("METRICS_RETENTION_DAYS", default=7, cast=int)
 WORKSPACE_TOKEN_TTL_SECONDS = config("WORKSPACE_TOKEN_TTL_SECONDS", default=86400, cast=int)
-WORKSPACE_TICKET_TTL_SECONDS = config("WORKSPACE_TICKET_TTL_SECONDS", default=60, cast=int)
+# 300s — 60s 는 Web UI 버튼 클릭과 새 탭 로드 사이에 만료될 만큼 짧다.
+WORKSPACE_TICKET_TTL_SECONDS = config("WORKSPACE_TICKET_TTL_SECONDS", default=300, cast=int)
 WORKSPACE_SESSION_TTL_SECONDS = config("WORKSPACE_SESSION_TTL_SECONDS", default=28800, cast=int)
 HC_GPU_SHARED_MODE_ENABLED = config("HC_GPU_SHARED_MODE_ENABLED", default=False, cast=bool)
 HC_MAX_ACTIVE_WORKSPACES_PER_USER = config("HC_MAX_ACTIVE_WORKSPACES_PER_USER", default=2, cast=int)
@@ -247,6 +248,13 @@ HC_MAX_WORKSPACE_RUNTIME_HOURS = config("HC_MAX_WORKSPACE_RUNTIME_HOURS", defaul
 HC_MODEL_STORAGE_DIR = config("HC_MODEL_STORAGE_DIR", default=str(BASE_DIR / "model-assets"))
 HC_MODEL_IMPORT_DIR = config("HC_MODEL_IMPORT_DIR", default=str(BASE_DIR / "model-import"))
 MODEL_PREPARE_LEASE_SECONDS = config("MODEL_PREPARE_LEASE_SECONDS", default=86400, cast=int)
+# 마지막 progress 후 이 시간만큼 무응답이면 prepare job 을 stuck 으로 보고
+# 재시도/실패 처리한다. LEASE(전체 데드라인) 와 별개의 짧은 watchdog.
+MODEL_PREPARE_PROGRESS_TIMEOUT_SECONDS = config(
+    "MODEL_PREPARE_PROGRESS_TIMEOUT_SECONDS", default=900, cast=int
+)
+# progress timeout 으로 stuck 판정 시 재dispatch 최대 횟수. 초과하면 FAILED.
+MODEL_PREPARE_MAX_ATTEMPTS = config("MODEL_PREPARE_MAX_ATTEMPTS", default=3, cast=int)
 
 # Workspace proxy forwards arbitrary multipart/binary bodies (image uploads to
 # the auto-launched gradio app, JupyterLab file drops, etc). The 2.5MB default

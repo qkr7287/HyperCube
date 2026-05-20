@@ -56,10 +56,13 @@ class ContainerTemplate(models.Model):
     # 디렉터리가 quota 적용을 받게 하는 일반화 필드. ML 워크스페이스는
     # /workspace, Redis 는 /data, postgres 는 /var/lib/postgresql/data 등.
     data_mount_path = models.CharField(max_length=255, blank=True, default="/workspace")
+    # default 는 NONE — internal_only 는 backend 와 agent 가 같은 docker daemon
+    # 일 때만 동작한다. cross-host fleet 에서 internal_only 를 쓰면 backend 가
+    # 다른 호스트의 docker internal network 에 닿지 못해 Web UI 가 502 가 된다.
     network_policy = models.CharField(
         max_length=32,
         choices=NetworkPolicy.choices,
-        default=NetworkPolicy.INTERNAL_ONLY,
+        default=NetworkPolicy.NONE,
     )
     default_max_runtime_hours = models.PositiveIntegerField(null=True, blank=True)
     cpu_weight = models.FloatField(default=1.0)

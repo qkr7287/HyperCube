@@ -29,6 +29,14 @@ def model_prepare_lease_seconds() -> int:
     return int(getattr(settings, "MODEL_PREPARE_LEASE_SECONDS", 24 * 60 * 60))
 
 
+def model_prepare_progress_timeout_seconds() -> int:
+    return int(getattr(settings, "MODEL_PREPARE_PROGRESS_TIMEOUT_SECONDS", 900))
+
+
+def model_prepare_max_attempts() -> int:
+    return int(getattr(settings, "MODEL_PREPARE_MAX_ATTEMPTS", 3))
+
+
 def create_or_attach_prepare_jobs_for_request(request: ContainerRequest) -> list[ModelPrepareJob]:
     version_ids = _normalized_version_ids(request.model_version_ids)
     if not version_ids:
@@ -131,11 +139,13 @@ def dispatch_prepare_job(job: ModelPrepareJob) -> bool:
     now = timezone.now()
     job.status = ModelPrepareJob.Status.DISPATCHED
     job.dispatched_at = now
+    job.last_progress_at = now
     job.lease_expires_at = now + timedelta(seconds=model_prepare_lease_seconds())
     job.progress_message = "Model preparation dispatched to agent"
     job.save(update_fields=[
         "status",
         "dispatched_at",
+        "last_progress_at",
         "lease_expires_at",
         "progress_message",
         "updated_at",
@@ -180,6 +190,7 @@ def handle_prepare_progress(data: dict) -> bool:
     now = timezone.now()
     job.status = ModelPrepareJob.Status.PREPARING
     job.started_at = job.started_at or now
+    job.last_progress_at = now
     job.progress_percent = _bounded_percent(percent)
     job.progress_message = str(message)
     if isinstance(bytes_done, int):
@@ -188,6 +199,7 @@ def handle_prepare_progress(data: dict) -> bool:
     job.save(update_fields=[
         "status",
         "started_at",
+        "last_progress_at",
         "progress_percent",
         "progress_message",
         "bytes_done",
@@ -259,21 +271,109 @@ def fail_prepare_job(job: ModelPrepareJob, error: str) -> None:
         delete_workspace_token_for_request(request)
 
 
-def cleanup_stale_model_prepare_jobs(*, now=None) -> int:
+def requeue_prepare_job(job: ModelPrepareJob, *, now=None) -> bool:
+    """stuck 된 prepare job 을 QUEUED 로 되돌리고 재dispatch.
+
+    agent 의 prepare_model_assets 는 sha256 일치 파일을 재다운로드 없이
+    skip 하는 멱등 명령이라 안전하게 재시도할 수 있다.
+    """
     now = now or timezone.now()
-    stale_jobs = list(
+    job.status = ModelPrepareJob.Status.QUEUED
+    job.attempt_count = (job.attempt_count or 0) + 1
+    job.last_progress_at = now
+    job.lease_expires_at = now + timedelta(seconds=model_prepare_lease_seconds())
+    job.progress_message = (
+        f"Re-dispatching model preparation (retry {job.attempt_count})"
+    )
+    job.save(update_fields=[
+        "status",
+        "attempt_count",
+        "last_progress_at",
+        "lease_expires_at",
+        "progress_message",
+        "updated_at",
+    ])
+    logger.info("[model-prepare] requeued job %s (attempt %s)", job.id, job.attempt_count)
+    return dispatch_prepare_job(job)
+
+
+def reconcile_agent_prepare_jobs(agent_id, *, now=None) -> int:
+    """agent 재접속 시 호출 — 그 agent 의 stuck prepare job 을 즉시 복구.
+
+    WS 끊김으로 prepare 응답이 유실되면 job 이 progress 중간에 멈춘다.
+    cleanup_stale 의 progress watchdog 과 같은 기준이되, 다음 주기(최대
+    60초)를 기다리지 않고 reconnect 즉시 적용한다.
+    """
+    now = now or timezone.now()
+    progress_deadline = now - timedelta(seconds=model_prepare_progress_timeout_seconds())
+    max_attempts = model_prepare_max_attempts()
+    jobs = list(
+        ModelPrepareJob.objects.filter(
+            agent_id=agent_id,
+            status__in=ACTIVE_PREPARE_STATUSES,
+            last_progress_at__lt=progress_deadline,
+        )[:100]
+    )
+    for job in jobs:
+        if (job.attempt_count or 0) >= max_attempts:
+            fail_prepare_job(
+                job,
+                "model preparation stalled — agent reconnected without progress",
+            )
+        else:
+            requeue_prepare_job(job, now=now)
+    return len(jobs)
+
+
+def cleanup_stale_model_prepare_jobs(*, now=None) -> int:
+    """주기 task — stuck 된 prepare job 을 정리한다.
+
+    두 종류의 stuck:
+      1. lease 만료 (전체 데드라인 초과) → 무조건 실패.
+      2. progress 무응답 watchdog (agent 침묵) → 재시도 여지가 있으면
+         재dispatch, 시도 한도 초과면 실패.
+    """
+    now = now or timezone.now()
+    handled = 0
+
+    # 1. 전체 데드라인(lease) 만료.
+    expired = list(
         ModelPrepareJob.objects.filter(
             status__in=ACTIVE_PREPARE_STATUSES,
             lease_expires_at__lt=now,
         )[:100]
     )
-    for job in stale_jobs:
+    for job in expired:
         job.status = ModelPrepareJob.Status.STALE
         job.failed_at = now
         job.error = "model preparation lease expired"
         job.save(update_fields=["status", "failed_at", "error", "updated_at"])
         fail_prepare_job(job, "model preparation lease expired")
-    return len(stale_jobs)
+        handled += 1
+
+    # 2. progress 무응답 watchdog — 마지막 progress 후 N초간 침묵.
+    progress_deadline = now - timedelta(seconds=model_prepare_progress_timeout_seconds())
+    expired_ids = {job.id for job in expired}
+    stuck = [
+        job
+        for job in ModelPrepareJob.objects.filter(
+            status__in=ACTIVE_PREPARE_STATUSES,
+            last_progress_at__lt=progress_deadline,
+        )[:100]
+        if job.id not in expired_ids
+    ]
+    max_attempts = model_prepare_max_attempts()
+    for job in stuck:
+        if (job.attempt_count or 0) >= max_attempts:
+            fail_prepare_job(
+                job,
+                f"model preparation stalled — no agent progress after {job.attempt_count} retries",
+            )
+        else:
+            requeue_prepare_job(job, now=now)
+        handled += 1
+
+    return handled
 
 
 def model_mounts_payload_for_request(request: ContainerRequest) -> list[dict]:

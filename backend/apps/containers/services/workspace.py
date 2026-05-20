@@ -312,6 +312,13 @@ def issue_workspace_open_ticket(container: Container, user) -> str:
     if not container.workspace_enabled:
         raise ValidationError("Workspace is not enabled for this container")
     if workspace_upstream_endpoint(container) is None:
+        if _uses_internal_workspace_network(container):
+            raise ValidationError(
+                "Workspace is unreachable. The template uses network_policy="
+                "internal_only, which only works when the backend and the "
+                "agent share a Docker daemon. For a cross-host agent, recreate "
+                "the container from a template with network_policy=none."
+            )
         raise ValidationError("Workspace host port is not ready")
 
     nonce = secrets.token_urlsafe(24)

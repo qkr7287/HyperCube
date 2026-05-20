@@ -250,6 +250,9 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
             occurred_at_iso=agent["last_seen_at"],
             previous_offline_seconds=agent["previous_offline_seconds"],
         )
+        # reconnect 는 WS 끊김으로 prepare 응답이 유실됐을 수 있다는 신호 —
+        # 그 agent 의 stuck prepare job 을 즉시 재dispatch.
+        await self._reconcile_prepare_jobs()
         await self.channel_layer.group_send(
             GLOBAL_GROUP,
             {
@@ -295,6 +298,23 @@ class MonitoringConsumer(AsyncWebsocketConsumer):
             "last_seen_at": now.isoformat(),
             "previous_offline_seconds": offline_secs,
         }
+
+    @database_sync_to_async
+    def _reconcile_prepare_jobs(self):
+        """offline→online edge 에서 호출 — stuck prepare job 즉시 복구."""
+        from apps.models_catalog.prepare import reconcile_agent_prepare_jobs
+
+        try:
+            recovered = reconcile_agent_prepare_jobs(self.server_id)
+            if recovered:
+                logger.info(
+                    "[model-prepare] reconciled %s stuck job(s) on agent %s reconnect",
+                    recovered, self.server_id,
+                )
+        except Exception:
+            logger.exception(
+                "[model-prepare] reconcile failed for agent %s", self.server_id
+            )
 
     @database_sync_to_async
     def _record_online_event(self, hostname: str, occurred_at_iso: str,

@@ -61,6 +61,7 @@ class WorkspaceAPITest(APITestCase):
             workspace_enabled=True,
             workspace_kind=ContainerTemplate.WorkspaceKind.JUPYTER,
             workspace_port=8888,
+            network_policy=ContainerTemplate.NetworkPolicy.INTERNAL_ONLY,
             default_max_runtime_hours=24,
         )
         self.request = create_request(
@@ -104,7 +105,7 @@ class WorkspaceAPITest(APITestCase):
         body = response.json()["data"]
         self.assertTrue(body["url"].startswith(f"/workspace/{self.request.id}/lab?ticket="))
         self.assertNotIn("token=", body["url"])
-        self.assertEqual(body["expiresInSeconds"], 60)
+        self.assertEqual(body["expiresInSeconds"], 300)
 
     def test_open_rejects_non_owner(self):
         self.client.force_authenticate(user=self.other_user)

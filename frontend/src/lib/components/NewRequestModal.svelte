@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { base } from '$app/paths';
+	import { resolveSubmitModelIds, missingDefaultModelIds } from '$lib/utils/request-model';
 	import ResourceLimitForm from './ResourceLimitForm.svelte';
 
 	type Prefill = {
@@ -120,6 +121,7 @@
 	let selectedGpuSliceIds = $state<number[]>([]);
 	let gpuShareOk = $state(false);
 	let selectedModelVersionIds = $state<string[]>([]);
+	let modelSelectionDirty = $state(false);
 	let selectedImage = $state('');
 	let customName = $state('');
 	let envValues = $state<Record<string, string>>({});
@@ -155,6 +157,12 @@
 
 	let withModelCount = $derived(
 		templates.filter((tpl) => (tpl.default_model_version_ids?.length ?? 0) > 0).length,
+	);
+
+	let missingDefaultModels = $derived(
+		selectedTemplate
+			? missingDefaultModelIds(selectedTemplate.default_model_version_ids, modelVersions)
+			: [],
 	);
 
 	let gpuSlices = $derived(
@@ -239,6 +247,7 @@
 		selectedGpuSliceIds = [];
 		gpuShareOk = false;
 		selectedModelVersionIds = [];
+		modelSelectionDirty = false;
 		selectedImage = '';
 		customName = '';
 		envValues = {};
@@ -385,9 +394,10 @@
 		portValues = {};
 		selectedGpuSliceIds = [];
 		gpuShareOk = false;
-		selectedModelVersionIds = (tpl.default_model_version_ids ?? [])
-			.map((id) => String(id))
-			.filter((id) => modelVersions.some((version) => version.id === id));
+		// 모델 목록(modelVersions)이 아직 안 왔어도 default 를 버리지 않고 보존.
+		// 검증은 제출 시점(resolveSubmitModelIds)과 경고 배너(missingDefaultModels)에서.
+		selectedModelVersionIds = (tpl.default_model_version_ids ?? []).map((id) => String(id));
+		modelSelectionDirty = false;
 		for (const env of tpl.env_schema ?? []) envValues[env.key] = env.default ?? '';
 		for (const port of tpl.port_schema ?? []) portValues[port.internal] = port.host_default ?? port.internal;
 	}
@@ -404,6 +414,7 @@
 	}
 
 	function toggleModel(versionId: string) {
+		modelSelectionDirty = true;
 		selectedModelVersionIds = selectedModelVersionIds.includes(versionId)
 			? selectedModelVersionIds.filter((id) => id !== versionId)
 			: [...selectedModelVersionIds, versionId];
@@ -420,6 +431,20 @@
 			busy = false;
 			return;
 		}
+
+		// 제출 직전 모델 default 재적용 + 모델 목록 미수신 시 차단.
+		const resolvedModels = resolveSubmitModelIds({
+			defaultModelVersionIds: selectedTemplate.default_model_version_ids,
+			selection: selectedModelVersionIds,
+			selectionDirty: modelSelectionDirty,
+			modelVersions,
+		});
+		if (resolvedModels.error) {
+			errorMsg = resolvedModels.error;
+			busy = false;
+			return;
+		}
+		selectedModelVersionIds = resolvedModels.ids;
 
 		const customPorts = (selectedTemplate.port_schema ?? []).map((port: any) => ({
 			host: portValues[port.internal] ?? port.host_default,
@@ -439,7 +464,7 @@
 			workspace_gb: workspaceGb,
 			gpu_slice_ids: selectedGpuSliceIds,
 			gpu_share_ok: gpuShareOk,
-			model_version_ids: selectedModelVersionIds,
+			model_version_ids: resolvedModels.ids,
 		};
 		if (requestedMaxRuntimeHours) body.requested_max_runtime_hours = requestedMaxRuntimeHours;
 
@@ -581,7 +606,7 @@
 								<tbody>
 									{#each visibleTemplates as tpl (tpl.id)}
 										{@const bundled = bundledModelLabels(tpl)}
-										<tr class="tpl-row" onclick={() => selectTemplate(tpl)} title={tpl.description || tpl.image}>
+										<tr class="tpl-row" onclick={() => !loading && selectTemplate(tpl)} title={tpl.description || tpl.image}>
 											<td><strong>{tpl.name}</strong></td>
 											<td class="col-meta">{tpl.kind}{#if tpl.category === 'ml'} · ML{/if}</td>
 											<td class="col-archs">
@@ -718,6 +743,12 @@
 							<tr>
 								<th>모델 자산</th>
 								<td>
+									{#if missingDefaultModels.length > 0}
+										<p class="cfg-warn">
+											이 템플릿의 기본 모델 {missingDefaultModels.length}개가 모델 목록에 없습니다.
+											카탈로그 등록 상태를 확인하세요.
+										</p>
+									{/if}
 									{#if modelVersions.length === 0}
 										<span class="cfg-muted">등록된 모델 버전이 없습니다.</span>
 									{:else}
@@ -987,6 +1018,15 @@
 
 	.cfg-muted {
 		color: var(--text-muted);
+		font-size: 12px;
+	}
+
+	.cfg-warn {
+		margin: 0 0 6px;
+		padding: 6px 8px;
+		border-radius: 6px;
+		background: var(--state-warn-bg, rgba(234, 179, 8, 0.12));
+		color: var(--state-warn-fg, #b45309);
 		font-size: 12px;
 	}
 
