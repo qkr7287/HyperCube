@@ -159,13 +159,18 @@ def workspace_payload_for_request(
     if not secret:
         raise ValidationError("Workspace secret is required for workspace create")
     template = request.template
-    return {
+    payload = {
         "kind": request.workspace_kind_snapshot or (template.workspace_kind if template else "jupyter"),
         "token": secret.token,
         "port": (template.workspace_port if template else None) or 8888,
         "baseUrl": workspace_base_url_for_request(request),
         "workdir": (template.default_workdir if template else "") or "/workspace",
     }
+    # 요청 시 지정한 host port. 없으면 키를 생략 — 미적용 agent 는 기존
+    # 동작(host port = internal port)을 유지한다 (하위호환).
+    if request.workspace_host_port:
+        payload["hostPort"] = request.workspace_host_port
+    return payload
 
 
 def apply_workspace_metadata_from_response(

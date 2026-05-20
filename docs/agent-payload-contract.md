@@ -659,10 +659,16 @@ When a template enables ML workspace access, backend `create_container` includes
   "kind": "jupyter",
   "token": "<plaintext token, do not log>",
   "port": 8888,
+  "hostPort": 8889,
   "baseUrl": "/workspace/<container-request-id>/",
   "workdir": "/workspace"
 }
 ```
+
+`hostPort` is optional — present only when the user picked a host port at
+request time. The agent must publish the workspace on exactly that host port;
+when the key is absent, keep existing behavior. See `agent-protocol.md`
+§"Workspace" for full semantics.
 
 Agent success response should include `data.workspace.internalPort`,
 `baseUrl`, `kind`, and optional `health`. For normal workspace networking,

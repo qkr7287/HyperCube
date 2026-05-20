@@ -248,3 +248,27 @@ class AgentViewSet(ModelViewSet):
             "hostname": agent.hostname,
             "devices": GpuDeviceSerializer(devices, many=True).data,
         })
+
+    @extend_schema(
+        summary="Agent host port usage",
+        description=(
+            "Host ports HyperCube knows to be in use on this agent — running "
+            "containers and pending/approved requests. Does not include ports "
+            "held by non-HyperCube processes (coverage=hypercube-only)."
+        ),
+    )
+    @action(detail=True, methods=["get"], url_path="used-ports")
+    def used_ports(self, request, pk=None):
+        from apps.containers.services.host_ports import collect_managed_host_ports
+
+        agent = self.get_object()
+        seen: dict[tuple, dict] = {}
+        for entry in collect_managed_host_ports(agent):
+            seen.setdefault((entry["port"], entry["proto"]), entry)
+        ports = sorted(seen.values(), key=lambda entry: entry["port"])
+        return Response({
+            "agent": str(agent.id),
+            "hostname": agent.hostname,
+            "used_ports": ports,
+            "coverage": "hypercube-only",
+        })

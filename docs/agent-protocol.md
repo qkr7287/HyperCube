@@ -624,12 +624,20 @@ already-known `Container` by `containerId` and `data.workspace.path`
     "kind": "jupyter",
     "token": "<plaintext token, do not log>",
     "port": 8888,
+    "hostPort": 8889,
     "baseUrl": "/workspace/<container-request-id>/",
     "workdir": "/workspace"
   },
   "networkPolicy": "internal_only"
 }
 ```
+
+`port` is the container-internal workspace port. `hostPort` is optional — when
+present (the user picked a host port at request time), the agent must publish
+the workspace on exactly that host port. When `hostPort` is absent, the agent
+keeps its existing behavior (publish on the internal port, or whatever default
+it chose). Backend omits the key when the user did not specify one, so older
+agents remain compatible.
 
 The agent should inject the token/base URL/port into the image runtime and
 return workspace reachability metadata. For normal workspaces, bind the

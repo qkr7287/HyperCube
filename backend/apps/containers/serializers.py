@@ -267,6 +267,12 @@ class ContainerRequestSerializer(serializers.ModelSerializer):
     )
     memory_mb = serializers.IntegerField(required=False, allow_null=True, min_value=0)
     workspace_gb = serializers.IntegerField(required=False, allow_null=True, min_value=0)
+    workspace_host_port = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=1024,
+        max_value=65535,
+    )
     requester_username = serializers.CharField(
         source="requester.username", read_only=True, default=None, allow_null=True
     )
@@ -315,6 +321,7 @@ class ContainerRequestSerializer(serializers.ModelSerializer):
             "selected_model_versions",
             "workspace_enabled_snapshot",
             "workspace_kind_snapshot",
+            "workspace_host_port",
             "requested_max_runtime_hours",
             "cpu_percent",
             "memory_mb",
@@ -428,6 +435,23 @@ class ContainerRequestSerializer(serializers.ModelSerializer):
                 )
             if model_version_ids is not None:
                 attrs["model_version_ids"] = self._validate_model_version_ids(model_version_ids)
+            # workspace host port — ML 워크스페이스 템플릿에만 의미. 그 외엔
+            # 무시(null), ML 이면 확실히 아는 점유 포트와 충돌 시 거부.
+            workspace_host_port = attrs.get("workspace_host_port")
+            if workspace_host_port:
+                if not (template and template.workspace_enabled):
+                    attrs["workspace_host_port"] = None
+                elif target_agent:
+                    from apps.containers.services.host_ports import host_port_in_use
+
+                    if host_port_in_use(
+                        target_agent,
+                        workspace_host_port,
+                        exclude_request_id=self.instance.id if self.instance else None,
+                    ):
+                        raise serializers.ValidationError(
+                            {"workspace_host_port": "이 포트는 대상 서버에서 이미 사용 중입니다."}
+                        )
         elif action == ContainerRequest.Action.DELETE:
             if gpu_slice_ids:
                 raise serializers.ValidationError(

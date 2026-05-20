@@ -295,6 +295,9 @@ class ContainerRequest(models.Model):
     model_version_ids = models.JSONField(default=list, blank=True)
     workspace_enabled_snapshot = models.BooleanField(default=False)
     workspace_kind_snapshot = models.CharField(max_length=32, blank=True, default="")
+    # 요청 시 사용자가 지정한 workspace host port. null 이면 템플릿
+    # workspace_port (default 8888) 를 그대로 host port 로 publish.
+    workspace_host_port = models.PositiveIntegerField(null=True, blank=True)
     requested_max_runtime_hours = models.PositiveIntegerField(null=True, blank=True)
     cpu_percent = models.PositiveIntegerField(null=True, blank=True)
     memory_mb = models.PositiveIntegerField(null=True, blank=True)

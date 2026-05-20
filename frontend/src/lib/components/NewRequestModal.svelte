@@ -37,6 +37,7 @@
 		requires_gpu?: boolean;
 		workspace_enabled?: boolean;
 		workspace_kind?: string;
+		workspace_port?: number | null;
 		default_max_runtime_hours?: number | null;
 		min_cpu_percent?: number;
 		min_memory_mb?: number;
@@ -122,6 +123,10 @@
 	let gpuShareOk = $state(false);
 	let selectedModelVersionIds = $state<string[]>([]);
 	let modelSelectionDirty = $state(false);
+	let workspaceHostPort = $state<number | null>(null);
+	let usedPorts = $state<Array<{ port: number; proto: string; source: string }>>([]);
+	let usedPortsCoverage = $state('');
+	let lastUsedPortsAgent = '';
 	let selectedImage = $state('');
 	let customName = $state('');
 	let envValues = $state<Record<string, string>>({});
@@ -163,6 +168,10 @@
 		selectedTemplate
 			? missingDefaultModelIds(selectedTemplate.default_model_version_ids, modelVersions)
 			: [],
+	);
+
+	let workspacePortConflict = $derived(
+		workspaceHostPort != null && usedPorts.some((entry) => entry.port === workspaceHostPort),
 	);
 
 	let gpuSlices = $derived(
@@ -241,6 +250,12 @@
 		loadResourceRecommendation(selectedTemplate.id, selectedAgent);
 	});
 
+	$effect(() => {
+		if (!open || !selectedAgent || selectedAgent === lastUsedPortsAgent) return;
+		lastUsedPortsAgent = selectedAgent;
+		loadUsedPorts(selectedAgent);
+	});
+
 	function resetForm() {
 		selectedTemplate = null;
 		selectedAgent = '';
@@ -248,6 +263,7 @@
 		gpuShareOk = false;
 		selectedModelVersionIds = [];
 		modelSelectionDirty = false;
+		workspaceHostPort = null;
 		selectedImage = '';
 		customName = '';
 		envValues = {};
@@ -262,10 +278,13 @@
 		templateScope = 'all';
 		gpuDevices = [];
 		cacheStatuses = {};
+		usedPorts = [];
+		usedPortsCoverage = '';
 		errorMsg = '';
 		lastGpuAgent = '';
 		lastCacheKey = '';
 		lastRecommendationKey = '';
+		lastUsedPortsAgent = '';
 	}
 
 	async function loadData() {
@@ -318,6 +337,23 @@
 			gpuDevices = [];
 		} finally {
 			gpuLoading = false;
+		}
+	}
+
+	async function loadUsedPorts(agentId: string) {
+		const t = token();
+		if (!t) return;
+		try {
+			const res = await fetch(`${base}/api/agents/${agentId}/used-ports/`, {
+				headers: { Authorization: `Bearer ${t}` },
+			});
+			const json = await res.json().catch(() => ({}));
+			if (!res.ok) throw new Error('used-ports');
+			usedPorts = json.data?.used_ports ?? [];
+			usedPortsCoverage = json.data?.coverage ?? '';
+		} catch {
+			usedPorts = [];
+			usedPortsCoverage = '';
 		}
 	}
 
@@ -398,6 +434,7 @@
 		// 검증은 제출 시점(resolveSubmitModelIds)과 경고 배너(missingDefaultModels)에서.
 		selectedModelVersionIds = (tpl.default_model_version_ids ?? []).map((id) => String(id));
 		modelSelectionDirty = false;
+		workspaceHostPort = null;
 		for (const env of tpl.env_schema ?? []) envValues[env.key] = env.default ?? '';
 		for (const port of tpl.port_schema ?? []) portValues[port.internal] = port.host_default ?? port.internal;
 	}
@@ -467,6 +504,9 @@
 			model_version_ids: resolvedModels.ids,
 		};
 		if (requestedMaxRuntimeHours) body.requested_max_runtime_hours = requestedMaxRuntimeHours;
+		if (selectedTemplate.workspace_enabled && workspaceHostPort) {
+			body.workspace_host_port = workspaceHostPort;
+		}
 
 		try {
 			const res = await fetch(`${base}/api/requests/`, {
@@ -774,6 +814,39 @@
 									{/if}
 								</td>
 							</tr>
+							{#if selectedTemplate?.workspace_enabled}
+								<tr>
+									<th>workspace host port</th>
+									<td>
+										<input
+											type="number"
+											min="1024"
+											max="65535"
+											placeholder={String(selectedTemplate.workspace_port ?? 8888)}
+											value={workspaceHostPort ?? ''}
+											oninput={(event) => {
+												const v = event.currentTarget.value;
+												workspaceHostPort = v ? Number(v) : null;
+											}}
+										/>
+										<span class="cfg-hint">
+											비우면 템플릿 기본 포트({selectedTemplate.workspace_port ?? 8888}).
+											대상 서버에서 사용 중이 아닌 포트를 지정하세요.
+										</span>
+										{#if selectedAgent && usedPorts.length > 0}
+											<span class="cfg-hint">
+												사용 중인 포트: {usedPorts.map((entry) => entry.port).join(', ')}
+												{#if usedPortsCoverage === 'hypercube-only'}(HyperCube 관리 기준 — 참고용){/if}
+											</span>
+										{/if}
+										{#if workspacePortConflict}
+											<p class="cfg-warn">
+												이 포트는 대상 서버에서 이미 사용 중입니다. 다른 포트를 지정하세요.
+											</p>
+										{/if}
+									</td>
+								</tr>
+							{/if}
 							{#each selectedTemplate?.env_schema ?? [] as env}
 								<tr>
 									<th>env: <code>{env.key}</code>{env.required ? ' *' : ''}</th>
