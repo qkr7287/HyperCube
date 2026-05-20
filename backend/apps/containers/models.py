@@ -51,6 +51,11 @@ class ContainerTemplate(models.Model):
     )
     workspace_port = models.PositiveIntegerField(null=True, blank=True, default=8888)
     default_workdir = models.CharField(max_length=255, blank=True, default="/workspace")
+    # 컨테이너 안에서 per-container XFS prjquota 볼륨이 마운트될 경로.
+    # workspace_enabled (Jupyter/UI 여부) 와 무관 — 모든 컨테이너의 데이터
+    # 디렉터리가 quota 적용을 받게 하는 일반화 필드. ML 워크스페이스는
+    # /workspace, Redis 는 /data, postgres 는 /var/lib/postgresql/data 등.
+    data_mount_path = models.CharField(max_length=255, blank=True, default="/workspace")
     network_policy = models.CharField(
         max_length=32,
         choices=NetworkPolicy.choices,

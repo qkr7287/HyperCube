@@ -40,6 +40,7 @@
 		min_cpu_percent?: number;
 		min_memory_mb?: number;
 		min_workspace_gb?: number;
+		data_mount_path?: string;
 	};
 
 	type Agent = {
@@ -709,6 +710,7 @@
 										hostWorkspacePoolGb={selectedAgentInfo?.workspace_pool_total_gb ?? null}
 										hostWorkspacePoolFreeGb={selectedAgentInfo?.workspace_pool_free_gb ?? null}
 										hostWorkspaceHardEnforcement={selectedAgentInfo?.workspace_hard_enforcement ?? false}
+										diskMountPath={selectedTemplate?.data_mount_path ?? '/workspace'}
 										loading={resourceLoading}
 									/>
 								</td>

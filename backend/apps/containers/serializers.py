@@ -7,7 +7,7 @@ from apps.agents.models import GpuSlice
 from apps.models_catalog.models import ModelAsset, ModelVersion
 
 from .services.policy import request_payload_policy_errors
-from .services.recommend import min_limit_errors, recommend_resource_limits
+from .services.recommend import max_limit_errors, min_limit_errors, recommend_resource_limits
 from .models import (
     ConsoleSession,
     Container,
@@ -196,6 +196,7 @@ class ContainerTemplateSerializer(serializers.ModelSerializer):
             "workspace_kind",
             "workspace_port",
             "default_workdir",
+            "data_mount_path",
             "network_policy",
             "default_max_runtime_hours",
             "cpu_weight",
@@ -492,6 +493,15 @@ class ContainerRequestSerializer(serializers.ModelSerializer):
             cpu_percent=data.get("cpu_percent"),
             memory_mb=data.get("memory_mb"),
             workspace_gb=data.get("workspace_gb"),
+        )
+        errors.update(
+            max_limit_errors(
+                template,
+                target_agent,
+                cpu_percent=data.get("cpu_percent"),
+                memory_mb=data.get("memory_mb"),
+                workspace_gb=data.get("workspace_gb"),
+            )
         )
         if errors:
             raise serializers.ValidationError(errors)
