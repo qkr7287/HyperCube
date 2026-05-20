@@ -15,6 +15,7 @@
 		hostWorkspacePoolGb = null as number | null,
 		hostWorkspacePoolFreeGb = null as number | null,
 		hostWorkspaceHardEnforcement = false,
+		diskMountPath = '/workspace',
 		loading = false,
 	}: {
 		cpuPercent?: number;
@@ -32,6 +33,7 @@
 		hostWorkspacePoolGb?: number | null;
 		hostWorkspacePoolFreeGb?: number | null;
 		hostWorkspaceHardEnforcement?: boolean;
+		diskMountPath?: string;
 		loading?: boolean;
 	} = $props();
 
@@ -56,6 +58,22 @@
 
 	function gb(value: number) {
 		return Math.round(value / 1024);
+	}
+
+	// 숫자 입력칸은 HTML min/max attribute 만으론 타이핑 우회됨 (0 입력 / 상한 초과).
+	// blur·change 시점에 명시적으로 [min, max] 로 clamp 한다.
+	function clamp(value: number, min: number, max: number): number {
+		if (!Number.isFinite(value)) return min;
+		return Math.min(max, Math.max(min, value));
+	}
+	function clampCpu() {
+		cpuPercent = clamp(cpuPercent, minCpuPercent, cpuMax);
+	}
+	function clampMemory() {
+		memoryMb = clamp(memoryMb, minMemoryMb, memoryMax);
+	}
+	function clampWorkspace() {
+		workspaceGb = clamp(workspaceGb, minWorkspaceGb, workspaceMax);
 	}
 </script>
 
@@ -90,7 +108,17 @@
 				<span>최소 {(minCpuPercent / 100).toFixed(1)} cores</span>
 				<span>{cpuHostShare === null ? 'host 정보 없음' : `host의 ${cpuHostShare}% 점유`}</span>
 			</div>
-			<input class="limit-input" type="number" min="0" step="50" bind:value={cpuPercent} disabled={useRecommendation} />
+			<input
+				class="limit-input"
+				type="number"
+				min={minCpuPercent}
+				max={cpuMax}
+				step="50"
+				bind:value={cpuPercent}
+				onchange={clampCpu}
+				onblur={clampCpu}
+				disabled={useRecommendation}
+			/>
 		</div>
 
 		<div class="limit-row" data-warning={memoryMb < minMemoryMb}>
@@ -111,12 +139,22 @@
 				<span>최소 {gb(minMemoryMb)} GB</span>
 				<span>{memoryHostShare === null ? 'host 정보 없음' : `host의 ${memoryHostShare}% 점유`}</span>
 			</div>
-			<input class="limit-input" type="number" min="0" step="1024" bind:value={memoryMb} disabled={useRecommendation} />
+			<input
+				class="limit-input"
+				type="number"
+				min={minMemoryMb}
+				max={memoryMax}
+				step="1024"
+				bind:value={memoryMb}
+				onchange={clampMemory}
+				onblur={clampMemory}
+				disabled={useRecommendation}
+			/>
 		</div>
 
 		<div class="limit-row" data-warning={workspaceGb < minWorkspaceGb}>
 			<div class="limit-label">
-				<span>Workspace</span>
+				<span title="quota 가 적용되는 컨테이너 내부 경로: {diskMountPath}">디스크</span>
 				<strong>{workspaceGb} GB</strong>
 			</div>
 			<input
@@ -138,7 +176,17 @@
 					{/if}
 				</span>
 			</div>
-			<input class="limit-input" type="number" min="0" step="10" bind:value={workspaceGb} disabled={useRecommendation} />
+			<input
+				class="limit-input"
+				type="number"
+				min={minWorkspaceGb}
+				max={workspaceMax}
+				step="10"
+				bind:value={workspaceGb}
+				onchange={clampWorkspace}
+				onblur={clampWorkspace}
+				disabled={useRecommendation}
+			/>
 		</div>
 	</div>
 

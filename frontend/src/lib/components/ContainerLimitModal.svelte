@@ -62,6 +62,15 @@
 			errorMsg = '로그인이 필요합니다.';
 			return;
 		}
+		// CPU·메모리는 한도 필수 — 0(무제한) 은 허용 안 함. 빈 값은 변경하지 않음.
+		if (memoryMb !== '' && Number(memoryMb) < 1) {
+			errorMsg = '메모리 한도는 1MB 이상이어야 합니다 (무제한 불가).';
+			return;
+		}
+		if (cpuPercent !== '' && Number(cpuPercent) < 1) {
+			errorMsg = 'CPU 한도는 1% 이상이어야 합니다 (무제한 불가).';
+			return;
+		}
 		const body: Record<string, any> = {};
 		if (memoryMb !== '') body.memory_mb = Number(memoryMb);
 		if (cpuPercent !== '') body.cpu_percent = Number(cpuPercent);
@@ -102,17 +111,18 @@
 		<div class="dialog" onclick={(e) => e.stopPropagation()}>
 			<h3>컨테이너 한도 수정</h3>
 			<p class="hint">
-				dockerode <code>container.update()</code> — 재시작 없이 즉시 적용. 0 또는 빈 값은 무제한.
+				dockerode <code>container.update()</code> — 재시작 없이 즉시 적용. 빈 값은 변경하지
+				않음. CPU·메모리는 한도 필수 (무제한 불가).
 			</p>
 
 			<div class="field">
 				<label for="mem">메모리 한도 (MB)</label>
-				<input id="mem" type="number" min="0" bind:value={memoryMb} placeholder="0 = 무제한" disabled={busy} />
+				<input id="mem" type="number" min="1" bind:value={memoryMb} placeholder="1 이상" disabled={busy} />
 			</div>
 
 			<div class="field">
 				<label for="cpu">CPU 할당 (%, 100 = 1 core)</label>
-				<input id="cpu" type="number" min="0" max="10000" bind:value={cpuPercent} placeholder="0 = 무제한" disabled={busy} />
+				<input id="cpu" type="number" min="1" max="10000" bind:value={cpuPercent} placeholder="1 이상" disabled={busy} />
 			</div>
 
 			<div class="field">

@@ -140,6 +140,15 @@ requests. When the target Agent reports a workspace quota pool
 `params.workspace.hardGb`, `params.workspace.mountTarget`, and read-only NFS
 `sharedMounts`.
 
+> **`mountTarget` is per-container, not always `/workspace`.** It is the
+> template's `data_mount_path` — the in-container directory that receives the
+> XFS prjquota volume. ML workspace templates use `/workspace`, but service
+> templates use their own data dir (Redis `/data`, postgres
+> `/var/lib/postgresql/data`, ...). The agent must mount the prjquota volume at
+> whatever `mountTarget` arrives in the payload and must not assume
+> `/workspace`. quota is independent of `workspace_enabled` (the Jupyter/UI
+> flag) — a container with no Jupyter UI still gets a quota-bound data volume.
+
 ## type: `system_metrics`
 
 서버 호스트 단위. Agent 가 5~15 초마다 push (Delta Sync — 변경된 필드만).

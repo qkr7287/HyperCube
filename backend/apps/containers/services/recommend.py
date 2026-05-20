@@ -75,6 +75,47 @@ def min_limit_errors(
     return errors
 
 
+# 메모리 max 산정 시 host RAM 에서 예약하는 헤드룸 (MB). frontend
+# ResourceLimitForm 의 memoryMax 계산(`hostMemoryMb - 4096`)과 동일하게 유지.
+MEMORY_HOST_RESERVE_MB = 4096
+
+
+def max_limit_errors(
+    template,
+    agent,
+    *,
+    cpu_percent: int | None = None,
+    memory_mb: int | None = None,
+    workspace_gb: int | None = None,
+) -> dict[str, str]:
+    """host capacity 기반 상한 검사. min_limit_errors 와 대칭.
+
+    CPU·메모리는 cgroup 이 항상 enforce 하므로 host 물리 용량을 상한으로 둔다.
+    디스크는 agent 가 quota pool 을 보고할 때만 상한이 의미 있고, 미보고
+    호스트는 검사를 건너뛴다 (enforce 불가능한 한도를 거절해봐야 무의미).
+    """
+    errors: dict[str, str] = {}
+
+    cpu_cores = _non_negative_int(getattr(agent, "cpu_cores", None))
+    if cpu_percent is not None and cpu_cores > 0:
+        max_cpu = cpu_cores * 100
+        if int(cpu_percent) > max_cpu:
+            errors["cpu_percent"] = f"Maximum CPU limit is {max_cpu} percent ({cpu_cores} cores)."
+
+    ram_total = _non_negative_int(getattr(agent, "ram_total_mb", None))
+    if memory_mb is not None and ram_total > 0:
+        max_memory = max(1024, ram_total - MEMORY_HOST_RESERVE_MB)
+        if int(memory_mb) > max_memory:
+            errors["memory_mb"] = f"Maximum memory limit is {max_memory} MB."
+
+    pool_gb = _non_negative_int(getattr(agent, "workspace_pool_total_gb", None))
+    if workspace_gb is not None and pool_gb > 0:
+        if int(workspace_gb) > pool_gb:
+            errors["workspace_gb"] = f"Maximum disk limit is {pool_gb} GB (host quota pool)."
+
+    return errors
+
+
 def _round_to_step(value: float, step: int) -> int:
     if value <= 0:
         return 0

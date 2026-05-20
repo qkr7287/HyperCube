@@ -179,7 +179,7 @@ describe('ContainerKpiBar', () => {
 		expect(cpuCard.querySelector('.limit-chip')?.textContent).toContain('unlimited');
 	});
 
-	it('adds workspace disk card when workspace quota or metric exists', () => {
+	it('disk card shows workspace quota usage when workspace metric exists', () => {
 		const { container } = render(ContainerKpiBar, {
 			props: {
 				...baseProps,
@@ -190,9 +190,10 @@ describe('ContainerKpiBar', () => {
 				}
 			}
 		});
+		// 디스크 카드는 항상 존재 → non-GPU 컨테이너는 CPU/메모리/네트워크/디스크 4장.
 		const cards = container.querySelectorAll('.kpi');
-		expect(cards.length).toBe(5);
-		expect(screen.getByText('Workspace')).toBeInTheDocument();
+		expect(cards.length).toBe(4);
+		expect(screen.getByText('디스크')).toBeInTheDocument();
 		expect([...container.querySelectorAll('.limit-chip')].some((el) => el.textContent?.includes('limit 100 GB'))).toBe(true);
 	});
 
@@ -208,7 +209,7 @@ describe('ContainerKpiBar', () => {
 			}
 		});
 		const cards = container.querySelectorAll('.kpi');
-		expect(cards.length).toBe(5);
+		expect(cards.length).toBe(4);
 	});
 
 	it('memory foot rows show raw bytes alongside %', () => {

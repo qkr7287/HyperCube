@@ -166,13 +166,36 @@
 					: workspaceSizeGb > 0 ? (workspaceUsedGb / workspaceSizeGb) * 100 : 0)
 			: 0,
 	);
-	let hasWorkspaceMetric = $derived(
-		workspaceSizeGb > 0
-			|| workspaceMeasured
-			|| Boolean(workspace?.path)
-			|| Boolean(workspace?.device)
-			|| Boolean(workspaceGbLimit),
+	// 컨테이너 writable layer / rootfs 크기 — workspace quota 가 없는 일반
+	// 서비스 컨테이너 (Redis 등) 도 디스크에 적재는 하므로, quota 사용량이
+	// 없을 땐 이 값으로 디스크 카드를 채운다. (agent payload contract 의
+	// workspace.rwLayerGb / rootFsGb)
+	let rwLayerGbRaw = $derived<number | null>(
+		typeof workspace?.rwLayerGb === 'number' && Number.isFinite(workspace.rwLayerGb)
+			? workspace.rwLayerGb
+			: null,
 	);
+	let rootFsGbRaw = $derived<number | null>(
+		typeof workspace?.rootFsGb === 'number' && Number.isFinite(workspace.rootFsGb)
+			? workspace.rootFsGb
+			: null,
+	);
+	// 디스크 카드 소스 — agent 의 `source` 필드가 1차 기준.
+	//   du / xfs-quota → /workspace quota 실측 (ML workspace 컨테이너)
+	//   rw-layer       → 컨테이너 writable layer 크기 (Redis 등 일반 컨테이너)
+	// source 가 없을 땐 quota 한도 유무로 fallback. usedGb=0 도 valid 측정값
+	// 이라 measured 만으로 workspace 모드를 단정하지 않는다.
+	let diskMode = $derived<'workspace' | 'layer' | 'pending'>(
+		workspaceSource === 'du' || workspaceSource === 'xfs-quota' || workspaceSizeGb > 0
+			? 'workspace'
+			: workspaceSource === 'rw-layer' || rwLayerGbRaw !== null
+				? 'layer'
+				: workspaceMeasured
+					? 'workspace'
+					: 'pending',
+	);
+	// 디스크 카드는 모든 컨테이너에 항상 표시 (quota 없어도 적재량/대기 상태).
+	let hasWorkspaceMetric = $derived(true);
 
 	let gpuFirst = $derived(
 		Array.isArray(currentMetrics?.gpu)
@@ -246,7 +269,10 @@
 		return memoryMbLimit ? `limit ${formatGb(memoryMbLimit)} GB` : 'unlimited ⚠';
 	}
 	function workspaceLimitChip(): string {
-		return workspaceGbLimit ? `limit ${workspaceGbLimit} GB` : 'unlimited ⚠';
+		// quota 미설정 시 layer 모드와 동일하게 'no quota'. 디스크 quota 는
+		// XFS pquota 호스트에서만 enforce 되고 fleet-wide dormant 라, CPU/메모리
+		// 처럼 'unlimited ⚠' 경고를 띄우면 과하다.
+		return workspaceGbLimit ? `limit ${workspaceGbLimit} GB` : 'no quota';
 	}
 	function cpuRawText(): string {
 		if (cpuQuotaCores) return `${formatCores(cpuNowCores)} / ${formatCoreLimit(cpuQuotaCores)}`;
@@ -264,6 +290,46 @@
 	}
 	function workspaceUsedText() {
 		return workspaceMeasured ? `${workspaceUsedGb.toFixed(1)} GB` : '—';
+	}
+
+	// --- 디스크 카드 (3-mode: workspace quota / 컨테이너 layer / 측정 대기) ---
+	function diskCardPct(): number {
+		if (diskMode === 'workspace') return workspaceUsedPct;
+		// layer 모드: rootFs 대비 writable layer 비율 (rootFs 가 있으면), 없으면 0.
+		if (diskMode === 'layer' && rootFsGbRaw && rootFsGbRaw > 0 && rwLayerGbRaw !== null) {
+			return Math.min(100, (rwLayerGbRaw / rootFsGbRaw) * 100);
+		}
+		return 0;
+	}
+	function diskCardUsedText(): string {
+		if (diskMode === 'workspace') return workspaceMeasured ? `${workspaceUsedGb.toFixed(1)} GB` : '—';
+		if (diskMode === 'layer') return `${(rwLayerGbRaw ?? 0).toFixed(2)} GB`;
+		return '—';
+	}
+	function diskCardRawText(): string {
+		if (diskMode === 'workspace') return workspaceRawText();
+		if (diskMode === 'layer') {
+			const rw = `${(rwLayerGbRaw ?? 0).toFixed(2)} GB`;
+			return rootFsGbRaw && rootFsGbRaw > 0 ? `${rw} / ${rootFsGbRaw.toFixed(2)} GB` : rw;
+		}
+		return '측정 대기';
+	}
+	function diskCardLimitText(): string {
+		if (diskMode === 'workspace') return workspaceLimitChip();
+		if (diskMode === 'layer') return 'no quota';
+		return '';
+	}
+	function diskCardDenominator(): string {
+		if (diskMode === 'workspace') return workspaceGbLimit ? `${workspaceGbLimit} GB quota` : 'no quota';
+		if (diskMode === 'layer') return 'container layer';
+		return 'agent 보고 대기';
+	}
+	function diskCardHelp(): string {
+		if (diskMode === 'workspace') return workspaceHelp;
+		if (diskMode === 'layer') {
+			return '컨테이너 writable layer 적재량입니다. workspace quota 가 없는 서비스 컨테이너(Redis 등)는 이미지 위에 쓴 데이터 크기(SizeRw)를 보여줍니다. 분모는 rootfs 전체 크기입니다.';
+		}
+		return '디스크 사용량을 agent 가 아직 보고하지 않았습니다. workspace quota 컨테이너는 du 기반 점유율, 일반 컨테이너는 writable layer 크기가 표시됩니다.';
 	}
 
 	// hover/focus 시 띄울 bar-tooltip key (예전 meter 의 detail tooltip 복원)
@@ -510,27 +576,25 @@
 		tipTitle: '네트워크 누적',
 	})}
 
-	{#if hasWorkspaceMetric}
-		{@render pctCard({
-			label: '디스크',
-			help: workspaceHelp,
-			value: workspaceUsedPct,
-			rawText: workspaceRawText(),
-			avg: workspaceUsedPct,
-			peak: workspaceUsedPct,
-			avgRawText: workspaceUsedText(),
-			peakRawText: workspaceUsedText(),
-			warn: 80,
-			crit: 90,
-			level: workspaceLevel,
-			delta: 0,
-			meterClass: 'memory',
-			tipKey: 'workspace',
-			tipTitle: '디스크 사용량',
-			limitText: workspaceLimitChip(),
-			denominatorText: workspaceGbLimit ? `${workspaceGbLimit} GB quota` : 'unlimited',
-		})}
-	{/if}
+	{@render pctCard({
+		label: '디스크',
+		help: diskCardHelp(),
+		value: diskCardPct(),
+		rawText: diskCardRawText(),
+		avg: diskCardPct(),
+		peak: diskCardPct(),
+		avgRawText: diskCardUsedText(),
+		peakRawText: diskCardUsedText(),
+		warn: 80,
+		crit: 90,
+		level: diskMode === 'workspace' ? workspaceLevel : 'normal',
+		delta: 0,
+		meterClass: 'memory',
+		tipKey: 'workspace',
+		tipTitle: diskMode === 'layer' ? '컨테이너 디스크 적재량' : '디스크 사용량',
+		limitText: diskCardLimitText(),
+		denominatorText: diskCardDenominator(),
+	})}
 
 	{#if hasGpu}
 		{@render pctCard({

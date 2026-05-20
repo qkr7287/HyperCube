@@ -159,3 +159,17 @@ class MyContainerViewSetTest(APITestCase):
         self.assertEqual(self.owned_container.cpu_percent_limit, 400)
         self.assertEqual(self.owned_container.memory_mb_limit, 16384)
         self.assertIsNotNone(self.owned_container.limit_updated_at)
+
+    @patch("apps.containers.viewsets.MyContainerViewSet._dispatch_and_wait")
+    def test_update_limits_rejects_unlimited_zero(self, mocked_dispatch):
+        # 0 = unlimited 은 허용 안 함 — 모든 컨테이너는 한도를 가진다.
+        self.client.force_authenticate(user=self.user)
+
+        for body in ({"cpu_percent": 0}, {"memory_mb": 0}):
+            response = self.client.post(
+                f"/api/my-containers/{self.owned_container.container_id}/update-limits/",
+                body,
+                format="json",
+            )
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, body)
+        mocked_dispatch.assert_not_called()

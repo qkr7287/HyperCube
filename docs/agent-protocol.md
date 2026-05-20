@@ -556,8 +556,8 @@ settings parity. Dockerode `container.update()` 호출.
 | field | type | required | notes |
 |-------|------|----------|-------|
 | containerId | string | yes | full 또는 short ID |
-| memory_mb | number | no | MB. 0 = unlimited. 미전송 = 변경 X |
-| cpu_percent | number | no | 100 = 1 core. 0 = unlimited |
+| memory_mb | number | no | MB, 1 이상. 미전송 = 변경 X. HC backend 는 0(unlimited) 을 전송하지 않음 — 모든 컨테이너는 한도를 가진다 |
+| cpu_percent | number | no | 100 = 1 core, 1 이상. HC backend 는 0(unlimited) 을 전송하지 않음 |
 | restart_policy | string | no | `no` \| `on-failure` \| `unless-stopped` \| `always` |
 | restart_max_retry | number | no | on-failure 일 때만 의미 |
 
