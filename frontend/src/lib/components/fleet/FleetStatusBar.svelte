@@ -127,21 +127,21 @@
 		<span class="label">CPU <MetricHelp text={"모든 서버 CPU 사용률의 평균과 최대치.\n\n개별 서버 기준\n• 논리 코어 사용량의 평균\n• 100% = 모든 코어 완전 사용\n\n차트: 조회 범위 동안 avg 추이"} /></span>
 		<strong class="value">{formatPercent(metrics?.cpu_avg, 1)}</strong>
 		<span class="sub">최대 {formatPercent(metrics?.cpu_max, 0)}</span>
-		<div class="spark"><MetricSparkline values={cpuTrend} color="#30d5c8" label="CPU 평균 추이" /></div>
+		<div class="spark"><MetricSparkline values={cpuTrend} color="#30d5c8" label="CPU 평균 추이" stretch /></div>
 	</div>
 
 	<div class="kpi" data-level={memLevel}>
 		<span class="label">메모리 <MetricHelp text={"모든 서버 메모리 사용률의 평균과 최대치.\n\n개별 서버 기준\n• 사용 중 메모리 ÷ 전체 RAM × 100\n• buff/cache 포함\n\n차트: 조회 범위 동안 avg 추이"} /></span>
 		<strong class="value">{formatPercent(metrics?.memory_avg, 1)}</strong>
 		<span class="sub">최대 {formatPercent(metrics?.memory_max, 0)}</span>
-		<div class="spark"><MetricSparkline values={memTrend} color="#60a5fa" label="메모리 평균 추이" /></div>
+		<div class="spark"><MetricSparkline values={memTrend} color="#60a5fa" label="메모리 평균 추이" stretch /></div>
 	</div>
 
 	<div class="kpi" data-level={diskLevel}>
 		<span class="label">디스크 <MetricHelp text={"모든 서버 디스크 사용률의 평균과 최대치.\n\n개별 서버 기준\n• 루트 파티션(/) 사용량 ÷ 전체 용량 × 100\n• 다른 마운트는 제외\n\n차트: 조회 범위 동안 avg 추이"} /></span>
 		<strong class="value">{formatPercent(metrics?.disk_avg, 1)}</strong>
 		<span class="sub">최대 {formatPercent(metrics?.disk_max, 0)}</span>
-		<div class="spark"><MetricSparkline values={diskTrend} color="#a78bfa" label="디스크 평균 추이" /></div>
+		<div class="spark"><MetricSparkline values={diskTrend} color="#a78bfa" label="디스크 평균 추이" stretch /></div>
 	</div>
 
 	{#if gpuActive}
@@ -155,7 +155,7 @@
 					최대 {formatPercent(metrics?.gpu_max, 0)}
 				{/if}
 			</span>
-			<div class="spark"><MetricSparkline values={gpuTrend} color="#f472b6" label="GPU 평균 추이" /></div>
+			<div class="spark"><MetricSparkline values={gpuTrend} color="#f472b6" label="GPU 평균 추이" stretch /></div>
 		</div>
 	{/if}
 
@@ -163,7 +163,7 @@
 		<span class="label">네트워크 <MetricHelp text="모든 서버의 수신(RX)과 송신(TX)을 합친 총 트래픽 속도입니다." /></span>
 		<strong class="value net">{formatRate((metrics?.network_rx_rate ?? 0) + (metrics?.network_tx_rate ?? 0))}</strong>
 		<span class="sub">↓ {formatRate(metrics?.network_rx_rate)} · ↑ {formatRate(metrics?.network_tx_rate)}</span>
-		<div class="spark"><MetricSparkline values={netTrend} color="#fbbf24" label="네트워크 추이" /></div>
+		<div class="spark"><MetricSparkline values={netTrend} color="#fbbf24" label="네트워크 추이" stretch /></div>
 	</div>
 
 	<div class="kpi">
