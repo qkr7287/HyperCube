@@ -714,6 +714,8 @@
 		justify-content: space-between;
 		gap: clamp(4px, 0.35vw, 7px);
 		overflow: hidden;
+		/* 카드 폭 기준 컨테이너 — mc-head 가로/세로 전환의 기준 */
+		container-type: inline-size;
 	}
 	.metric-card[data-level='warn'] {
 		border-color: rgba(251, 191, 36, 0.3);
@@ -727,12 +729,22 @@
 	.metric-card[data-level='danger'] .mc-value {
 		color: #f87171;
 	}
+	/* 기본(좁은 카드): 라벨 위·값 아래 세로 스택 — 값이 라벨과 폭 경쟁 안 해 안 잘림 */
 	.mc-head {
 		display: flex;
-		justify-content: space-between;
-		align-items: baseline;
-		gap: 4px;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 2px;
 		min-width: 0;
+	}
+	/* 카드가 충분히 넓으면 라벨·값을 한 줄로 (컴팩트) */
+	@container (min-width: 120px) {
+		.mc-head {
+			flex-direction: row;
+			justify-content: space-between;
+			align-items: baseline;
+			gap: 4px;
+		}
 	}
 	.mc-label {
 		font-size: calc(var(--font-xs) - 1px);
