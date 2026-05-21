@@ -543,8 +543,9 @@
 		text-align: center;
 	}
 	.auth-logo {
-		height: 44px;
-		width: fit-content;
+		height: 24px;
+		width: auto;
+		max-width: 100%;
 		filter: drop-shadow(0 0 12px rgba(48, 213, 200, 0.35));
 	}
 	.auth-tagline {

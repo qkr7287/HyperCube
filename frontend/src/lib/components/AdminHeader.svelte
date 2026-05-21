@@ -132,7 +132,7 @@
 	}
 	.brand-logo {
 		display: block;
-		height: 22px;
+		height: 13px;
 		width: auto;
 	}
 	.nav {

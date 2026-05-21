@@ -176,7 +176,7 @@
 
 	.brand-logo {
 		display: block;
-		height: 22px;
+		height: 13px;
 		width: auto;
 		max-width: 100%;
 	}
@@ -384,10 +384,6 @@
 		.brand {
 			grid-area: brand;
 		}
-		.brand-logo {
-			height: 20px;
-			max-width: 170px;
-		}
 		.nav {
 			grid-area: nav;
 			width: 100%;
@@ -427,9 +423,6 @@
 	}
 
 	@media (max-width: 420px) {
-		.brand-logo {
-			max-width: 150px;
-		}
 		.user-name {
 			display: none;
 		}

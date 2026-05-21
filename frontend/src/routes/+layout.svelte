@@ -1,5 +1,4 @@
 <script lang="ts">
-	import favicon from '$lib/assets/favicon.svg';
 	import { navigating } from '$app/stores';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 
@@ -9,7 +8,6 @@
 </script>
 
 <svelte:head>
-	<link rel="icon" href={favicon} />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<title>AGICS Container Monitor</title>
 </svelte:head>
