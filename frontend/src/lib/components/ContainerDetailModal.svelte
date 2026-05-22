@@ -1385,12 +1385,12 @@
 		min-height: 0;
 		height: 100%;
 	}
+	/* flex-basis auto + min-height 미설정 → 박스가 콘텐츠(머리말 + 4~5행)
+	   아래로는 줄지 않는다. 남는 공간만 grow 로 흡수해 디스크 행이 잘리지 않음. */
 	.metrics-summary > .summary-section {
-		flex: 1 1 0;
-		min-height: 0;
+		flex: 1 1 auto;
 		display: flex;
 		flex-direction: column;
-		overflow: hidden;
 	}
 	/* Activity 박스는 컨텐츠가 dist-bar + 3행 + (선택) tail 로 위쪽 3박스(5행)
 	   보다 작다. flex 1로 두면 박스가 stretch 되면서 박스 안 아래쪽이 빈다.
