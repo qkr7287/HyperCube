@@ -1388,6 +1388,13 @@
 		flex: 1 1 0;
 		min-height: 0;
 	}
+	/* EChartBase host 를 canvas-wrap 에 꽉 채운다 — host 의 height:100% 는
+	   flex 로 가변이 된 박스 안에서 제대로 잡히지 않아 차트가 박스보다
+	   작게 그려진다. canvas-wrap 이 position:relative 이므로 absolute 로 채움. */
+	.metric-stack :global(.canvas-wrap) :global(.echart-host) {
+		position: absolute;
+		inset: 0;
+	}
 
 	.metrics-summary {
 		display: flex;
