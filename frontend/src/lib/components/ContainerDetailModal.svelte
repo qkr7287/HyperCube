@@ -1331,9 +1331,9 @@
 		gap: 14px;
 		min-width: 0;
 		flex: 1 1 auto;
-		/* start: 좌(차트)·우(요약)가 서로 높이를 끌어당기지 않게 — 차트는
-		   항상 자기 고정 높이를 유지하고, 요약은 콘텐츠 높이를 유지한다. */
-		align-items: start;
+		/* stretch: 좌(차트)·우(요약) 칼럼이 같은 높이. 요약이 더 길면 차트
+		   칼럼도 그만큼 늘어나고, 차트들이 그 공간을 균등 분배한다. */
+		align-items: stretch;
 	}
 	.metrics-charts {
 		display: flex;
@@ -1350,6 +1350,9 @@
 		flex-direction: column;
 		gap: 4px;
 		min-width: 0;
+		/* 차트 박스들이 칼럼 높이를 균등 분배 — 아래쪽 빈 공간 제거. */
+		flex: 1 1 0;
+		min-height: 0;
 	}
 	.metric-stack-head {
 		display: flex;
@@ -1376,8 +1379,13 @@
 	.metric-stack-current.net { color: #fbbf24; }
 	.metric-stack-current.disk { color: #c4b5fd; }
 	.metric-stack-current.gpu { color: #f472b6; }
-	.metric-stack :global(.trend) { gap: 2px; }
-	.metric-stack :global(.canvas-wrap) { height: 110px; }
+	/* head 아래의 차트 영역(.trend → .canvas-wrap)이 metric-stack 의 남은
+	   높이를 모두 차지하도록 grow 체인을 연결한다. */
+	.metric-stack :global(.trend) {
+		gap: 2px;
+		flex: 1 1 0;
+		min-height: 0;
+	}
 
 	.metrics-summary {
 		display: flex;
