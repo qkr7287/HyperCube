@@ -1331,7 +1331,9 @@
 		gap: 14px;
 		min-width: 0;
 		flex: 1 1 auto;
-		align-items: stretch;
+		/* start: 좌(차트)·우(요약)가 서로 높이를 끌어당기지 않게 — 차트는
+		   항상 자기 고정 높이를 유지하고, 요약은 콘텐츠 높이를 유지한다. */
+		align-items: start;
 	}
 	.metrics-charts {
 		display: flex;
@@ -1382,13 +1384,11 @@
 		flex-direction: column;
 		gap: 12px;
 		min-width: 0;
-		min-height: 0;
-		height: 100%;
 	}
-	/* flex-basis auto + min-height 미설정 → 박스가 콘텐츠(머리말 + 4~5행)
-	   아래로는 줄지 않는다. 남는 공간만 grow 로 흡수해 디스크 행이 잘리지 않음. */
+	/* 각 박스는 콘텐츠(머리말 + 4~5행) 높이 그대로 — stretch/균등분할로
+	   생기던 디스크 행 잘림이 없다. */
 	.metrics-summary > .summary-section {
-		flex: 1 1 auto;
+		flex: 0 0 auto;
 		display: flex;
 		flex-direction: column;
 	}
