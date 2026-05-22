@@ -34,7 +34,9 @@
 
 	// Loading states
 	let loadingInfo = $state(true);
-	let loadingLogs = $state(true);
+	let loadingLogs = $state(false);
+	// 로그(get_logs)는 "로그" 탭을 처음 열 때만 1회 로드 — 컨테이너 변경 시 리셋.
+	let logsRequested = $state(false);
 	let controlLoading = $state('');
 	let errorMsg = $state('');
 
@@ -388,27 +390,15 @@
 	async function loadData() {
 		if (!container) return;
 		loadingInfo = true;
-		loadingLogs = true;
 		containerState = container.state;
 		containerStatus = container.status;
 		errorMsg = '';
 
-		const [detailsResult, logsResult] = await Promise.allSettled([
-			fetchDetails(),
-			fetchLogs()
-		]);
-
-		if (detailsResult.status === 'rejected') {
-			console.error('Details fetch failed:', detailsResult.reason);
-			errorMsg = '컨테이너 정보를 가져오는데 실패했습니다.';
-		}
-		if (logsResult.status === 'rejected') {
-			console.error('Logs fetch failed:', logsResult.reason);
-			logs = ['로그를 불러올 수 없습니다.'];
-		}
+		// 정보 탭만 즉시 로드. 로그(get_logs)는 느리거나 timeout 날 수 있어
+		// "로그" 탭을 열 때 lazy load 한다 (아래 $effect).
+		await fetchDetails();
 
 		loadingInfo = false;
-		loadingLogs = false;
 
 		// 초기 메트릭: 이미 store에 최신 값이 있으면 한 번 소비.
 		// 이후 값은 metrics store 구독으로 자동 수신됨.
@@ -431,6 +421,8 @@
 				details = null;
 				metricsData = null;
 				logs = [];
+				logsRequested = false;
+				loadingLogs = false;
 				errorMsg = '';
 				envExpanded = false;
 				containerState = current.state;
@@ -448,6 +440,22 @@
 		const c = container;
 		untrack(() => {
 			if (tab === 'metrics' && c) fetchPeakHistory(r);
+		});
+	});
+
+	// "로그" 탭을 처음 열 때만 get_logs 호출 — 정보 탭이 느린/timeout 나는
+	// get_logs 응답을 기다리지 않도록 분리한다.
+	$effect(() => {
+		const tab = activeTab;
+		const c = container;
+		untrack(() => {
+			if (tab === 'logs' && c && !logsRequested) {
+				logsRequested = true;
+				loadingLogs = true;
+				fetchLogs().finally(() => {
+					loadingLogs = false;
+				});
+			}
 		});
 	});
 
