@@ -1019,7 +1019,9 @@
 
 	/* Metrics tab gets the full real estate so the two charts side-by-side
 	   still have room for the range tab row + Y-axis labels. */
-	.modal-metrics { width: min(1040px, 88vw); }
+	/* 성능 지표 탭: 모달을 화면 높이까지 키워 차트들이 세로로 충분히
+	   커지도록 한다 (콘텐츠 높이에 맡기면 차트가 작게 눌린다). */
+	.modal-metrics { width: min(1040px, 88vw); height: 92vh; }
 	.modal-logs { width: min(1100px, 92vw); }
 
 	/* Header */
@@ -1393,10 +1395,10 @@
 		gap: 12px;
 		min-width: 0;
 	}
-	/* 각 박스는 콘텐츠(머리말 + 4~5행) 높이 그대로 — stretch/균등분할로
-	   생기던 디스크 행 잘림이 없다. */
+	/* 평균/최대/최저 박스는 콘텐츠 높이를 하한으로 두고(basis auto) 남는
+	   공간을 grow 로 흡수 — 칼럼을 아래까지 채우되 행은 잘리지 않는다. */
 	.metrics-summary > .summary-section {
-		flex: 0 0 auto;
+		flex: 1 1 auto;
 		display: flex;
 		flex-direction: column;
 	}
