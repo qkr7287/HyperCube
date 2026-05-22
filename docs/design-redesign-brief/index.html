@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HyperCube · 디자인 리뉴얼 브리프</title>
+<style>
+  :root {
+    --ink: #1a1d24;
+    --ink-soft: #4a515e;
+    --line: #e3e6ec;
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --accent: #1f7a6b;
+    --accent-soft: #e6f4f1;
+    --admin: #2563eb;
+    --admin-soft: #e8f0fe;
+    --user: #b4690e;
+    --user-soft: #fdf0df;
+    --warn-soft: #fff4e0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.75;
+    font-size: 16px;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 28px; }
+
+  /* ---- hero ---- */
+  .hero {
+    background: linear-gradient(135deg, #11151c 0%, #1d2a2e 60%, #1f7a6b 140%);
+    color: #fff; padding: 72px 0 60px;
+  }
+  .hero .wrap { padding-top: 0; }
+  .hero .kicker {
+    text-transform: uppercase; letter-spacing: .22em; font-size: 13px;
+    color: #7fd6c6; font-weight: 700; margin-bottom: 18px;
+  }
+  .hero h1 { font-size: 42px; line-height: 1.25; font-weight: 800; margin-bottom: 18px; }
+  .hero p { font-size: 18px; color: #c7cdd6; max-width: 720px; }
+  .hero .meta {
+    margin-top: 32px; display: flex; gap: 32px; flex-wrap: wrap;
+    font-size: 14px; color: #9aa3b0;
+  }
+  .hero .meta b { color: #fff; display: block; font-size: 15px; }
+
+  /* ---- layout ---- */
+  .doc { display: grid; grid-template-columns: 232px 1fr; gap: 48px; padding: 56px 0; }
+  nav.toc { position: sticky; top: 24px; align-self: start; font-size: 14px; }
+  nav.toc strong {
+    display: block; font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--ink-soft); margin: 18px 0 8px;
+  }
+  nav.toc a {
+    display: block; color: var(--ink-soft); text-decoration: none;
+    padding: 5px 10px; border-radius: 6px; border-left: 2px solid transparent;
+  }
+  nav.toc a:hover { background: var(--card); color: var(--accent); border-left-color: var(--accent); }
+
+  section { margin-bottom: 56px; scroll-margin-top: 24px; }
+  h2 {
+    font-size: 27px; font-weight: 800; margin-bottom: 8px;
+    padding-bottom: 12px; border-bottom: 2px solid var(--line);
+  }
+  h2 .num {
+    display: inline-block; background: var(--accent); color: #fff;
+    font-size: 15px; width: 30px; height: 30px; line-height: 30px; text-align: center;
+    border-radius: 8px; margin-right: 10px; vertical-align: 2px;
+  }
+  h3 { font-size: 20px; font-weight: 700; margin: 28px 0 10px; }
+  p { margin-bottom: 12px; }
+  .lead { font-size: 17px; color: var(--ink-soft); }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 26px 28px; margin-bottom: 18px;
+  }
+
+  ul.clean { list-style: none; }
+  ul.clean li { padding: 7px 0 7px 26px; position: relative; }
+  ul.clean li::before {
+    content: "▸"; color: var(--accent); position: absolute; left: 4px; font-size: 13px;
+  }
+  ul.clean li b { color: var(--ink); }
+
+  /* ---- flow diagram ---- */
+  .flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin: 20px 0; }
+  .flow-box {
+    flex: 1; min-width: 220px; background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; padding: 20px;
+  }
+  .flow-box h4 { font-size: 16px; margin-bottom: 6px; }
+  .flow-box .tag {
+    font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 8px; display: block;
+  }
+  .flow-box p { font-size: 14px; color: var(--ink-soft); margin: 0; }
+  .flow-arrow {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; color: var(--accent); padding: 0 10px; font-weight: 700;
+  }
+
+  /* ---- glossary ---- */
+  table.gloss { width: 100%; border-collapse: collapse; font-size: 15px; }
+  table.gloss td { border-bottom: 1px solid var(--line); padding: 12px 14px; vertical-align: top; }
+  table.gloss td:first-child {
+    font-weight: 700; color: var(--accent); white-space: nowrap; width: 170px;
+  }
+
+  /* ---- page block ---- */
+  .page-block {
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    overflow: hidden; margin-bottom: 34px;
+  }
+  .page-head { padding: 22px 28px 18px; border-bottom: 1px solid var(--line); }
+  .page-head .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .page-head h3 { margin: 0; font-size: 21px; }
+  .badge {
+    font-size: 12px; font-weight: 700; padding: 3px 11px; border-radius: 999px;
+    letter-spacing: .03em;
+  }
+  .badge.admin { background: var(--admin-soft); color: var(--admin); }
+  .badge.user { background: var(--user-soft); color: var(--user); }
+  .badge.both { background: var(--accent-soft); color: var(--accent); }
+  .badge.modal { background: #ede9fe; color: #6d28d9; }
+  .trigger {
+    font-size: 13px; color: var(--ink-soft); background: #f0f1f4;
+    padding: 2px 9px; border-radius: 6px;
+  }
+  .trigger b { color: var(--ink); }
+  .url {
+    font-family: "SFMono-Regular", Consolas, monospace; font-size: 13px;
+    background: #f0f1f4; color: var(--ink-soft); padding: 2px 9px; border-radius: 6px;
+  }
+  .page-shot { background: #0d1014; padding: 18px; text-align: center; }
+  .page-shot img {
+    max-width: 100%; border-radius: 8px; border: 1px solid #2a2f38;
+    box-shadow: 0 8px 30px rgba(0,0,0,.35);
+  }
+  .page-body { padding: 24px 28px 28px; }
+  .page-body .what { font-size: 16px; margin-bottom: 16px; }
+  .page-body h4 {
+    font-size: 14px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--accent); margin: 20px 0 6px;
+  }
+
+  .why {
+    background: var(--accent-soft); border-radius: 10px; padding: 14px 18px;
+    font-size: 15px; margin-top: 14px;
+  }
+  .why b { color: var(--accent); }
+
+  .note {
+    background: var(--warn-soft); border-left: 4px solid var(--user);
+    padding: 14px 18px; border-radius: 0 8px 8px 0; font-size: 15px; margin: 14px 0;
+  }
+
+  .divider-band {
+    background: var(--ink); color: #fff; border-radius: 14px;
+    padding: 26px 30px; margin-bottom: 34px;
+  }
+  .divider-band h2 { border: 0; color: #fff; margin: 0 0 6px; padding: 0; }
+  .divider-band p { color: #aab2bf; margin: 0; }
+
+  footer {
+    background: #11151c; color: #8b94a1; padding: 36px 0; font-size: 14px;
+    text-align: center;
+  }
+
+  @media (max-width: 880px) {
+    .doc { grid-template-columns: 1fr; }
+    nav.toc { position: static; }
+    .hero h1 { font-size: 32px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="kicker">디자인 리뉴얼 브리프 · 비개발자용 안내</div>
+    <h1>HyperCube — 서버 &amp; 컨테이너<br />모니터링 플랫폼</h1>
+    <p>이 문서는 디자인을 새로 맡아 주실 디자이너를 위한 안내서입니다.
+       개발 지식이 없어도 "이 제품이 무엇이고, 각 화면이 어떤 데이터를 왜 보여주는지"를
+       이해할 수 있도록 모든 페이지의 실제 스크린샷과 함께 쉽게 설명했습니다.</p>
+    <div class="meta">
+      <div><b>제품 코드명</b>HyperCube</div>
+      <div><b>화면상 브랜드</b>ANCLAVE</div>
+      <div><b>전체 화면 수</b>페이지 9개 + 모달 5개</div>
+      <div><b>문서 작성일</b>2026-05-22</div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+<div class="doc">
+
+  <!-- ============ TOC ============ -->
+  <nav class="toc">
+    <strong>개념 이해</strong>
+    <a href="#intro">1. 제품 소개</a>
+    <a href="#why">2. 왜 만들었나</a>
+    <a href="#flow">3. 전체 데이터 흐름</a>
+    <a href="#roles">4. 두 종류의 사용자</a>
+    <a href="#glossary">5. 용어 사전</a>
+    <strong>관리자 화면</strong>
+    <a href="#p0">로그인</a>
+    <a href="#p1">전체 서버 모니터링</a>
+    <a href="#p2">2D 관제 대시보드</a>
+    <a href="#p3">3D 상세 모니터링</a>
+    <a href="#p4">승인 관리</a>
+    <a href="#m3">↳ 컨테이너 승인 모달</a>
+    <a href="#m4">↳ 모델 승인 모달</a>
+    <a href="#p5">카탈로그</a>
+    <a href="#m5">↳ 템플릿 등록 모달</a>
+    <a href="#p6">마켓플레이스</a>
+    <strong>사용자 화면</strong>
+    <a href="#p7">내 대시보드</a>
+    <a href="#m1">↳ 컨테이너 요청 모달</a>
+    <a href="#m2">↳ 모델 등록 모달</a>
+    <a href="#p8">컨테이너 상세</a>
+    <strong>참고</strong>
+    <a href="#designer">6. 디자이너 메모</a>
+  </nav>
+
+  <main>
+
+  <!-- ============ 1. INTRO ============ -->
+  <section id="intro">
+    <h2><span class="num">1</span>제품 소개 — HyperCube란?</h2>
+    <p class="lead">HyperCube는 <b>여러 대의 서버에서 돌아가는 수많은 프로그램(컨테이너)을
+       한 화면에서 지켜보고 관리하는 중앙 관제 플랫폼</b>입니다.</p>
+    <div class="card">
+      <p>큰 회사에는 보통 서버가 수십~수백 대 있고, 그 안에서 웹사이트·데이터베이스·AI 모델 같은
+         프로그램이 각각 "컨테이너"라는 작은 상자 단위로 돌아갑니다.
+         관리자가 이 상자들을 일일이 서버에 접속해 확인하는 것은 매우 번거롭고 위험합니다.</p>
+      <p style="margin-bottom:0">HyperCube는 마치 <b>건물 전체를 보여주는 통합 관제실 모니터</b>처럼,
+         모든 서버와 컨테이너의 상태·성능·문제를 한 곳에 모아 실시간으로 보여줍니다.
+         관리자는 관제실에서, 일반 사용자는 자기 자리에서 — 각자 필요한 만큼만 보고 다룹니다.</p>
+    </div>
+    <div class="note">
+      <b>이름 두 개?</b> 내부 프로젝트 코드명은 <b>HyperCube</b>이고,
+      실제 화면에 표시되는 서비스 브랜드는 <b>ANCLAVE</b>입니다.
+      로고·브랜드 톤은 리뉴얼에서 함께 다듬을 영역입니다.
+    </div>
+  </section>
+
+  <!-- ============ 2. WHY ============ -->
+  <section id="why">
+    <h2><span class="num">2</span>왜 만들었나 — 해결하려는 문제</h2>
+    <p class="lead">"서버를 직접 만지지 않고도, 누구나 안전하게 들여다보고 요청할 수 있게" 만드는 것이 목표입니다.</p>
+    <div class="card">
+      <h3 style="margin-top:0">이전의 불편함</h3>
+      <ul class="clean">
+        <li>관리자가 서버마다 따로 접속해 상태를 확인해야 함 — 시간이 오래 걸리고 놓치기 쉬움</li>
+        <li>일반 개발자가 서버에 직접 접근하면 <b>보안 사고·실수</b>의 위험이 큼</li>
+        <li>컨테이너 생성·삭제 같은 중요한 작업이 <b>승인 절차 없이</b> 일어남</li>
+        <li>과거 성능 기록이 흩어져 있어 "언제부터 느려졌는지" 추적이 어려움</li>
+      </ul>
+      <h3>HyperCube의 해결 방식</h3>
+      <ul class="clean">
+        <li><b>한 화면 통합 관제</b> — 모든 서버·컨테이너를 실시간으로 한눈에</li>
+        <li><b>역할 분리</b> — 관리자와 일반 사용자가 권한에 맞는 화면만 사용</li>
+        <li><b>요청 → 승인 → 실행 절차</b> — 중요한 작업은 반드시 관리자 승인을 거침</li>
+        <li><b>성능 기록 보관</b> — 시간대별 추이를 차트로 보여줘 문제 원인 분석을 도움</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ 3. FLOW ============ -->
+  <section id="flow">
+    <h2><span class="num">3</span>전체 데이터 흐름</h2>
+    <p class="lead">데이터는 항상 <b>현장 서버 → 중앙 서버 → 웹 화면</b> 한 방향으로 흐르고,
+       명령은 그 반대로 전달됩니다.</p>
+    <div class="flow">
+      <div class="flow-box">
+        <span class="tag">현장</span>
+        <h4>Agent (에이전트)</h4>
+        <p>각 서버에 설치된 작은 감시 프로그램. 컨테이너 상태와 CPU·메모리 등 성능을 수집하고,
+           중앙에서 내려온 명령(생성·재시작 등)을 실제로 실행합니다.</p>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box">
+        <span class="tag">중앙</span>
+        <h4>Backend (중앙 서버)</h4>
+        <p>모든 Agent의 데이터를 모아 정리·저장하고, 사용자 권한을 확인하며,
+           승인·명령 전달을 담당하는 두뇌입니다.</p>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box">
+        <span class="tag">화면</span>
+        <h4>Frontend (웹 대시보드)</h4>
+        <p>사용자가 브라우저로 보는 모든 화면. 카드·차트·3D 지도·표 형태로
+           데이터를 보기 좋게 그려 줍니다. <b>← 이번 리뉴얼 대상</b></p>
+      </div>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">예시 — 사용자가 새 컨테이너를 만들 때</h3>
+      <ul class="clean">
+        <li>① 사용자가 웹 화면에서 "새 컨테이너 요청" 버튼을 누름</li>
+        <li>② 중앙 서버가 "승인 대기" 상태로 요청을 기록</li>
+        <li>③ 관리자가 <b>승인 관리 화면</b>에서 검토 후 승인</li>
+        <li>④ 중앙 서버가 해당 서버의 Agent에게 명령을 전달</li>
+        <li>⑤ Agent가 실제로 컨테이너를 생성하고 결과를 보고</li>
+        <li>⑥ 모든 화면이 <b>실시간으로</b> 새 상태를 반영</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ 4. ROLES ============ -->
+  <section id="roles">
+    <h2><span class="num">4</span>두 종류의 사용자</h2>
+    <p class="lead">HyperCube에 로그인하면, 계정의 역할에 따라 <b>완전히 다른 화면 묶음</b>이 보입니다.</p>
+    <div class="flow">
+      <div class="flow-box" style="border-top:3px solid var(--admin)">
+        <span class="tag" style="color:var(--admin)">관리자 · ADMIN</span>
+        <h4>운영을 책임지는 사람</h4>
+        <p>전체 서버와 모든 컨테이너를 모니터링하고, 사용자의 요청을 승인하며,
+           템플릿·AI 모델 같은 공용 자산을 관리합니다. 화면 7개를 사용합니다.</p>
+      </div>
+      <div class="flow-box" style="border-top:3px solid var(--user)">
+        <span class="tag" style="color:var(--user)">일반 사용자 · USER</span>
+        <h4>서비스를 이용하는 사람</h4>
+        <p>자신이 신청한 컨테이너만 보고 관리합니다. 서버에 직접 접속할 필요 없이
+           웹에서 생성·삭제를 요청하고 상태를 확인합니다. 화면 2개를 사용합니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 5. GLOSSARY ============ -->
+  <section id="glossary">
+    <h2><span class="num">5</span>용어 사전</h2>
+    <p class="lead">화면 곳곳에 나오는 단어들입니다. 디자인할 때 이 뜻을 알면 화면 구조가 더 잘 보입니다.</p>
+    <div class="card" style="padding:8px 14px">
+      <table class="gloss">
+        <tr><td>컨테이너<br />Container</td><td>하나의 프로그램을 담은 독립된 실행 상자. 웹서버·데이터베이스·AI 모델 등이 각각 하나의 컨테이너로 돌아갑니다. 이 제품의 가장 기본 단위입니다.</td></tr>
+        <tr><td>Agent<br />에이전트</td><td>각 서버에 설치돼 상태를 수집하고 명령을 실행하는 감시 프로그램. "온라인/오프라인"은 이 Agent의 연결 상태를 뜻합니다.</td></tr>
+        <tr><td>서버 / 호스트</td><td>컨테이너들이 올라가 있는 실제 컴퓨터. 화면에서는 <code>server_63_dev</code>처럼 이름으로 표시됩니다.</td></tr>
+        <tr><td>스택<br />Stack</td><td>서로 함께 동작하도록 묶인 컨테이너 그룹. 예: "웹앱 + 데이터베이스 + 캐시"가 하나의 스택.</td></tr>
+        <tr><td>메트릭<br />Metric</td><td>성능 수치. CPU 사용률, 메모리 사용량, 네트워크 속도, 디스크 사용량, GPU 사용률 등.</td></tr>
+        <tr><td>토폴로지<br />Topology</td><td>서버·컨테이너·네트워크가 어떻게 연결돼 있는지를 그림(지도)으로 표현한 것. 3D 화면이 이것입니다.</td></tr>
+        <tr><td>KPI</td><td>화면 상단에 큰 숫자로 강조되는 핵심 지표. "지금 가장 중요한 수치"라는 뜻.</td></tr>
+        <tr><td>템플릿<br />Template</td><td>컨테이너를 만들 때 쓰는 미리 만들어 둔 설정 틀. 매번 처음부터 설정하지 않게 해 줍니다.</td></tr>
+        <tr><td>워크스페이스<br />Workspace</td><td>사용자가 직접 코드를 돌리거나 AI를 다룰 수 있는 작업 환경(예: Jupyter, Gradio).</td></tr>
+        <tr><td>승인<br />Approval</td><td>사용자의 생성·삭제 요청을 관리자가 검토해 허가/반려하는 절차.</td></tr>
+        <tr><td>스파크라인<br />Sparkline</td><td>카드 안에 들어가는 아주 작은 추세 그래프. 최근 흐름을 한눈에 보여줍니다.</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ ADMIN BAND ============ -->
+  <div class="divider-band">
+    <h2>관리자 화면 (페이지 7개 · 모달 3개)</h2>
+    <p>운영자가 전체 시스템을 감시하고 통제하는 화면들입니다.</p>
+  </div>
+
+  <!-- ---- P0 LOGIN ---- -->
+  <div class="page-block" id="p0">
+    <div class="page-head">
+      <div class="row">
+        <h3>로그인</h3>
+        <span class="badge both">모든 사용자</span>
+        <span class="url">/</span>
+      </div>
+    </div>
+    <div class="page-shot"><img src="screenshots/00-login.png" alt="로그인 화면" /></div>
+    <div class="page-body">
+      <p class="what">제품에 들어가는 첫 관문입니다. 아이디와 비밀번호를 입력하면,
+         계정 역할에 따라 관리자 화면 또는 사용자 화면으로 자동 안내됩니다.</p>
+      <h4>화면에 보이는 것</h4>
+      <ul class="clean">
+        <li><b>ANCLAVE 로고</b>와 "Container Monitoring Platform" 슬로건</li>
+        <li><b>아이디 / 비밀번호 입력칸</b>과 로그인 버튼</li>
+        <li>어두운 배경 — 관제 도구 특유의 톤</li>
+      </ul>
+      <div class="why"><b>왜 이렇게?</b> 첫인상이자 브랜드 얼굴입니다.
+        리뉴얼에서 로고·색·분위기를 정하는 출발점이 되는 화면입니다.</div>
+    </div>
+  </div>
+
+  <!-- ---- P1 ADMIN DASHBOARD ---- -->
+  <div class="page-block" id="p1">
+    <div class="page-head">
+      <div class="row">
+        <h3>전체 서버 모니터링 (관리자 메인)</h3>
+        <span class="badge admin">관리자</span>
+        <span class="url">/</span>
+      </div>
+    </div>
+    <div class="page-shot"><img src="screenshots/01-admin-dashboard.png" alt="전체 서버 모니터링" /></div>
+    <div class="page-body">
+      <p class="what">관리자가 로그인하면 가장 먼저 보는 화면. 회사가 가진 <b>모든 서버를
+         카드 형태로 한눈에</b> 펼쳐 보여 줍니다. 각 서버의 건강 상태를 빠르게 훑고,
+         이상한 곳을 클릭해 더 깊이 들어갑니다.</p>
+      <h4>화면에 보이는 것</h4>
+      <ul class="clean">
+        <li><b>상단 요약 바</b> — 전체 서버 수, 평균 CPU·메모리·디스크 사용률, 실시간 연결 상태</li>
+        <li><b>서버 카드 그리드</b> — 서버마다 카드 1장. 이름, 상태, 자원 사용률, 작은 추세 그래프(스파크라인)</li>
+        <li><b>카드 / 리스트 보기 전환</b> — 표 형태로도 볼 수 있음</li>
+        <li>1분 단위 자동 갱신</li>
+      </ul>
+      <div class="why"><b>왜 이 데이터를?</b> 관리자의 첫 질문은 늘 "지금 문제 있는 서버가 있나?"입니다.
+        이 화면은 그 답을 <b>3초 안에</b> 주도록 설계됐습니다. 색(초록/노랑/빨강)으로 건강도를
+        구분하는 것이 핵심입니다.</div>
+    </div>
+  </div>
+
+  <!-- ---- P2 SERVER 2D ---- -->
+  <div class="page-block" id="p2">
+    <div class="page-head">
+      <div class="row">
+        <h3>2D 관제 대시보드</h3>
+        <span class="badge admin">관리자</span>
+        <span class="url">/server-2d</span>
+      </div>
+    </div>
+    <div class="page-shot"><img src="screenshots/02-server-2d.png" alt="2D 관제 대시보드" /></div>
+    <div class="page-body">
+      <p class="what">서버 한 대를 골라 그 안을 <b>표와 차트로 깊게 분석</b>하는 화면입니다.
+         "이 서버가 왜 느리지?"를 파고들 때 사용합니다.</p>
+      <h4>화면에 보이는 것</h4>
+      <ul class="clean">
+        <li><b>서버 선택 / 기간 선택</b> — 5분·6시간·24시간·7일 등 기간을 바꿔 추이를 봄</li>
+        <li><b>상단 KPI</b> — CPU·메모리·디스크·GPU의 현재값 + 평균 + 최고치</li>
+        <li><b>컨테이너 상태 타일</b> — 실행 중 / 일시정지 / 문제 / 중지된 컨테이너 개수</li>
+        <li><b>시계열 차트</b> — CPU·메모리·네트워크·디스크·GPU의 시간별 변화 그래프</li>
+        <li><b>컨테이너 목록 표</b> — 각 컨테이너의 이름·이미지·자원 사용률</li>
+        <li><b>스택별 사이드 패널</b>과 <b>실시간 이벤트 로그</b></li>
+      </ul>
+      <div class="why"><b>왜 이 데이터를?</b> 메인 화면이 "어디가 문제냐"를 알려준다면,
+        이 화면은 "왜 문제냐"를 알려줍니다. 정보 밀도가 가장 높은 화면이라
+        <b>리뉴얼에서 정보 정리·여백·우선순위가 가장 중요</b>합니다.</div>
+    </div>
+  </div>
+
+  <!-- ---- P3 SERVER 3D ---- -->
+  <div class="page-block" id="p3">
+    <div class="page-head">
+      <div class="row">
+        <h3>3D 상세 모니터링 (토폴로지)</h3>
+        <span class="badge admin">관리자</span>
+        <span class="url">/server-3d</span>
+      </div>
+    </div>
+    <div class="page-shot"><img src="screenshots/03-server-3d.png" alt="3D 토폴로지" /></div>
+    <div class="page-body">
+      <p class="what">서버 안의 컨테이너들과 그 연결 관계를 <b>3D 공간의 지도</b>로 보여 줍니다.
+         "무엇이 무엇과 연결돼 있나"를 직관적으로 파악하는 화면입니다.</p>
+      <h4>화면에 보이는 것</h4>
+      <ul class="clean">
+        <li><b>3D 토폴로지 캔버스</b> — 정육면체 하나 = 컨테이너 하나, 선 = 네트워크·볼륨 연결</li>
+        <li><b>좌측 패널</b> — 선택한 서버의 CPU·메모리·디스크·GPU 종합 상태</li>
+        <li><b>우측 패널</b> — 스택별 컨테이너 목록과 실행/중지 상태</li>
+        <li><b>허브 토글</b> — 스택·네트워크·볼륨 연결 표시를 켜고 끔</li>
+        <li>드래그로 회전, 휠로 확대/축소. 정육면체 클릭 시 상세 정보</li>
+      </ul>
+      <div class="why"><b>왜 이 데이터를?</b> 표만으로는 "연결 구조"가 안 보입니다.
+        3D 지도는 컨테이너 간 의존 관계와 묶음을 한눈에 보여 줘, 장애가 어디까지
+        퍼질지 가늠하게 해 줍니다. 가장 시각적으로 화려한 화면입니다.</div>
+    </div>
+  </div>
+
+  <!-- ---- P4 APPROVALS ---- -->
+  <div class="page-block" id="p4">
+    <div class="page-head">
+      <div class="row">
+        <h3>승인 관리</h3>
+        <span class="badge admin">관리자</span>
+        <span class="url">/admin/approvals</span>
+      </div>
+    </div>
+    <div class="page-shot"><img src="screenshots/04-admin-approvals.png" alt="승인 관리" /></div>
+    <div class="page-body">
+      <p class="what">사용자들이 올린 <b>컨테이너·AI 모델 생성/삭제 요청을 검토</b>하고
+         승인하거나 반려하는 화면입니다. (스크린샷은 현재 대기 요청이 없는 빈 상태입니다.)</p>
+      <h4>화면에 보이는 것</h4>
+      <ul class="clean">
+        <li><b>탭 2개</b> — "컨테이너 요청"과 "모델 등록 요청"</li>
+        <li><b>요청 목록 표</b> — 제출자, 요청 타입(생성/삭제), 템플릿, 대상 서버, 이름, 상태, 제출 시각</li>
+        <li><b>대기중만 / 전체 필터</b>와 검색</li>
+        <li><b>승인 / 반려 버튼</b>과 검토 메모 입력</li>
+        <li>요청이 없을 때는 안내 일러스트와 "대기 중인 요청이 없습니다" 메시지</li>
+      </ul>
+      <div class="why"><b>왜 이 데이터를?</b> 이 화면은 "요청 → 승인 → 실행" 통제 절차의 중심입니다.
+        관리자가 빠짐없이 처리하도록, <b>대기 건수와 빈 상태(empty state) 디자인</b>이 중요합니다.</div>
+      <div class="note"><b>디자이너 참고:</b> 이 화면은 데이터가 비어 있을 때가 많습니다.
+        "빈 상태"를 잘 디자인하는 것이 실제 사용성에 큰 영향을 줍니다.</div>
+    </div>
+  </div>
+
+  <!-- ---- M3 CONTAINER APPROVAL MODAL ---- -->
+  <div class="page-block" id="m3">
+    <div class="page-head">
+      <div class="row">
+        <h3>컨테이너 요청 승인 모달</h3>
+        <span class="badge admin">관리자</span>
+        <span class="badge modal">모달</span>
+        <span class="trigger">승인 관리 화면에서 요청 행의 <b>상세</b> 버튼 클릭 시 열림</span>
+      </div>
+    </div>
+    <div class="page-shot"><img src="screenshots/m3-container-approval.png" alt="컨테이너 요청 승인 모달" /></div>
+    <div class="page-body">
+      <p class="what">관리자가 사용자의 컨테이너 생성/삭제 요청 하나를 <b>자세히 검토하고 승인 또는
+         반려</b>하는 팝업창입니다. 승인 관리 표에서 어떤 요청을 클릭하면 그 위에 떠오릅니다.</p>
+      <h4>화면에 보이는 것</h4>
+      <ul class="clean">
+        <li><b>기본 정보</b> — 요청 ID, 제출자, 요청 타입(생성/삭제), 제출 시각</li>
+        <li><b>생성 요청 상세</b> — 어떤 템플릿으로, 어느 서버에, 어떤 이름으로 만들지</li>
+        <li><b>배포 로그</b> — 실행 과정에서 오간 시스템 응답 기록</li>
+        <li><b>진행 상황 막대</b> — 처리 진척도(예: 100% 완료)</li>
+        <li>상단 <b>상태 뱃지</b>(대기·배포·반려)와 닫기(×) 버튼</li>
+        <li>요청이 <b>대기중</b>일 때는 하단에 <b>승인 / 반려 버튼</b>이 함께 표시됨 (스크린샷은 이미 배포 완료된 요청이라 버튼이 없음)</li>
+      </ul>
+      <div class="why"><b>왜 이 데이터를?</b> 관리자가 "이 요청을 허가해도 되는가"를 판단하려면
+        요청 내용 전체와 처리 이력이 한 곳에 모여 있어야 합니다. <b>승인/반려 버튼이
+        명확하게 보이는 것</b>과 긴 로그의 가독성이 디자인 관점의 핵심입니다.</div>
+    </div>
+  </div>
+
+  <!-- ---- M4 MODEL APPROVAL MODAL ---- -->
+  <div class="page-block" id="m4">
+    <div class="page-head">
+      <div class="row">
+        <h3>모델 등록 요청 승인 모달</h3>
+        <span class="badge admin">관리자</span>
+        <span class="badge modal">모달</span>
+        <span class="trigger">승인 관리 → "모델 등록 요청" 탭에서 <b>상세</b> 버튼 클릭 시 열림</span>
+      </div>
+    </div>
+    <div class="page-shot"><img src="screenshots/m4-model-approval.png" alt="모델 등록 요청 승인 모달" /></div>
+    <div class="page-body">
+      <p class="what">사용자가 업로드한 <b>AI 모델 등록 요청을 검토</b>하는 팝업창입니다.
+         승인하면 그 모델이 컨테이너 템플릿으로 등록되어 다른 사용자가 쓸 수 있게 됩니다.</p>
+      <h4>화면에 보이는 것</h4>
+      <ul class="clean">
+        <li><b>기본 정보</b> — 제출자, 제출 시각, 모델명·버전, 프레임워크·태스크 종류</li>
+        <li><b>파일 정보</b> — 업로드된 파일명, 용량, 무결성 검증값(sha256)</li>
+        <li><b>실행 환경·자원</b> — 기반 이미지, 워크스페이스, GPU 필요 여부, 최소 RAM·디스크</li>
+        <li><b>생성될 템플릿</b> — 승인 시 만들어질 템플릿의 이름과 설명</li>
+        <li><b>검토 결과</b> — 검토자, 검토 시각, 검토 메모(처리된 요청일 때)</li>
+        <li>요청이 <b>대기중</b>이면 하단에 <b>승인 / 반려 버튼</b> 표시</li>
+      </ul>
+      <div class="why"><b>왜 이 데이터를?</b> AI 모델은 용량이 크고 보안에 민감해, 관리자가
+        파일 정보·실행 환경까지 꼼꼼히 확인해야 합니다. 정보 항목이 많아 <b>섹션 구분과
+        스크롤 구조</b>가 디자인의 관건입니다.</div>
+    </div>
+  </div>
+
+  <!-- ---- P5 CATALOG ---- -->
+  <div class="page-block" id="p5">
+    <div class="page-head">
+      <div class="row">
+        <h3>카탈로그</h3>
+        <span class="badge admin">관리자</span>
+        <span class="url">/admin/catalog</span>
+      </div>
+    </div>
+    <div class="page-shot"><img src="screenshots/05-admin-catalog.png" alt="카탈로그" /></div>
+    <div class="page-body">
+      <p class="what">사용자들이 컨테이너를 만들 때 고를 수 있는 <b>템플릿(설정 틀)과 AI 모델 자산을
+         관리</b>하는 화면입니다.</p>
+      <h4>화면에 보이는 것</h4>
+      <ul class="clean">
+        <li><b>탭 2개</b> — "컨테이너 템플릿"과 "모델 자산"</li>
+        <li><b>템플릿 목록 표</b> — 이름, 타입, 사용 이미지, 설명, 작성자, 수정일</li>
+        <li>각 행마다 <b>편집 / 삭제 버튼</b></li>
+        <li>우상단 <b>"+ 새 템플릿"</b> 추가 버튼</li>
+      </ul>
+      <div class="why"><b>왜 이 데이터를?</b> 템플릿을 미리 만들어 두면 사용자가 매번 복잡한 설정을
+        하지 않아도 됩니다. 관리자가 "회사 표준 환경"을 정의해 두는 곳입니다.
+        깔끔한 <b>표 형태와 항목 관리(CRUD) 패턴</b>이 핵심입니다.</div>
+    </div>
+  </div>
+
+  <!-- ---- M5 TEMPLATE EDITOR MODAL ---- -->
+  <div class="page-block" id="m5">
+    <div class="page-head">
+      <div class="row">
+        <h3>템플릿 등록 모달</h3>
+        <span class="badge admin">관리자</span>
+        <span class="badge modal">모달</span>
+        <span class="trigger">카탈로그 화면에서 <b>+ 새 템플릿</b> 버튼 클릭 시 열림</span>
+      </div>
+    </div>
+    <div class="page-shot"><img src="screenshots/m5-template-editor.png" alt="템플릿 등록 모달" /></div>
+    <div class="page-body">
+      <p class="what">관리자가 <b>새 컨테이너 템플릿을 만들거나 기존 템플릿을 편집</b>하는 팝업창입니다.
+         여기서 만든 템플릿은 사용자의 "컨테이너 요청" 화면에 곧바로 선택지로 나타납니다.</p>
+      <h4>화면에 보이는 것</h4>
+      <ul class="clean">
+        <li><b>이름 / 설명</b> — 사용자에게 보일 템플릿 이름과 용도 설명</li>
+        <li><b>타입 선택</b> — Simple(단일 이미지) 또는 Docker Compose 중 선택</li>
+        <li><b>네트워크 정책</b>과 <b>기본 이미지</b> 지정</li>
+        <li><b>이미지 옵션·환경변수·포트·볼륨 스키마</b> — 사용자가 요청 시 입력할 항목을 정의 (JSON 형식)</li>
+        <li>하단 <b>취소 / 생성</b> 버튼</li>
+      </ul>
+      <div class="why"><b>왜 이 데이터를?</b> 이 모달은 "사용자가 무엇을, 어떤 범위에서 만들 수
+        있는지"를 관리자가 미리 정의하는 곳입니다. 입력 항목이 많고 일부는 JSON 같은
+        전문적인 형식이라, <b>입력 폼의 그룹화·라벨·도움말</b>이 디자인의 핵심입니다.</div>
+      <div class="note"><b>디자이너 참고:</b> 같은 모달이 "새 템플릿 만들기"와 "기존 템플릿 편집"
+        두 용도로 함께 쓰입니다. 제목과 버튼만 상황에 맞게 바뀝니다.</div>
+    </div>
+  </div>
+
+  <!-- ---- P6 MARKETPLACE ---- -->
+  <div class="page-block" id="p6">
+    <div class="page-head">
+      <div class="row">
+        <h3>마켓플레이스</h3>
+        <span class="badge admin">관리자</span>
+        <span class="url">/admin/marketplace</span>
+      </div>
+    </div>
+    <div class="page-shot"><img src="screenshots/06-admin-marketplace.png" alt="마켓플레이스" /></div>
+    <div class="page-body">
+      <p class="what">GPT-4o, Claude, Gemini 같은 <b>외부 AI 서비스와 커뮤니티 AI 시스템의 카탈로그</b>입니다.
+         관리자가 어떤 AI를 연결할 수 있는지 둘러보고 연동 방법을 확인합니다.</p>
+      <h4>화면에 보이는 것</h4>
+      <ul class="clean">
+        <li><b>상단 요약</b> — 등록된 AI 시스템 수, 공식/커뮤니티 비율, 연결됨 개수</li>
+        <li><b>카테고리 분포 막대</b> — LLM·멀티모달·MCP·이미지·음성별 개수</li>
+        <li><b>검색 + 필터</b> — 카테고리·연동 방식·태그·상태로 거름</li>
+        <li><b>AI 시스템 목록 표</b> — 이름, 제공사, 설명, 카테고리, 연동 방식, 태그, 상태</li>
+        <li>행 클릭 시 <b>상세 펼침</b> — 연결 단계, 샘플 명령어, 가이드 링크</li>
+      </ul>
+      <div class="why"><b>왜 이 데이터를?</b> 이 제품은 단순 모니터링을 넘어 "AI 시스템을 연결·운영하는
+        허브"로 확장 중입니다. 이 화면은 그 비전을 보여주는 곳으로, <b>카드·태그·필터가
+        풍부한 탐색형 UI</b>라 리뉴얼 여지가 큽니다.</div>
+    </div>
+  </div>
+
+  <!-- ============ USER BAND ============ -->
+  <div class="divider-band" style="background:var(--user)">
+    <h2>사용자 화면 (페이지 2개 · 모달 2개)</h2>
+    <p>일반 사용자가 자기 컨테이너만 보고 다루는 화면들입니다.</p>
+  </div>
+
+  <!-- ---- P7 USER DASHBOARD ---- -->
+  <div class="page-block" id="p7">
+    <div class="page-head">
+      <div class="row">
+        <h3>내 대시보드</h3>
+        <span class="badge user">일반 사용자</span>
+        <span class="url">/user</span>
+      </div>
+    </div>
+    <div class="page-shot"><img src="screenshots/07-user-dashboard.png" alt="사용자 대시보드" /></div>
+    <div class="page-body">
+      <p class="what">일반 사용자가 로그인하면 보는 메인 화면. <b>자신이 신청한 컨테이너 목록과
+         요청 진행 상황</b>만 보여 줍니다. 관리자 화면과 달리 "내 것"만 나옵니다.</p>
+      <h4>화면에 보이는 것</h4>
+      <ul class="clean">
+        <li><b>상단 KPI</b> — 실행 중 컨테이너 수, 대기 중인 요청, GPU 사용량, 활성 워크스페이스</li>
+        <li><b>탭 2개</b> — "컨테이너"(현재 보유 목록)와 "요청 이력"(과거 신청 기록)</li>
+        <li><b>컨테이너 목록 표</b> — 상태, 이름/이미지, 서버·템플릿, 자원(포트·GPU·모델), CPU·메모리</li>
+        <li><b>우측 요청 리스트</b> — 모든 요청의 진행 상태(배포 완료·반려 등)</li>
+        <li><b>+ 새 요청</b> 버튼, CSV 내보내기, 검색·필터</li>
+      </ul>
+      <div class="why"><b>왜 이 데이터를?</b> 사용자의 관심은 오직 "내 컨테이너가 잘 돌고 있나,
+        내 요청은 처리됐나"입니다. 관리자 화면보다 <b>훨씬 단순하고 친절해야</b> 하며,
+        IT 지식이 적은 사람도 쓸 수 있어야 합니다.</div>
+    </div>
+  </div>
+
+  <!-- ---- M1 CONTAINER REQUEST MODAL ---- -->
+  <div class="page-block" id="m1">
+    <div class="page-head">
+      <div class="row">
+        <h3>컨테이너 생성 요청 모달</h3>
+        <span class="badge user">일반 사용자</span>
+        <span class="badge modal">모달</span>
+        <span class="trigger">내 대시보드에서 <b>+ 새 요청</b> 버튼 클릭 시 열림</span>
+      </div>
+    </div>
+    <div class="page-shot"><img src="screenshots/m1-container-request.png" alt="컨테이너 생성 요청 모달" /></div>
+    <div class="page-body">
+      <p class="what">사용자가 <b>새 컨테이너를 만들어 달라고 신청</b>하는 팝업창입니다.
+         서버를 직접 다루지 않고, 준비된 템플릿을 골라 간단히 요청합니다.</p>
+      <h4>화면에 보이는 것</h4>
+      <ul class="clean">
+        <li><b>템플릿 검색창</b> — 이름·설명·이미지로 템플릿을 찾음</li>
+        <li><b>템플릿 목록 표</b> — 이름, 타입(simple·ML 등), 사용 이미지, 필요 자원(CPU/GPU)</li>
+        <li>각 템플릿의 <b>선택</b> 버튼 — 고르면 다음 단계(서버 선택·자원 설정)로 진행</li>
+        <li>상단 제목 "새 컨테이너 요청"과 닫기(×) 버튼</li>
+      </ul>
+      <div class="why"><b>왜 이 데이터를?</b> 사용자는 Docker를 몰라도 됩니다. "원하는 환경을
+        목록에서 고르기"만 하면 되도록 설계됐습니다. <b>템플릿 선택 → 설정 → 제출의
+        단계 흐름(스텝)</b>을 쉽게 보여주는 것이 디자인 목표입니다.</div>
+    </div>
+  </div>
+
+  <!-- ---- M2 MODEL REQUEST MODAL ---- -->
+  <div class="page-block" id="m2">
+    <div class="page-head">
+      <div class="row">
+        <h3>모델 등록 요청 모달 (마법사)</h3>
+        <span class="badge user">일반 사용자</span>
+        <span class="badge modal">모달</span>
+        <span class="trigger">내 대시보드에서 <b>모델 등록 요청</b> 버튼 클릭 시 열림</span>
+      </div>
+    </div>
+    <div class="page-shot"><img src="screenshots/m2-model-request.png" alt="모델 등록 요청 모달" /></div>
+    <div class="page-body">
+      <p class="what">사용자가 자신의 <b>AI 모델 파일을 올리고 등록을 신청</b>하는 단계별 마법사
+         팝업입니다. 여러 단계를 거쳐 정보를 입력하고 마지막에 제출합니다.</p>
+      <h4>화면에 보이는 것</h4>
+      <ul class="clean">
+        <li><b>좌측 단계 표시(스텝)</b> — ①모델 정보 ②실행 환경 ③파일 제출의 진행 상태</li>
+        <li><b>1단계 입력칸</b> — 모델 이름, 버전, 간단한 설명</li>
+        <li><b>모델 파일 선택</b> 영역</li>
+        <li>하단 <b>취소 / 다음</b> 버튼</li>
+      </ul>
+      <div class="why"><b>왜 이 데이터를?</b> 모델 등록은 입력할 항목이 많아 한 화면에 다 넣으면
+        부담스럽습니다. 그래서 <b>여러 단계로 나눈 마법사(wizard)</b> 형태입니다.
+        "지금 몇 단계인지, 다음에 무엇을 하는지"를 명확히 보여주는 것이 핵심입니다.</div>
+    </div>
+  </div>
+
+  <!-- ---- P8 CONTAINER DETAIL ---- -->
+  <div class="page-block" id="p8">
+    <div class="page-head">
+      <div class="row">
+        <h3>컨테이너 상세</h3>
+        <span class="badge user">일반 사용자</span>
+        <span class="url">/user/containers/{id}</span>
+      </div>
+    </div>
+    <div class="page-shot"><img src="screenshots/08-container-detail.png" alt="컨테이너 상세" /></div>
+    <div class="page-body">
+      <p class="what">컨테이너 하나를 골라 <b>건강 상태·성능·로그를 깊게 들여다보고 제어</b>하는 화면입니다.
+         사용자가 가장 오래 머무는, 정보가 가장 풍부한 화면입니다.</p>
+      <h4>화면에 보이는 것</h4>
+      <ul class="clean">
+        <li><b>상단 정보 바</b> — 컨테이너 이름, 상태, 이미지, ID, Agent 온/오프라인</li>
+        <li><b>운영 지표</b> — 가동 시간, 재시작 횟수, Health 상태</li>
+        <li><b>자동 진단 인사이트</b> — 재시작 반복·메모리 부족(OOM) 등 이상 징후 경고</li>
+        <li><b>KPI 행</b> — CPU·메모리·네트워크·디스크·GPU의 현재/평균/최고</li>
+        <li><b>시계열 차트들</b> — 기간 선택(30초~24시간), 평균선 + 최고선</li>
+        <li><b>로그 / 프로세스 / 설정 패널</b> — 실시간 로그, CPU 상위 프로세스, 포트·환경변수</li>
+        <li><b>제어 버튼</b> — 시작·정지·재시작, Jupyter/Gradio 워크스페이스 열기</li>
+      </ul>
+      <div class="why"><b>왜 이 데이터를?</b> "내 컨테이너가 건강한가? 문제가 있다면 무엇 때문인가?"에
+        모두 답하는 화면입니다. 정보량이 매우 많아 <b>리뉴얼에서 시선 흐름·그룹화·차트
+        가독성</b>이 가장 도전적인 화면입니다.</div>
+    </div>
+  </div>
+
+  <!-- ============ 6. DESIGNER NOTES ============ -->
+  <section id="designer">
+    <h2><span class="num">6</span>디자이너를 위한 메모</h2>
+    <div class="card">
+      <h3 style="margin-top:0">현재 디자인의 특징</h3>
+      <ul class="clean">
+        <li><b>다크 테마</b> 기반 — 관제실 모니터 같은 어두운 배경에 형광 초록 포인트 색</li>
+        <li>정보 밀도가 높음 — 한 화면에 카드·차트·표가 빽빽함</li>
+        <li>실시간 갱신 — 숫자와 그래프가 계속 움직임 (멈춤/일시정지 토글 있음)</li>
+        <li>Figma 원본 디자인 파일 키: <code>MM5pHeO3gfXDchAlBVfs89</code></li>
+      </ul>
+      <h3>리뉴얼에서 고려하면 좋을 점</h3>
+      <ul class="clean">
+        <li><b>정보 우선순위</b> — 모든 화면이 데이터가 많습니다. "가장 먼저 봐야 할 것"을 키우고 나머지를 정리</li>
+        <li><b>상태 색 체계</b> — 정상/주의/위험을 일관된 색 규칙으로 (지금은 화면마다 조금씩 다름)</li>
+        <li><b>관리자 vs 사용자 톤</b> — 관리자 화면은 밀도 높게, 사용자 화면은 더 친절하고 쉽게</li>
+        <li><b>빈 상태(empty state)</b> — 승인·요청 화면은 비어 있을 때가 많아 빈 화면 디자인이 중요</li>
+        <li><b>차트 가독성</b> — 시계열 차트가 곳곳에 있음. 색·범례·축 라벨의 통일된 스타일 필요</li>
+        <li><b>브랜드 정리</b> — 화면 브랜드(ANCLAVE)와 로고·favicon을 리뉴얼과 함께 확정</li>
+      </ul>
+      <h3>화면 한눈에 보기</h3>
+      <div class="card" style="padding:8px 14px;margin:0">
+        <table class="gloss">
+          <tr><td style="color:var(--admin)">관리자 페이지 7</td><td>로그인 · 전체 서버 모니터링 · 2D 관제 대시보드 · 3D 상세 모니터링 · 승인 관리 · 카탈로그 · 마켓플레이스</td></tr>
+          <tr><td style="color:var(--user)">사용자 페이지 2</td><td>내 대시보드 · 컨테이너 상세</td></tr>
+          <tr><td style="color:#6d28d9">모달 5</td><td>컨테이너 생성 요청 · 모델 등록 요청 (사용자) · 컨테이너 승인 · 모델 승인 · 템플릿 등록 (관리자)</td></tr>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  </main>
+</div>
+</div>
+
+<footer>
+  HyperCube 디자인 리뉴얼 브리프 · 2026-05-22 · 내부 문서<br />
+  스크린샷은 개발 서버의 실제 화면이며, 표시된 데이터는 테스트용입니다.
+</footer>
+
+</body>
+</html>
