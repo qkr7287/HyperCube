@@ -1393,7 +1393,8 @@
 	   작게 그려진다. canvas-wrap 이 position:relative 이므로 absolute 로 채움. */
 	.metric-stack :global(.canvas-wrap) :global(.echart-host) {
 		position: absolute;
-		inset: 0;
+		/* 위쪽만 여백 — 차트 그래프가 박스 상단 테두리에 붙지 않게. */
+		inset: 10px 0 0 0;
 	}
 
 	.metrics-summary {
