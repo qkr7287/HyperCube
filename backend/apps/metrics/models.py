@@ -1,5 +1,6 @@
 import uuid
 
+from django.conf import settings
 from django.db import models
 
 from apps.agents.models import Agent
@@ -273,3 +274,86 @@ class StackMetricsRollup(models.Model):
         indexes = [
             models.Index(fields=["agent", "bucket_seconds", "-bucket_start"]),
         ]
+
+
+class ResourceEvent(models.Model):
+    """서버 자원 임계 초과·급증 이벤트. (agent, metric) 단위 라이프사이클 —
+    초과/급증 시작 시 1건 생성, 지속되는 동안 같은 행을 갱신, 자원이 정상화되면
+    자동 종료(resolved), 관리자가 확인하면 수동 종료(acknowledged). 실시간 카드와
+    history 가 이 테이블을 단일 출처로 본다."""
+
+    class Metric(models.TextChoices):
+        CPU = "cpu", "CPU"
+        MEMORY = "memory", "Memory"
+        DISK = "disk", "Disk"
+        GPU = "gpu", "GPU"
+
+    class Kind(models.TextChoices):
+        THRESHOLD = "threshold", "Threshold"
+        SPIKE = "spike", "Spike"
+
+    class Severity(models.TextChoices):
+        WARNING = "warning", "Warning"
+        CRITICAL = "critical", "Critical"
+
+    class EndedReason(models.TextChoices):
+        RESOLVED = "resolved", "Resolved"
+        ACKNOWLEDGED = "acknowledged", "Acknowledged"
+
+    id = models.BigAutoField(primary_key=True)
+    agent = models.ForeignKey(
+        Agent, on_delete=models.CASCADE, related_name="resource_events",
+    )
+    hostname = models.CharField(max_length=255, help_text="이벤트 발생 시점 hostname 스냅샷.")
+    metric = models.CharField(max_length=8, choices=Metric.choices)
+    kind = models.CharField(max_length=12, choices=Kind.choices)
+    severity = models.CharField(
+        max_length=8, choices=Severity.choices, help_text="peak 기준 최고 심각도.",
+    )
+
+    started_at = models.DateTimeField(db_index=True)
+    ended_at = models.DateTimeField(null=True, blank=True, help_text="null 이면 진행 중.")
+    ended_reason = models.CharField(
+        max_length=12, choices=EndedReason.choices, null=True, blank=True,
+    )
+    last_seen_at = models.DateTimeField(help_text="마지막으로 조건을 만족한 판정 시각.")
+
+    peak_value = models.FloatField(help_text="구간 내 최대 사용률 (%).")
+    last_value = models.FloatField(help_text="마지막 판정의 사용률 (%).")
+    spike_delta = models.FloatField(
+        null=True, blank=True, help_text="spike 최대 증가폭 (%p). threshold 면 null.",
+    )
+
+    cause_container_name = models.CharField(max_length=255, null=True, blank=True)
+    cause_container_value = models.FloatField(null=True, blank=True)
+
+    acknowledged_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="acknowledged_resource_events",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "resource_events"
+        ordering = ["-started_at"]
+        indexes = [
+            models.Index(fields=["ended_at", "-started_at"]),
+            models.Index(fields=["-started_at"]),
+            models.Index(fields=["agent", "metric", "ended_at"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["agent", "metric"],
+                condition=models.Q(ended_at__isnull=True),
+                name="uniq_active_resource_event_per_agent_metric",
+            ),
+        ]
+
+    def __str__(self):
+        state = "active" if self.ended_at is None else (self.ended_reason or "ended")
+        return f"{self.hostname} {self.metric} {self.severity} ({state})"

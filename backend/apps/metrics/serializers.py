@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import ContainerMetricsHistory, SystemMetricsHistory
+from .models import ContainerMetricsHistory, ResourceEvent, SystemMetricsHistory
 
 
 class SystemMetricsHistorySerializer(serializers.ModelSerializer):
@@ -120,3 +120,34 @@ class ContainerMetricsHistorySerializer(serializers.ModelSerializer):
 class ContainerMetricsHistoryDetailSerializer(ContainerMetricsHistorySerializer):
     class Meta(ContainerMetricsHistorySerializer.Meta):
         fields = ContainerMetricsHistorySerializer.Meta.fields + ["raw_data"]
+
+
+class ResourceEventSerializer(serializers.ModelSerializer):
+    """서버 자원 이벤트 — 프론트 FleetEvent shape 으로 직렬화."""
+
+    server_id = serializers.CharField(source="agent_id", read_only=True)
+    is_active = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ResourceEvent
+        fields = [
+            "id",
+            "server_id",
+            "hostname",
+            "metric",
+            "kind",
+            "severity",
+            "started_at",
+            "ended_at",
+            "ended_reason",
+            "last_seen_at",
+            "peak_value",
+            "last_value",
+            "spike_delta",
+            "cause_container_name",
+            "cause_container_value",
+            "is_active",
+        ]
+
+    def get_is_active(self, obj):
+        return obj.ended_at is None

@@ -4,7 +4,16 @@ import hashlib
 
 from django.core.cache import cache
 from django.db import connection
-from django.db.models import Avg, Count, IntegerField, Max
+from django.db.models import (
+    Avg,
+    Count,
+    DurationField,
+    ExpressionWrapper,
+    F,
+    IntegerField,
+    Max,
+    Q,
+)
 from django.db.models.expressions import RawSQL
 from django.utils import timezone
 from django_filters import rest_framework as filters
@@ -20,6 +29,7 @@ from apps.containers.models import Container
 from .models import (
     ContainerMetricsHistory,
     ContainerMetricsRollup,
+    ResourceEvent,
     StackMetricsRollup,
     SystemMetricsHistory,
     SystemMetricsRollup,
@@ -27,6 +37,7 @@ from .models import (
 from .serializers import (
     ContainerMetricsHistoryDetailSerializer,
     ContainerMetricsHistorySerializer,
+    ResourceEventSerializer,
     SystemMetricsHistoryDetailSerializer,
     SystemMetricsHistorySerializer,
 )
@@ -863,6 +874,117 @@ def _serve_containers_from_rollup(request, bucket_sec: int) -> dict:
             "sample_count": int(r.sample_count or 0),
         })
     return {"bucket_seconds": bucket_sec, "results": results}
+
+
+# resolved 로 종료된 이벤트 중 이보다 짧게 지속한 단발은 history 에서 숨김.
+MIN_RESOLVED_DURATION = timedelta(minutes=2)
+
+
+@extend_schema_view(
+    list=extend_schema(
+        summary="자원 이벤트 history 조회",
+        description=(
+            "서버 자원 임계 초과/급증 이벤트의 이력. 종료된 이벤트 포함 전체. "
+            "?agent, ?metric, ?from_time/to_time, ?active=true/false, ?limit 으로 필터. "
+            "resolved 로 2분 미만 지속한 단발 노이즈는 자동 제외."
+        ),
+    ),
+)
+class ResourceEventViewSet(ListModelMixin, GenericViewSet):
+    """서버 자원 이벤트 — 실시간 카드(active)와 history 의 단일 출처.
+
+    (agent, metric) 단위 라이프사이클: 초과 시작 시 생성, 지속 중 갱신,
+    자원 정상화 시 자동 종료(resolved), 관리자 확인 시 수동 종료(acknowledged).
+    """
+
+    queryset = ResourceEvent.objects.select_related("agent").all()
+    permission_classes = [IsViewer]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if getattr(user, "role", None) == "admin":
+            return qs
+        owned_agent_ids = Container.objects.filter(
+            requester=user
+        ).values_list("agent_id", flat=True)
+        return qs.filter(agent_id__in=owned_agent_ids)
+
+    def _apply_filters(self, qs):
+        params = self.request.query_params
+        agent_id = params.get("agent")
+        if agent_id:
+            qs = qs.filter(agent_id=agent_id)
+        metric = params.get("metric")
+        if metric:
+            qs = qs.filter(metric=metric)
+        from_dt = _parse_iso(params.get("from_time"))
+        if from_dt:
+            qs = qs.filter(started_at__gte=from_dt)
+        to_dt = _parse_iso(params.get("to_time"))
+        if to_dt:
+            qs = qs.filter(started_at__lte=to_dt)
+        return qs
+
+    def list(self, request, *args, **kwargs):
+        """history — 종료 포함 전체. 최소 지속시간 필터 적용."""
+        qs = self._apply_filters(self.get_queryset())
+        # resolved 로 종료됐고 2분 미만 지속한 단발 노이즈는 history 에서 숨김.
+        # active(ended_at=null)는 duration 이 null 이라 exclude 에 안 걸려 유지된다.
+        qs = qs.annotate(
+            duration=ExpressionWrapper(
+                F("ended_at") - F("started_at"), output_field=DurationField()
+            )
+        ).exclude(
+            Q(ended_reason=ResourceEvent.EndedReason.RESOLVED)
+            & Q(duration__lt=MIN_RESOLVED_DURATION)
+        )
+        active_param = request.query_params.get("active")
+        if active_param == "true":
+            qs = qs.filter(ended_at__isnull=True)
+        elif active_param == "false":
+            qs = qs.filter(ended_at__isnull=False)
+        try:
+            limit = max(1, min(int(request.query_params.get("limit", 100)), 500))
+        except (TypeError, ValueError):
+            limit = 100
+        rows = list(qs.order_by("-started_at")[:limit])
+        return Response(ResourceEventSerializer(rows, many=True).data)
+
+    @extend_schema(summary="진행 중 자원 이벤트 (카드용)")
+    @action(detail=False, methods=["get"], url_path="active")
+    def active(self, request):
+        """실시간 카드용 — 진행 중 이벤트, agent 당 가장 심각한 1건."""
+        sev_rank = {"critical": 1, "warning": 0}
+        by_agent: dict = {}
+        for ev in self.get_queryset().filter(ended_at__isnull=True):
+            current = by_agent.get(ev.agent_id)
+            if current is None or (
+                sev_rank.get(ev.severity, 0), ev.last_value
+            ) > (sev_rank.get(current.severity, 0), current.last_value):
+                by_agent[ev.agent_id] = ev
+        events = sorted(
+            by_agent.values(),
+            key=lambda e: (sev_rank.get(e.severity, 0), e.last_value),
+            reverse=True,
+        )
+        return Response(ResourceEventSerializer(events, many=True).data)
+
+    @extend_schema(summary="자원 이벤트 확인 처리 (수동 종료)")
+    @action(detail=True, methods=["post"], url_path="acknowledge")
+    def acknowledge(self, request, pk=None):
+        """진행 중 이벤트를 관리자가 확인 → 즉시 수동 종료."""
+        event = self.get_object()
+        if event.ended_at is None:
+            event.ended_at = timezone.now()
+            event.ended_reason = ResourceEvent.EndedReason.ACKNOWLEDGED
+            event.acknowledged_by = request.user
+            event.save(
+                update_fields=[
+                    "ended_at", "ended_reason", "acknowledged_by", "updated_at",
+                ]
+            )
+        return Response(ResourceEventSerializer(event).data)
 
 
 def _storage_bucket_for(bucket_sec: int) -> int:
