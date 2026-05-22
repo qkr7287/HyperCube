@@ -37,6 +37,8 @@
 	let loadingLogs = $state(false);
 	// 로그(get_logs)는 "로그" 탭을 처음 열 때만 1회 로드 — 컨테이너 변경 시 리셋.
 	let logsRequested = $state(false);
+	// get_logs 실패(agent error envelope / timeout) 메시지 — 빈 로그와 구분.
+	let logError = $state('');
 	let controlLoading = $state('');
 	let errorMsg = $state('');
 
@@ -163,13 +165,17 @@
 
 	async function fetchLogs() {
 		if (!container) return;
+		logError = '';
 		try {
 			const data = await sendCommand('get_logs', { containerId: container.id, tail: 100 });
 			const lines = data?.lines ?? data?.logs ?? [];
 			logs = Array.isArray(lines) ? lines : [];
 		} catch (e: any) {
+			// agent error envelope(success=false) / command timeout 모두 reject 로
+			// 들어온다. 로그 줄에 섞지 않고 별도 에러 상태로 표시한다.
 			console.error('[ContainerDetailModal] get_logs failed:', e);
-			logs = ['로그를 불러오는 중 오류가 발생했습니다: ' + (e?.message || '')];
+			logs = [];
+			logError = e?.message || '알 수 없는 오류';
 		}
 	}
 
@@ -423,6 +429,7 @@
 				logs = [];
 				logsRequested = false;
 				loadingLogs = false;
+				logError = '';
 				errorMsg = '';
 				envExpanded = false;
 				containerState = current.state;
@@ -935,6 +942,8 @@
 					<div class="terminal-body" bind:this={logContainer}>
 						{#if loadingLogs}
 							<div class="log-empty">로그 로딩 중...</div>
+						{:else if logError}
+							<div class="log-empty">로그를 불러올 수 없습니다: {logError}</div>
 						{:else if filteredLogs.length === 0}
 							<div class="log-empty">로그가 없습니다.</div>
 						{:else}
