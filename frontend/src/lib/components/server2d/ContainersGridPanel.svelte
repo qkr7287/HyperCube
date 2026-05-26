@@ -63,7 +63,6 @@
 	const containerSort = $derived(view.containerSort);
 	const containerSortDir = $derived(view.containerSortDir);
 	let scrollContainer = $state<HTMLDivElement | null>(null);
-	let metricProgress = $state(0);
 	let metricStartedAt = $state(Date.now());
 	let metricTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -83,7 +82,6 @@
 
 	function advanceMetric() {
 		view.containerSort = nextMetric(view.containerSort, hasGpuData);
-		metricProgress = 0;
 		metricStartedAt = Date.now();
 		scrollToTop();
 	}
@@ -92,19 +90,11 @@
 		if (!metricRotating) return;
 		const elapsed = Date.now() - metricStartedAt;
 		if (elapsed >= metricRotateMs) advanceMetric();
-		else metricProgress = (elapsed / metricRotateMs) * 100;
-	}
-
-	function togglePause() {
-		view.containersPaused = !view.containersPaused;
-		metricProgress = 0;
-		metricStartedAt = Date.now();
 	}
 
 	function setContainerSort(next: Server2dContainerSort) {
 		view.containerSort = view.containerSort === next ? 'total' : next;
 		view.containersPaused = true;
-		metricProgress = 0;
 		metricStartedAt = Date.now();
 		scrollToTop();
 	}
@@ -112,7 +102,6 @@
 	function setContainerSortDir(next: Server2dSortDir) {
 		view.containerSortDir = next;
 		view.containersPaused = true;
-		metricProgress = 0;
 		metricStartedAt = Date.now();
 		scrollToTop();
 	}
@@ -355,29 +344,6 @@
 		{/if}
 	</div>
 
-	{#if flatCards.length > 0}
-		<div class="scroll-foot">
-			<button
-				type="button"
-				class="scroll-pause"
-				class:paused={metricAutoPaused}
-				title={metricAutoPaused ? '정렬 자동 전환 재개' : '정렬 자동 전환 일시정지'}
-				aria-label={metricAutoPaused ? '재개' : '일시정지'}
-				onclick={togglePause}
-			>
-				{#if metricAutoPaused}
-					<svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>
-					<span>재생</span>
-				{:else}
-					<svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
-					<span>정지</span>
-				{/if}
-			</button>
-			<div class="scroll-progress" class:idle={!metricRotating} aria-hidden="true">
-				<i style={`width:${metricRotating ? metricProgress.toFixed(1) : metricAutoPaused ? 0 : 100}%`}></i>
-			</div>
-		</div>
-	{/if}
 </aside>
 
 <style>
@@ -680,84 +646,4 @@
 		text-align: center;
 	}
 
-	.scroll-foot {
-		flex: 0 0 auto;
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		gap: 8px;
-		padding-top: 6px;
-		border-top: 1px dashed rgba(100, 116, 139, 0.25);
-	}
-
-	.scroll-pause {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 5px;
-		height: 22px;
-		padding: 0 9px 0 8px;
-		border: 1px solid rgba(248, 113, 113, 0.5);
-		border-radius: 999px;
-		background: rgba(248, 113, 113, 0.16);
-		color: #f87171;
-		cursor: pointer;
-		flex: 0 0 auto;
-		font-size: 10px;
-		font-weight: 800;
-		letter-spacing: 0.02em;
-		white-space: nowrap;
-		transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
-	}
-
-	.scroll-pause:hover {
-		background: rgba(248, 113, 113, 0.26);
-	}
-
-	.scroll-pause.paused {
-		background: rgba(52, 211, 153, 0.2);
-		border-color: rgba(52, 211, 153, 0.6);
-		color: #34d399;
-		box-shadow: 0 0 12px rgba(52, 211, 153, 0.35);
-		animation: scroll-paused-glow 1.6s ease-in-out infinite;
-	}
-
-	.scroll-pause.paused:hover {
-		background: rgba(52, 211, 153, 0.3);
-	}
-
-	@keyframes scroll-paused-glow {
-		0%, 100% { box-shadow: 0 0 12px rgba(52, 211, 153, 0.3); }
-		50% { box-shadow: 0 0 18px rgba(52, 211, 153, 0.55); }
-	}
-
-	.scroll-pause span {
-		line-height: 1;
-	}
-
-	.scroll-progress {
-		flex: 1;
-		height: 5px;
-		border-radius: 999px;
-		background: rgba(30, 41, 59, 0.65);
-		overflow: hidden;
-	}
-
-	.scroll-progress i {
-		display: block;
-		height: 100%;
-		background: linear-gradient(90deg, #30d5c8, #60a5fa);
-		width: 0%;
-		transition: width 100ms linear;
-	}
-
-	.scroll-progress.idle i {
-		background: repeating-linear-gradient(
-			-45deg,
-			rgba(248, 113, 113, 0.4) 0,
-			rgba(248, 113, 113, 0.4) 4px,
-			rgba(248, 113, 113, 0.15) 4px,
-			rgba(248, 113, 113, 0.15) 8px
-		);
-	}
 </style>

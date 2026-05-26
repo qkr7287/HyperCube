@@ -1660,6 +1660,10 @@
 					<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.74 10h-2.08A6 6 0 1 1 12 6a5.96 5.96 0 0 1 4.22 1.78L13 11h7V4z"/></svg>
 					<span>새로고침</span>
 				</button>
+				<i class="ctrl-sep" aria-hidden="true"></i>
+				<a href="{base}/gpu-hosting" class="ctrl-btn gpu-link" title="GPU Hosting Dashboard 로 전환">
+					<span>GPU Hosting Dashboard →</span>
+				</a>
 			</div>
 		</section>
 

@@ -37,7 +37,6 @@
 	// resetting and the highlight was randomly hopping. Name-based
 	// tracking keeps focus glued to one stack until it advances.
 	let focusedStack = $state<string | null>(null);
-	let focusProgress = $state(0);
 	let focusStartedAt = $state(Date.now());
 	let focusOwnedSolo = $state(false);
 	let focusTimer: ReturnType<typeof setInterval> | null = null;
@@ -48,24 +47,6 @@
 
 	function setSortDir(next: Server2dSortDir) {
 		view.stackSortDir = next;
-	}
-
-	function toggleFocus() {
-		const wasPaused = view.stackFocusPaused;
-		view.stackFocusPaused = !wasPaused;
-		focusProgress = 0;
-		focusStartedAt = Date.now();
-		if (wasPaused) {
-			const target = focusedStack ?? sorted[0]?.name ?? null;
-			if (target) {
-				focusedStack = target;
-				focusOwnedSolo = true;
-				view.soloStack = target;
-			}
-		} else {
-			focusOwnedSolo = false;
-			view.soloStack = null;
-		}
 	}
 
 	function toggleSolo(name: string) {
@@ -142,7 +123,6 @@
 		const nextIdx = (currentIdx + 1) % sorted.length;
 		const next = sorted[nextIdx]?.name ?? null;
 		focusedStack = next;
-		focusProgress = 0;
 		focusStartedAt = Date.now();
 		if (next) {
 			focusOwnedSolo = true;
@@ -154,7 +134,6 @@
 		if (!focusRunning) return;
 		const elapsed = Date.now() - focusStartedAt;
 		if (elapsed >= focusIntervalMs) advanceFocus();
-		else focusProgress = (elapsed / focusIntervalMs) * 100;
 	}
 
 	$effect(() => {
@@ -168,7 +147,6 @@
 
 	$effect(() => {
 		if (!focusRunning) {
-			focusProgress = 0;
 			focusStartedAt = Date.now();
 		}
 	});
@@ -211,7 +189,6 @@
 		if (current === focusedStack) return;
 		focusOwnedSolo = false;
 		if (!view.stackFocusPaused) view.stackFocusPaused = true;
-		focusProgress = 0;
 		focusStartedAt = Date.now();
 		if (current) focusedStack = current;
 	});
@@ -294,37 +271,6 @@
 		{/if}
 	</div>
 
-	<div class="focus-foot">
-		<button
-			type="button"
-			class="focus-btn"
-			class:paused={focusPaused}
-			title={focusPaused ? '스택 포커스 애니메이션 재생' : '스택 포커스 애니메이션 정지'}
-			aria-label={focusPaused ? '재생' : '정지'}
-			onclick={toggleFocus}
-		>
-			{#if focusPaused}
-				<svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>
-				<span>재생</span>
-			{:else}
-				<svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
-				<span>정지</span>
-			{/if}
-		</button>
-		<div class="focus-progress" class:idle={!focusRunning} aria-hidden="true">
-			<i style={`width:${focusRunning ? focusProgress.toFixed(1) : focusPaused ? 0 : 100}%`}></i>
-		</div>
-		<small class="focus-count">
-			{#if sorted.length > 0 && focusRunning}
-				{Math.min(
-					(focusedName ? sorted.findIndex((s) => s.name === focusedName) : -1) + 1 || 1,
-					sorted.length,
-				)} / {sorted.length}
-			{:else if sorted.length > 0}
-				{sorted.length}
-			{/if}
-		</small>
-	</div>
 </aside>
 
 <style>
@@ -574,92 +520,4 @@
 		text-align: center;
 	}
 
-	.focus-foot {
-		flex: 0 0 auto;
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		gap: 8px;
-		padding-top: 6px;
-		border-top: 1px dashed rgba(100, 116, 139, 0.25);
-	}
-
-	.focus-btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 5px;
-		height: 22px;
-		padding: 0 9px 0 8px;
-		border: 1px solid rgba(248, 113, 113, 0.5);
-		border-radius: 999px;
-		background: rgba(248, 113, 113, 0.16);
-		color: #f87171;
-		cursor: pointer;
-		flex: 0 0 auto;
-		font-size: 10px;
-		font-weight: 800;
-		letter-spacing: 0.02em;
-		transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
-	}
-
-	.focus-btn:hover {
-		background: rgba(248, 113, 113, 0.26);
-	}
-
-	.focus-btn.paused {
-		background: rgba(52, 211, 153, 0.2);
-		border-color: rgba(52, 211, 153, 0.6);
-		color: #34d399;
-		box-shadow: 0 0 12px rgba(52, 211, 153, 0.35);
-		animation: focus-btn-paused-glow 1.6s ease-in-out infinite;
-	}
-
-	.focus-btn.paused:hover {
-		background: rgba(52, 211, 153, 0.3);
-	}
-
-	@keyframes focus-btn-paused-glow {
-		0%, 100% { box-shadow: 0 0 12px rgba(52, 211, 153, 0.3); }
-		50% { box-shadow: 0 0 18px rgba(52, 211, 153, 0.55); }
-	}
-
-	.focus-btn span {
-		line-height: 1;
-	}
-
-	.focus-progress {
-		flex: 1;
-		height: 5px;
-		border-radius: 999px;
-		background: rgba(30, 41, 59, 0.65);
-		overflow: hidden;
-	}
-
-	.focus-progress i {
-		display: block;
-		height: 100%;
-		background: linear-gradient(90deg, #30d5c8, #60a5fa);
-		width: 0%;
-		transition: width 100ms linear;
-	}
-
-	.focus-progress.idle i {
-		background: repeating-linear-gradient(
-			-45deg,
-			rgba(248, 113, 113, 0.4) 0,
-			rgba(248, 113, 113, 0.4) 4px,
-			rgba(248, 113, 113, 0.15) 4px,
-			rgba(248, 113, 113, 0.15) 8px
-		);
-	}
-
-	.focus-count {
-		color: var(--text-muted);
-		font-size: 10px;
-		font-weight: 800;
-		min-width: 38px;
-		text-align: right;
-		font-variant-numeric: tabular-nums;
-	}
 </style>
