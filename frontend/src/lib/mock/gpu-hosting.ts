@@ -133,11 +133,13 @@ function flatLowSparkline(length = 60): number[] {
 }
 
 // ─── hosts ─────────────────────────────────────────────────────────────────────
+// hostname / ip / location 은 backend 에 등록된 agent 와 일치 (server_41_dev / 63_dev / 16_dev).
+// host-gpu-03 은 미등록 offline 서버 시나리오용 가공 데이터.
 export const HOSTS: HostMock[] = [
   {
     id: 'host-gpu-01',
-    hostname: 'host-gpu-01.seoul.hc',
-    location: 'Seoul-A',
+    hostname: 'server_41_dev',
+    location: '192.168.0.41',
     agentLastSeenISO: isoAt(-0.2),
     isOnline: true,
     staleSec: 12,
@@ -150,18 +152,18 @@ export const HOSTS: HostMock[] = [
   },
   {
     id: 'host-gpu-02',
-    hostname: 'host-gpu-02.seoul.hc',
-    location: 'Seoul-B',
+    hostname: 'server_63_dev',
+    location: '192.168.0.63',
     agentLastSeenISO: isoAt(-0.15),
     isOnline: true,
     staleSec: 9,
     gpuIds: ['rtx4090-01', 'rtx4090-02', 'rtx4090-03'],
   },
   {
-    // E-e / E-d: GPU 들고 있는 offline host. agent stale > 180s → isOnline=false → 하위 GPU offline override.
+    // 미등록 offline 시나리오 — agent stale > 180s → isOnline=false → 하위 GPU offline override.
     id: 'host-gpu-03',
-    hostname: 'host-gpu-03.busan.hc',
-    location: 'Busan-A',
+    hostname: 'server_88_busan',
+    location: '192.168.0.88',
     agentLastSeenISO: isoAt(-5.5),
     isOnline: false,
     staleSec: 332,
@@ -169,8 +171,8 @@ export const HOSTS: HostMock[] = [
   },
   {
     id: 'host-gpu-04',
-    hostname: 'host-gpu-04.seoul.hc',
-    location: 'Seoul-C',
+    hostname: 'server_16_dev',
+    location: '192.168.0.16',
     agentLastSeenISO: isoAt(-0.1),
     isOnline: true,
     staleSec: 6,

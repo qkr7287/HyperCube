@@ -30,7 +30,7 @@
   let selectedServer: string = HOSTS[0].id;
   let manualGpuId: string | null = null;
 
-  function selectGpu(id: string) { manualGpuId = id; }
+  function selectGpu(id: string | null) { manualGpuId = id; }
 
   function startInterval(ms: number) {
     if (timerId) clearInterval(timerId);
@@ -113,13 +113,22 @@
     <div class="left">
       <!-- ① 비교 카드 -->
       <div class="section">
-        <SectionTitle no={1} title="전체 GPU 한눈에 비교" en="All GPUs at a glance" hint="카드 클릭 = 우측 상세 보기" />
+        <SectionTitle no={1} title="전체 GPU 한눈에 비교" en="All GPUs at a glance" hint="카드 클릭 = 우측 상세 보기" tooltip={`서버에 꽂힌 GPU 들의 작업률·메모리를 한 줄씩 비교.
+
+값은 GPU 드라이버에서 5초마다 가져오는 실시간 측정값.
+
+카드 클릭 → 우측 ③ 에 자세히`} />
         <GpuCompareCards gpus={serverGpus} {host} {selectedGpuId} onSelect={selectGpu} />
       </div>
 
       <!-- ② 자원 맵 (heatmap honeycomb + 클릭 detail + DnD 재할당) -->
       <div class="section section-grow">
-        <SectionTitle no={2} title="자원 맵" en="Resource Map · Heatmap" hint="클릭=상세 · 드래그=재할당" />
+        <SectionTitle no={2} title="자원 맵" en="Resource Map · Heatmap" hint="클릭=상세 · 드래그=화면 이동 · ⌃휠=확대" tooltip={`꽃송이 1개 = GPU 1대 (최대 7조각)
+조각 1개 = 약 10GB 메모리
+
+조각 색 = 그 조각이 메모리를 얼마나 쓰는지
+(낮음 = 초록 → 높음 = 빨강)
+빗금 = 아직 누구도 쓰지 않는 자리`} />
         <ResourceMap
           gpus={serverGpus}
           {host}
@@ -132,7 +141,11 @@
 
     <div class="right">
       <div class="section">
-        <SectionTitle no={3} title="선택한 GPU 상세" en="Selected GPU Detail" hint={selectedGpu?.label ?? ''} />
+        <SectionTitle no={3} title="선택한 GPU 상세" en="Selected GPU Detail" hint={selectedGpu?.label ?? ''} tooltip={`선택한 GPU 1대의 현재 상태.
+
+작업률·메모리·온도·전력 = GPU 드라이버 5초 측정값
+슬라이스 = GPU 를 누가 어떻게 나눠 쓰는지
+최근 활동 = 이 GPU 에서 일어난 일 (할당·회수·오류)`} />
         {#if selectedGpu}
           <GpuPanel
             gpu={selectedGpu}

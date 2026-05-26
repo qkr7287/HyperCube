@@ -5,16 +5,21 @@
   // - 색 = 사용률 step heatmap
   // - canvas drag panning (hex 클릭 제외)
   // - hex 클릭 → 하단 detail
-  import type { GpuMock, SliceMock, HostMock, MountedModel } from '$lib/mock/gpu-hosting';
+  import type { GpuMock, HostMock, MountedModel } from '$lib/mock/gpu-hosting';
   import { effectiveGpuSeverity } from '$lib/utils/gpu-severity';
   import { SEMANTIC_HEX } from '$lib/utils/gpu-palette';
+  import {
+    FLOWER, axialPx as flowerAxialPx, hexPoints,
+    expandSlicesToFlower, sliceUsagePct, heatmapColor,
+    frameOutlinePoints,
+  } from '$lib/utils/hex-flower';
 
   interface Props {
     gpus: GpuMock[];
     host: HostMock;
     mountedModels: MountedModel[];
     selectedGpuId: string | null;
-    onGpuSelect: (gpuId: string) => void;
+    onGpuSelect: (gpuId: string | null) => void;
   }
   const { gpus, host, selectedGpuId, onGpuSelect }: Props = $props();
 
@@ -28,58 +33,9 @@
   const CLUSTER_ROW_OFFSET_X = HEX_W * 1.5; // 짝수/홀수 row 가로 offset (mosaic)
   const CLUSTER_COLS = 4;                // 한 행 GPU 수 (12 GPU = 3 row, 가로/세로 균형)
 
-  // 7-cell flower offsets (axial → pixel). 중심부터 시계 방향 6.
-  type Axial = { q: number; r: number };
-  const FLOWER: Axial[] = [
-    { q: 0, r: 0 },
-    { q: 1, r: -1 },
-    { q: 1, r: 0 },
-    { q: 0, r: 1 },
-    { q: -1, r: 1 },
-    { q: -1, r: 0 },
-    { q: 0, r: -1 },
-  ];
-
-  function axialPx(a: Axial): { x: number; y: number } {
-    return {
-      x: HEX_W * (a.q + a.r / 2),
-      y: HEX_SIZE * 1.5 * a.r,
-    };
-  }
-
-  // pointy-top hex polygon points (center 0,0).
-  const HEX_POINTS = Array.from({ length: 6 }, (_, i) => {
-    const ang = (Math.PI / 3) * i - Math.PI / 2; // pointy-top
-    return [HEX_SIZE * Math.cos(ang), HEX_SIZE * Math.sin(ang)].map((n) => n.toFixed(2)).join(',');
-  }).join(' ');
-
-  // ─── slice → hex 매핑 ───────────────────────────────────────────────────
-  // GPU 의 slices 를 weight 단위로 펼쳐 7 cell 까지 채움. 부족분은 null (unused).
-  type Cell = { slice: SliceMock | null; weightIndex: number };
-  function expandSlices(gpu: GpuMock): Cell[] {
-    const cells: Cell[] = [];
-    for (const s of gpu.slices) {
-      for (let i = 0; i < s.profileWeight; i++) cells.push({ slice: s, weightIndex: i });
-    }
-    while (cells.length < 7) cells.push({ slice: null, weightIndex: 0 });
-    return cells.slice(0, 7);
-  }
-
-  // ─── color (heatmap) ──────────────────────────────────────────────────
-  function sliceUsagePct(s: SliceMock): number {
-    if (!s.containerId) return 0;
-    return s.vramTotalGB > 0 ? (s.vramUsedGB / s.vramTotalGB) * 100 : 0;
-  }
-  function heatmapColor(pct: number, allocated: boolean, sev: string): string {
-    if (!allocated) return 'rgba(255, 255, 255, 0.05)';
-    if (sev === 'offline') return 'rgba(71, 85, 105, 0.4)';
-    if (sev === 'error') return 'rgba(217, 112, 112, 0.7)';
-    if (pct < 25) return 'rgba(77, 191, 179, 0.55)';
-    if (pct < 50) return 'rgba(132, 204, 156, 0.65)';
-    if (pct < 75) return 'rgba(224, 185, 107, 0.75)';
-    if (pct < 90) return 'rgba(232, 138, 92, 0.85)';
-    return 'rgba(217, 112, 112, 0.9)';
-  }
+  const HEX_POINTS = hexPoints(HEX_SIZE);
+  const FRAME_POINTS = frameOutlinePoints(HEX_SIZE);
+  const axialPx = (a: { q: number; r: number }) => flowerAxialPx(a, HEX_SIZE);
 
   // ─── GPU 격자 위치 ────────────────────────────────────────────────────
   type Placed = { gpu: GpuMock; cx: number; cy: number };
@@ -101,11 +57,14 @@
   const ZOOM_MIN = 0.3;
   const ZOOM_MAX = 3;
 
+  // 배경 click 감지 — pan 시작점과 종료점이 거의 같으면 click 으로 간주 → selection clear.
+  let downAt = { x: 0, y: 0 };
   function onCanvasDown(e: PointerEvent) {
     const t = e.target as HTMLElement;
     if (t.closest('[data-hex]')) return; // hex 클릭은 select, pan 아님
     panning = true;
     panStart = { x: e.clientX, y: e.clientY, ox: pan.x, oy: pan.y };
+    downAt = { x: e.clientX, y: e.clientY };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }
   function onCanvasMove(e: PointerEvent) {
@@ -115,6 +74,13 @@
   function onCanvasUp(e: PointerEvent) {
     panning = false;
     try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+    // 거의 안 움직인 배경 클릭 = selection 풀기
+    const dx = Math.abs(e.clientX - downAt.x);
+    const dy = Math.abs(e.clientY - downAt.y);
+    if (dx < 4 && dy < 4 && selectedGpuId !== null) {
+      const target = e.target as HTMLElement;
+      if (!target.closest('[data-hex]')) onGpuSelect(null);
+    }
   }
   function onCanvasWheel(e: WheelEvent) {
     // Ctrl/Cmd + wheel 일 때만 zoom — 일반 스크롤 보존.
@@ -149,9 +115,9 @@
     <span class="lg-key">사용률</span>
     <span class="lg-step" style="background: rgba(255,255,255,0.05)"></span><span class="lg-lbl">비어있음</span>
     <span class="lg-step" style="background: rgba(77, 191, 179, 0.55)"></span><span class="lg-lbl">&lt;25%</span>
-    <span class="lg-step" style="background: rgba(132, 204, 156, 0.65)"></span><span class="lg-lbl">25–50</span>
-    <span class="lg-step" style="background: rgba(224, 185, 107, 0.75)"></span><span class="lg-lbl">50–75</span>
-    <span class="lg-step" style="background: rgba(232, 138, 92, 0.85)"></span><span class="lg-lbl">75–90</span>
+    <span class="lg-step" style="background: rgba(132, 204, 156, 0.65)"></span><span class="lg-lbl">25–50%</span>
+    <span class="lg-step" style="background: rgba(224, 185, 107, 0.75)"></span><span class="lg-lbl">50–75%</span>
+    <span class="lg-step" style="background: rgba(232, 138, 92, 0.85)"></span><span class="lg-lbl">75–90%</span>
     <span class="lg-step" style="background: rgba(217, 112, 112, 0.9)"></span><span class="lg-lbl">&gt;90% / 오류</span>
     <div class="zoom-controls">
       <button type="button" onclick={zoomOut} aria-label="축소">−</button>
@@ -173,31 +139,42 @@
     aria-label="GPU 자원 맵 2D 캔버스 — 드래그하여 이동, 휠로 확대/축소, hex 클릭하여 슬라이스 선택"
   >
     <svg class="board" width="100%" height="100%" {viewBox} preserveAspectRatio="xMidYMid meet" style="transform: translate({pan.x}px, {pan.y}px) scale({zoom}); transform-origin: center center;">
+      <defs>
+        <!-- 분할 안 됨 / 할당 안 됨 표시 — 대각선 빗금 패턴 -->
+        <pattern id="hatched-unalloc" patternUnits="userSpaceOnUse" width="3" height="3" patternTransform="rotate(45)">
+          <rect width="3" height="3" fill="rgba(255,255,255,0.025)"/>
+          <line x1="0" y1="0" x2="0" y2="3" stroke="rgba(255,255,255,0.18)" stroke-width="0.6"/>
+        </pattern>
+      </defs>
       {#each placed as p (p.gpu.id)}
         {@const sev = effectiveGpuSeverity(p.gpu, host)}
-        {@const cells = expandSlices(p.gpu)}
+        {@const cells = expandSlicesToFlower(p.gpu)}
         {@const isSel = selectedGpuId === p.gpu.id}
-        <g class="cluster" class:selected={isSel} transform="translate({p.cx}, {p.cy})">
+        {@const dimmed = selectedGpuId !== null && !isSel}
+        <g class="cluster" class:selected={isSel} class:dimmed transform="translate({p.cx}, {p.cy})">
           <!-- 7-hex flower outer outline as 12-gon — slice 묶음 테두리 -->
           <polygon
             class="frame-shape"
-            points={frameOutlinePoints()}
+            points={FRAME_POINTS}
             data-sev={sev}
             class:sel={isSel}
           />
 
-          <!-- slices = 7 hexes -->
+          <!-- slices = 7 hexes (할당 안 된 hex 는 빗금) -->
           {#each cells as c, i (p.gpu.id + ':' + i)}
             {@const allocated = !!(c.slice && c.slice.containerId)}
+            {@const isUnalloc = !c.slice}
             {@const pct = c.slice ? sliceUsagePct(c.slice) : 0}
             {@const off = axialPx(FLOWER[i])}
+            {@const cellColor = isUnalloc ? 'url(#hatched-unalloc)' : heatmapColor(pct, allocated, sev)}
             <g transform="translate({off.x}, {off.y})">
               <polygon
                 data-hex
                 class="hex"
                 class:empty={!allocated}
+                class:unalloc={isUnalloc}
                 points={HEX_POINTS}
-                fill={heatmapColor(pct, allocated, sev)}
+                fill={cellColor}
                 onclick={() => onGpuSelect(p.gpu.id)}
               />
             </g>
@@ -225,37 +202,6 @@
   </div>
 </section>
 
-<script context="module" lang="ts">
-  // 7-hex flower 외곽 12-gon — slice 묶음 테두리 (정확한 boundary).
-  // 각 외곽 hex 의 outer 변들을 모아 polygon points 생성.
-  export function frameOutlinePoints(): string {
-    const HEX_SIZE = 7;
-    const HEX_W = Math.sqrt(3) * HEX_SIZE;
-    type Axial = { q: number; r: number };
-    const OUTER: Axial[] = [
-      { q: 1, r: -1 }, { q: 1, r: 0 }, { q: 0, r: 1 },
-      { q: -1, r: 1 }, { q: -1, r: 0 }, { q: 0, r: -1 },
-    ];
-    function axial(a: Axial) {
-      return { x: HEX_W * (a.q + a.r / 2), y: HEX_SIZE * 1.5 * a.r };
-    }
-    function corner(cx: number, cy: number, i: number): [number, number] {
-      const ang = (Math.PI / 3) * i - Math.PI / 2;
-      return [cx + HEX_SIZE * Math.cos(ang), cy + HEX_SIZE * Math.sin(ang)];
-    }
-    // 외곽 hex 6개 각각의 outer 4 corner (4·5·0·1 or 시계방향 셋). 시계방향 1·2·3·4 corner.
-    const pts: [number, number][] = [];
-    for (let k = 0; k < 6; k++) {
-      const c = axial(OUTER[k]);
-      // pointy-top hex corner index 0..5 start top, clockwise.
-      // 외부로 향한 corner 시작 index = k (회전 대칭).
-      pts.push(corner(c.x, c.y, (k + 5) % 6));
-      pts.push(corner(c.x, c.y, k));
-      pts.push(corner(c.x, c.y, (k + 1) % 6));
-    }
-    return pts.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
-  }
-</script>
 
 <style>
   .map {
@@ -339,25 +285,29 @@
     transition: transform 0.04s linear;
   }
 
+  .cluster { transition: opacity 0.18s; }
+  .cluster.dimmed { opacity: 0.32; }
+  .cluster.dimmed:hover { opacity: 0.65; }
+
   .frame-shape {
     fill: none;
-    stroke: rgba(255, 255, 255, 0.55);
-    stroke-width: 2;
+    stroke: rgba(255, 255, 255, 0.4);
+    stroke-width: 1;
     stroke-linejoin: round;
     pointer-events: none;
   }
-  .frame-shape[data-sev='warn']    { stroke: var(--warn); stroke-opacity: 0.85; }
-  .frame-shape[data-sev='error']   { stroke: var(--error); stroke-opacity: 0.95; }
-  .frame-shape[data-sev='offline'] { stroke: var(--offline); stroke-opacity: 0.8; stroke-dasharray: 4 3; }
+  .frame-shape[data-sev='warn']    { stroke: var(--warn); stroke-opacity: 0.7; }
+  .frame-shape[data-sev='error']   { stroke: var(--error); stroke-opacity: 0.8; }
+  .frame-shape[data-sev='offline'] { stroke: var(--offline); stroke-opacity: 0.7; stroke-dasharray: 3 2; }
   .frame-shape.sel {
     stroke: var(--accent) !important;
-    stroke-opacity: 1 !important;
-    stroke-width: 2.5;
+    stroke-opacity: 0.85 !important;
+    stroke-width: 1.4;
   }
 
   .hex {
-    stroke: rgba(13, 17, 23, 0.9);
-    stroke-width: 0.8;
+    stroke: rgba(13, 17, 23, 0.7);
+    stroke-width: 0.3;
     cursor: pointer;
     transition: filter 0.12s;
     transform-origin: center;
@@ -365,6 +315,11 @@
   }
   .hex:hover { filter: brightness(1.3); }
   .hex.empty { cursor: pointer; }
+  /* 할당 안 됨 (빗금) — stroke 색을 빗금 배경과 동일하게 해서 인접 빗금 hex 사이 분할선 안 보이게 */
+  .hex.unalloc {
+    stroke: rgba(255, 255, 255, 0.04);
+    stroke-width: 0.2;
+  }
 
   .g-label-grp {
     opacity: 0;

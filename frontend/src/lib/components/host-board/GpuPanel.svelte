@@ -7,7 +7,16 @@
   import { SEMANTIC_HEX } from '$lib/utils/gpu-palette';
   import SliceCell from './SliceCell.svelte';
   import VramBar from './VramBar.svelte';
+  import {
+    FLOWER, axialPx, hexPoints, frameOutlinePoints,
+    expandSlicesToFlower, sliceUsagePct, heatmapColor,
+  } from '$lib/utils/hex-flower';
   import { INCIDENT_LABEL_KO as INC_KO } from '$lib/mock/gpu-hosting';
+
+  // mini hex flower geometry — 좌측 ResourceMap 과 동일 시각 언어.
+  const MINI_SIZE = 9;
+  const MINI_HEX_POINTS = hexPoints(MINI_SIZE);
+  const MINI_FRAME_POINTS = frameOutlinePoints(MINI_SIZE);
 
   // GPU 의 최대 분할 가능 칸 수 (MIG 7-slice 기준).
   const MAX_SLOTS = 7;
@@ -61,13 +70,39 @@
 
 <section class="gpu" data-sev={sev} class:focused data-gpu-id={gpu.id}>
   <header class="head">
-    <div class="line">
-      <span class="dot" style="background: {SEMANTIC_HEX[sev]};" aria-hidden="true"></span>
-      <h2>{gpu.label}</h2>
-      <span class="meta">{gpu.model} · {gpu.mode === 'mig' ? `MIG ${gpu.slices.length}슬라이스` : '전체'}</span>
-      {#if gpu.incident}<span class="incident">{INCIDENT_LABEL_KO[gpu.incident]}</span>{/if}
+    <!-- selected GPU 의 mini hex flower (좌측 자원맵과 동일 시각 — 매핑 명시) -->
+    <svg class="mini-flower" viewBox="-32 -32 64 64" aria-hidden="true">
+      <defs>
+        <pattern id="mini-hatched" patternUnits="userSpaceOnUse" width="3" height="3" patternTransform="rotate(45)">
+          <rect width="3" height="3" fill="rgba(255,255,255,0.03)"/>
+          <line x1="0" y1="0" x2="0" y2="3" stroke="rgba(255,255,255,0.22)" stroke-width="0.7"/>
+        </pattern>
+      </defs>
+      <polygon class="mini-frame" points={MINI_FRAME_POINTS} data-sev={sev} />
+      {#each expandSlicesToFlower(gpu) as c, i (i)}
+        {@const allocated = !!(c.slice && c.slice.containerId)}
+        {@const isUnalloc = !c.slice}
+        {@const pct = c.slice ? sliceUsagePct(c.slice) : 0}
+        {@const off = axialPx(FLOWER[i], MINI_SIZE)}
+        {@const fillColor = isUnalloc ? 'url(#mini-hatched)' : heatmapColor(pct, allocated, sev)}
+        <polygon
+          class="mini-hex"
+          class:unalloc={isUnalloc}
+          transform="translate({off.x}, {off.y})"
+          points={MINI_HEX_POINTS}
+          fill={fillColor}
+        />
+      {/each}
+    </svg>
+    <div class="head-text">
+      <div class="line">
+        <span class="dot" style="background: {SEMANTIC_HEX[sev]};" aria-hidden="true"></span>
+        <h2>{gpu.label}</h2>
+        <span class="meta">{gpu.model} · {gpu.mode === 'mig' ? `MIG ${gpu.slices.length}슬라이스` : '전체'}</span>
+        {#if gpu.incident}<span class="incident">{INCIDENT_LABEL_KO[gpu.incident]}</span>{/if}
+      </div>
+      <p class="summary">{summary}</p>
     </div>
-    <p class="summary">{summary}</p>
   </header>
 
   <!-- Metric strip — Grafana stat panel 풍, 적당 크기 -->
@@ -140,10 +175,15 @@
     </div>
     <div class="s-grid" style="--max: {MAX_SLOTS}">
       {#each gpu.slices as s (s.id)}
-        <div class="s-wrap" style="grid-column: span {s.profileWeight};">
+        <div class="s-wrap" style="grid-column: span {gpu.mode === 'whole' ? 1 : s.profileWeight};">
           <SliceCell slice={s} {mountedModels} {onContainerClick} {onMarketClick} />
         </div>
       {/each}
+      {#if gpu.mode === 'whole'}
+        {#each Array(MAX_SLOTS - gpu.slices.length) as _, i (i)}
+          <div class="s-wrap s-unalloc" aria-hidden="true"></div>
+        {/each}
+      {/if}
     </div>
   </div>
 
@@ -217,7 +257,34 @@
   }
   .gpu:first-child { border-top: none; padding-top: 2px; }
 
-  .head { display: flex; flex-direction: column; gap: 3px; }
+  .head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .head-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+  .mini-flower {
+    width: 64px;
+    height: 64px;
+    flex-shrink: 0;
+  }
+  .mini-frame {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.55);
+    stroke-width: 2;
+    stroke-linejoin: round;
+  }
+  .mini-frame[data-sev='warn']    { stroke: #e0b96b; }
+  .mini-frame[data-sev='error']   { stroke: #d97070; }
+  .mini-frame[data-sev='offline'] { stroke: #475569; stroke-dasharray: 4 3; }
+  .mini-hex {
+    stroke: rgba(13, 17, 23, 0.9);
+    stroke-width: 0.8;
+  }
+  .mini-hex.unalloc {
+    stroke: rgba(255, 255, 255, 0.06);
+    stroke-width: 0.3;
+  }
   .line { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
   .dot { width: 9px; height: 9px; border-radius: 50%; align-self: center; }
   h2 {
@@ -324,6 +391,18 @@
   }
   .s-wrap { background: #181d26; min-width: 0; min-height: 128px; display: flex; }
   .s-wrap > :global(*) { flex: 1; min-height: 100%; }
+  /* Whole GPU 의 분할 안 된 자리 — 빗금 표시 */
+  .s-wrap.s-unalloc {
+    background:
+      repeating-linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.03),
+        rgba(255, 255, 255, 0.03) 6px,
+        rgba(255, 255, 255, 0.10) 6px,
+        rgba(255, 255, 255, 0.10) 7px
+      ),
+      #14181f;
+  }
 
   .recent {
     padding: 14px 16px;
