@@ -4,11 +4,9 @@
   import type { GpuMock, HostMock, MountedModel } from '$lib/mock/gpu-hosting';
   import { INCIDENT_LABEL_KO } from '$lib/mock/gpu-hosting';
   import { effectiveGpuSeverity } from '$lib/utils/gpu-severity';
-  import { SEMANTIC_HEX, identityColor } from '$lib/utils/gpu-palette';
-  import SparkLine from './SparkLine.svelte';
+  import { SEMANTIC_HEX } from '$lib/utils/gpu-palette';
   import SliceCell from './SliceCell.svelte';
   import VramBar from './VramBar.svelte';
-  import GpuTrendCharts from './GpuTrendCharts.svelte';
   import { INCIDENT_LABEL_KO as INC_KO } from '$lib/mock/gpu-hosting';
 
   // GPU 의 최대 분할 가능 칸 수 (MIG 7-slice 기준).
@@ -74,29 +72,53 @@
 
   <!-- Metric strip — Grafana stat panel 풍, 적당 크기 -->
   <div class="metrics">
-    <div class="m m-hero">
+    <div class="m">
       <div class="m-top"><span class="m-label">지금 작업률</span><span class="m-sub">GPU Util</span></div>
-      <div class="m-mid">
+      <div class="m-row">
         <span class="m-val" style="color: {SEMANTIC_HEX[sev]};">
           {gpu.computePct ?? '—'}{gpu.computePct !== null ? '%' : ''}
         </span>
-        <SparkLine values={gpu.sparkline60s} width={110} height={22} stroke={identityColor(gpu.id)} label="GPU {gpu.label} 60s" />
+        <!-- lucide: cpu -->
+        <svg class="m-mark" viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="4" y="4" width="16" height="16" rx="2" />
+          <rect x="9" y="9" width="6" height="6" />
+          <path d="M9 2v2 M15 2v2 M9 20v2 M15 20v2 M2 9h2 M2 15h2 M20 9h2 M20 15h2" />
+        </svg>
       </div>
       <span class="m-foot">p95 {gpu.computePctP95_1h ?? '—'}%</span>
     </div>
     <div class="m">
       <div class="m-top"><span class="m-label">메모리</span><span class="m-sub">VRAM</span></div>
-      <span class="m-val">{Math.round(vramPct)}<small>%</small></span>
+      <div class="m-row">
+        <span class="m-val">{Math.round(vramPct)}<small>%</small></span>
+        <!-- lucide: memory-stick -->
+        <svg class="m-mark" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v1.1a2 2 0 0 0 0 3.8V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5.1a2 2 0 0 0 0-3.8Z" />
+          <path d="M2 15h20 M6 19v-3 M10 19v-3 M14 19v-3 M18 19v-3 M8 11V9 M12 11V9 M16 11V9" />
+        </svg>
+      </div>
       <span class="m-foot">{gpu.vramUsedGB} / {gpu.vramTotalGB} GB</span>
     </div>
     <div class="m">
       <div class="m-top"><span class="m-label">온도</span><span class="m-sub">Temp</span></div>
-      <span class="m-val">{gpu.tempC ?? '—'}<small>{gpu.tempC !== null ? '°C' : ''}</small></span>
+      <div class="m-row">
+        <span class="m-val">{gpu.tempC ?? '—'}<small>{gpu.tempC !== null ? '°C' : ''}</small></span>
+        <!-- lucide: thermometer -->
+        <svg class="m-mark" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z" />
+        </svg>
+      </div>
       <span class="m-foot">{tempHint(gpu.tempC)}</span>
     </div>
     <div class="m">
       <div class="m-top"><span class="m-label">전력</span><span class="m-sub">Power</span></div>
-      <span class="m-val">{gpu.powerW ?? '—'}<small>{gpu.powerW !== null ? 'W' : ''}</small></span>
+      <div class="m-row">
+        <span class="m-val">{gpu.powerW ?? '—'}<small>{gpu.powerW !== null ? 'W' : ''}</small></span>
+        <!-- lucide: zap -->
+        <svg class="m-mark" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z" />
+        </svg>
+      </div>
       <span class="m-foot">한도 {gpu.powerCapW} W</span>
     </div>
   </div>
@@ -125,9 +147,6 @@
     </div>
   </div>
 
-  <!-- 60초 시계열 차트 (VRAM / Temp / Power) -->
-  <GpuTrendCharts {gpu} />
-
   <!-- 이 GPU 의 최근 활동 — 테이블 + 액션 -->
   <div class="recent">
     <div class="r-head">
@@ -139,13 +158,20 @@
       <p class="r-empty">최근 기록된 이벤트가 없습니다.</p>
     {:else}
       <table class="r-tbl">
+        <colgroup>
+          <col style="width: 28px;" />
+          <col style="width: 70px;" />
+          <col style="width: 200px;" />
+          <col />
+          <col style="width: 130px;" />
+        </colgroup>
         <thead>
           <tr>
-            <th class="thx"></th>
-            <th class="thx">시간</th>
+            <th></th>
+            <th>시간</th>
             <th>이벤트</th>
             <th>메시지</th>
-            <th class="thx">조치</th>
+            <th>조치</th>
           </tr>
         </thead>
         <tbody>
@@ -174,7 +200,7 @@
 
 <style>
   .gpu {
-    padding: 14px 0 18px;
+    padding: 14px 0 0;
     border-top: 1px solid var(--border);
     display: flex;
     flex-direction: column;
@@ -220,7 +246,7 @@
 
   .metrics {
     display: grid;
-    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 1px;
     background: var(--border);
     border-radius: 6px;
@@ -252,7 +278,24 @@
     margin-left: 2px;
   }
   .m-foot { color: var(--text-muted); font-size: 13px; }
-  .m-mid { display: flex; align-items: center; gap: 10px; }
+  .m-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+  }
+  .m-mark {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 0.55;
+  }
 
   .vram-row {
     display: grid;
@@ -283,7 +326,7 @@
   .s-wrap > :global(*) { flex: 1; min-height: 100%; }
 
   .recent {
-    padding: 14px 16px 0;
+    padding: 14px 16px;
     background: #181d26;
     border-radius: 6px;
     display: flex;
@@ -293,10 +336,7 @@
     min-height: 0;
     overflow-y: auto;
     scrollbar-gutter: stable;
-    mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
-    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
   }
-  .r-tbl { padding-bottom: 22px; }
   .r-tbl tbody { display: table-row-group; }
   .r-empty {
     flex: 1;
@@ -312,7 +352,7 @@
   .r-en { color: var(--text-muted); font-size: 12px; font-weight: 500; }
   .r-hint { margin-left: auto; color: var(--text-muted); font-size: 12px; }
   .r-empty { margin: 0; color: var(--text-muted); font-size: 13px; }
-  .r-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .r-tbl { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
   .r-tbl thead th {
     text-align: left;
     color: var(--text-muted);
@@ -321,19 +361,28 @@
     padding: 8px 10px;
     border-bottom: 1px solid var(--border);
   }
-  .r-tbl th.thx { width: 1%; white-space: nowrap; }
   .r-tbl tbody td {
     padding: 10px 10px;
     border-bottom: 1px dashed var(--border);
     vertical-align: middle;
+    height: 44px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .r-tbl tbody td:first-child,
+  .r-tbl thead th:first-child {
+    overflow: visible;
+    padding: 10px 0 10px 4px;
+    text-align: center;
   }
   .r-tbl tbody tr:last-child td { border-bottom: none; }
   .r-tbl tbody tr:hover td { background: rgba(77, 191, 179, 0.04); }
   .r-tbl .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
-  .r-tbl .t-time { color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 12px; }
-  .r-tbl .t-kind { color: var(--text-primary); font-weight: 700; white-space: nowrap; font-size: 13px; }
-  .r-tbl .t-msg { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; max-width: 440px; font-size: 13px; line-height: 1.5; }
-  .r-tbl .t-act { white-space: nowrap; text-align: right; }
+  .r-tbl .t-time { color: var(--text-muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+  .r-tbl .t-kind { color: var(--text-primary); font-weight: 700; font-size: 13px; }
+  .r-tbl .t-msg { color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+  .r-tbl .t-act { text-align: right; }
   .act-btn {
     appearance: none;
     background: transparent;

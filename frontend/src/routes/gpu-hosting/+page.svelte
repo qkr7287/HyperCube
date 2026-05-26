@@ -11,14 +11,12 @@
   import SectionTitle from '$lib/components/host-board/SectionTitle.svelte';
   import GpuCompareCards from '$lib/components/host-board/GpuCompareCards.svelte';
   import GpuPanel from '$lib/components/host-board/GpuPanel.svelte';
-  import UsageRank from '$lib/components/host-board/UsageRank.svelte';
-  import MarketServices from '$lib/components/host-board/MarketServices.svelte';
+  import ResourceMap from '$lib/components/host-board/ResourceMap.svelte';
   import {
     HOSTS,
     GPUS,
     MOUNTED_MODELS,
     jitterGpus,
-    deriveUserUsage,
     type GpuMock,
   } from '$lib/mock/gpu-hosting';
   import { effectiveGpuSeverity } from '$lib/utils/gpu-severity';
@@ -52,13 +50,10 @@
   }
 
   $: host = HOSTS.find((h) => h.id === selectedServer)!;
-  $: serverGpus = liveGpus.filter((g) => g.hostId === selectedServer);
-  $: visibleMounted = MOUNTED_MODELS.filter((m) => serverGpus.some((g) => g.label === m.mountedOn[0]?.gpuLabel));
+  $: serverGpus = liveGpus.filter((g) => host.gpuIds.includes(g.id));
 
   $: selectedGpuId = manualGpuId ?? serverGpus[0]?.id ?? null;
   $: selectedGpu = serverGpus.find((g) => g.id === selectedGpuId) ?? serverGpus[0] ?? null;
-
-  $: userUsage = deriveUserUsage(serverGpus);
 
   // 호스트 status 한 줄.
   $: hostStatus = (() => {
@@ -98,7 +93,7 @@
       <label for="server-select">호스트</label>
       <select id="server-select" value={selectedServer} onchange={(e) => (selectedServer = (e.currentTarget as HTMLSelectElement).value)}>
         {#each HOSTS as h (h.id)}
-          <option value={h.id}>{h.location} · {h.hostname} · GPU {liveGpus.filter(g => g.hostId === h.id).length}대 {h.isOnline ? '' : '(오프라인)'}</option>
+          <option value={h.id}>{h.location} · {h.hostname} · GPU {h.gpuIds.length}대 {h.isOnline ? '' : '(오프라인)'}</option>
         {/each}
       </select>
     </div>
@@ -122,22 +117,22 @@
         <GpuCompareCards gpus={serverGpus} {host} {selectedGpuId} onSelect={selectGpu} />
       </div>
 
-      <!-- ③④ 2 column grid (장애 상세 / 활동 로그 폐기 — 우측 GpuPanel 안에 흡수됨) -->
-      <div class="grid-2">
-        <div class="section">
-          <SectionTitle no={3} title="누가 얼마나 쓰나" en="User Allocation" hint={`${userUsage.length}명`} />
-          <UsageRank items={userUsage} />
-        </div>
-        <div class="section">
-          <SectionTitle no={4} title="운영 중인 서비스" en="Running Services" hint={`${visibleMounted.filter((m) => m.marketSharedAt).length}개 마켓 공유`} />
-          <MarketServices items={visibleMounted} onMarketClick={handleMarketClick} />
-        </div>
+      <!-- ② 자원 맵 (heatmap honeycomb + 클릭 detail + DnD 재할당) -->
+      <div class="section section-grow">
+        <SectionTitle no={2} title="자원 맵" en="Resource Map · Heatmap" hint="클릭=상세 · 드래그=재할당" />
+        <ResourceMap
+          gpus={serverGpus}
+          {host}
+          mountedModels={MOUNTED_MODELS}
+          {selectedGpuId}
+          onGpuSelect={selectGpu}
+        />
       </div>
     </div>
 
     <div class="right">
       <div class="section">
-        <SectionTitle no={5} title="선택한 GPU 상세" en="Selected GPU Detail" hint={selectedGpu?.label ?? ''} />
+        <SectionTitle no={3} title="선택한 GPU 상세" en="Selected GPU Detail" hint={selectedGpu?.label ?? ''} />
         {#if selectedGpu}
           <GpuPanel
             gpu={selectedGpu}
@@ -229,6 +224,7 @@
   .main {
     display: grid;
     grid-template-columns: 800px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
     gap: 18px;
     align-items: stretch;
     flex: 1;
@@ -237,9 +233,8 @@
   }
   .left { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
   .left > .section:first-child { flex: 0 0 auto; }
-  .left > .grid-2 { flex: 1; min-height: 0; }
-  .grid-2 > .section { display: flex; flex-direction: column; min-height: 0; }
-  .grid-2 > .section > :global(*:last-child) { flex: 1; min-height: 0; }
+  .left > .section-grow { flex: 1; min-height: 0; }
+  .section-grow > :global(*:last-child) { flex: 1; min-height: 0; }
   .right {
     display: flex; flex-direction: column; gap: 16px;
     min-width: 0;
