@@ -167,7 +167,7 @@
   .page {
     flex: 1; min-height: 0;
     overflow: hidden;
-    padding: 12px 22px 16px;
+    padding: 12px 22px 28px;
     display: flex; flex-direction: column;
     color: var(--text-primary);
   }

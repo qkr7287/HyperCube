@@ -54,12 +54,15 @@
     background: #181d26;
     border: none;
     border-radius: 8px;
-    padding: 14px 16px 12px;
+    padding: 14px 16px;
     height: 100%;
     min-height: 220px;
     overflow-y: auto;
+    scrollbar-gutter: stable;
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
   }
-  ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+  ul { list-style: none; padding: 0 0 18px; margin: 0; display: grid; gap: 12px; }
   li { display: grid; gap: 2px; padding-bottom: 8px; border-bottom: 1px dashed var(--border); }
   li:last-child { border-bottom: none; padding-bottom: 0; }
 

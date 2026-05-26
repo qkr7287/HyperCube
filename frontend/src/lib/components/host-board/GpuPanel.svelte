@@ -283,7 +283,7 @@
   .s-wrap > :global(*) { flex: 1; min-height: 100%; }
 
   .recent {
-    padding: 14px 16px;
+    padding: 14px 16px 0;
     background: #181d26;
     border-radius: 6px;
     display: flex;
@@ -292,7 +292,11 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    scrollbar-gutter: stable;
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
   }
+  .r-tbl { padding-bottom: 22px; }
   .r-tbl tbody { display: table-row-group; }
   .r-empty {
     flex: 1;

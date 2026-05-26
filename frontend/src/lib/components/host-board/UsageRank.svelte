@@ -31,12 +31,15 @@
     background: #181d26;
     border: none;
     border-radius: 8px;
-    padding: 14px 16px 12px;
+    padding: 14px 16px;
     height: 100%;
     min-height: 220px;
     overflow-y: auto;
+    scrollbar-gutter: stable;
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
   }
-  ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; }
+  ul { list-style: none; padding: 0 0 18px; margin: 0; display: grid; gap: 14px; }
   li { display: grid; gap: 5px; }
 
   .r1 { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; }
