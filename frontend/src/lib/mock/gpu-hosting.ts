@@ -61,7 +61,7 @@ export interface GpuMock {
   id: string;
   label: string;
   hostId: string;
-  model: 'H100' | 'A100' | 'RTX 4090';
+  model: 'H100' | 'A100' | 'L40S' | 'RTX 4090';
   mode: GpuMode;
   severity: Severity;
   incident: EventKind | null;
@@ -377,11 +377,12 @@ export const GPUS: GpuMock[] = [
       },
       emptySlice('a100-03-s3', '1g.10gb', 1, 10),
       emptySlice('a100-03-s4', '1g.10gb', 1, 10),
+      emptySlice('a100-03-s5', '1g.10gb', 1, 10),
     ],
     computePct: 57,
     computePctP95_1h: 68,
     vramUsedGB: 34,
-    vramTotalGB: 60,
+    vramTotalGB: 80,
     tempC: 71,
     tempTrendC5m: 0.6,
     powerW: 280,
@@ -424,7 +425,7 @@ export const GPUS: GpuMock[] = [
     id: 'l40s-01',
     label: 'L40S-01',
     hostId: 'host-gpu-01',
-    model: 'A100',
+    model: 'L40S',
     mode: 'whole',
     severity: 'ok',
     incident: null,
@@ -449,7 +450,7 @@ export const GPUS: GpuMock[] = [
     sparkline60s: makeSparkline(38, 7, 37),
     recentEvents: [],
   },
-  // host-gpu-01 ── H100-06 (MIG 7, 강서아 Mixtral 8x7B, 4 alloc + 3 free) ─────────
+  // host-gpu-01 ── H100-06 (MIG 5 slice, weight 2+2+1+1+1=7) ────────────────────
   {
     id: 'h100-06',
     label: 'H100-06',
@@ -485,8 +486,6 @@ export const GPUS: GpuMock[] = [
       },
       emptySlice('h100-06-s4', '1g.10gb', 1, 10),
       emptySlice('h100-06-s5', '1g.10gb', 1, 10),
-      emptySlice('h100-06-s6', '1g.10gb', 1, 10),
-      emptySlice('h100-06-s7', '1g.10gb', 1, 10),
     ],
     computePct: 52,
     computePctP95_1h: 64,
@@ -623,11 +622,13 @@ export const GPUS: GpuMock[] = [
       emptySlice('a100-06-s2', '1g.10gb', 1, 10),
       emptySlice('a100-06-s3', '1g.10gb', 1, 10),
       emptySlice('a100-06-s4', '1g.10gb', 1, 10),
+      emptySlice('a100-06-s5', '1g.10gb', 1, 10),
+      emptySlice('a100-06-s6', '1g.10gb', 1, 10),
     ],
     computePct: 38,
     computePctP95_1h: 48,
     vramUsedGB: 15,
-    vramTotalGB: 60,
+    vramTotalGB: 80,
     tempC: 74,
     tempTrendC5m: 0.4,
     powerW: 220,
@@ -640,7 +641,7 @@ export const GPUS: GpuMock[] = [
     id: 'l40s-02',
     label: 'L40S-02',
     hostId: 'host-gpu-01',
-    model: 'A100',
+    model: 'L40S',
     mode: 'whole',
     severity: 'ok',
     incident: null,
@@ -819,7 +820,6 @@ export const GPUS: GpuMock[] = [
       },
       emptySlice('a100-02-s2', '1g.10gb', 1, 10),
       emptySlice('a100-02-s3', '1g.10gb', 1, 10),
-      emptySlice('a100-02-s4', '1g.10gb', 1, 10),
     ],
     computePct: 3,
     computePctP95_1h: 7,
@@ -1150,6 +1150,46 @@ export const MOUNTED_MODELS: MountedModel[] = [
     modelName: 'Yi 34B', modelVersionId: 'mv-yi-34b', modelAssetId: 'ma-yi-34b',
     mountedOn: [{ gpuLabel: 'L40S-01', containerId: 'cont-yi-01', user: '한지원' }],
     marketSharedAt: null, marketCalls7d: 0,
+  },
+  {
+    modelName: 'Mixtral 8x7B', modelVersionId: 'mv-mixtral-8x7b', modelAssetId: 'ma-mixtral-8x7b',
+    mountedOn: [{ gpuLabel: 'H100-06', containerId: 'cont-mixtral-01', user: '강서아' }],
+    marketSharedAt: '2026-05-14T10:00:00Z', marketCalls7d: 5230,
+  },
+  {
+    modelName: 'BGE-M3 임베딩', modelVersionId: 'mv-bge-m3', modelAssetId: 'ma-bge-m3',
+    mountedOn: [{ gpuLabel: 'H100-06', containerId: 'cont-bge-01', user: '오민서' }],
+    marketSharedAt: '2026-05-22T13:00:00Z', marketCalls7d: 18650,
+  },
+  {
+    modelName: 'Hyperion 30B', modelVersionId: 'mv-hyperion-30b', modelAssetId: 'ma-hyperion-30b',
+    mountedOn: [{ gpuLabel: 'H100-07', containerId: 'cont-hyperion-01', user: '백지원' }],
+    marketSharedAt: '2026-05-19T08:30:00Z', marketCalls7d: 9870,
+  },
+  {
+    modelName: 'Whisper Large v3', modelVersionId: 'mv-whisper-l3', modelAssetId: 'ma-whisper-l3',
+    mountedOn: [{ gpuLabel: 'H100-08', containerId: 'cont-whisper-01', user: '노유라' }],
+    marketSharedAt: '2026-04-15T11:00:00Z', marketCalls7d: 2340,
+  },
+  {
+    modelName: 'BART Large', modelVersionId: 'mv-bart-large', modelAssetId: 'ma-bart-large',
+    mountedOn: [{ gpuLabel: 'A100-05', containerId: 'cont-bart-01', user: '윤서아' }],
+    marketSharedAt: null, marketCalls7d: 0,
+  },
+  {
+    modelName: 'RoBERTa Large', modelVersionId: 'mv-roberta-large', modelAssetId: 'ma-roberta-large',
+    mountedOn: [{ gpuLabel: 'A100-06', containerId: 'cont-roberta-01', user: '한지원' }],
+    marketSharedAt: '2026-05-02T09:00:00Z', marketCalls7d: 880,
+  },
+  {
+    modelName: 'Stable Diffusion XL', modelVersionId: 'mv-sdxl', modelAssetId: 'ma-sdxl',
+    mountedOn: [{ gpuLabel: 'L40S-02', containerId: 'cont-sdxl-01', user: '오영민' }],
+    marketSharedAt: '2026-05-10T16:00:00Z', marketCalls7d: 7120,
+  },
+  {
+    modelName: 'CodeLlama 13B', modelVersionId: 'mv-codellama-13b', modelAssetId: 'ma-codellama-13b',
+    mountedOn: [{ gpuLabel: 'RTX 4090-02', containerId: 'cont-codellama13-01', user: '김도현' }],
+    marketSharedAt: '2026-04-30T10:00:00Z', marketCalls7d: 1450,
   },
 ];
 
