@@ -56,6 +56,7 @@
 | `mergeSystemInfo` 후 새 컬럼이 `undefined` 로 떨어짐 | delta merge 가 새 필드 카피 안 함 | merge fn 에 새 필드 `?? prev ?? null` 추가 (`||` 는 의미있는 0 도 falsy 처리) |
 | API bucket viewset cache 가 매번 miss | cache key 가 `Date.now()` 기준 ISO 라 매 호출 다름 | `_floor_iso_to_bucket` 으로 bucket 경계 정규화 |
 | 외부 IP/포트포워딩 으로 접속 시 로그인이 "서버에 연결할 수 없습니다" | prod `.env` 의 `DJANGO_ALLOWED_HOSTS` 가 좁혀져 있어 Django `DisallowedHost` (400 HTML) → 프론트가 fetch error 로 인식 | `.env` 는 `DJANGO_ALLOWED_HOSTS=*`, 로그인 view 는 `authentication_classes=[]` (CSRF 우회). 변경 후 반드시 `docker compose up -d backend` (restart 아님 — env_file 재로드 안 됨) |
+| ECharts 차트가 박스보다 작게 그려져 아래가 빔 (예: canvas-wrap 116px / host 90px) | flex 로 크기가 정해진 부모 안에서 자식의 `height: 100%` 가 부모의 flex 계산 높이를 못 잡음 | 부모를 `position: relative` 로 두고 EChartBase host 를 `position: absolute; inset: 0` 로 채움 (위 여백 필요하면 `inset: 10px 0 0 0`) |
 
 ## 자동 테스트 (2026-05-15 추가, 총 56건)
 
