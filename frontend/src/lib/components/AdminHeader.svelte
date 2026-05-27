@@ -54,6 +54,7 @@
 		{ href: `${base}/admin/catalog`, label: '카탈로그', match: '/admin/catalog' },
 		{ href: `${base}/admin/marketplace`, label: '마켓플레이스', match: '/admin/marketplace' },
 		{ href: `${base}/server-2d`, label: '2D 관제 대시보드', match: '/server-2d' },
+		{ href: `${base}/gpu-hosting`, label: 'GPU 호스팅', match: '/gpu-hosting' },
 		{ href: `${base}/server-3d`, label: '3D 상세 모니터링', match: '/server-3d' },
 	];
 
@@ -132,7 +133,7 @@
 	}
 	.brand-logo {
 		display: block;
-		height: 22px;
+		height: 13px;
 		width: auto;
 	}
 	.nav {

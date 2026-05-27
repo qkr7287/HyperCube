@@ -34,7 +34,11 @@
 
 	// Loading states
 	let loadingInfo = $state(true);
-	let loadingLogs = $state(true);
+	let loadingLogs = $state(false);
+	// 로그(get_logs)는 "로그" 탭을 처음 열 때만 1회 로드 — 컨테이너 변경 시 리셋.
+	let logsRequested = $state(false);
+	// get_logs 실패(agent error envelope / timeout) 메시지 — 빈 로그와 구분.
+	let logError = $state('');
 	let controlLoading = $state('');
 	let errorMsg = $state('');
 
@@ -161,13 +165,17 @@
 
 	async function fetchLogs() {
 		if (!container) return;
+		logError = '';
 		try {
 			const data = await sendCommand('get_logs', { containerId: container.id, tail: 100 });
 			const lines = data?.lines ?? data?.logs ?? [];
 			logs = Array.isArray(lines) ? lines : [];
 		} catch (e: any) {
+			// agent error envelope(success=false) / command timeout 모두 reject 로
+			// 들어온다. 로그 줄에 섞지 않고 별도 에러 상태로 표시한다.
 			console.error('[ContainerDetailModal] get_logs failed:', e);
-			logs = ['로그를 불러오는 중 오류가 발생했습니다: ' + (e?.message || '')];
+			logs = [];
+			logError = e?.message || '알 수 없는 오류';
 		}
 	}
 
@@ -388,27 +396,15 @@
 	async function loadData() {
 		if (!container) return;
 		loadingInfo = true;
-		loadingLogs = true;
 		containerState = container.state;
 		containerStatus = container.status;
 		errorMsg = '';
 
-		const [detailsResult, logsResult] = await Promise.allSettled([
-			fetchDetails(),
-			fetchLogs()
-		]);
-
-		if (detailsResult.status === 'rejected') {
-			console.error('Details fetch failed:', detailsResult.reason);
-			errorMsg = '컨테이너 정보를 가져오는데 실패했습니다.';
-		}
-		if (logsResult.status === 'rejected') {
-			console.error('Logs fetch failed:', logsResult.reason);
-			logs = ['로그를 불러올 수 없습니다.'];
-		}
+		// 정보 탭만 즉시 로드. 로그(get_logs)는 느리거나 timeout 날 수 있어
+		// "로그" 탭을 열 때 lazy load 한다 (아래 $effect).
+		await fetchDetails();
 
 		loadingInfo = false;
-		loadingLogs = false;
 
 		// 초기 메트릭: 이미 store에 최신 값이 있으면 한 번 소비.
 		// 이후 값은 metrics store 구독으로 자동 수신됨.
@@ -431,6 +427,9 @@
 				details = null;
 				metricsData = null;
 				logs = [];
+				logsRequested = false;
+				loadingLogs = false;
+				logError = '';
 				errorMsg = '';
 				envExpanded = false;
 				containerState = current.state;
@@ -448,6 +447,22 @@
 		const c = container;
 		untrack(() => {
 			if (tab === 'metrics' && c) fetchPeakHistory(r);
+		});
+	});
+
+	// "로그" 탭을 처음 열 때만 get_logs 호출 — 정보 탭이 느린/timeout 나는
+	// get_logs 응답을 기다리지 않도록 분리한다.
+	$effect(() => {
+		const tab = activeTab;
+		const c = container;
+		untrack(() => {
+			if (tab === 'logs' && c && !logsRequested) {
+				logsRequested = true;
+				loadingLogs = true;
+				fetchLogs().finally(() => {
+					loadingLogs = false;
+				});
+			}
 		});
 	});
 
@@ -927,6 +942,8 @@
 					<div class="terminal-body" bind:this={logContainer}>
 						{#if loadingLogs}
 							<div class="log-empty">로그 로딩 중...</div>
+						{:else if logError}
+							<div class="log-empty">로그를 불러올 수 없습니다: {logError}</div>
 						{:else if filteredLogs.length === 0}
 							<div class="log-empty">로그가 없습니다.</div>
 						{:else}
@@ -1011,7 +1028,9 @@
 
 	/* Metrics tab gets the full real estate so the two charts side-by-side
 	   still have room for the range tab row + Y-axis labels. */
-	.modal-metrics { width: min(1040px, 88vw); }
+	/* 성능 지표 탭: 모달을 화면 높이까지 키워 차트들이 세로로 충분히
+	   커지도록 한다 (콘텐츠 높이에 맡기면 차트가 작게 눌린다). */
+	.modal-metrics { width: min(1040px, 88vw); height: 92vh; }
 	.modal-logs { width: min(1100px, 92vw); }
 
 	/* Header */
@@ -1323,6 +1342,8 @@
 		gap: 14px;
 		min-width: 0;
 		flex: 1 1 auto;
+		/* stretch: 좌(차트)·우(요약) 칼럼이 같은 높이. 요약이 더 길면 차트
+		   칼럼도 그만큼 늘어나고, 차트들이 그 공간을 균등 분배한다. */
 		align-items: stretch;
 	}
 	.metrics-charts {
@@ -1340,6 +1361,9 @@
 		flex-direction: column;
 		gap: 4px;
 		min-width: 0;
+		/* 차트 박스들이 칼럼 높이를 균등 분배 — 아래쪽 빈 공간 제거. */
+		flex: 1 1 0;
+		min-height: 0;
 	}
 	.metric-stack-head {
 		display: flex;
@@ -1366,23 +1390,34 @@
 	.metric-stack-current.net { color: #fbbf24; }
 	.metric-stack-current.disk { color: #c4b5fd; }
 	.metric-stack-current.gpu { color: #f472b6; }
-	.metric-stack :global(.trend) { gap: 2px; }
-	.metric-stack :global(.canvas-wrap) { height: 110px; }
+	/* head 아래의 차트 영역(.trend → .canvas-wrap)이 metric-stack 의 남은
+	   높이를 모두 차지하도록 grow 체인을 연결한다. */
+	.metric-stack :global(.trend) {
+		gap: 2px;
+		flex: 1 1 0;
+		min-height: 0;
+	}
+	/* EChartBase host 를 canvas-wrap 에 꽉 채운다 — host 의 height:100% 는
+	   flex 로 가변이 된 박스 안에서 제대로 잡히지 않아 차트가 박스보다
+	   작게 그려진다. canvas-wrap 이 position:relative 이므로 absolute 로 채움. */
+	.metric-stack :global(.canvas-wrap) :global(.echart-host) {
+		position: absolute;
+		/* 위쪽만 여백 — 차트 그래프가 박스 상단 테두리에 붙지 않게. */
+		inset: 10px 0 0 0;
+	}
 
 	.metrics-summary {
 		display: flex;
 		flex-direction: column;
 		gap: 12px;
 		min-width: 0;
-		min-height: 0;
-		height: 100%;
 	}
+	/* 평균/최대/최저 박스는 콘텐츠 높이를 하한으로 두고(basis auto) 남는
+	   공간을 grow 로 흡수 — 칼럼을 아래까지 채우되 행은 잘리지 않는다. */
 	.metrics-summary > .summary-section {
-		flex: 1 1 0;
-		min-height: 0;
+		flex: 1 1 auto;
 		display: flex;
 		flex-direction: column;
-		overflow: hidden;
 	}
 	/* Activity 박스는 컨텐츠가 dist-bar + 3행 + (선택) tail 로 위쪽 3박스(5행)
 	   보다 작다. flex 1로 두면 박스가 stretch 되면서 박스 안 아래쪽이 빈다.

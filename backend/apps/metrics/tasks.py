@@ -14,6 +14,21 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 
+# ── 자원 이벤트 판정 상수 (frontend fleet-events.ts 와 일치) ──────────────
+# (warn, crit) 임계 — classifyHealth / detectFleetEvents 와 동일 기준.
+RESOURCE_THRESHOLDS = {
+    "cpu": (70.0, 90.0),
+    "memory": (75.0, 90.0),
+    "gpu": (80.0, 95.0),
+}
+# disk 는 변동이 느려 임계 초과가 한 번 뜨면 라이프사이클상 계속 active 로
+# 남는다 — 순간적 자원 "이벤트"로는 부적합해 판정 대상에서 제외한다.
+RESOURCE_METRICS = ("cpu", "memory", "gpu")
+SPIKE_DELTA = 25.0       # 직전 평균 대비 %p 이상 급등
+SPIKE_FLOOR = 55.0       # spike 로 인정할 현재값 하한 (idle 출렁임 제외)
+SPARKLINE_MINUTES = 10   # spike 판정용 1분 bucket 윈도우
+
+
 @shared_task(name="apps.metrics.tasks.flush_metrics_to_db")
 def flush_metrics_to_db():
     """Redis에 캐시된 최신 메트릭을 PostgreSQL에 bulk insert.
@@ -667,3 +682,214 @@ def _as_int(value):
         return int(value or 0)
     except (TypeError, ValueError):
         return 0
+
+
+# ----------------------------------------------------------------------
+# Resource events — 자원 임계 초과/급증 이벤트 라이프사이클.
+# detect_resource_events 가 1분 주기로 활성 agent 의 메트릭을 평가해
+# (agent, metric) 단위 ResourceEvent 를 생성/갱신/해소한다.
+# ----------------------------------------------------------------------
+
+
+def _evaluate_metric(metric: str, spark: list[float]) -> dict | None:
+    """metric 의 1분 bucket sparkline → 이벤트 후보. 후보 없으면 None.
+
+    threshold(현재값이 임계 초과) 와 spike(직전 평균 대비 급등) 를 모두 보고,
+    더 심각한 쪽(critical threshold > spike > warning threshold)을 채택한다.
+    """
+    if not spark:
+        return None
+    current = spark[-1]
+    warn, crit = RESOURCE_THRESHOLDS[metric]
+
+    candidate = None
+    if current >= warn:
+        severity = "critical" if current >= crit else "warning"
+        candidate = {
+            "kind": "threshold",
+            "value": current,
+            "delta": None,
+            "severity": severity,
+            "score": (3000 if severity == "critical" else 1000) + current,
+        }
+
+    if len(spark) >= 3:
+        baseline = sum(spark[:-1]) / len(spark[:-1])
+        delta = current - baseline
+        if delta >= SPIKE_DELTA and current >= SPIKE_FLOOR:
+            score = 2000 + delta
+            if candidate is None or score > candidate["score"]:
+                candidate = {
+                    "kind": "spike",
+                    "value": current,
+                    "delta": delta,
+                    "severity": "critical" if current >= crit else "warning",
+                    "score": score,
+                }
+    return candidate
+
+
+def _top_cause_container(agent_id, metric: str, since):
+    """이벤트가 난 agent 에서 해당 지표 사용률이 가장 높은 컨테이너.
+
+    disk 는 컨테이너 단위 의미가 약해 호출하지 않는다. 모두 0% 이거나 데이터가
+    없으면 (None, None) — 호스트 프로세스가 원인이라 보고 컨테이너를 표시 안 함.
+    """
+    from apps.containers.models import Container
+    from apps.metrics.models import ContainerMetricsHistory
+
+    field = {"cpu": "cpu_usage", "memory": "memory_percent", "gpu": "gpu_usage"}.get(metric)
+    if field is None:
+        return None, None
+
+    row = (
+        ContainerMetricsHistory.objects.filter(agent_id=agent_id, recorded_at__gte=since)
+        .exclude(**{f"{field}__isnull": True})
+        .order_by(f"-{field}")
+        .values("container_id", field)
+        .first()
+    )
+    if not row or not row.get(field) or row[field] <= 0:
+        return None, None
+
+    container_id = row["container_id"]
+    name = (
+        Container.objects.filter(container_id=container_id)
+        .values_list("name", flat=True)
+        .first()
+    )
+    return (name or container_id[:12]), float(row[field])
+
+
+@shared_task(name="apps.metrics.tasks.detect_resource_events")
+def detect_resource_events():
+    """1분 주기 — 활성 agent 의 자원 임계 초과/급증을 판정해 ResourceEvent
+    라이프사이클((agent, metric) 단위 활성 1건)을 생성/갱신/해소한다."""
+    from collections import defaultdict
+
+    from django.db import transaction
+
+    from apps.agents.models import Agent
+    from apps.metrics.models import ResourceEvent, SystemMetricsHistory
+
+    now = timezone.now()
+    window_start = now - timedelta(minutes=SPARKLINE_MINUTES)
+    bucket_expr = RawSQL(
+        "(floor(extract(epoch from recorded_at) / 60) * 60)::bigint",
+        (),
+        output_field=IntegerField(),
+    )
+    rows = list(
+        SystemMetricsHistory.objects.filter(recorded_at__gte=window_start)
+        .order_by()
+        .annotate(bucket_epoch=bucket_expr)
+        .values("agent_id", "bucket_epoch")
+        .annotate(
+            cpu=Avg("cpu_usage"),
+            memory=Avg("memory_usage"),
+            gpu=Avg("gpu_usage"),
+            gpu_count=Max("gpu_count"),
+        )
+    )
+    if not rows:
+        return "no recent metrics"
+
+    buckets_by_agent: dict = defaultdict(list)
+    for row in rows:
+        buckets_by_agent[row["agent_id"]].append(row)
+
+    agents_by_id = {a.id: a for a in Agent.objects.filter(id__in=buckets_by_agent.keys())}
+    active_events = {
+        (e.agent_id, e.metric): e
+        for e in ResourceEvent.objects.filter(ended_at__isnull=True)
+    }
+
+    to_create: list = []
+    to_update: list = []
+    seen: set = set()
+
+    for agent_id, agent_buckets in buckets_by_agent.items():
+        agent = agents_by_id.get(agent_id)
+        if not agent:
+            continue
+        agent_buckets.sort(key=lambda r: r["bucket_epoch"])
+        gpu_count = max((r["gpu_count"] or 0) for r in agent_buckets)
+
+        for metric in RESOURCE_METRICS:
+            if metric == "gpu" and gpu_count <= 0:
+                continue
+            spark = [r[metric] for r in agent_buckets if r[metric] is not None]
+            candidate = _evaluate_metric(metric, spark)
+            if candidate is None:
+                continue
+
+            seen.add((agent_id, metric))
+            cause_name, cause_value = _top_cause_container(
+                agent_id, metric, now - timedelta(minutes=1)
+            )
+
+            warn, crit = RESOURCE_THRESHOLDS[metric]
+            existing = active_events.get((agent_id, metric))
+            if existing:
+                existing.last_seen_at = now
+                existing.last_value = candidate["value"]
+                existing.peak_value = max(existing.peak_value, candidate["value"])
+                existing.kind = candidate["kind"]
+                if candidate["delta"] is not None:
+                    existing.spike_delta = max(existing.spike_delta or 0.0, candidate["delta"])
+                existing.severity = "critical" if existing.peak_value >= crit else "warning"
+                existing.cause_container_name = cause_name
+                existing.cause_container_value = cause_value
+                existing.updated_at = now
+                to_update.append(existing)
+            else:
+                to_create.append(
+                    ResourceEvent(
+                        agent=agent,
+                        hostname=agent.hostname,
+                        metric=metric,
+                        kind=candidate["kind"],
+                        severity=candidate["severity"],
+                        started_at=now,
+                        last_seen_at=now,
+                        peak_value=candidate["value"],
+                        last_value=candidate["value"],
+                        spike_delta=candidate["delta"],
+                        cause_container_name=cause_name,
+                        cause_container_value=cause_value,
+                    )
+                )
+
+    # 후보가 사라진 활성 이벤트 → 자동 해소.
+    to_resolve = [
+        event
+        for (agent_id, metric), event in active_events.items()
+        if (agent_id, metric) not in seen
+    ]
+    for event in to_resolve:
+        event.ended_at = now
+        event.ended_reason = ResourceEvent.EndedReason.RESOLVED
+        event.updated_at = now
+
+    with transaction.atomic():
+        if to_create:
+            ResourceEvent.objects.bulk_create(to_create)
+        if to_update:
+            ResourceEvent.objects.bulk_update(
+                to_update,
+                [
+                    "last_seen_at", "last_value", "peak_value", "kind", "spike_delta",
+                    "severity", "cause_container_name", "cause_container_value", "updated_at",
+                ],
+            )
+        if to_resolve:
+            ResourceEvent.objects.bulk_update(
+                to_resolve, ["ended_at", "ended_reason", "updated_at"]
+            )
+
+    summary = (
+        f"resource events: +{len(to_create)} new, "
+        f"~{len(to_update)} ongoing, -{len(to_resolve)} resolved"
+    )
+    logger.info(summary)
+    return summary

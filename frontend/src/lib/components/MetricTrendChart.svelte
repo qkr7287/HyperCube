@@ -586,8 +586,10 @@
 		animation: chart-spin 0.85s linear infinite;
 	}
 	@keyframes chart-spin { to { transform: rotate(360deg); } }
+	/* compact: 최소 110px 를 보장하되, 부모가 높이를 주면(flex 컨테이너 안)
+	   그만큼 늘어나 빈 공간 없이 채운다. */
 	.canvas-wrap.compact {
-		height: 110px;
+		flex: 1 1 0;
 		min-height: 110px;
 	}
 	.canvas-wrap {

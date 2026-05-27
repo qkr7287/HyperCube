@@ -297,6 +297,16 @@ bucket 응답에 cpu가 3가지 형태: `cpu_usage_pct_avg/max` (0-100 정규화
 |----------|--------|-------------|
 | `/api/metrics/stacks/buckets/?stack=<name>&range=1h&bucket=1m` | GET | 스택별 bucket 집계 (list/retrieve 미노출) |
 
+### Resource events — 자원 임계 초과/급증 이벤트
+
+서버 자원(CPU/메모리/디스크/GPU)의 임계 초과·급증 이벤트. `apps.metrics.tasks.detect_resource_events`(Celery beat, 1분 주기)가 판정·기록한다. **(agent, metric) 단위 라이프사이클** — 초과 시작 시 1건 생성, 지속되는 동안 같은 행 갱신(`peak_value`/`last_value`), 자원 정상화 시 자동 종료(`ended_reason="resolved"`), 관리자 확인 시 수동 종료(`ended_reason="acknowledged"`). 진행 중 (agent, metric) 당 활성 1건만 존재(partial unique constraint). 실시간 카드와 history 가 같은 테이블을 본다.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/metrics/resource-events/active/` | GET | 진행 중 이벤트(카드용). agent당 가장 심각한 1건으로 dedup |
+| `/api/metrics/resource-events/` | GET | history. `?agent=`, `?metric=`, `?from_time=`/`?to_time=`(started_at 기준), `?active=true/false`, `?limit=N`(max 500). `resolved`로 2분 미만 지속한 단발은 자동 제외 |
+| `/api/metrics/resource-events/{id}/acknowledge/` | POST | 진행 중 이벤트를 확인 처리(수동 종료). 자원이 여전히 초과면 다음 판정 주기에 새 이벤트 생성 |
+
 ## WebSocket
 
 REST가 아니라 별도 channels routing (`backend/config/routing.py`):

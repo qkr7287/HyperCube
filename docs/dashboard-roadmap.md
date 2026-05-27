@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-05-20 (자원 한도 강제 + 한도 수정 모달 P0 완료; 디스크 KPI chip 일관성 no quota; unlimited(0) 차단. 상세는 progress 메모리)
+last-updated: 2026-05-26 (ResourceEvent 카드 polish + 컨테이너 상세 모달 성능지표 탭 차트 사이즈/정렬 정비 + get_logs lazy/error envelope. 상세는 progress 메모리)
 status: living document — 세션마다 갱신
 benchmark: Portainer container detail UI
 related-pages: /user/containers/[containerId]
@@ -404,6 +404,7 @@ Commits (this repo): `d7be13f` (A) / `3414a73` (B) / `b50d692` (C) / Phase D.
 
 ## 변경 이력
 
+- 2026-05-26: **ResourceEvent 카드 polish + 컨테이너 상세 모달 성능지표 탭 polish + get_logs 분리** — (1) admin fleet `FleetStatusBar` 의 서버 이벤트 카드 재디자인 (2칸 고정 슬롯 + 자원 사용률 게이지 + 원인 컨테이너 칩), 전체 서버 카드에 GPU/일반 서버 구성 통합(좌우 분할, 세로 중앙 정렬), 디스크 메트릭을 `detect_resource_events` 에서 제외 (변동 느려 이벤트 부적합). (2) 컨테이너 상세 모달 성능지표 탭: 디스크 행 잘림 fix, 모달 height 92vh, 차트 칼럼 flex grow 체인 연결, EChartBase host `position:absolute; inset` 으로 박스 채움(`height:100%` 가 flex 안에서 안 잡히는 문제), 차트 위 10px 여백. (3) ContainerDetailModal 로그 탭 lazy load 분리 (`get_logs` 가 정보 탭을 막지 않음) + agent error envelope 를 `logError` 별도 상태로 구분 표시. agent issue [#34](https://github.com/qkr7287/HyperCube-agent/issues/34) (get_logs hang 수정). 커밋: `307aa3b` ~ `cd2c947` (10 commits, `dev`).
 - 2026-05-20: **P0 (Resource limit edit) 완료** — agent `update_container` (#30) 머지·prod 검증. 한도 수정 모달이 재시작 없이 cpu/memory/restart 적용. unlimited(0) 생성 경로 차단 (update-limits API + 모달 UI), 디스크 KPI chip `no quota` 일관화, 모달 prefill container snapshot fallback + onsaved refetch. PR #28/#29/#30. Portainer parity 10/10.
 - 2026-05-11: **종합 폴리싱 sweep 25 commits** — viewport-fit (zero scroll), KPI bar+ops 한 row 통합, 운영 인사이트 chip (restart/OOM/health), danger value pulse, EventList severity tone, KPI trend inline, ContainerLimitModal (P0 resource limit edit + agent issue #13 발행), Inspect cards stretch (잘림 fix), polling 깜빡임 fix (silent flag), ECharts streaming smooth (notMerge:false + id), range tabs segmented control. 평가 44/60→53.5/60 (89%).
 - 2026-05-11: **L2 — 4축 UI 폴리싱** 완료 (Phase A~D 4 commit). StateBox / AgentStatusIndicator 신규 컴포넌트, --radius-panel 14px 토큰 통일, agent offline banner / dismissible toast, chart sync chip.

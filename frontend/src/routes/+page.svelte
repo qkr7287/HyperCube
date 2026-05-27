@@ -11,10 +11,8 @@
 		fleetHistory,
 		fleetLoading,
 		fleetSummary,
-		lastFleetUpdate,
 		loadSelectedAgent,
 		refreshFleet,
-		setFleetRange,
 		startFleetMonitoring,
 		stopFleetMonitoring,
 		type FleetAgentRow,
@@ -32,18 +30,18 @@
 		seedStatusEvents,
 		seedStatusEventsFromBackend,
 	} from '$lib/stores/global-events';
-	import { rangeBucketLabel, rangeLabel } from '$lib/utils/fleet-format';
 	import FleetStatusBar from '$lib/components/fleet/FleetStatusBar.svelte';
 	import FleetCardRotator from '$lib/components/fleet/FleetCardRotator.svelte';
 	import AgentHealthTable from '$lib/components/fleet/AgentHealthTable.svelte';
-	import TimeRangeSelector from '$lib/components/fleet/TimeRangeSelector.svelte';
-	import MetricHelp from '$lib/components/fleet/MetricHelp.svelte';
 	import AdminHeader from '$lib/components/AdminHeader.svelte';
 	import StatusToasts from '$lib/components/StatusToasts.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import logoHypercube from '$lib/assets/logo_hypercube.png';
 
-	let range = $state<TimeRange>('1h');
+	// 조회 단위(TimeRange) 선택 UI 제거 — fleet 모니터링은 1분 bucket 으로 통일.
+	// 폴링도 1분 주기(POLL_INTERVAL_MS['1m']). 자원 이벤트의 급등 시각을
+	// 1분 단위로 기록하기 위한 고정값.
+	const range: TimeRange = '1m';
 	let selectedAgentId = $state<string | null>(null);
 
 	type ViewMode = 'card' | 'list';
@@ -144,11 +142,6 @@
 		selectedAgentId = agentId;
 		if (isSimulatedAgentId(agentId)) return;
 		loadSelectedAgent(agentId);
-	}
-
-	async function changeRange(next: TimeRange) {
-		range = next;
-		await setFleetRange(next);
 	}
 
 	function open3d(agentId: string) {
@@ -366,12 +359,7 @@
 							<span></span>
 							{$fleetConnected ? '실시간 연결' : '연결 끊김'}
 						</span>
-						<div class="range-label">
-							조회 단위
-							<MetricHelp text="모든 그래프와 서버 카드 스파크라인이 보여주는 시간 범위입니다. 데이터는 15초마다 자동으로 갱신됩니다." placement="bottom-end" />
-						</div>
-						<TimeRangeSelector value={range} onChange={changeRange} />
-						<span class="range-hint">{rangeLabel(range)} · {rangeBucketLabel(range)}</span>
+						<span class="poll-note">1분마다 자동 갱신</span>
 						<button class="refresh" type="button" onclick={refreshFleet} disabled={$fleetLoading}>
 							{$fleetLoading ? '갱신 중' : '새로고침'}
 						</button>
@@ -401,10 +389,7 @@
 				<FleetStatusBar
 					summary={$fleetSummary}
 					history={$fleetHistory}
-					lastUpdated={$lastFleetUpdate}
-					loading={$fleetLoading}
 					connected={$fleetConnected}
-					{range}
 				/>
 
 				<div class="fleet-view">
@@ -543,8 +528,9 @@
 		text-align: center;
 	}
 	.auth-logo {
-		height: 44px;
-		width: fit-content;
+		height: 24px;
+		width: auto;
+		max-width: 100%;
 		filter: drop-shadow(0 0 12px rgba(48, 213, 200, 0.35));
 	}
 	.auth-tagline {
@@ -868,7 +854,7 @@
 		justify-content: flex-end;
 	}
 	.live-state,
-	.range-label {
+	.poll-note {
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
@@ -876,6 +862,10 @@
 		font-size: clamp(10px, 0.68vw, 12px);
 		font-weight: 800;
 		letter-spacing: 0.3px;
+	}
+	.poll-note {
+		color: var(--text-muted);
+		font-weight: 600;
 	}
 	.live-state span {
 		width: 7px;
@@ -886,19 +876,6 @@
 	.live-state.connected span {
 		background: #34d399;
 		box-shadow: 0 0 8px rgba(52, 211, 153, 0.55);
-	}
-	.range-hint {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		color: var(--text-muted);
-		font-size: clamp(10px, 0.68vw, 12px);
-		font-weight: 600;
-		padding: 0 4px;
-		min-width: clamp(150px, 11vw, 200px);
-		flex: 0 0 auto;
-		white-space: nowrap;
-		text-align: center;
 	}
 	.refresh {
 		display: inline-flex;

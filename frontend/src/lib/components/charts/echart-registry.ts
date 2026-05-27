@@ -10,6 +10,7 @@
 import * as echarts from 'echarts/core';
 import {
 	LineChart,
+	BarChart,
 	PieChart,
 	RadarChart,
 	ScatterChart,
@@ -31,6 +32,7 @@ import { CanvasRenderer } from 'echarts/renderers';
 
 echarts.use([
 	LineChart,
+	BarChart,
 	PieChart,
 	RadarChart,
 	ScatterChart,

@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>GPU Hosting Dashboard — Design Brief (v3, Codex-reviewed ×2)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg-base: #0d1117;
+    --bg-card: #121720;
+    --bg-card-hover: #1e293b;
+    --bg-tab: #151c27;
+    --border: #1f2937;
+    --accent: #4dbfb3;
+    --accent-dark: #094b66;
+    --warn: #e0b96b;
+    --error: #d97070;
+    --offline: #475569;
+    --text-primary: #cbd5e1;
+    --text-secondary: #a1adba;
+    --text-muted: #94a3b8;
+    --radius-md: 12px;
+    --radius-panel: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    background: var(--bg-base);
+    color: var(--text-primary);
+    font-family: -apple-system, "Segoe UI", "Pretendard", "Noto Sans KR", sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    margin: 0;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 40px 28px 96px; }
+  header.doc { border-bottom: 1px solid var(--border); padding-bottom: 22px; margin-bottom: 36px; }
+  header.doc .eyebrow { color: var(--accent); font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 8px; }
+  header.doc h1 { font-size: 32px; margin: 0 0 10px; font-weight: 700; letter-spacing: -0.01em; }
+  header.doc .meta { color: var(--text-muted); font-size: 14px; }
+  h2 { font-size: 22px; margin: 44px 0 14px; padding-bottom: 8px; border-bottom: 1px solid var(--border); font-weight: 600; }
+  h3 { font-size: 17px; margin: 24px 0 10px; color: var(--text-primary); font-weight: 600; }
+  p { color: var(--text-secondary); margin: 8px 0 14px; }
+  ul, ol { color: var(--text-secondary); padding-left: 22px; }
+  ul li, ol li { margin: 6px 0; }
+  strong { color: var(--text-primary); }
+  code { font-family: "JetBrains Mono", "Cascadia Mono", Consolas, monospace; background: #0a0d12; padding: 1px 6px; border-radius: 4px; font-size: 13.5px; color: var(--accent); }
+  pre { background: #0a0d12; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px 18px; overflow-x: auto; font-family: "JetBrains Mono", "Cascadia Mono", Consolas, monospace; font-size: 12.5px; line-height: 1.5; color: var(--text-primary); }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0 20px; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--text-primary); background: #11161e; font-weight: 600; }
+  td { color: var(--text-secondary); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 12px; font-weight: 600; line-height: 1.6; }
+  .badge.ok    { background: rgba(77,191,179,.14); color: var(--accent); }
+  .badge.warn  { background: rgba(224,185,107,.16); color: var(--warn); }
+  .badge.err   { background: rgba(217,112,112,.18); color: var(--error); }
+  .badge.muted { background: rgba(148,163,184,.15); color: var(--text-muted); }
+  .badge.new   { background: rgba(77,191,179,.2); color: var(--accent); border: 1px solid var(--accent-dark); }
+  .badge.p0    { background: rgba(217,112,112,.18); color: var(--error); border: 1px solid var(--error); }
+  .callout { border: 1px solid var(--border); background: var(--bg-card); border-radius: var(--radius-panel); padding: 18px 20px; margin: 16px 0 22px; }
+  .callout.decision { border-left: 3px solid var(--accent); }
+  .callout.open     { border-left: 3px solid var(--warn); }
+  .callout.note     { border-left: 3px solid var(--text-muted); }
+  .callout.codex    { border-left: 3px solid #8b7ad0; }
+  hr.sep { border: none; height: 1px; background: var(--border); margin: 38px 0; }
+  .toc { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-panel); padding: 16px 22px; margin: 0 0 36px; }
+  .toc a { color: var(--text-secondary); text-decoration: none; display: block; padding: 3px 0; border-bottom: 1px dashed transparent; }
+  .toc a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+  .changelog { font-size: 13px; color: var(--text-muted); }
+  .changelog ul { padding-left: 18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <div class="eyebrow">HyperCube · Design Brief · v3.1 (Codex-reviewed ×3)</div>
+  <h1>GPU Hosting Dashboard 신설</h1>
+  <div class="meta">
+    Author session: Claude · 2026-05-26 ·
+    스코프: <code>/gpu-hosting</code> 신규 라우트 + <code>/server-2d</code> 트리거 ·
+    상태: Codex v3 review Final Verdict "mock 시작 OK + P1 권장" 의 P1 3건 반영 완료
+  </div>
+</header>
+
+<div class="callout codex">
+  <strong>v3 changelog</strong> — Codex v2 review (2026-05-26) Final Verdict "P0 수정 후 시작 OK" 의 모든 P0 항목 + E 의 모순/누락 7건 반영.
+  <ul class="changelog">
+    <li><span class="badge p0">P0-1</span> §4 장애 source 에 <code>ContainerEvent</code> 추가 (OOM/DIE/HEALTH_STATUS)</li>
+    <li><span class="badge p0">P0-2</span> 코드 필드명 정정: <code>ContainerTemplate.default_model_version_ids</code>, <code>Container.mounted_model_version_ids</code></li>
+    <li><span class="badge p0">P0-3</span> §9 compute quality derived fields 추가: <code>qualityState</code>, <code>computePctSustained5m</code>, <code>queueDepth</code>, <code>latencyP95Ms</code></li>
+    <li><span class="badge p0">P0-4</span> §9 fixture seed 에 <code>mig_reconfiguring</code> · <code>oom</code> · <code>xid_ecc_error</code> 실제 추가 (xid_ecc_error 는 mock-only synthetic 명시)</li>
+    <li><span class="badge p0">P0-5</span> §14 신규 — 빈/오류 row state (no data · stale heartbeat · agent offline · permission hidden) 명세</li>
+    <li>§7.1 Issues/Idle KPI 클릭 → allocation_failed/incident filter 규칙</li>
+    <li>§7.9 ContainerTemplate 필드명 코드 정확치로 정정 + Mounted Models fixture 명세 추가</li>
+    <li>§9 HostMock <code>agentLastSeenISO</code> stale 기준 + host offline precedence 명시</li>
+    <li>§9 fixture: host-gpu-03 (Busan-A) GPU 보유 + 하위 GPU offline 상속</li>
+    <li>§13 신규 — Read Model Contract (mock schema ↔ 향후 API 응답 source mapping)</li>
+    <li>§7.2 1280x720 degrade: Temp 만 compact 유지 (Pwr expand)</li>
+    <li>§10 GpuDetailContent 를 table row 와 독립 컴포넌트로 (후속 panel 전환 cheap)</li>
+    <li>§4 Container detail navigate 는 기존 <code>/user/containers/[id]</code> 공유 (admin permission 조건)</li>
+  </ul>
+</div>
+
+<nav class="toc">
+  <strong style="display:block;margin-bottom:6px;">목차</strong>
+  <a href="#context">1. 배경과 목적</a>
+  <a href="#findings">2. 사전 분석 — HyperCube에 이미 있는 자산</a>
+  <a href="#external">3. 외부 참고</a>
+  <a href="#decisions">4. 결정 사항 (v3)</a>
+  <a href="#design">5. 디자인 가이드</a>
+  <a href="#layout">6. 페이지 레이아웃</a>
+  <a href="#widgets">7. 위젯·지표 명세</a>
+  <a href="#trigger">8. <code>/server-2d</code> 트리거 + AdminHeader</a>
+  <a href="#mock">9. Mock 데이터 스키마</a>
+  <a href="#plan">10. 진행 순서</a>
+  <a href="#open">11. 결정 로그 + 남은 열린 질문</a>
+  <a href="#codex">12. Codex Review 적용 매트릭스 (v1 + v2)</a>
+  <a href="#contract">13. Read Model Contract</a>
+  <a href="#emptystate">14. 빈/오류 Row State</a>
+</nav>
+
+<h2 id="context">1. 배경과 목적</h2>
+<p>
+  HyperCube 는 <strong>Docker 컨테이너 관리 + 모니터링</strong> 비중이 크지만, 실제 자산은 <strong>H100·A100 같은 GPU 를 사내 사용자에게 호스팅</strong>하는 것이 핵심. H100 은 MIG 슬라이스 단위로도, 전체로도 줄 수 있고 두 방식이 공존. 슬라이스/전체 할당이 어느 컨테이너에 붙어 누가 어떤 모델을 돌리는지를 <strong>한 화면에서 빠르게 파악</strong>하고 장애를 즉시 알아챌 운영자 대시보드.
+</p>
+<p>
+  <code>/gpu-hosting</code> 라우트 신설 + <code>/server-2d</code> 트리거. <strong>1차 = mock 데이터</strong>, 실제 API 연결은 별도 작업.
+</p>
+
+<h2 id="findings">2. 사전 분석 — HyperCube에 이미 있는 자산</h2>
+<table>
+  <thead><tr><th style="width:32%;">개념</th><th style="width:34%;">HyperCube 위치</th><th>비고</th></tr></thead>
+  <tbody>
+    <tr><td>GPU 신청 (REQ-###)</td><td><code>ContainerRequest</code> (containers/models.py)</td><td>status: pending/approved/rejected</td></tr>
+    <tr><td>신청 승인/반려</td><td><code>containers/viewsets.py</code> <code>approve</code>/<code>reject</code> @action</td><td>IsAdmin permission</td></tr>
+    <tr><td>GPU 슬라이스 할당</td><td><code>GpuAllocation</code>, <code>ContainerRequestGpuSlice</code>, <code>services/gpu_allocation.py</code></td><td><code>Container.allocated_gpu_slice_ids</code></td></tr>
+    <tr><td>LLM 모델 카탈로그</td><td><code>ModelAsset</code>, <code>ModelVersion</code> (models_catalog)</td><td>owner, visibility, tags</td></tr>
+    <tr><td>Template default 모델</td><td><code>ContainerTemplate.default_model_version_ids</code> <span class="badge p0">v3 정정</span></td><td>기본값 매핑 (실제 mount 아님)</td></tr>
+    <tr><td>Container 실제 mount 모델</td><td><code>Container.mounted_model_version_ids</code> <span class="badge p0">v3 정정</span></td><td>command response 후 저장</td></tr>
+    <tr><td>Host / Agent 정보</td><td><code>Agent</code> (agents/models.py) — hostname, ip, is_active, heartbeat</td><td><strong>Host scope + 장애 source</strong></td></tr>
+    <tr><td>리소스 이벤트</td><td><code>ResourceEvent</code> (metrics/models.py)</td><td>CPU/Mem/Disk/GPU threshold spike</td></tr>
+    <tr><td>컨테이너 이벤트</td><td><code>ContainerEvent.Kind</code>: <code>DIE</code>, <code>OOM</code>, <code>HEALTH_STATUS</code> 등 <span class="badge p0">v3 추가</span></td><td><strong>OOM 의 1차 source</strong></td></tr>
+    <tr><td>MCP 서비스 카탈로그</td><td><span class="badge err">없음</span></td><td>본 스코프 밖</td></tr>
+  </tbody>
+</table>
+
+<h2 id="external">3. 외부 참고</h2>
+<p>
+  Google AI Studio "GPU & MCP 통합관리" (Gemini 데모) + sungreong cuda_monitoring + OVH DCGM Exporter + Vexel Bootstrap + Grafana + Codex 인용 Datadog GPU Monitoring · Run:AI · NVIDIA DCGM 공식 docs. 자세한 비교는 §5.
+</p>
+
+<h2 id="decisions">4. 결정 사항 (v3)</h2>
+<div class="callout decision">
+  <ul>
+    <li><strong>옵션 ②</strong> — "GPU 호스팅 플랫폼 + Docker 부가". <code>/server-2d</code> 그대로 + 새 라우트 <code>/gpu-hosting</code>.</li>
+    <li><strong>1차 = mock</strong> (백엔드 변경 0).</li>
+    <li><strong>IA = Host group + GPU row + slice detail</strong>.</li>
+    <li><strong>GPU 표현 = 행 리스트</strong> (카드 그리드 X).</li>
+    <li><strong>행 클릭 = 인라인 expand</strong>. Detail 컨텐츠는 <strong>독립 컴포넌트</strong> 로 만들어 후속 panel 전환 가능.</li>
+    <li><strong>1차 지표 = GPU Compute</strong>.</li>
+    <li><strong>색 체계 = utilization quality ↔ incident severity 분리</strong>.</li>
+    <li><strong>기본 정렬 = Compute 내림차순</strong>, incident 있는 row 는 상단 sticky.</li>
+    <li><strong>아이콘 최소</strong>, 폰트 크게.</li>
+    <li><strong>1차 사용자 = Platform admin</strong> (admin-only).</li>
+    <li><strong>1차 action = Container detail navigate</strong> — 링크 target 은 <code>/user/containers/[id]</code>. <strong>mock 1차에서는 링크 렌더만, 클릭 시 toast "후속 단계 admin 접근 결정 후 활성"</strong> <span class="badge new">v3.1</span>. 코드 확인 결과 <code>MyContainerViewSet.get_queryset()</code> 이 <code>requester=user</code> 필터라 admin 도 본인 컨테이너만 보임 → 후속 단계에서 (a) admin bypass / (b) 별도 admin route 중 결정.</li>
+    <li><strong>최소 viewport = 1440x900</strong>. 1280x720 에선 Temp 만 compact 유지 (Pwr 만 expand) <span class="badge new">v3</span>.</li>
+    <li><strong>장애 source = Agent heartbeat + ResourceEvent + <code>ContainerEvent</code></strong> <span class="badge p0">v3 P0</span>. OOM/DIE/HEALTH_STATUS 신호 누락 방지.</li>
+    <li><strong>Live 기본 = 5s</strong> (1s opt-in).</li>
+    <li><strong>Host offline precedence</strong> <span class="badge new">v3</span>: <code>HostMock.isOnline === false</code> 이면 하위 모든 GPU 의 <code>severity = 'offline'</code> override. heartbeat stale 60s+ = warn, 180s+ = offline.</li>
+  </ul>
+</div>
+
+<h2 id="design">5. 디자인 가이드</h2>
+
+<h3>5.1 참고 매트릭스</h3>
+<table>
+  <thead><tr><th style="width:30%;">참고</th><th>가져올 요소</th></tr></thead>
+  <tbody>
+    <tr><td>Google AI Studio "GPU & MCP 통합관리"</td><td>섹션 hierarchy, LIVE 펄스, status chip</td></tr>
+    <tr><td>sungreong cuda_monitoring.PNG</td><td><strong>핵심</strong>. 행 단위 리스트, 큰 숫자</td></tr>
+    <tr><td>OVH DCGM Exporter</td><td>좌 라인 / 우 게이지+큰 숫자, max/avg/current 표</td></tr>
+    <tr><td>Vexel Bootstrap</td><td>위젯 dense grid</td></tr>
+    <tr><td>Grafana 패턴</td><td>"한눈에", 시각 위계</td></tr>
+    <tr><td>Datadog GPU Monitoring (Codex)</td><td>fleet health + workload attribution 분리</td></tr>
+    <tr><td>Run:AI (Codex)</td><td>multi-scope metrics</td></tr>
+    <tr><td>NVIDIA DCGM 공식 docs (Codex)</td><td>고급 metric 정의 (Tensor / DRAM Active, XID, NVLink)</td></tr>
+  </tbody>
+</table>
+
+<h3>5.2 토큰</h3>
+<table>
+  <tbody>
+    <tr><td><code>--bg-base</code></td><td><code>#0d1117</code></td><td>페이지</td></tr>
+    <tr><td><code>--bg-card</code></td><td><code>#121720</code></td><td>패널</td></tr>
+    <tr><td><code>--accent</code></td><td><code>#4dbfb3</code></td><td>semantic OK</td></tr>
+    <tr><td><code>--warn</code></td><td><code>#e0b96b</code></td><td>idle waste · saturation</td></tr>
+    <tr><td><code>--error</code></td><td><code>#d97070</code></td><td>incident</td></tr>
+    <tr><td><code>--offline</code></td><td><code>#475569</code></td><td>offline · no data</td></tr>
+    <tr><td><code>--radius-md</code></td><td><code>12px</code></td><td>카드</td></tr>
+  </tbody>
+</table>
+
+<h3>5.3 색 체계 — 두 팔레트 분리</h3>
+<table>
+  <thead><tr><th>팔레트</th><th>용도</th><th>대상</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Semantic palette</strong> (4색)</td><td>OK · warn · error · offline</td><td>status dot, badge, bar stroke severity, KPI 임계</td></tr>
+    <tr><td><strong>Identity palette</strong> (10+색 deterministic)</td><td>GPU 별 line/area 구분</td><td>Hero, 하단 보조 라인, sparkline series</td></tr>
+  </tbody>
+</table>
+<p>
+  GPU 색은 <code>gpu.id</code> hash 기반 deterministic palette. Semantic 색은 별도. <strong>색만으로 상태 표현 금지</strong> — 모든 status dot 옆에 text/aria label.
+</p>
+
+<h3>5.4 타이포</h3>
+<ul>
+  <li>본문 <strong>15px</strong>, KPI 큰 숫자 <strong>60-72px</strong>, 보조 KPI <strong>28-32px</strong></li>
+  <li>카드 헤더 <strong>18px</strong>, 표 본문 <strong>14px</strong>, 보조 하한 <strong>13px</strong> (12 이하 금지)</li>
+</ul>
+
+<h3>5.5 아이콘 정책</h3>
+<ul>
+  <li>AdminHeader · navigation · 필수 액션 외 미사용</li>
+  <li>KPI 카드 라벨 옆 아이콘 X</li>
+  <li>행 상태는 색 점 + 짧은 aria label</li>
+</ul>
+
+<h2 id="layout">6. 페이지 레이아웃</h2>
+
+<pre>┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│ ← Docker Dashboard       GPU Hosting Fleet · ● LIVE       [1s] [5s ✓] [1m]  [필터]      │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────┬──────────────────┬──────────────────┬──────────────────────────┐
+│ GPU Compute      │ VRAM             │ Slices           │ Issues / Idle           │
+│   41%            │  384 / 640       │  17 / 35         │  3 issues · 1 idle      │
+│  ▓▓▓▓░░░░ p95 78 │  GB (60%)        │  (49%)           │  ▲ click → filter        │
+└──────────────────┴──────────────────┴──────────────────┴──────────────────────────┘
+
+[ Fleet Filter Bar ]  Host ▼ · GPU model ▼ · MIG/Whole ▼ · Status ▼ · Allocated only □ · Idle allocated □ · Issues only □
+
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│ GPU Fleet — Issue → Compute 내림차순                                                     │
+├─────────────────────────────────────────────────────────────────────────────────────────┤
+│ ▼ host-gpu-03 (Busan-A)  ◯ OFFLINE · agent stale 5m32s · 2 GPU                          │ ← v3 host offline group
+│   ○ H100-04 W  ────  offline (host)                                                      │ ← override
+│   ○ H100-05 M  ────  offline (host)                                                      │
+│                                                                                          │
+│ ▼ host-gpu-01 (Seoul-A) · 2 GPU · 1 issue                                                │
+│   ⚠ H100-03 W  ░░░░░░░░░░  ERROR  driver_error  [open container detail]  ──  ── W       │
+│   ● H100-01 M  █████░░░░░ 41%  ▁▃▅▇  ▓▓▓▓▓░░░ 280/560GB ▮▮▮□□▮▮ 5/7  김민준·이서연…    75 340W│
+│                                                                                          │
+│ ▼ host-gpu-02 (Seoul-B) · 2 GPU                                                          │
+│   ● H100-02 W  ████████░░ 78%  ▁▂▆█  ▓▓▓▓▓▓▓▓ 72/80GB  ████ Whole  박지호·Qwen2 72B    72 450W│
+│   ● RTX4090 W  ██████░░░░ 64%  ▃▅▇▇  ▓▓▓▓▓▓▓▓ 19/24GB  ███ Whole  최유진·CodeLlama34B  68 320W│
+│                                                                                          │
+│ ▼ host-gpu-04 (Seoul-C) · 2 GPU · 1 idle waste                                           │
+│   ◐ A100-01 M  █░░░░░░░░░ 12%  ▁▁▂▁  ▓▓░░░░░░ 18/80GB  ▮□□□□□□ 1/7  정다은·Phi-3 Mini   62 180W│
+│   ◐ A100-02 M  ░░░░░░░░░░  0%  ____  ░░░░░░░░ 0/40GB   □□□□ 0/4 (alloc, idle 18m)  31  38W│ ← warn
+│                                                                                          │
+│ ← 행 클릭 = 인라인 expand: slice 테이블 · 60s sparkline 3종 · 최근 이벤트 5개            │
+│ ← Container detail 링크 = /user/containers/[id]  (admin permission 으로 같은 route 사용)   │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│ Hero: GPU Compute Utilization · 최근 1h · identity palette                               │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+
+┌─── VRAM Used ──┬─── Temperature ──┬─── Power ──┐
+└────────────────┴──────────────────┴────────────┘
+
+┌── 자원별 VRAM 점유 ──┬── Mounted Models ────┬── Recent Events ─────────────────┐
+│ REQ-001 김민준        │ Llama 3 70B · H100-01 │ ⚠ 12:03 H100-03 driver_error    │ ← sticky
+│ ...                   │ Qwen2 72B  · H100-02  │ ⚠ 11:55 host-gpu-03 offline     │
+│                       │                        │ ⚠ 11:48 cont-abc OOM            │ ← ContainerEvent
+│                       │                        │ ⓘ 11:32 REQ-008 alloc_failed    │
+└───────────────────────┴────────────────────────┴──────────────────────────────────┘
+</pre>
+
+<h2 id="widgets">7. 위젯·지표 명세</h2>
+
+<h3>7.1 KPI Row · 4개</h3>
+<table>
+  <thead><tr><th>KPI</th><th>값</th><th>클릭 동작 <span class="badge new">v3</span></th></tr></thead>
+  <tbody>
+    <tr><td>GPU Compute</td><td>평균 % + p95 + 미니 bar</td><td>—</td></tr>
+    <tr><td>VRAM</td><td>used/total GB + (%)</td><td>—</td></tr>
+    <tr><td>Slices</td><td>allocated/total + (%)</td><td>—</td></tr>
+    <tr><td><strong>Issues / Idle</strong></td><td>issues 수 · idle allocated 수</td><td>Fleet Filter <code>Issues only</code> 또는 <code>Idle allocated</code> 토글 자동 활성</td></tr>
+  </tbody>
+</table>
+
+<h3>7.2 Fleet Table 컬럼 priority (v3 갱신)</h3>
+<table>
+  <thead><tr><th>컬럼</th><th>1440x900</th><th>1280x720 degrade</th><th>비고</th></tr></thead>
+  <tbody>
+    <tr><td>● Status</td><td>항상</td><td>항상</td><td>색 점 + aria label</td></tr>
+    <tr><td>GPU</td><td>항상</td><td>항상</td><td>이름 + MIG/Whole 배지</td></tr>
+    <tr><td>Compute</td><td>항상</td><td>항상</td><td>bar + % + SVG sparkline 60s</td></tr>
+    <tr><td>VRAM</td><td>항상</td><td>항상</td><td>bar + used/total</td></tr>
+    <tr><td>Slices</td><td>항상</td><td>항상</td><td>profile-aware segmented bar</td></tr>
+    <tr><td>Users · Models</td><td>항상</td><td>compact (chip 1개만, +N more)</td><td>—</td></tr>
+    <tr><td><strong>Temp</strong></td><td>항상</td><td><strong>항상 (compact 유지)</strong> <span class="badge new">v3</span></td><td>"새벽 3시 알람의 1차 단서" — 숨기지 않음</td></tr>
+    <tr><td>Pwr</td><td>항상</td><td>숨김 (사용자 클릭 expand)</td><td><span class="badge new">v3</span></td></tr>
+  </tbody>
+</table>
+<p>
+  1280x720 의 "expand" 는 <strong>사용자 클릭 expand</strong> (자동 fallback 아님). 행 별 disclosure ▸ 버튼.
+</p>
+
+<h3>7.3 Compute 색 = utilization quality (v2 부터 유지, 데이터 §9 보강)</h3>
+<table>
+  <thead><tr><th>구간</th><th>색</th><th>조건</th><th>필요 데이터</th></tr></thead>
+  <tbody>
+    <tr><td>0% / unallocated / no data</td><td>offline</td><td>슬라이스 미할당 또는 metric 결측</td><td><code>computePct === null</code> or slice unallocated</td></tr>
+    <tr><td>idle waste</td><td>warn</td><td>allocated + 10min sustained &lt;20%</td><td><code>SliceMock.qualityState === 'idle_waste'</code></td></tr>
+    <tr><td>normal</td><td>OK</td><td>20-85%</td><td>—</td></tr>
+    <tr><td>saturation</td><td>warn</td><td>&gt;90% sustained 5min + (queueDepth&gt;0 OR latencyP95Ms&gt;임계 OR tempC 상승)</td><td><code>computePctSustained5m</code>, <code>queueDepth</code>, <code>latencyP95Ms</code> <span class="badge p0">v3 추가</span></td></tr>
+    <tr><td>incident</td><td>error</td><td>ResourceEvent / Agent heartbeat 결손 / ContainerEvent (OOM/DIE/health unhealthy)</td><td><code>incident</code> EventKind</td></tr>
+  </tbody>
+</table>
+
+<h3>7.4 MIG mini grid = profile-aware segmented bar</h3>
+<p>SVG. 각 슬라이스 너비를 profile 비율(1g=1, 2g=2, 3g=3, 7g=7) 로. 색은 semantic palette.</p>
+
+<h3>7.5 인라인 sparkline = SVG</h3>
+<p>width 60-80px, height 16-20px. 60s compute 시계열. tooltip + aria.</p>
+
+<h3>7.6 행 expand 컨텐츠</h3>
+<ul>
+  <li>슬라이스 테이블: profile, 컨테이너 (<code>/user/containers/[id]</code> 링크 — mock 1차는 toast disabled <span class="badge new">v3.1</span>), 사용자, model (mount 된 것), tok/s (현재 없음 — 표시 생략)</li>
+  <li>이 GPU 1h SVG 라인 3종: Compute · VRAM · Temperature</li>
+  <li>최근 이벤트 5개 (ResourceEvent + ContainerEvent + heartbeat 통합)</li>
+  <li><strong>구현 제약</strong> <span class="badge new">v3</span>: 컨텐츠는 <code>GpuDetailContent.svelte</code> 독립 컴포넌트. row 안에 직접 박지 말 것 (후속 panel 전환 cheap).</li>
+</ul>
+
+<h3>7.7 Hero · 하단 보조 차트</h3>
+<p>Identity palette, ECharts 다크. Hero = Compute 1h. 하단 3개 = VRAM · Temperature · Power.</p>
+
+<h3>7.9 사이드 패널 3개 (v3 정정)</h3>
+<ul>
+  <li><strong>자원별 VRAM 점유</strong>: REQ-### 막대 ranking</li>
+  <li><strong>Mounted Models</strong>: 어떤 모델 version 이 어느 GPU/Container 에 mount 중. 데이터: <code>Container.mounted_model_version_ids</code> ↔ <code>ModelVersion</code> ↔ <code>ModelAsset</code> join. <strong>호출량 표시 금지</strong> (metrics 부재).</li>
+  <li><strong>Recent Events</strong>: ResourceEvent + ContainerEvent + heartbeat 통합. incident (OOM·DIE·driver_error·host_offline·allocation_failed) 상단 sticky, error 색.</li>
+</ul>
+
+<h2 id="trigger">8. <code>/server-2d</code> 트리거 + AdminHeader</h2>
+<ul>
+  <li><code>/server-2d</code> 상단 우측 outline 버튼: <code>GPU Hosting Dashboard →</code></li>
+  <li><code>/gpu-hosting</code> 헤더 좌측 백 링크: <code>← Docker Dashboard</code></li>
+  <li>AdminHeader 메뉴 "GPU 호스팅" 1항목 추가</li>
+</ul>
+
+<h2 id="mock">9. Mock 데이터 스키마 (v3)</h2>
+
+<pre>// frontend/src/lib/mock/gpu-hosting.ts
+
+type GpuMode = 'mig' | 'whole';
+type MigProfile = '1g.10gb' | '2g.20gb' | '3g.40gb' | '7g.80gb' | 'whole';
+type Severity = 'ok' | 'warn' | 'error' | 'offline';
+type QualityState = 'idle_waste' | 'saturation' | null;   // ← v3 P0
+
+// 실제 발생 이벤트 (시간 + source)
+type EventKind =
+  | 'allocated' | 'released'
+  | 'host_offline' | 'driver_error' | 'mig_reconfiguring'
+  | 'allocation_failed' | 'oom' | 'health_unhealthy'
+  | 'xid_ecc_error';                                       // mock-only synthetic
+
+type EventSource =                                         // ← v3 명시
+  | 'agent_heartbeat'
+  | 'resource_event'        // backend/apps/metrics ResourceEvent
+  | 'container_event'       // backend/apps/containers ContainerEvent (OOM/DIE/HEALTH_STATUS)
+  | 'allocation_service'    // gpu_allocation service
+  | 'synthetic';            // mock only (xid_ecc_error 등)
+
+interface HostMock {
+  id: string;                              // "host-gpu-01"
+  hostname: string;
+  location: string;                        // "Seoul-A"
+  agentLastSeenISO: string;
+  isOnline: boolean;                       // derived: stale &gt;180s ⇒ false
+  staleSec: number;                        // derived for display
+  gpuIds: string[];
+}
+// host severity 규칙:
+//   isOnline === false  ⇒  severity 'offline', 하위 GPU 모두 'offline' override
+//   60s &lt; staleSec ≤ 180s  ⇒  host 'warn', GPU 는 자기 severity 유지
+//   ≤ 60s  ⇒  host 'ok'
+
+interface SliceMock {
+  id: string;                              // "h100-01-s3"
+  profile: MigProfile;
+  profileWeight: number;                   // 1 | 2 | 3 | 7
+  containerId: string | null;
+  user: { id: string; name: string } | null;
+  model: { name: string; versionId: string } | null;   // mounted_model_version_ids 출처
+  computePct: number | null;               // null = no data
+  computePctSustained5m: number | null;    // ← v3 P0 (saturation 판정)
+  computePctSustained10m: number | null;   // ← idle waste 판정
+  qualityState: QualityState;              // ← v3 P0 (derived; idle_waste / saturation / null)
+  queueDepth: number | null;               // ← v3 P0
+  latencyP95Ms: number | null;             // ← v3 P0
+  vramUsedGB: number;
+  vramTotalGB: number;
+}
+
+interface GpuMock {
+  id: string;                              // "h100-01"
+  label: string;                           // "H100-01"
+  hostId: string;
+  model: 'H100' | 'A100' | 'RTX 4090';
+  mode: GpuMode;
+  severity: Severity;                      // derived; host offline 시 'offline' override
+  incident: EventKind | null;
+  slices: SliceMock[];
+  computePct: number | null;
+  computePctP95_1h: number | null;
+  vramUsedGB: number;
+  vramTotalGB: number;
+  tempC: number | null;
+  tempTrendC5m: number;                    // ← v3 (saturation 보조)
+  powerW: number | null;
+  powerCapW: number;
+  sparkline60s: number[];                  // SVG
+  recentEvents: EventMock[];
+}
+
+interface EventMock {
+  ts: string;
+  kind: EventKind;
+  source: EventSource;                     // ← v3 P0 (모순 방지)
+  severity: Severity;
+  gpuId?: string;
+  hostId?: string;
+  containerId?: string;                    // ContainerEvent 출처용
+  requestId?: string;                      // REQ-###
+  message: string;
+}
+
+interface ReqVramShare {
+  reqId: string;
+  user: string;
+  gpuLabel: string;
+  usedGB: number;
+  totalGB: number;
+}
+
+interface MountedModel {                   // 실제 mount (v3 정정)
+  modelName: string;
+  modelVersionId: string;                  // Container.mounted_model_version_ids
+  modelAssetId: string;
+  mountedOn: Array&lt;{ gpuLabel: string; containerId: string; user: string }&gt;;
+}
+
+// ─── fixture (v3) ──────────────────────────────────────────────────────
+// hosts: 4
+//   host-gpu-01 Seoul-A  online       : H100-01 (MIG), H100-02 (Whole), H100-03 (Whole, driver_error)
+//   host-gpu-02 Seoul-B  online       : RTX 4090-01 (Whole)
+//   host-gpu-03 Busan-A  OFFLINE 5m32s: H100-04 (Whole), H100-05 (MIG)  ← v3 GPU 보유 + offline 상속
+//   host-gpu-04 Seoul-C  online       : A100-01 (MIG), A100-02 (MIG, idle_waste 18m)
+// GPU 총 8장 — v3 카운트 정정 (host-gpu-03 GPU 2장 포함)
+// 사용자: 김민준 / 이서연 / 박지호 / 정다은 / 최유진
+// 모델: Llama 3 70B / Qwen2 72B / Phi-3 Mini / Gemma 7B / Mistral 7B / CodeLlama 34B
+//
+// 실패 시드 (v3 — 6 EventKind 모두 실제 seed):
+//   - host_offline     : host-gpu-03 (source: agent_heartbeat)
+//   - driver_error     : H100-03 (source: resource_event)
+//   - allocation_failed: REQ-008 (source: allocation_service)
+//   - oom              : container 'cont-abc' on H100-02 (source: container_event)  ← v3 P0
+//   - mig_reconfiguring: H100-05 reconfigure 1g→2g (source: allocation_service)     ← v3 P0
+//   - xid_ecc_error    : H100-01 (source: synthetic, mock-only)                     ← v3 P0
+//
+// Quality state 시드:
+//   - A100-02 slices[*].qualityState = 'idle_waste' (sustained10m=12%)
+//   - H100-02 slices[0].qualityState = 'saturation' (sustained5m=93%, queueDepth=4, latencyP95Ms=820)</pre>
+
+<h2 id="plan">10. 진행 순서 (1차 mock 구현)</h2>
+<ol>
+  <li>Mock 데이터 (<code>lib/mock/gpu-hosting.ts</code>) — §9 스키마 + 8 GPU fixture + 6 실패 seed + quality state seed + 60s sparkline</li>
+  <li>Palette utility (<code>lib/utils/gpu-palette.ts</code>) — semantic + deterministic identity</li>
+  <li>Severity derivation (<code>lib/utils/gpu-severity.ts</code>) — host offline precedence · stale heartbeat · quality state</li>
+  <li><code>routes/gpu-hosting/+page.svelte</code> 골격 (NON-runes <code>let</code>) + AdminHeader + 헤더</li>
+  <li>KPI Row (Issues/Idle 클릭 → filter)</li>
+  <li>Fleet Filter Bar (Host · GPU model · MIG/Whole · Status · Allocated only · Idle allocated · Issues only)</li>
+  <li>GPU Fleet Table — host group (offline override) · severity sticky · 컬럼 priority · expand · Container detail 링크</li>
+  <li>SVG Sparkline 컴포넌트</li>
+  <li>Profile-aware Segmented Bar</li>
+  <li><strong><code>GpuDetailContent.svelte</code> 독립 컴포넌트</strong> <span class="badge new">v3</span> — table row 와 분리 (후속 panel 전환 cheap)</li>
+  <li>Hero 차트 (Compute 1h identity palette)</li>
+  <li>하단 보조 차트 3개 (VRAM · Temp · Power)</li>
+  <li>사이드 패널 3개 (자원별 VRAM · Mounted Models · Recent Events sticky)</li>
+  <li>빈/오류 row state (§14) — no data · stale · offline · permission hidden</li>
+  <li>setInterval jitter (기본 5s, 1s opt-in)</li>
+  <li><code>/server-2d</code> 우상단 전환 버튼 + AdminHeader 메뉴</li>
+  <li>크롬 검증 (1440x900) — 가독성/severity/정렬/expand/Container detail 링크 toast 동작 (mock 1차는 navigate 실제 동작 X) <span class="badge new">v3.1</span></li>
+</ol>
+
+<div class="callout note">
+  <strong>CLAUDE.md 함정</strong>: NON-runes <code>let</code> · Edit 실패 시 Write · 로컬 dev server 금지 · ECharts host <code>absolute;inset:0</code> · timestamps ×1000 · DELETE 204 renderer 우회.
+</div>
+
+<h2 id="open">11. 결정 로그 + 남은 열린 질문</h2>
+
+<h3>11.1 결정 로그 (v3)</h3>
+<table>
+  <thead><tr><th>항목</th><th>결정</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>라우트명</td><td><code>/gpu-hosting</code></td><td>v1+v2+v3</td></tr>
+    <tr><td>접근 권한 (mock 1차)</td><td>admin-only</td><td>v2</td></tr>
+    <tr><td>1차 사용자</td><td>Platform admin</td><td>v2</td></tr>
+    <tr><td>1차 action</td><td>Container detail navigate (read-only). <strong>mock 1차 = 링크 렌더 + 클릭 toast disabled</strong>. admin 접근 방식은 후속 단계 결정 (MyContainerViewSet bypass vs 별도 admin route).</td><td>v3 + v3.1 (Codex P1)</td></tr>
+    <tr><td>최소 viewport</td><td>1440x900 (1280x720 fallback)</td><td>v2</td></tr>
+    <tr><td>1280 degrade</td><td>Temp compact 유지, Pwr expand</td><td>v3</td></tr>
+    <tr><td>장애 source</td><td>Agent heartbeat + ResourceEvent + ContainerEvent</td><td>v3 (Codex P0)</td></tr>
+    <tr><td>IA</td><td>Host group + GPU row + slice detail</td><td>v2</td></tr>
+    <tr><td>Host offline precedence</td><td>isOnline=false → 하위 GPU 'offline' override. stale 60-180s warn, 180s+ offline</td><td>v3 (Codex)</td></tr>
+    <tr><td>행 expand 동작</td><td>인라인 expand only, 컨텐츠는 GpuDetailContent 독립 컴포넌트</td><td>v3 (Codex)</td></tr>
+    <tr><td>Compute 색</td><td>utilization quality (idle_waste / saturation / incident)</td><td>v2+v3</td></tr>
+    <tr><td>Sparkline</td><td>SVG</td><td>v2</td></tr>
+    <tr><td>MIG mini grid</td><td>profile-aware segmented bar</td><td>v2</td></tr>
+    <tr><td>Top Models → Mounted Models</td><td>실제 mount, 호출량 표시 금지</td><td>v2+v3 정정</td></tr>
+    <tr><td>Hero 위치</td><td>Table 아래</td><td>v1+v2</td></tr>
+    <tr><td>Live 기본 주기</td><td>5s (1s opt-in)</td><td>v2</td></tr>
+    <tr><td>Mounted Models 데이터 source</td><td><code>Container.mounted_model_version_ids</code> ↔ <code>ModelVersion</code> ↔ <code>ModelAsset</code></td><td>v3 (Codex P0)</td></tr>
+  </tbody>
+</table>
+
+<h3>11.2 남은 열린 질문</h3>
+<div class="callout open">
+  <ol>
+    <li>임계값 정확 수치 (idle waste &lt;20% / saturation &gt;90% / queue/latency 기준값) — 운영 정책 확인 후 결정 [OK for mock]</li>
+    <li>GPU 모델별 temp critical threshold — 장비 스펙 확인 [OK for mock]</li>
+    <li>DCGM 고급 metric (Tensor Core / NVLink / PCIe / ECC) HyperCube-agent 수집 가능 여부 [mock 1차 DEFER]</li>
+    <li>다음 단계 우선순위: mock → read-only aggregation API → event/request wiring → write actions [Codex 권고 수용]</li>
+    <li>color blindness QA — mock 완성 후 시뮬레이터 검증 [OK for mock]</li>
+    <li><strong>queueDepth / latencyP95Ms 실제 수집 주체</strong> <span class="badge new">v3.1 (Codex P1)</span> — 현재 backend 모델 join 만으로는 안 나옴. rollup task / collector / agent extension 중 후속 API 작업 전에 결정. mock 에선 fixture 값으로 saturation 판정 동작 시뮬. [mock 1차 DEFER]</li>
+    <li><strong>admin Container detail 접근</strong> <span class="badge new">v3.1 (Codex P1)</span> — (a) <code>MyContainerViewSet</code> 에 is_staff bypass / (b) <code>/admin/containers/[id]</code> 별도 route 중 결정. mock 1차는 링크 disabled. [mock 1차 DEFER]</li>
+  </ol>
+</div>
+
+<h2 id="codex">12. Codex Review 적용 매트릭스 (v1 + v2)</h2>
+<h3>12.1 v1 review (총 14건)</h3>
+<table>
+  <thead><tr><th>#</th><th>권고</th><th>처리</th></tr></thead>
+  <tbody>
+    <tr><td>1-10</td><td>v1 ACCEPT 10건 (Compute 색 / Host group / fixture 실패 / KPI / Mounted Models / palette 분리 / SVG sparkline / segmented bar / 1440 priority / Nice-to-have)</td><td><span class="badge ok">ACCEPT</span> (v2/v3 반영)</td></tr>
+    <tr><td>11</td><td>Pending/Failed Allocations 별도 패널</td><td><span class="badge warn">DEFER</span> + Issues KPI 클릭 filter (v3)</td></tr>
+    <tr><td>12</td><td>Table virtualization</td><td><span class="badge warn">DEFER</span> (50+ GPU 시점)</td></tr>
+    <tr><td>13</td><td>Aggregation API</td><td><span class="badge ok">ACCEPT contract</span> (구현 DEFER, §13 read model contract)</td></tr>
+    <tr><td>14</td><td>인라인 expand + 우측 panel 병행</td><td><span class="badge err">REJECT (mock 1차)</span>, GpuDetailContent 독립화로 cheap 보장</td></tr>
+  </tbody>
+</table>
+
+<h3>12.3 v3 회귀 review (P1 3건) <span class="badge new">v3.1</span></h3>
+<p>Codex v3 Final Verdict: "mock 시작 OK + P1 권장". P0/E 12건 모두 [Verified].</p>
+<table>
+  <thead><tr><th>#</th><th>항목</th><th>처리</th></tr></thead>
+  <tbody>
+    <tr><td>P1-1</td><td><code>/user/containers/[id]</code> 공유 결정 — <code>MyContainerViewSet</code> 이 requester filter 라 admin 도 본인 것만 보임 (코드 충돌)</td><td><span class="badge warn">DEFER (mock)</span> — mock 1차 = 링크 disabled + toast. §4 / §7.6 / §10 / §11.1 / §11.2 반영. admin 접근 방식 (bypass vs 별도 route) 은 후속 결정.</td></tr>
+    <tr><td>P1-2</td><td>§6 wireframe <code>host-gpu-04</code> header "1 GPU" → "2 GPU" 오타</td><td><span class="badge ok">FIX</span> — §6 정정.</td></tr>
+    <tr><td>P1-3</td><td>§13 derived metric (queueDepth / latencyP95Ms) 실제 수집 주체 미명시</td><td><span class="badge warn">DEFER (mock)</span> — §11.2 열린 질문 추가. mock 에선 fixture 값으로 saturation 판정 시뮬, 실제 API 전환 전 source 명시 필요.</td></tr>
+  </tbody>
+</table>
+
+<h3>12.2 v2 회귀 review (P0 5건 + 부가 7건)</h3>
+<table>
+  <thead><tr><th>#</th><th>항목</th><th>처리</th></tr></thead>
+  <tbody>
+    <tr><td>P0-1</td><td>장애 source 에 ContainerEvent 추가</td><td><span class="badge ok">ACCEPT</span> (§4, §9 EventSource enum)</td></tr>
+    <tr><td>P0-2</td><td>코드 필드명 정정 (default_model_version_ids · mounted_model_version_ids)</td><td><span class="badge ok">ACCEPT</span> (§2, §7.9, §9)</td></tr>
+    <tr><td>P0-3</td><td>compute quality derived fields (qualityState, sustained5m, queueDepth, latencyP95Ms)</td><td><span class="badge ok">ACCEPT</span> (§9 SliceMock)</td></tr>
+    <tr><td>P0-4</td><td>fixture seed 에 mig_reconfiguring · oom · xid_ecc_error 실제 추가</td><td><span class="badge ok">ACCEPT</span> (§9 fixture, xid_ecc_error mock-only 명시)</td></tr>
+    <tr><td>P0-5</td><td>빈/오류 row state 명세</td><td><span class="badge ok">ACCEPT</span> (§14 신규)</td></tr>
+    <tr><td>E-a</td><td>§2 ↔ §4 source 모순</td><td>§4 갱신으로 해결</td></tr>
+    <tr><td>E-b</td><td>idle_waste 가 EventKind 가 아님</td><td>QualityState 별도 필드 (§9)</td></tr>
+    <tr><td>E-c</td><td>HostMock agentLastSeenISO stale 기준 미명세</td><td>60-180s warn, 180s+ offline (§4, §9)</td></tr>
+    <tr><td>E-d</td><td>host offline precedence 미명세</td><td>하위 GPU offline override (§4, §9)</td></tr>
+    <tr><td>E-e</td><td>host-gpu-03 host_offline seed 가 wireframe 에 없음</td><td>§6 wireframe 에 host offline group 추가</td></tr>
+    <tr><td>E-f</td><td>xid_ecc_error 가 EventKind 에 있는데 §4 DCGM/XID 후속과 모순</td><td>mock-only synthetic 명시 (§9 EventSource)</td></tr>
+    <tr><td>E-g</td><td>1280 degrade 의 "expand" 가 클릭/자동 불명확</td><td>사용자 클릭 expand (§7.2)</td></tr>
+  </tbody>
+</table>
+
+<h2 id="contract">13. Read Model Contract <span class="badge new">v3 신규</span></h2>
+<p>
+  §9 mock schema 는 <strong>향후 <code>/api/gpu-hosting/fleet/</code> 응답의 1차 contract 초안</strong>. API 구현은 DEFER 하지만 contract 는 지금 고정.
+</p>
+<table>
+  <thead><tr><th>Mock 타입</th><th>Backend source</th><th>변환 로직</th></tr></thead>
+  <tbody>
+    <tr><td><code>HostMock</code></td><td><code>Agent</code> (agents/models.py)</td><td>hostname, ip, is_active, last_seen → agentLastSeenISO/isOnline derived</td></tr>
+    <tr><td><code>GpuMock</code></td><td><code>GpuDevice</code> + <code>SystemMetricsHistory.raw_data.gpu[]</code></td><td>label, model, mode 매핑. computePct/tempC/powerW 는 최신 metrics</td></tr>
+    <tr><td><code>SliceMock</code></td><td><code>GpuSlice</code> + <code>GpuAllocation</code> + <code>ContainerRequestGpuSlice</code></td><td>profile/profileWeight, container/user/model. qualityState 는 sustained window 계산</td></tr>
+    <tr><td><code>EventMock</code></td><td><code>ResourceEvent</code> ∪ <code>ContainerEvent</code> ∪ agent heartbeat 결손</td><td>source 필드로 출처 식별</td></tr>
+    <tr><td><code>ReqVramShare</code></td><td><code>ContainerRequest</code> + 슬라이스 VRAM 합산</td><td>—</td></tr>
+    <tr><td><code>MountedModel</code></td><td><code>Container.mounted_model_version_ids</code> ↔ <code>ModelVersion</code> ↔ <code>ModelAsset</code></td><td>Container 단위 join, GPU 단위로 group</td></tr>
+  </tbody>
+</table>
+
+<h2 id="emptystate">14. 빈/오류 Row State <span class="badge new">v3 신규</span></h2>
+<table>
+  <thead><tr><th>State</th><th>조건</th><th>표시</th></tr></thead>
+  <tbody>
+    <tr><td><code>no_data</code></td><td>GPU 등록은 됐으나 metric 결측 (computePct=null)</td><td>"—" 처리, severity offline, sparkline 빈 axis, tooltip "데이터 수집 대기"</td></tr>
+    <tr><td><code>stale</code></td><td>host agent stale 60-180s</td><td>severity warn, host header "agent stale Xs", GPU row 는 마지막 값 + dim 처리</td></tr>
+    <tr><td><code>agent_offline</code></td><td>host agent stale &gt;180s 또는 is_active=false</td><td>host header "OFFLINE Xm", 하위 GPU severity 'offline' override, metric 표시 안 함</td></tr>
+    <tr><td><code>permission_hidden</code></td><td>(후속 user-facing 단계용) 사용자 권한 없음</td><td>row 자체 미노출, KPI count 에는 반영. mock 1차에선 admin-only 라 사용 X.</td></tr>
+  </tbody>
+</table>
+
+<hr class="sep">
+
+<p style="color:var(--text-muted); font-size: 13px;">
+  문서 위치: <code>docs/specs/gpu-hosting-dashboard-brief.html</code> ·
+  핵심 참조: <code>backend/apps/containers/models.py</code> (<code>ContainerRequest</code>·<code>GpuAllocation</code>·<code>ContainerRequestGpuSlice</code>·<code>ContainerEvent.Kind</code>·<code>ContainerTemplate.default_model_version_ids</code>·<code>Container.mounted_model_version_ids</code>) ·
+  <code>backend/apps/agents/models.py</code> (<code>Agent</code> heartbeat) ·
+  <code>backend/apps/metrics/models.py</code> (<code>ResourceEvent</code>) ·
+  <code>backend/apps/models_catalog/models.py</code> (<code>ModelAsset</code>, <code>ModelVersion</code>) ·
+  <code>frontend/src/routes/server-2d/+page.svelte</code>.
+</p>
+
+</div>
+</body>
+</html>

@@ -1,6 +1,7 @@
 import { browser } from '$app/environment';
 import { base } from '$app/paths';
 import { writable, get } from 'svelte/store';
+import { mapResourceEvent, type FleetEvent } from '$lib/utils/fleet-events';
 
 export type TimeRange = '10s' | '1m' | '5m' | '1h' | '24h' | '7d';
 export type FleetHealth = 'healthy' | 'warning' | 'critical' | 'offline' | 'stale';
@@ -187,6 +188,12 @@ export const fleetLoading = writable(false);
 export const fleetError = writable('');
 export const fleetConnected = writable(false);
 export const lastFleetUpdate = writable<Date | null>(null);
+// 자원 임계 초과·급증 서버 이벤트 (진행 중) — FleetStatusBar 카드용.
+export const fleetEvents = writable<FleetEvent[]>([]);
+// 자원 이벤트 history (종료 포함) — "기록" 모달용. loadResourceEventHistory 가 채운다.
+export const fleetEventHistory = writable<FleetEvent[]>([]);
+// 최근 1시간 자원 이벤트 (종료 포함) — FleetStatusBar 카드의 좌측 요약 도넛용.
+export const fleetEventWindow = writable<FleetEvent[]>([]);
 
 // Bucket size — 조회 단위 그대로 사용. range 라벨이 곧 bucket 크기.
 // 1m = 1분 단위, 5m = 5분 단위, 1h = 1시간 단위, 24h = 1일 단위, 7d = 1주일 단위.
@@ -223,7 +230,7 @@ const HISTORY_LIMITS: Record<TimeRange, number> = { '10s': 30, '1m': 30, '5m': 2
 // Poll 주기 — bucket 크기에 맞춰 점점 느리게. 너무 자주 polling 하면 백엔드 부담.
 const POLL_INTERVAL_MS: Record<TimeRange, number> = {
 	'10s': 10000,    // 10s
-	'1m': 10000,     // 10s
+	'1m': 60000,     // 1 min — 메인 대시보드 고정 폴링 주기
 	'5m': 30000,     // 30s
 	'1h': 60000,     // 1 min
 	'24h': 600000,   // 10 min
@@ -247,9 +254,10 @@ function unwrap<T>(payload: any): T {
 	return (payload?.data ?? payload) as T;
 }
 
-async function api<T>(path: string): Promise<T> {
+async function api<T>(path: string, init?: RequestInit): Promise<T> {
 	const res = await fetch(`${base}${path}`, {
-		headers: { Authorization: `Bearer ${token}` },
+		...init,
+		headers: { Authorization: `Bearer ${token}`, ...(init?.headers ?? {}) },
 	});
 	const json = await res.json().catch(() => ({}));
 	if (!res.ok) {
@@ -296,7 +304,9 @@ export async function refreshFleet() {
 		const now = Date.now();
 		const fromTime = new Date(now - bucketSec * points * 1000).toISOString();
 		const toTime = new Date(now).toISOString();
-		const [agentsPayload, containersPayload, latestPayload, bucketsPayload] = await Promise.all([
+		// 카드 좌측 요약 도넛 — 최근 1시간 발생 이벤트(종료 포함).
+		const eventWindowFrom = new Date(now - 3600_000).toISOString();
+		const [agentsPayload, containersPayload, latestPayload, bucketsPayload, eventsPayload, eventWindowPayload] = await Promise.all([
 			api<{ results: AgentApiRow[] }>('/api/agents/?status=approved&page_size=200&ordering=hostname'),
 			api<{ results: ContainerApiRow[] }>('/api/containers/?page_size=1000&ordering=agent'),
 			// 카드의 "latest" 값(현재 CPU/메모리 % 등)은 raw row에서 가장 최근 1건으로 추출.
@@ -304,6 +314,11 @@ export async function refreshFleet() {
 			api<{ bucket_seconds: number; results: SystemBucketRow[] }>(
 				`/api/metrics/system/buckets/?from_time=${encodeURIComponent(fromTime)}&to_time=${encodeURIComponent(toTime)}&bucket=${bucketSec}`,
 			),
+			// 자원 이벤트는 백엔드가 단일 출처 — 조회 실패해도 대시보드 전체는 막지 않음.
+			api<any[]>('/api/metrics/resource-events/active/').catch(() => [] as any[]),
+			api<any[]>(
+				`/api/metrics/resource-events/?from_time=${encodeURIComponent(eventWindowFrom)}&limit=200`,
+			).catch(() => [] as any[]),
 		]);
 
 		const agents = agentsPayload.results ?? [];
@@ -317,6 +332,13 @@ export async function refreshFleet() {
 		fleetHistory.set(history);
 		fleetAgentSeries.set(buildAgentSeriesFromBuckets(agents, buckets, range));
 		fleetSummary.set(buildSummary(rows));
+
+		// 자원 이벤트 — 백엔드 detect_resource_events 가 판정한 active 이벤트.
+		fleetEvents.set((Array.isArray(eventsPayload) ? eventsPayload : []).map(mapResourceEvent));
+		fleetEventWindow.set(
+			(Array.isArray(eventWindowPayload) ? eventWindowPayload : []).map(mapResourceEvent),
+		);
+
 		fleetConnected.set(true);
 		lastFleetUpdate.set(new Date());
 
@@ -384,6 +406,9 @@ export function stopFleetMonitoring() {
 	fleetConnected.set(false);
 	fleetAgentSeries.set([]);
 	selectedAgentHistory.set([]);
+	fleetEvents.set([]);
+	fleetEventHistory.set([]);
+	fleetEventWindow.set([]);
 }
 
 export async function setFleetRange(nextRange: TimeRange) {
@@ -1288,4 +1313,39 @@ function max(values: number[]): number {
 function num(value: unknown): number {
 	const next = Number(value ?? 0);
 	return Number.isFinite(next) ? next : 0;
+}
+
+/**
+ * 자원 이벤트 history 를 백엔드에서 로드해 `fleetEventHistory` 에 채운다.
+ * "기록" 모달이 열릴 때 호출. 종료(resolved/acknowledged) 이벤트까지 포함.
+ */
+export async function loadResourceEventHistory(
+	opts: { limit?: number; agent?: string; metric?: string } = {},
+): Promise<void> {
+	if (!browser || !token) return;
+	const params = new URLSearchParams();
+	params.set('limit', String(opts.limit ?? 100));
+	if (opts.agent) params.set('agent', opts.agent);
+	if (opts.metric) params.set('metric', opts.metric);
+	try {
+		const raw = await api<any[]>(`/api/metrics/resource-events/?${params.toString()}`);
+		fleetEventHistory.set((Array.isArray(raw) ? raw : []).map(mapResourceEvent));
+	} catch {
+		fleetEventHistory.set([]);
+	}
+}
+
+/**
+ * 자원 이벤트를 확인 처리(수동 종료)한다. 백엔드가 라이프사이클을 종료하고,
+ * 자원이 여전히 임계 초과면 다음 판정 주기에 새 이벤트가 생성된다. 처리 후
+ * 카드를 즉시 갱신.
+ */
+export async function acknowledgeResourceEvent(id: string): Promise<void> {
+	if (!browser || !token) return;
+	try {
+		await api(`/api/metrics/resource-events/${id}/acknowledge/`, { method: 'POST' });
+	} catch {
+		/* 실패해도 다음 refresh 에서 상태가 반영된다 */
+	}
+	await refreshFleet();
 }

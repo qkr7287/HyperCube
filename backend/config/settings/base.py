@@ -212,6 +212,12 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.agents.tasks.detect_offline_agents",
         "schedule": 30.0,
     },
+    # 자원 임계 초과/급증 이벤트 판정 — 프론트가 1분 bucket·1분 폴링으로
+    # 통일됐고 spike 정의가 "직전 1분평균 대비"라 1분 주기.
+    "detect-resource-events": {
+        "task": "apps.metrics.tasks.detect_resource_events",
+        "schedule": 60.0,
+    },
     "refresh-gpu-inventories": {
         "task": "apps.agents.tasks.refresh_gpu_inventories",
         "schedule": 60.0,
