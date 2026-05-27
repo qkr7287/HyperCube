@@ -21,7 +21,20 @@ export type EventKind =
   | 'allocation_failed'
   | 'oom'
   | 'health_unhealthy'
-  | 'xid_ecc_error';
+  | 'xid_ecc_error'
+  | 'requested'
+  | 'approved'
+  | 'rejected'
+  | 'container_created'
+  | 'container_started'
+  | 'container_stopped'
+  | 'model_loaded'
+  | 'model_unloaded'
+  | 'market_shared'
+  | 'market_unshared'
+  | 'quota_exceeded'
+  | 'auto_recovered'
+  | 'maintenance';
 
 export type EventSource =
   | 'agent_heartbeat'
@@ -1085,13 +1098,348 @@ export const EVENTS: EventMock[] = [
     requestId: 'REQ-019',
     message: '윤서아 님이 a100-05 전체 슬라이스 신청 → 승인 (BART Large).',
   },
+  // ─── 신청 → 승인 → 생성 → 모델 로드 흐름 (사용자 별) ───────────────────────────
+  {
+    ts: isoAt(-1),
+    kind: 'requested',
+    source: 'allocation_service',
+    severity: 'ok',
+    requestId: 'REQ-020',
+    message: '강서아 님이 h100-06 에 1g.10gb 슬라이스 1개 추가 신청 (BGE-M3 임베딩 워크로드).',
+  },
+  {
+    ts: isoAt(-1.5),
+    kind: 'approved',
+    source: 'allocation_service',
+    severity: 'ok',
+    requestId: 'REQ-020',
+    gpuId: 'h100-06',
+    hostId: 'host-gpu-01',
+    message: 'admin 님이 REQ-020 승인 → 강서아 님 신청 통과.',
+  },
+  {
+    ts: isoAt(-10),
+    kind: 'requested',
+    source: 'allocation_service',
+    severity: 'ok',
+    requestId: 'REQ-021',
+    message: '김도현 님이 RTX 4090 1대 통째 신청 (CodeLlama 13B 추론, 7일).',
+  },
+  {
+    ts: isoAt(-11),
+    kind: 'approved',
+    source: 'allocation_service',
+    severity: 'ok',
+    requestId: 'REQ-021',
+    gpuId: 'rtx4090-02',
+    hostId: 'host-gpu-02',
+    message: 'admin 님이 REQ-021 승인 → 김도현 님에게 rtx4090-02 배정.',
+  },
+  {
+    ts: isoAt(-11.2),
+    kind: 'container_created',
+    source: 'container_event',
+    severity: 'ok',
+    containerId: 'cont-codellama13-01',
+    gpuId: 'rtx4090-02',
+    message: '김도현 님 컨테이너 cont-codellama13-01 생성 (이미지: vllm/vllm-openai:0.6.3).',
+  },
+  {
+    ts: isoAt(-11.4),
+    kind: 'container_started',
+    source: 'container_event',
+    severity: 'ok',
+    containerId: 'cont-codellama13-01',
+    gpuId: 'rtx4090-02',
+    message: 'cont-codellama13-01 시작 — 포트 8080 노출, healthcheck 통과.',
+  },
+  {
+    ts: isoAt(-11.7),
+    kind: 'model_loaded',
+    source: 'container_event',
+    severity: 'ok',
+    containerId: 'cont-codellama13-01',
+    gpuId: 'rtx4090-02',
+    message: 'CodeLlama 13B 모델 로드 완료 (13.0 GB VRAM, 38초 소요).',
+  },
+  // ─── 마켓 공유 흐름 ──────────────────────────────────────────────────────────
+  {
+    ts: isoAt(-16),
+    kind: 'market_shared',
+    source: 'allocation_service',
+    severity: 'ok',
+    gpuId: 'h100-07',
+    message: '백지원 님이 Hyperion 30B 모델을 마켓에 공개 — 사내 누구나 호출 가능.',
+  },
+  {
+    ts: isoAt(-30),
+    kind: 'market_shared',
+    source: 'allocation_service',
+    severity: 'ok',
+    gpuId: 'h100-06',
+    message: '오민서 님이 BGE-M3 임베딩 마켓 공개 — 검색팀 등 18,650회 호출 도달.',
+  },
+  {
+    ts: isoAt(-40),
+    kind: 'market_unshared',
+    source: 'allocation_service',
+    severity: 'warn',
+    gpuId: 'a100-04',
+    message: '정승호 님이 Falcon 40B 마켓 공유 중단 — 응답 지연으로 회수.',
+  },
+  // ─── 컨테이너 lifecycle ──────────────────────────────────────────────────────
+  {
+    ts: isoAt(-20),
+    kind: 'container_stopped',
+    source: 'container_event',
+    severity: 'ok',
+    containerId: 'cont-llama3-old',
+    gpuId: 'h100-01',
+    message: '김민준 님이 cont-llama3-old 수동 중지 — 새 버전 컨테이너로 교체.',
+  },
+  {
+    ts: isoAt(-21),
+    kind: 'container_created',
+    source: 'container_event',
+    severity: 'ok',
+    containerId: 'cont-llama3-01',
+    gpuId: 'h100-01',
+    message: '김민준 님 새 컨테이너 cont-llama3-01 생성 (Llama 3 70B Q4, 3 슬라이스).',
+  },
+  {
+    ts: isoAt(-21.3),
+    kind: 'model_loaded',
+    source: 'container_event',
+    severity: 'ok',
+    containerId: 'cont-llama3-01',
+    gpuId: 'h100-01',
+    message: 'Llama 3 70B (Q4 양자화) 모델 로드 완료 (27.2 GB VRAM, 1분 12초).',
+  },
+  // ─── 신청 실패 / 반려 / 쿼터 ────────────────────────────────────────────────
+  {
+    ts: isoAt(-37),
+    kind: 'rejected',
+    source: 'allocation_service',
+    severity: 'warn',
+    requestId: 'REQ-022',
+    message: 'admin 님이 REQ-022 반려 — 신청 사유 불명확 (장하루 님, 3g.40gb).',
+  },
+  {
+    ts: isoAt(-44),
+    kind: 'quota_exceeded',
+    source: 'allocation_service',
+    severity: 'warn',
+    gpuId: 'a100-04',
+    message: '정승호 님의 GPU 사용 총량이 개인 한도 80% 도달 — 추가 신청 시 승인 필요.',
+  },
+  // ─── 자동 복구 / 점검 ───────────────────────────────────────────────────────
+  {
+    ts: isoAt(-50),
+    kind: 'auto_recovered',
+    source: 'agent_heartbeat',
+    severity: 'ok',
+    gpuId: 'h100-01',
+    hostId: 'host-gpu-01',
+    message: 'XID 48 (DBE ECC) 1회 발생 후 자동 복구 — 워크로드 영향 없음.',
+  },
+  {
+    ts: isoAt(-58),
+    kind: 'maintenance',
+    source: 'synthetic',
+    severity: 'warn',
+    hostId: 'host-gpu-03',
+    message: 'Busan-A 호스트 점검 시작 — 드라이버 555.42 → 555.85 업그레이드 (예상 30분).',
+  },
+  // ─── 시간 단위 (3-12시간 전) ────────────────────────────────────────────────
+  {
+    ts: isoAt(-180), // 3시간 전
+    kind: 'container_started',
+    source: 'container_event',
+    severity: 'ok',
+    containerId: 'cont-qwen2-01',
+    gpuId: 'h100-02',
+    message: '박지호 님이 Qwen2 72B 컨테이너 재시작 — VRAM 캐시 정리 후 복구.',
+  },
+  {
+    ts: isoAt(-300), // 5시간 전
+    kind: 'allocated',
+    source: 'allocation_service',
+    severity: 'ok',
+    gpuId: 'a100-06',
+    requestId: 'REQ-018',
+    message: '한지원 님이 a100-06 에 2g.20gb 슬라이스 신청 → 자동 승인 (RoBERTa Large).',
+  },
+  {
+    ts: isoAt(-420), // 7시간 전
+    kind: 'health_unhealthy',
+    source: 'container_event',
+    severity: 'warn',
+    containerId: 'cont-sdxl-01',
+    gpuId: 'l40s-02',
+    message: 'cont-sdxl-01 응답 지연 1.8초 → 1.5분 동안 health=degraded, 자동 회복.',
+  },
+  {
+    ts: isoAt(-600), // 10시간 전
+    kind: 'model_loaded',
+    source: 'container_event',
+    severity: 'ok',
+    containerId: 'cont-hyperion-01',
+    gpuId: 'h100-07',
+    message: '백지원 님이 Hyperion 30B 모델을 첫 로드 — 64.0 GB VRAM, 2분 8초.',
+  },
+  // ─── 1-3일 전 ───────────────────────────────────────────────────────────────
+  {
+    ts: isoAt(-1440), // 1일 전
+    kind: 'requested',
+    source: 'allocation_service',
+    severity: 'ok',
+    requestId: 'REQ-016',
+    message: '백지원 님이 H100 1대 통째 신청 — Hyperion 30B 추론 운영 (사용 기간 30일).',
+  },
+  {
+    ts: isoAt(-1450),
+    kind: 'approved',
+    source: 'allocation_service',
+    severity: 'ok',
+    requestId: 'REQ-016',
+    gpuId: 'h100-07',
+    hostId: 'host-gpu-01',
+    message: 'admin 님이 REQ-016 승인 — 백지원 님에게 h100-07 배정.',
+  },
+  {
+    ts: isoAt(-1480),
+    kind: 'container_created',
+    source: 'container_event',
+    severity: 'ok',
+    containerId: 'cont-hyperion-01',
+    gpuId: 'h100-07',
+    message: '백지원 님 컨테이너 cont-hyperion-01 생성 (이미지: tgi:2.3.1).',
+  },
+  {
+    ts: isoAt(-2000), // 1.4일 전
+    kind: 'market_shared',
+    source: 'allocation_service',
+    severity: 'ok',
+    gpuId: 'h100-06',
+    message: '강서아 님이 Mixtral 8x7B 마켓 공개 — 첫 24시간 동안 5,230 회 호출.',
+  },
+  {
+    ts: isoAt(-2880), // 2일 전
+    kind: 'allocated',
+    source: 'allocation_service',
+    severity: 'ok',
+    gpuId: 'a100-04',
+    requestId: 'REQ-012',
+    message: '정승호 님이 A100 1대 통째 신청 → 승인 (Falcon 40B 학습 시작).',
+  },
+  {
+    ts: isoAt(-3600), // 2.5일 전
+    kind: 'maintenance',
+    source: 'synthetic',
+    severity: 'ok',
+    hostId: 'host-gpu-01',
+    message: 'Seoul-A 호스트 NVIDIA 드라이버 555.85 업데이트 완료 — 다운타임 12분.',
+  },
+  // ─── 4-7일 전 ───────────────────────────────────────────────────────────────
+  {
+    ts: isoAt(-5760), // 4일 전
+    kind: 'container_stopped',
+    source: 'container_event',
+    severity: 'ok',
+    containerId: 'cont-deepseek-old',
+    gpuId: 'a100-03',
+    message: '박소연 님이 DeepSeek 67B 이전 버전 (cont-deepseek-old) 중지 — 신모델 교체.',
+  },
+  {
+    ts: isoAt(-7200), // 5일 전
+    kind: 'market_shared',
+    source: 'allocation_service',
+    severity: 'ok',
+    gpuId: 'h100-02',
+    message: '박지호 님이 Qwen2 72B 마켓 공개 — 사내 추론 API 로 활용.',
+  },
+  {
+    ts: isoAt(-8640), // 6일 전
+    kind: 'requested',
+    source: 'allocation_service',
+    severity: 'ok',
+    requestId: 'REQ-008',
+    message: '오영민 님이 L40S 1대 통째 신청 — Stable Diffusion XL 이미지 생성 워크로드.',
+  },
+  {
+    ts: isoAt(-10080), // 7일 전
+    kind: 'approved',
+    source: 'allocation_service',
+    severity: 'ok',
+    requestId: 'REQ-008',
+    gpuId: 'l40s-02',
+    hostId: 'host-gpu-01',
+    message: 'admin 님이 REQ-008 승인 — 오영민 님에게 l40s-02 배정 (사용 기간 60일).',
+  },
+  // ─── H100-01 추가 활동 (다양 시간) ──────────────────────────────────────────
+  { ts: isoAt(-45), kind: 'allocated', source: 'allocation_service', severity: 'ok', gpuId: 'h100-01', requestId: 'REQ-023', message: '이서연 님이 h100-01 에 1g.10gb 슬라이스 1개 추가 → 자동 승인 (Mistral 7B 인스턴스 증설).' },
+  { ts: isoAt(-90), kind: 'model_loaded', source: 'container_event', severity: 'ok', gpuId: 'h100-01', containerId: 'cont-mistral-01', message: 'Mistral 7B v0.3 모델 로드 — 7.2 GB VRAM, 14초 소요.' },
+  { ts: isoAt(-150), kind: 'container_started', source: 'container_event', severity: 'ok', gpuId: 'h100-01', containerId: 'cont-mistral-01', message: '이서연 님 cont-mistral-01 시작 — vLLM 0.6.3, port 8081.' },
+  { ts: isoAt(-240), kind: 'released', source: 'allocation_service', severity: 'ok', gpuId: 'h100-01', message: '김민준 님이 h100-01-s4 슬라이스 자발 회수 — 메모리 절약.' },
+  { ts: isoAt(-360), kind: 'auto_recovered', source: 'agent_heartbeat', severity: 'ok', gpuId: 'h100-01', hostId: 'host-gpu-01', message: 'XID 79 (PCIe link drop) 1회 발생, 0.4초 만에 자동 복구.' },
+  { ts: isoAt(-720), kind: 'requested', source: 'allocation_service', severity: 'ok', requestId: 'REQ-014', message: '김민준 님이 h100-01 에 1g.10gb 슬라이스 1개 추가 신청 (Llama 3 70B 처리량 증설).' },
+  { ts: isoAt(-1200), kind: 'approved', source: 'allocation_service', severity: 'ok', gpuId: 'h100-01', requestId: 'REQ-014', message: 'admin 님이 REQ-014 자동 승인 (개인 한도 내).' },
+  { ts: isoAt(-1320), kind: 'market_shared', source: 'allocation_service', severity: 'ok', gpuId: 'h100-01', message: '김민준 님이 Llama 3 70B 마켓 공유 시작 — 첫 1시간에 412 회 호출 도달.' },
+  { ts: isoAt(-2160), kind: 'health_unhealthy', source: 'container_event', severity: 'warn', gpuId: 'h100-01', containerId: 'cont-llama3-01', message: 'cont-llama3-01 healthcheck 1회 실패 → 즉시 자동 복구, 영향 없음.' },
+  { ts: isoAt(-4320), kind: 'model_unloaded', source: 'container_event', severity: 'ok', gpuId: 'h100-01', message: '김민준 님이 이전 Llama 3 70B 모델 (Q8) 언로드 — Q4 양자화 버전으로 교체.' },
+  { ts: isoAt(-5400), kind: 'requested', source: 'allocation_service', severity: 'ok', requestId: 'REQ-011', message: '이서연 님이 h100-01 에 1g.10gb 슬라이스 2개 신청 (Mistral 7B 추론 시작).' },
+  { ts: isoAt(-5460), kind: 'approved', source: 'allocation_service', severity: 'ok', gpuId: 'h100-01', requestId: 'REQ-011', message: 'admin 님이 REQ-011 승인 — 이서연 님에게 h100-01-s6, s7 배정.' },
+  { ts: isoAt(-5520), kind: 'container_created', source: 'container_event', severity: 'ok', gpuId: 'h100-01', containerId: 'cont-mistral-old', message: '이서연 님 첫 컨테이너 cont-mistral-old 생성.' },
+  { ts: isoAt(-6480), kind: 'container_stopped', source: 'container_event', severity: 'ok', gpuId: 'h100-01', containerId: 'cont-mistral-old', message: '이서연 님이 이전 Mistral 컨테이너 (cont-mistral-old) 정리 — 신규 버전 생성.' },
+  // ─── H100-02 (Whole, 포화) ─────────────────────────────────────────────────
+  { ts: isoAt(-120), kind: 'quota_exceeded', source: 'allocation_service', severity: 'warn', gpuId: 'h100-02', message: '박지호 님 Qwen2 72B 가 GPU 100% 5분 지속 — 자동 알림 전송, 추가 인스턴스 권장.' },
+  { ts: isoAt(-540), kind: 'auto_recovered', source: 'agent_heartbeat', severity: 'ok', gpuId: 'h100-02', message: 'OOMKiller 후 컨테이너 재시작 자동 완료 — 박지호 님 워크로드 복구.' },
+  { ts: isoAt(-2520), kind: 'requested', source: 'allocation_service', severity: 'ok', requestId: 'REQ-009', message: '박지호 님이 H100 1대 통째 신청 (Qwen2 72B 추론).' },
+  { ts: isoAt(-2580), kind: 'approved', source: 'allocation_service', severity: 'ok', gpuId: 'h100-02', requestId: 'REQ-009', message: 'admin 님이 REQ-009 승인 → 박지호 님에게 h100-02 통째 배정 (사용 기간 30일).' },
+  // ─── A100-03 (박소연 DeepSeek) ─────────────────────────────────────────────
+  { ts: isoAt(-95), kind: 'model_loaded', source: 'container_event', severity: 'ok', gpuId: 'a100-03', containerId: 'cont-deepseek-01', message: '박소연 님이 DeepSeek 67B 모델 재로드 — Q5 양자화, 33.4 GB VRAM, 1분 28초.' },
+  { ts: isoAt(-700), kind: 'market_shared', source: 'allocation_service', severity: 'ok', gpuId: 'a100-03', message: '박소연 님이 DeepSeek 67B 마켓 공개 → 6,840 회 누적 호출 (7일).' },
+  { ts: isoAt(-2700), kind: 'mig_reconfiguring', source: 'allocation_service', severity: 'warn', gpuId: 'a100-03', message: 'A100-03 MIG profile 재구성 (4 slice → 2g×2 + 1g×3 → 2g×2 + 1g×1). 약 6초 소요.' },
+  { ts: isoAt(-4800), kind: 'container_created', source: 'container_event', severity: 'ok', gpuId: 'a100-03', containerId: 'cont-deepseek-01', message: '박소연 님 컨테이너 cont-deepseek-01 생성 (DeepSeek 67B).' },
+  // ─── A100-04 (정승호 Falcon) ──────────────────────────────────────────────
+  { ts: isoAt(-180), kind: 'oom', source: 'container_event', severity: 'error', gpuId: 'a100-04', containerId: 'cont-falcon-test', message: '정승호 님 cont-falcon-test 가 OOM 종료 (78GB / 80GB 초과 시도).' },
+  { ts: isoAt(-900), kind: 'model_loaded', source: 'container_event', severity: 'ok', gpuId: 'a100-04', containerId: 'cont-falcon-01', message: 'Falcon 40B 모델 로드 완료 — 52.0 GB VRAM, 2분 4초.' },
+  { ts: isoAt(-1080), kind: 'container_started', source: 'container_event', severity: 'ok', gpuId: 'a100-04', containerId: 'cont-falcon-01', message: '정승호 님 cont-falcon-01 시작 — TGI 2.3.1.' },
+  { ts: isoAt(-3300), kind: 'requested', source: 'allocation_service', severity: 'ok', requestId: 'REQ-012', message: '정승호 님이 A100 1대 통째 신청 (Falcon 40B 학습).' },
+  // ─── L40S-01 (한지원 Yi 34B) ──────────────────────────────────────────────
+  { ts: isoAt(-200), kind: 'model_loaded', source: 'container_event', severity: 'ok', gpuId: 'l40s-01', containerId: 'cont-yi-01', message: 'Yi 34B 모델 로드 완료 — 28.0 GB VRAM, 52초 소요.' },
+  { ts: isoAt(-560), kind: 'market_unshared', source: 'allocation_service', severity: 'warn', gpuId: 'l40s-01', message: '한지원 님이 Yi 34B 마켓 공유 중단 — 개인 실험 전환.' },
+  { ts: isoAt(-1620), kind: 'container_created', source: 'container_event', severity: 'ok', gpuId: 'l40s-01', containerId: 'cont-yi-01', message: '한지원 님 cont-yi-01 생성 (Yi 34B).' },
+  { ts: isoAt(-2700), kind: 'allocated', source: 'allocation_service', severity: 'ok', gpuId: 'l40s-01', requestId: 'REQ-013', message: '한지원 님이 l40s-01 전체 슬라이스 신청 → 승인 (Yi 34B 로드).' },
+  // ─── H100-06 (강서아 Mixtral + 오민서 BGE-M3) ──────────────────────────────
+  { ts: isoAt(-65), kind: 'auto_recovered', source: 'agent_heartbeat', severity: 'ok', gpuId: 'h100-06', message: 'cont-mixtral-01 일시 응답 지연 → 30초 만에 자동 복구.' },
+  { ts: isoAt(-280), kind: 'model_loaded', source: 'container_event', severity: 'ok', gpuId: 'h100-06', containerId: 'cont-bge-01', message: '오민서 님이 BGE-M3 임베딩 모델 로드 — 6.4 GB VRAM, 8초.' },
+  { ts: isoAt(-840), kind: 'container_started', source: 'container_event', severity: 'ok', gpuId: 'h100-06', containerId: 'cont-mixtral-01', message: '강서아 님 cont-mixtral-01 시작 — vLLM 0.6.3, 멀티 GPU 슬라이스 활용.' },
+  { ts: isoAt(-1800), kind: 'allocated', source: 'allocation_service', severity: 'ok', gpuId: 'h100-06', requestId: 'REQ-015', message: '강서아 님이 h100-06 에 2g.20gb 슬라이스 2개 신청 → 승인 (Mixtral 8x7B).' },
+  // ─── H100-07 (백지원 Hyperion) ─────────────────────────────────────────────
+  { ts: isoAt(-150), kind: 'auto_recovered', source: 'agent_heartbeat', severity: 'ok', gpuId: 'h100-07', message: 'XID 31 (memory error) 1회 발생 후 자동 복구.' },
+  { ts: isoAt(-420), kind: 'health_unhealthy', source: 'container_event', severity: 'warn', gpuId: 'h100-07', containerId: 'cont-hyperion-01', message: 'cont-hyperion-01 응답 시간 0.8초 초과 (정상 0.4초) — 워밍업 추정.' },
+  // ─── H100-08 (장하루 sandbox + 노유라 Whisper) ──────────────────────────────
+  { ts: isoAt(-90), kind: 'health_unhealthy', source: 'container_event', severity: 'warn', gpuId: 'h100-08', containerId: 'cont-sandbox-01', message: '장하루 님 cont-sandbox-01 가 10분 평균 5% 미만 사용 → 자원 회수 후보 안내.' },
+  { ts: isoAt(-360), kind: 'model_loaded', source: 'container_event', severity: 'ok', gpuId: 'h100-08', containerId: 'cont-whisper-01', message: '노유라 님이 Whisper Large v3 로드 — 6.8 GB VRAM, 12초.' },
+  // ─── A100-05 (윤서아 BART) ─────────────────────────────────────────────────
+  { ts: isoAt(-1500), kind: 'model_loaded', source: 'container_event', severity: 'ok', gpuId: 'a100-05', containerId: 'cont-bart-01', message: '윤서아 님이 BART Large 로드 — 38.0 GB VRAM, 1분 16초.' },
+  // ─── A100-06 (한지원 RoBERTa + XID/ECC) ────────────────────────────────────
+  { ts: isoAt(-220), kind: 'xid_ecc_error', source: 'agent_heartbeat', severity: 'warn', gpuId: 'a100-06', hostId: 'host-gpu-01', message: 'XID 63 (page retirement) 2회 누적 — 임계치 5회 도달 시 교체 권장.' },
+  { ts: isoAt(-1380), kind: 'model_loaded', source: 'container_event', severity: 'ok', gpuId: 'a100-06', containerId: 'cont-roberta-01', message: '한지원 님이 RoBERTa Large 로드 — 15.0 GB VRAM, 22초.' },
+  // ─── L40S-02 (오영민 SDXL) ────────────────────────────────────────────────
+  { ts: isoAt(-110), kind: 'quota_exceeded', source: 'allocation_service', severity: 'warn', gpuId: 'l40s-02', message: '오영민 님 SDXL 작업이 대기열 3건 초과 — 추가 인스턴스 권장.' },
+  { ts: isoAt(-1100), kind: 'model_loaded', source: 'container_event', severity: 'ok', gpuId: 'l40s-02', containerId: 'cont-sdxl-01', message: 'Stable Diffusion XL 모델 로드 — 33.0 GB VRAM, 1분 6초.' },
 ];
 
 // Per-GPU mirror — last 8 events touching each GPU.
 for (const gpu of GPUS) {
+  // host-level event (host_offline / maintenance) 도 그 host 의 모든 GPU 에 mirror.
+  const HOST_LEVEL: EventKind[] = ['host_offline', 'maintenance'];
   gpu.recentEvents = EVENTS
-    .filter(e => e.gpuId === gpu.id || (e.hostId === gpu.hostId && e.kind === 'host_offline'))
-    .slice(0, 8);
+    .filter((e) => e.gpuId === gpu.id || (e.hostId === gpu.hostId && HOST_LEVEL.includes(e.kind)))
+    .sort((a, b) => b.ts.localeCompare(a.ts)) // 최신 우선
+    .slice(0, 40);
 }
 
 // ─── side panel fixtures ──────────────────────────────────────────────────────
@@ -1245,6 +1593,19 @@ export const INCIDENT_LABEL_KO: Record<EventKind, string> = {
   oom: '메모리 부족 (OOM)',
   health_unhealthy: '건강 상태 비정상',
   xid_ecc_error: 'XID/ECC 오류',
+  requested: '슬라이스 신청',
+  approved: '신청 승인',
+  rejected: '신청 반려',
+  container_created: '컨테이너 생성',
+  container_started: '컨테이너 시작',
+  container_stopped: '컨테이너 중지',
+  model_loaded: '모델 로드',
+  model_unloaded: '모델 언로드',
+  market_shared: '마켓 공유 시작',
+  market_unshared: '마켓 공유 중단',
+  quota_exceeded: '쿼터 초과',
+  auto_recovered: '자동 복구',
+  maintenance: '점검 작업',
 };
 
 // ─── derived insights — 데이터 나열 → 인사이트 + 액션 ──────────────────────────

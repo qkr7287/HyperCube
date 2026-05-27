@@ -25,7 +25,8 @@
     const sec = Math.max(0, Math.floor((Date.parse('2026-05-26T12:03:00Z') - Date.parse(iso)) / 1000));
     if (sec < 60) return `${sec}초 전`;
     if (sec < 3600) return `${Math.floor(sec / 60)}분 전`;
-    return `${Math.floor(sec / 3600)}시간 전`;
+    if (sec < 86400) return `${Math.floor(sec / 3600)}시간 전`;
+    return `${Math.floor(sec / 86400)}일 전`;
   }
 
   interface Props {
@@ -61,10 +62,37 @@
   });
 
   function tempHint(t: number | null): string {
-    if (t === null) return '';
-    if (t > 80) return '뜨거움';
-    if (t > 70) return '따뜻함';
+    if (t === null) return '—';
+    if (t > 85) return '🔥 뜨거움';
+    if (t > 75) return '따뜻함';
+    if (t > 60) return '적정';
     return '시원함';
+  }
+  function utilHint(p: number | null): string {
+    if (p === null) return '—';
+    if (p >= 90) return '포화';
+    if (p >= 70) return '빠듯함';
+    if (p >= 30) return '적정';
+    return '여유';
+  }
+  function memHint(p: number): string {
+    if (p >= 90) return '가득';
+    if (p >= 70) return '빠듯함';
+    if (p >= 30) return '적정';
+    return '여유';
+  }
+  function powerHint(w: number | null, cap: number): string {
+    if (w === null) return '—';
+    const p = (w / cap) * 100;
+    if (p >= 90) return '한도 근접';
+    if (p >= 70) return '적정';
+    return '여유';
+  }
+  // 한도 대비 % → bar 색 (낮음 teal → 중간 amber → 높음 red)
+  function barColor(pct: number, thresh: { warn: number; crit: number }): string {
+    if (pct >= thresh.crit) return '#d97070';
+    if (pct >= thresh.warn) return '#e0b96b';
+    return '#4dbfb3';
   }
 </script>
 
@@ -120,7 +148,8 @@
           <path d="M9 2v2 M15 2v2 M9 20v2 M15 20v2 M2 9h2 M2 15h2 M20 9h2 M20 15h2" />
         </svg>
       </div>
-      <span class="m-foot">p95 {gpu.computePctP95_1h ?? '—'}%</span>
+      <div class="m-bar"><span class="m-fill" style="width: {gpu.computePct ?? 0}%; background: {barColor(gpu.computePct ?? 0, { warn: 70, crit: 90 })};"></span></div>
+      <span class="m-foot"><b>{utilHint(gpu.computePct)}</b> · p95 {gpu.computePctP95_1h ?? '—'}%</span>
     </div>
     <div class="m">
       <div class="m-top"><span class="m-label">메모리</span><span class="m-sub">VRAM</span></div>
@@ -132,7 +161,8 @@
           <path d="M2 15h20 M6 19v-3 M10 19v-3 M14 19v-3 M18 19v-3 M8 11V9 M12 11V9 M16 11V9" />
         </svg>
       </div>
-      <span class="m-foot">{gpu.vramUsedGB} / {gpu.vramTotalGB} GB</span>
+      <div class="m-bar"><span class="m-fill" style="width: {vramPct}%; background: {barColor(vramPct, { warn: 70, crit: 90 })};"></span></div>
+      <span class="m-foot"><b>{memHint(vramPct)}</b> · {gpu.vramUsedGB} / {gpu.vramTotalGB} GB</span>
     </div>
     <div class="m">
       <div class="m-top"><span class="m-label">온도</span><span class="m-sub">Temp</span></div>
@@ -143,7 +173,8 @@
           <path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z" />
         </svg>
       </div>
-      <span class="m-foot">{tempHint(gpu.tempC)}</span>
+      <div class="m-bar"><span class="m-fill" style="width: {Math.min(100, ((gpu.tempC ?? 0) / 95) * 100)}%; background: {barColor(((gpu.tempC ?? 0) / 95) * 100, { warn: 75, crit: 90 })};"></span></div>
+      <span class="m-foot"><b>{tempHint(gpu.tempC)}</b> · 한도 95°C</span>
     </div>
     <div class="m">
       <div class="m-top"><span class="m-label">전력</span><span class="m-sub">Power</span></div>
@@ -154,7 +185,8 @@
           <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z" />
         </svg>
       </div>
-      <span class="m-foot">한도 {gpu.powerCapW} W</span>
+      <div class="m-bar"><span class="m-fill" style="width: {Math.min(100, ((gpu.powerW ?? 0) / gpu.powerCapW) * 100)}%; background: {barColor(((gpu.powerW ?? 0) / gpu.powerCapW) * 100, { warn: 70, crit: 90 })};"></span></div>
+      <span class="m-foot"><b>{powerHint(gpu.powerW, gpu.powerCapW)}</b> · 한도 {gpu.powerCapW} W</span>
     </div>
   </div>
 
@@ -197,6 +229,15 @@
     {#if gpu.recentEvents.length === 0}
       <p class="r-empty">최근 기록된 이벤트가 없습니다.</p>
     {:else}
+    <!-- column header: tbody scroll 밖으로 분리 — scrollbar 가 header 아래부터 시작 -->
+    <div class="r-col-head" role="row">
+      <div></div>
+      <div>시간</div>
+      <div>이벤트</div>
+      <div>메시지</div>
+      <div>조치</div>
+    </div>
+    <div class="r-tbl-scroll">
       <table class="r-tbl">
         <colgroup>
           <col style="width: 28px;" />
@@ -205,15 +246,6 @@
           <col />
           <col style="width: 130px;" />
         </colgroup>
-        <thead>
-          <tr>
-            <th></th>
-            <th>시간</th>
-            <th>이벤트</th>
-            <th>메시지</th>
-            <th>조치</th>
-          </tr>
-        </thead>
         <tbody>
           {#each gpu.recentEvents as e (e.ts + e.kind)}
             <tr>
@@ -234,6 +266,7 @@
           {/each}
         </tbody>
       </table>
+    </div>
     {/if}
   </div>
 </section>
@@ -247,6 +280,7 @@
     gap: 12px;
     position: relative;
     height: 100%;
+    min-height: 0;
   }
   .gpu.focused::before {
     content: '';
@@ -326,10 +360,21 @@
     flex-direction: column;
     gap: 6px;
     min-width: 0;
+    border-top: 1px solid rgba(77, 191, 179, 0.18);
+    position: relative;
   }
-  .m-top { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+  .m::before {
+    content: '';
+    position: absolute;
+    top: -1px; left: 0;
+    width: 28px;
+    height: 1px;
+    background: var(--accent);
+    opacity: 0.6;
+  }
+  .m-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   .m-label { color: var(--text-primary); font-size: 14px; font-weight: 700; }
-  .m-sub { color: var(--text-muted); font-size: 12px; font-weight: 500; }
+  .m-sub { color: var(--text-muted); font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
   .m-val {
     font-size: 36px;
     font-weight: 800;
@@ -344,17 +389,32 @@
     font-weight: 600;
     margin-left: 2px;
   }
-  .m-foot { color: var(--text-muted); font-size: 13px; }
+  .m-foot { color: var(--text-muted); font-size: 12px; }
+  .m-foot b { color: var(--text-primary); font-weight: 700; }
+  .m-bar {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 2px;
+    overflow: hidden;
+    margin: 2px 0;
+  }
+  .m-fill {
+    display: block;
+    height: 100%;
+    transition: width 0.25s, background 0.25s;
+    border-radius: 2px;
+  }
   .m-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 10px;
     min-width: 0;
+    padding-right: 6px; /* icon 이 우측 끝에서 살짝 안쪽 */
   }
   .m-mark {
-    width: 36px;
-    height: 36px;
+    width: 30px;
+    height: 30px;
     flex-shrink: 0;
     fill: none;
     stroke: var(--accent);
@@ -405,16 +465,23 @@
   }
 
   .recent {
-    padding: 14px 16px;
+    padding: 14px 0 0 16px;
     background: #181d26;
     border-radius: 6px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .r-tbl-scroll {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
     scrollbar-gutter: stable;
+    scroll-snap-type: y proximity;
+    padding-right: 16px;
   }
   .r-tbl tbody { display: table-row-group; }
   .r-empty {
@@ -426,20 +493,41 @@
     font-size: 13px;
     min-height: 240px;
   }
-  .r-head { display: flex; align-items: baseline; gap: 8px; }
+  .r-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 0 16px 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
   .r-title { color: var(--text-primary); font-size: 14px; font-weight: 700; }
   .r-en { color: var(--text-muted); font-size: 12px; font-weight: 500; }
   .r-hint { margin-left: auto; color: var(--text-muted); font-size: 12px; }
   .r-empty { margin: 0; color: var(--text-muted); font-size: 13px; }
   .r-tbl { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
+  /* tbody-scroll 위 별도 header row (div grid) — table colgroup 과 동일 width */
+  .r-col-head {
+    display: grid;
+    grid-template-columns: 28px 70px 200px 1fr 130px;
+    padding: 8px 16px 8px 0;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .r-col-head > div { padding: 0 10px; }
+  .r-col-head > div:first-child { padding: 0; }
+  .r-tbl thead { display: none; }
   .r-tbl thead th {
     text-align: left;
     color: var(--text-muted);
     font-size: 12px;
     font-weight: 700;
+    background: #181d26;
     padding: 8px 10px;
     border-bottom: 1px solid var(--border);
   }
+  .r-tbl tbody tr { scroll-snap-align: start; }
   .r-tbl tbody td {
     padding: 10px 10px;
     border-bottom: 1px dashed var(--border);
@@ -454,6 +542,7 @@
     overflow: visible;
     padding: 10px 0 10px 4px;
     text-align: center;
+    background: #181d26;
   }
   .r-tbl tbody tr:last-child td { border-bottom: none; }
   .r-tbl tbody tr:hover td { background: rgba(77, 191, 179, 0.04); }
