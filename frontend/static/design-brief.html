@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>HyperCube — Marketplace + Hosting Design Brief</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --bg-base: #0d1117;
+    --bg-card: #161b22;
+    --border: #2d333b;
+    --text-primary: #f8fafc;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --accent: #4dbfb3;
+    --teal: #4dbfb3;
+    --violet: #a78bfa;
+    --blue: #60a5fa;
+    --orange: #f6b352;
+    --pink: #f472b6;
+    --ok: #34d399;
+    --warn: #f6b352;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg-base);
+    color: var(--text-secondary);
+    font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Inter", sans-serif;
+    font-size: 14.5px;
+    line-height: 1.6;
+  }
+  .shell { max-width: 1080px; margin: 0 auto; padding: 48px 32px 80px; }
+  header.hero {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 24px;
+    margin-bottom: 36px;
+    padding-bottom: 22px;
+    border-bottom: 1px solid var(--border);
+  }
+  h1 { margin: 0 0 8px; font-size: 30px; font-weight: 850; color: var(--text-primary); letter-spacing: -0.02em; }
+  .subtitle { margin: 0; color: var(--text-muted); font-size: 14px; }
+  .tag {
+    flex-shrink: 0;
+    padding: 7px 13px;
+    font-size: 12px;
+    font-weight: 800;
+    color: #ddd6fe;
+    background: rgba(167, 139, 250, 0.12);
+    border: 1px solid rgba(167, 139, 250, 0.32);
+    border-radius: 6px;
+  }
+  section { margin: 0 0 44px; }
+  h2 {
+    margin: 0 0 14px;
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+    padding-bottom: 9px;
+    border-bottom: 1px solid var(--border);
+  }
+  h3 {
+    margin: 22px 0 10px;
+    font-size: 15.5px;
+    font-weight: 800;
+    color: var(--text-primary);
+  }
+  p { margin: 8px 0 12px; }
+  ul, ol { margin: 8px 0 12px; padding-left: 22px; }
+  li { margin: 4px 0; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 12.5px;
+    color: #9fe7df;
+    background: rgba(77, 191, 179, 0.08);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  pre {
+    background: rgba(13, 17, 23, 0.7);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    color: #9fe7df;
+    font-size: 12.5px;
+    line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; color: inherit; }
+
+  .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+  .card {
+    padding: 16px 18px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .card h4 {
+    margin: 0 0 6px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    font-weight: 800;
+  }
+  .card .v {
+    color: var(--text-primary);
+    font-weight: 800;
+    font-size: 24px;
+    letter-spacing: -0.01em;
+  }
+  .card p { margin: 6px 0 0; font-size: 13px; color: var(--text-secondary); }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    font-size: 13.5px;
+  }
+  th, td {
+    text-align: left;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    background: rgba(13, 17, 23, 0.6);
+    color: var(--text-muted);
+    font-weight: 800;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  td { color: var(--text-secondary); vertical-align: top; }
+  td.cat { color: var(--text-primary); font-weight: 700; white-space: nowrap; }
+
+  .frame {
+    margin: 18px 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--bg-base);
+  }
+  .frame iframe {
+    display: block;
+    width: 100%;
+    height: 520px;
+    border: 0;
+    background: var(--bg-base);
+  }
+  .frame-cap {
+    padding: 8px 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+    border-top: 1px solid var(--border);
+    background: rgba(13, 17, 23, 0.6);
+  }
+  .frame-cap b { color: var(--text-secondary); }
+
+  .palette { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+  .swatch {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px 6px 6px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 12.5px;
+  }
+  .swatch i {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .pill {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 800;
+    border-radius: 4px;
+    margin-right: 6px;
+  }
+  .pill.feat { color: #34d399; background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.3); }
+  .pill.fix  { color: #f6b352; background: rgba(246, 179, 82, 0.12); border: 1px solid rgba(246, 179, 82, 0.3); }
+  .pill.dep  { color: #c4b5fd; background: rgba(167, 139, 250, 0.13); border: 1px solid rgba(167, 139, 250, 0.3); }
+
+  footer.foot {
+    margin-top: 50px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-muted);
+    display: flex;
+    justify-content: space-between;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+<header class="hero">
+  <div>
+    <h1>HyperCube — Marketplace + Hosting Design Brief</h1>
+    <p class="subtitle">2026-05 시즌. <b>마켓플레이스 d3-force 관계성 그래프</b>와 <b>GPU 호스팅 단일 서버 대시보드</b> 통합 정리.</p>
+  </div>
+  <span class="tag">v2026.05 · dev → main 머지 완료 (PR #36)</span>
+</header>
+
+<section>
+  <h2>요약</h2>
+  <div class="grid-2">
+    <div class="card">
+      <h4>스코프</h4>
+      <div class="v">2 영역</div>
+      <p><code>/admin/marketplace</code> 전면 재설계, <code>/gpu-hosting</code> 단일 서버 대시보드 추가.</p>
+    </div>
+    <div class="card">
+      <h4>핵심 컴포넌트</h4>
+      <div class="v">5 개</div>
+      <p><code>MarketGraph.svelte</code>, <code>ResourceMap.svelte</code>, <code>GpuPanel.svelte</code>, <code>SliceCell.svelte</code>, <code>SectionTitle.svelte</code>.</p>
+    </div>
+    <div class="card">
+      <h4>인터랙션 라이브러리</h4>
+      <div class="v">d3-*</div>
+      <p>커스텀 pointer 핸들러 폐기 → <code>d3-zoom</code>/<code>d3-drag</code>/<code>d3-force</code> 표준 패턴.</p>
+    </div>
+    <div class="card">
+      <h4>Mock 데이터</h4>
+      <div class="v">40 시스템</div>
+      <p>5 카테고리: LLM 12 · 멀티모달 7 · MCP 9 · 이미지·영상 7 · 음성 5. 공식 29 / 커뮤니티 11.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>1. Marketplace — 관계성 그래프 + 카탈로그</h2>
+
+  <p>워크스페이스에서 연결해 쓸 수 있는 AI 시스템 카탈로그. 공식 공급사와 사용자가 컨테이너에 직접 올린 커뮤니티 시스템을 같은 화면에 노출. 상단에 <b>관계성 그래프</b>, 하단에 <b>고정 영역 테이블</b>.</p>
+
+  <h3>설계 의도</h3>
+  <ul>
+    <li><b>현황을 한눈에</b>: 균등한 KPI 카드 대신 force-directed cluster 로 카테고리별 밀도와 시스템 비중을 동시에 표현.</li>
+    <li><b>탐색의 출발점</b>: 그래프는 카탈로그의 "지도" 역할. Top5 / 그래프 노드 어디서 click 하든 동일한 항목으로 focus → 테이블 자동 스크롤.</li>
+    <li><b>표준 라이브러리</b>: zoom/drag 는 직접 만든 pointer 핸들러가 좌표 변환·포커스 손실 등 버그의 원인이라 d3 표준 라이브러리에 위임.</li>
+  </ul>
+
+  <h3>라이브 미리보기 (dev server 필요)</h3>
+  <div class="frame">
+    <iframe src="http://192.168.0.63:33000/admin/marketplace" loading="lazy" title="마켓플레이스 라이브"></iframe>
+    <div class="frame-cap"><b>http://192.168.0.63:33000/admin/marketplace</b> — admin / agics12!@ 로 로그인되어 있어야 표시</div>
+  </div>
+
+  <h3>그래프 컴포넌트 — <code>MarketGraph.svelte</code></h3>
+
+  <table>
+    <thead>
+      <tr><th>요소</th><th>구현</th></tr>
+    </thead>
+    <tbody>
+      <tr><td class="cat">force</td><td><code>forceSimulation</code> + <code>forceLink</code>(invisible star) + <code>forceManyBody</code>(-55) + <code>forceCenter</code> + <code>forceX/Y</code> + <code>forceCollide</code></td></tr>
+      <tr><td class="cat">노드</td><td>시스템만 SVG 에 그림 (카테고리 anchor 제거). 색=카테고리, radius=log(7일 호출).</td></tr>
+      <tr><td class="cat">카테고리 라벨</td><td>매 tick cluster centroid 계산해 자동 배치. cluster 가 어디 있든 라벨이 따라옴.</td></tr>
+      <tr><td class="cat">boundary clamp</td><td>tick 마다 노드 좌표를 <code>[radius+22, width-radius-22]</code> 로 clamp + velocity 0. viewBox 밖으로 새지 않음.</td></tr>
+      <tr><td class="cat">휠 줌</td><td><code>d3-zoom</code> attached to <svg>, scaleExtent <code>[0.3, 4]</code>, 마우스 위치 기준 transform.</td></tr>
+      <tr><td class="cat">배경 pan</td><td><code>d3-zoom</code> 의 drag 가 자동 처리 (노드 위 클릭은 filter 로 제외 → d3-drag 에 양보).</td></tr>
+      <tr><td class="cat">노드 drag</td><td><code>d3-drag</code> + Svelte action <code>use:attachDrag={n}</code>. 표준 start/drag/end → <code>n.fx/fy</code> 고정·해제.</td></tr>
+      <tr><td class="cat">selectedId 동기화</td><td>외부 prop. 일치 노드만 흰 ring + 라벨 + 외곽 halo circle.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>카테고리 컬러 팔레트</h3>
+  <div class="palette">
+    <span class="swatch"><i style="background:#4dbfb3"></i>LLM (#4dbfb3)</span>
+    <span class="swatch"><i style="background:#a78bfa"></i>멀티모달 (#a78bfa)</span>
+    <span class="swatch"><i style="background:#60a5fa"></i>MCP 커넥터 (#60a5fa)</span>
+    <span class="swatch"><i style="background:#f6b352"></i>이미지·영상 (#f6b352)</span>
+    <span class="swatch"><i style="background:#f472b6"></i>음성 (#f472b6)</span>
+  </div>
+
+  <h3>인터랙션 시나리오</h3>
+  <ol>
+    <li><b>탐색</b> — 휠 줌으로 cluster 확대, 배경 drag 로 시점 이동.</li>
+    <li><b>드릴다운</b> — 노드 click → <code>onSelect(svc)</code> 호출 → 테이블 행 펼침 + 자동 스크롤.</li>
+    <li><b>Top5 연계</b> — 우측 Top5 항목 click 시 동일한 <code>focusSvc()</code> 호출, 그래프 노드도 ring + 라벨 강조.</li>
+    <li><b>노드 정렬 재배치</b> — 노드를 drag 해서 위치 고정. drag end 시 <code>fx/fy = null</code> 로 다시 시뮬레이션이 자연스럽게 안정화.</li>
+  </ol>
+
+  <h3>레이아웃 — 페이지 height-lock + 테이블 내부 스크롤</h3>
+  <pre><code>.page  { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+.shell { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.table-card { flex: 1; overflow-y: auto; }
+thead th    { position: sticky; top: 0; background: var(--bg-base); }
+</code></pre>
+  <p>페이지 전체 스크롤이 사라지고 그래프 + 상단 strip + 필터바는 viewport 안에 고정, 테이블만 그 아래에서 내부 스크롤. sticky thead 는 불투명 배경 + <code>inset 0 -1px 0 var(--border)</code> shadow 로 뒤 행이 비치지 않음.</p>
+
+  <h3>Mock 데이터 구조</h3>
+  <table>
+    <thead>
+      <tr><th>필드</th><th>타입</th><th>설명</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>id / name / vendor</code></td><td>string</td><td>식별자, 표시명, 제공자 (사람/팀 또는 회사)</td></tr>
+      <tr><td><code>category</code></td><td>enum</td><td><code>llm | multimodal | mcp | media | voice</code></td></tr>
+      <tr><td><code>connection</code></td><td>string</td><td><code>API Key | Endpoint URL | MCP Server</code></td></tr>
+      <tr><td><code>status</code></td><td>enum</td><td><code>connected | available | beta</code></td></tr>
+      <tr><td><code>source</code></td><td>enum</td><td><code>official | community</code> — 컨테이너에 직접 올린 시스템 구분</td></tr>
+      <tr><td><code>summary / description / steps</code></td><td>string / string / string[]</td><td>요약 · 상세 · 연결 단계</td></tr>
+      <tr><td><code>tags</code></td><td>string[]</td><td>검색 + 필터</td></tr>
+      <tr><td><code>(파생) calls7d / latencyMs</code></td><td>number</td><td>id 해시 기반 deterministic, beta 항목은 latency 큼</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>2. GPU Hosting — 단일 서버 대시보드</h2>
+
+  <p>한 GPU 서버의 상태를 호스트 카드 + 자원 맵 + GPU 상세 패널의 3-단 구조로 보여줌. Zenius / cuda_monitoring 의 honeycomb 시각화에서 영감.</p>
+
+  <h3>라이브 미리보기</h3>
+  <div class="frame">
+    <iframe src="http://192.168.0.63:33000/gpu-hosting" loading="lazy" title="GPU 호스팅 라이브"></iframe>
+    <div class="frame-cap"><b>http://192.168.0.63:33000/gpu-hosting</b></div>
+  </div>
+
+  <h3>3-단 구조</h3>
+  <table>
+    <thead>
+      <tr><th>영역</th><th>컴포넌트</th><th>역할</th></tr>
+    </thead>
+    <tbody>
+      <tr><td class="cat">① 호스트 카드</td><td>page-level</td><td>서버 메타 (이름·CPU·메모리·전력) 와 GPU 합계. 드롭다운으로 호스트 전환.</td></tr>
+      <tr><td class="cat">② 자원 맵</td><td><code>ResourceMap.svelte</code></td><td>호스트의 모든 GPU 를 honeycomb (7-hex flower / MIG weight × hex) 로 표현. 12-gon 외곽 frame 으로 slice 그룹 시각화. pan/zoom + 선택 가능.</td></tr>
+      <tr><td class="cat">③ GPU 패널</td><td><code>GpuPanel.svelte</code></td><td>선택된 GPU 의 미니 hex flower mirror + 4 metric box + 60-cell VRAM bar + slice grid + 최근 활동 (스크롤 분리된 thead/tbody).</td></tr>
+    </tbody>
+  </table>
+
+  <h3>SliceCell — 카드 폐기, 색 strip + 텍스트</h3>
+  <ul>
+    <li>좌측 2px accent strip 으로 상태 표현 (ok / warn / offline).</li>
+    <li>매 slice 의 user / model / container / 작업률 / VRAM 사용량을 dense 한 텍스트 grid 로.</li>
+    <li>idle_waste 또는 saturation 상태는 우측 상단 라벨로 (<i>10분 안 씀</i> / <i>포화</i>).</li>
+  </ul>
+
+  <h3>핵심 mock 데이터</h3>
+  <ul>
+    <li>4 호스트 (server_41_dev, server_63_dev, server_88_busan offline, server_16_dev), 17 GPU, 60+ 이벤트.</li>
+    <li>EventKind 13 종 (requested · approved · rejected · container_created/started/stopped · model_loaded/unloaded · market_shared/unshared · quota_exceeded · auto_recovered · maintenance).</li>
+    <li>GPU 별 recentEvents 40 건 + host 레벨 mirror.</li>
+    <li>MIG weight 최대 7 (제약), A100 VRAM 80GB / H100 표준값으로 정합성.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>3. 변경 사항 / 의존성</h2>
+
+  <h3>이번 시즌 commit 흐름</h3>
+  <ol>
+    <li><span class="pill feat">feat</span> gpu-hosting: 단일 서버 대시보드 추가 (<code>94b5559</code>)</li>
+    <li><span class="pill fix">fix</span> mock data integrity — MIG weight · VRAM · model coverage (<code>ca5a328</code>)</li>
+    <li><span class="pill feat">feat</span> honeycomb 2D ResourceMap + GpuPanel polish (<code>ce29b6f</code>)</li>
+    <li><span class="pill feat">feat</span> selection sync + SectionTitle 툴팁 + host rename (<code>153bde7</code>)</li>
+    <li><span class="pill feat">feat</span> rich event lifecycle + recent table UX (<code>b71011a</code>)</li>
+    <li><span class="pill feat">feat</span> marketplace d3-force graph + table-fixed layout (<code>027f2bf</code>) · PR <a href="https://github.com/qkr7287/HyperCube/pull/36">#36</a> merged → main</li>
+  </ol>
+
+  <h3>새 의존성</h3>
+  <table>
+    <thead><tr><th>패키지</th><th>버전</th><th>용도</th></tr></thead>
+    <tbody>
+      <tr><td><code>d3-force</code></td><td>^3.0.0</td><td>force simulation (이미 있었음)</td></tr>
+      <tr><td><code>d3-drag</code></td><td>^3.0.0</td><td><span class="pill dep">new</span> 노드 drag</td></tr>
+      <tr><td><code>d3-zoom</code></td><td>^3.0.0</td><td><span class="pill dep">new</span> 휠 줌 + 배경 pan</td></tr>
+      <tr><td><code>d3-selection</code></td><td>^3.0.0</td><td><span class="pill dep">new</span> Svelte action 안에서 d3 핸들러 부착</td></tr>
+      <tr><td><code>@types/d3-*</code></td><td>—</td><td>TS 타입</td></tr>
+    </tbody>
+  </table>
+
+  <h3>핵심 파일</h3>
+  <pre><code>frontend/
+├─ src/lib/components/marketplace/MarketGraph.svelte   (new)
+├─ src/lib/components/host-board/
+│  ├─ ResourceMap.svelte
+│  ├─ GpuPanel.svelte
+│  ├─ SliceCell.svelte
+│  └─ SectionTitle.svelte
+├─ src/lib/mock/gpu-hosting.ts                          (확장)
+├─ src/lib/utils/hex-flower.ts                          (공용 hex 기하)
+├─ src/routes/gpu-hosting/+page.svelte
+└─ src/routes/admin/marketplace/+page.svelte            (재설계)
+</code></pre>
+</section>
+
+<section>
+  <h2>4. 사후 검증 체크리스트</h2>
+  <ul>
+    <li>그래프 5 cluster 모두 viewBox 안에 그려짐 (boundary clamp 확인).</li>
+    <li>휠 줌이 마우스 아래 좌표를 고정한 채 0.3x ~ 4x.</li>
+    <li>노드 drag 가 zoom 한 상태에서도 정확한 위치 추적.</li>
+    <li>Top5 / 그래프 노드 / 테이블 행 click 모두 같은 <code>focusSvc()</code> 흐름 → 행 펼침 + 부드러운 자동 스크롤.</li>
+    <li>테이블 내부 스크롤 시 thead 가 sticky 로 고정 + 뒤 행이 비치지 않음.</li>
+    <li>호스트 컨테이너 등 hover 시 호스트 카드 ↔ ResourceMap 강조 동기화.</li>
+  </ul>
+</section>
+
+<footer class="foot">
+  <span>HyperCube design brief · last updated 2026-05-29</span>
+  <span>Repo: <a href="https://github.com/qkr7287/HyperCube">qkr7287/HyperCube</a></span>
+</footer>
+
+</div>
+</body>
+</html>
