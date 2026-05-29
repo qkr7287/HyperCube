@@ -136,38 +136,18 @@
   td { color: var(--text-secondary); vertical-align: top; }
   td.cat { color: var(--text-primary); font-weight: 700; white-space: nowrap; }
 
-  /* 라이브 페이지 미리보기 — viewport 1480x900 그대로 그리고 CSS scale 로 축소.
-     iframe 의 height 직접 줄이면 페이지의 100vh layout 이 압축되어 그래프/테이블 깨짐. */
+  /* 정적 스크린샷 — playwright headless 로 1480x920 viewport 캡처. */
   .frame {
-    --vw: 1480px;
-    --vh: 900px;
-    --k: 0.7;
     margin: 18px 0 8px;
     border: 1px solid var(--border);
     border-radius: 6px;
     overflow: hidden;
     background: var(--bg-base);
-    width: 100%;
   }
-  .frame-stage {
-    position: relative;
+  .frame img {
+    display: block;
     width: 100%;
-    height: calc(var(--vh) * var(--k));
-    overflow: hidden;
-  }
-  .frame-stage iframe {
-    position: absolute;
-    top: 0;
-    left: 50%;
-    width: var(--vw);
-    height: var(--vh);
-    border: 0;
-    background: var(--bg-base);
-    transform-origin: top left;
-    transform: scale(var(--k));
-    /* scale 후 시각 폭 = vw*k. left:50% 으로 iframe 좌측이 컨테이너 가운데,
-       margin-left 로 시각 폭의 절반만큼 왼쪽으로 빼서 가운데 정렬. */
-    margin-left: calc(var(--vw) * var(--k) / -2);
+    height: auto;
   }
   .frame-cap {
     padding: 8px 12px;
@@ -272,10 +252,8 @@
 
   <h3>라이브 미리보기 (dev server 필요)</h3>
   <div class="frame">
-    <div class="frame-stage">
-      <iframe src="http://192.168.0.63:33000/admin/marketplace" loading="lazy" title="마켓플레이스 라이브"></iframe>
-    </div>
-    <div class="frame-cap"><b>http://192.168.0.63:33000/admin/marketplace</b> — admin / agics12!@ 로 로그인되어 있어야 표시. 1480×900 viewport 를 0.7× 로 축소한 미리보기.</div>
+    <img src="design-brief/marketplace.png" alt="마켓플레이스 페이지 스크린샷" />
+    <div class="frame-cap"><b>http://192.168.0.63:33000/admin/marketplace</b> — playwright headless 로 1480×920 viewport 캡처 (admin 토큰 주입).</div>
   </div>
 
   <h3>그래프 컴포넌트 — <code>MarketGraph.svelte</code></h3>
@@ -346,10 +324,8 @@ thead th    { position: sticky; top: 0; background: var(--bg-base); }
 
   <h3>라이브 미리보기</h3>
   <div class="frame">
-    <div class="frame-stage">
-      <iframe src="http://192.168.0.63:33000/gpu-hosting" loading="lazy" title="GPU 호스팅 라이브"></iframe>
-    </div>
-    <div class="frame-cap"><b>http://192.168.0.63:33000/gpu-hosting</b> — 1480×900 viewport 를 0.7× 로 축소한 미리보기.</div>
+    <img src="design-brief/gpu-hosting.png" alt="GPU 호스팅 페이지 스크린샷" />
+    <div class="frame-cap"><b>http://192.168.0.63:33000/gpu-hosting</b> — playwright headless 1480×920 캡처.</div>
   </div>
 
   <h3>3-단 구조</h3>
