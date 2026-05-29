@@ -61,26 +61,26 @@
   .prof {
     color: var(--text-muted);
     font-family: "JetBrains Mono", Consolas, monospace;
-    font-size: 11px;
+    font-size: 12px;
   }
   .note {
     color: var(--warn);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
   }
 
-  .who { color: var(--text-primary); font-weight: 700; font-size: 14px; }
+  .who { color: var(--text-primary); font-weight: 700; font-size: 16px; }
   .model {
     appearance: none; background: none; border: none; padding: 0;
-    color: var(--accent); font: inherit; font-size: 13px; cursor: pointer;
+    color: var(--accent); font: inherit; font-size: 14px; cursor: pointer;
     text-align: left;
     display: inline-flex; align-items: baseline; gap: 4px;
   }
   .model:hover { color: var(--text-primary); }
-  .shared { font-size: 11px; color: var(--accent); }
+  .shared { font-size: 12px; color: var(--accent); }
   .cont {
     appearance: none; background: none; border: none; padding: 0;
-    color: var(--text-muted); font: inherit; font-size: 11px;
+    color: var(--text-muted); font: inherit; font-size: 12px;
     font-family: "JetBrains Mono", Consolas, monospace;
     cursor: pointer; text-align: left;
     text-decoration: underline dotted;
@@ -92,17 +92,17 @@
     grid-template-columns: auto 1fr auto 1fr;
     gap: 6px;
     margin-top: 4px;
-    font-size: 11px;
+    font-size: 13px;
   }
   .m-k { color: var(--text-muted); }
   .m-v { color: var(--text-primary); font-weight: 700; font-variant-numeric: tabular-nums; }
   .m-v small { color: var(--text-muted); font-weight: 500; }
 
   .empty {
-    display: flex; flex-direction: column; gap: 1px;
+    display: flex; flex-direction: column; gap: 2px;
     color: var(--text-muted);
     padding: 6px 0;
   }
-  .e-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
-  .e-sub { font-size: 11px; }
+  .e-title { font-size: 14px; font-weight: 600; color: var(--text-secondary); }
+  .e-sub { font-size: 12px; }
 </style>

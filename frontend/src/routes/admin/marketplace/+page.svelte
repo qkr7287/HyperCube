@@ -1,4 +1,6 @@
 <script lang="ts">
+	import MarketGraph from '$lib/components/marketplace/MarketGraph.svelte';
+
 	type CategoryKey = 'llm' | 'multimodal' | 'mcp' | 'media' | 'voice';
 	type ServiceStatus = 'connected' | 'available' | 'beta';
 	type Source = 'official' | 'community';
@@ -407,7 +409,160 @@
 			consoleUrl: 'https://hypercube.example/workspace/hc-mockup-3d',
 			consoleLabel: 'MCP 서버 정보',
 		},
+
+		/* ── 확장 mock — 그래프 밀도 + 카테고리 다양성 보강 ── */
+		makeShort('mistral-large', 'Mistral Large 2', 'Mistral', 'llm', 'API Key', 'connected', 'official',
+			'유럽 데이터 거주성 옵션을 제공하는 다국어 LLM.', ['텍스트', '다국어', '128K']),
+		makeShort('cohere-cmd', 'Cohere Command R+', 'Cohere', 'llm', 'API Key', 'available', 'official',
+			'RAG·툴 사용에 최적화된 엔터프라이즈 LLM.', ['텍스트', 'RAG', '툴']),
+		makeShort('solar-10', 'Solar 10.7B', 'Upstage', 'llm', 'Endpoint URL', 'available', 'official',
+			'국내 자체 학습 오픈웨이트. 한국어 성능 강세.', ['오픈웨이트', '한국어', 'GPU']),
+		makeShort('deepseek-v3', 'DeepSeek V3', 'DeepSeek', 'llm', 'API Key', 'beta', 'official',
+			'MoE 구조, 코드·수학에서 상위권 점수.', ['텍스트', 'MoE', '코드']),
+		makeShort('haiku-fast', 'Claude Haiku 4', 'Anthropic', 'llm', 'API Key', 'connected', 'official',
+			'저지연·저비용 백엔드 처리 전용 LLM.', ['저지연', '저비용', '배치']),
+
+		makeShort('gpt-vision', 'GPT-4 Vision', 'OpenAI', 'multimodal', 'API Key', 'connected', 'official',
+			'문서 OCR, 차트 해석, UI 캡처 분석.', ['이미지 입력', 'OCR', '차트']),
+		makeShort('qwen-vl', 'Qwen2-VL', 'Alibaba', 'multimodal', 'Endpoint URL', 'available', 'official',
+			'오픈 비전 LLM. 영수증·문서 구조 추출.', ['오픈웨이트', '문서', '구조화']),
+		makeShort('pixtral', 'Pixtral 12B', 'Mistral', 'multimodal', 'Endpoint URL', 'beta', 'official',
+			'이미지·텍스트 동시 입력 오픈 멀티모달.', ['오픈웨이트', '멀티모달', '베타']),
+
+		makeShort('mcp-slack', 'Slack MCP', 'Slack', 'mcp', 'MCP Server', 'connected', 'official',
+			'채널 메시지 검색·스레드 응답 도구화.', ['MCP', '협업', '검색']),
+		makeShort('mcp-jira', 'Jira MCP', 'Atlassian', 'mcp', 'MCP Server', 'available', 'official',
+			'이슈 검색·생성·전이를 도구로 노출.', ['MCP', '이슈', '워크플로']),
+		makeShort('mcp-postgres', 'Postgres MCP', 'Community', 'mcp', 'MCP Server', 'connected', 'official',
+			'스키마 인트로스펙션 + 안전한 read-only 쿼리.', ['MCP', 'DB', 'SQL']),
+		makeShort('mcp-k8s', 'Kubernetes MCP', 'Community', 'mcp', 'MCP Server', 'available', 'official',
+			'kubectl 동작을 도구 호출로 안전 래핑.', ['MCP', '쿠버네티스', '운영']),
+		makeShort('mcp-s3', 'S3 MCP', 'AWS', 'mcp', 'MCP Server', 'available', 'official',
+			'버킷·오브젝트 메타·서명URL 도구 노출.', ['MCP', '스토리지', 'AWS']),
+
+		makeShort('mj', 'Midjourney v6', 'Midjourney', 'media', 'API Key', 'beta', 'official',
+			'고품질 일러스트·콘셉트 아트 생성.', ['이미지', '아트', '베타']),
+		makeShort('sd3', 'Stable Diffusion 3', 'Stability AI', 'media', 'Endpoint URL', 'available', 'official',
+			'온프레미스 GPU 에 배포 가능한 이미지 생성.', ['이미지', '온프레미스', 'GPU']),
+		makeShort('sora-prev', 'Sora (Preview)', 'OpenAI', 'media', 'API Key', 'beta', 'official',
+			'프롬프트 기반 단편 영상 생성 (프리뷰).', ['영상', '프리뷰', '쿼터']),
+
+		makeShort('eleven', 'ElevenLabs', 'ElevenLabs', 'voice', 'API Key', 'connected', 'official',
+			'고품질 TTS 와 보이스 클로닝.', ['TTS', '클로닝', '다국어']),
+		makeShort('deepgram', 'Deepgram Nova-2', 'Deepgram', 'voice', 'API Key', 'available', 'official',
+			'실시간 스트리밍 STT. 콜센터·회의용.', ['STT', '스트리밍', '저지연']),
+
+		makeShort('comm-sales-mail', '영업 메일 초안 봇', '한지영 · 영업기획팀', 'llm', 'Endpoint URL', 'available', 'community',
+			'고객 톤·과거 메일 학습한 메일 초안 생성.', ['LLM', '메일', '컨테이너 배포']),
+		makeShort('comm-etl-judge', 'ETL 결과 검증 LLM', '오성훈 · 데이터엔지니어링팀', 'llm', 'Endpoint URL', 'available', 'community',
+			'배치 산출물 검증 + 이상 행 자연어 설명.', ['LLM', '데이터검증', '컨테이너 배포']),
+		makeShort('comm-sec-log', '보안 로그 이상 탐지', '강민서 · 보안운영팀', 'multimodal', 'MCP Server', 'connected', 'community',
+			'SIEM 이벤트 패턴화 + LLM 요약.', ['멀티모달', '보안', 'MCP']),
+		makeShort('comm-design-tok', '디자인 토큰 추출기', '한지수 · 디자인시스템팀', 'multimodal', 'Endpoint URL', 'available', 'community',
+			'Figma 시안에서 색·간격·타이포 토큰 자동 추출.', ['멀티모달', '디자인', '토큰']),
+		makeShort('comm-podcast', '사내 팟캐스트 요약', '백상현 · 콘텐츠팀', 'voice', 'Endpoint URL', 'available', 'community',
+			'녹음 → 챕터 + 인용구 + 썸네일 라인업.', ['음성', '요약', '컨테이너 배포']),
+		makeShort('comm-bom-vision', 'BOM 도면 비전 분석', '윤가람 · 생산기술팀', 'media', 'Endpoint URL', 'beta', 'community',
+			'PDF 도면에서 BOM 표·치수 자동 추출.', ['미디어', '도면', '베타']),
 	];
+
+	// 짧은 mock 시스템을 한 줄로 생성 — 상세 설명·steps 는 일반 템플릿으로 채움.
+	function makeShort(
+		id: string, name: string, vendor: string, category: CategoryKey,
+		connection: string, status: ServiceStatus, source: Source,
+		summary: string, tags: string[],
+	): Service {
+		return {
+			id, name, vendor, category, connection, status, source, summary, tags,
+			description: summary + ' 워크스페이스에서 표준 연결 흐름으로 사용합니다.',
+			steps: [
+				`${name} 발급/배포 후 자격 정보 확인`,
+				'마켓플레이스 연결 화면에 등록',
+				'워크스페이스 환경변수 또는 mcp.json 으로 주입',
+				'표준 클라이언트로 호출',
+			],
+			docsUrl: 'https://hypercube.example/guide/' + id,
+			consoleUrl: 'https://hypercube.example/console/' + id,
+			consoleLabel: source === 'community' ? '엔드포인트 열기' : '공급사 콘솔',
+		};
+	}
+
+	// 카드 좌측 색 initials — 이름에서 영문 첫 2 글자 추출. CJK 만이면 첫 글자.
+	function initials(name: string): string {
+		const ascii = name.replace(/[^A-Za-z0-9 ]/g, '').trim();
+		if (!ascii) return name.charAt(0);
+		const parts = ascii.split(/\s+/);
+		if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+		return ascii.slice(0, 2).toUpperCase();
+	}
+
+	// 더미 통계 — id 해시 기반 deterministic, 자연 분포 (round 숫자 회피).
+	function metricsFor(id: string, status: ServiceStatus): { calls7d: number | null; latencyMs: number | null } {
+		if (status === 'beta') {
+			// 베타는 호출 일부 / 지연 큼 / 일부 missing
+			let h = 0;
+			for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+			return { calls7d: 60 + (h % 380), latencyMs: 800 + (h % 6000) };
+		}
+		let h = 5381;
+		for (let i = 0; i < id.length; i++) h = (h * 33 + id.charCodeAt(i)) >>> 0;
+		// 분포 평탄 회피: log-ish skew
+		const base = (h % 9000) + (((h >>> 8) % 90) * 130) + 320;
+		const lat = 28 + ((h >>> 4) % 920);
+		return { calls7d: base, latencyMs: lat };
+	}
+
+	function fmtCalls(n: number | null): string {
+		if (n == null) return '—';
+		if (n >= 10000) return `${(n / 1000).toFixed(1)}k`;
+		if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+		return n.toLocaleString();
+	}
+	function fmtLatency(ms: number | null): string {
+		if (ms == null) return '—';
+		if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
+		return `${ms}ms`;
+	}
+
+	// ─── 관계성 그래프 입력 — d3-force 컴포넌트(MarketGraph)로 위임 ─────────
+	// 좌표·시뮬레이션은 컴포넌트 안에서 처리. 여기서는 가벼운 표현만 매핑.
+	type GraphSvc = {
+		id: string;
+		name: string;
+		vendor: string;
+		category: CategoryKey;
+		categoryLabel: string;
+		color: string;
+		calls: number;
+		latency: number | null;
+	};
+	const graphServices: GraphSvc[] = SERVICES.map((s) => {
+		const m = metricsFor(s.id, s.status);
+		return {
+			id: s.id,
+			name: s.name,
+			vendor: s.vendor,
+			category: s.category,
+			categoryLabel: CATEGORIES[s.category].label,
+			color: CATEGORIES[s.category].tint,
+			calls: m.calls7d ?? 0,
+			latency: m.latencyMs,
+		};
+	});
+	const topServices = graphServices.slice().sort((a, b) => b.calls - a.calls).slice(0, 5);
+
+	let hoverSvc = $state<GraphSvc | null>(null);
+	let selectedSvcId = $state<string | null>(null); // 그래프 ↔ 테이블 강조 동기화
+
+	// Top5 / 그래프 노드 click → 테이블 행 펼치고 부드럽게 스크롤.
+	function focusSvc(id: string) {
+		selectedSvcId = id;
+		expandedId = id;
+		requestAnimationFrame(() => {
+			const row = document.querySelector<HTMLElement>(`tr.svc-row[data-svc="${id}"]`);
+			row?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		});
+	}
 
 	const ALL_CONNECTIONS = [...new Set(SERVICES.map((s) => s.connection))].sort();
 	const ALL_TAGS = [...new Set(SERVICES.flatMap((s) => s.tags))].sort((a, b) =>
@@ -547,64 +702,79 @@
 			<span class="preview-tag">컨셉 미리보기 · 더미 데이터</span>
 		</header>
 
-		<section class="summary">
-			<div class="sum-totals">
-				<span class="sum-cap">등록된 AI 시스템</span>
-				<div class="sum-total">
-					<strong>{stats.total}</strong><span>개</span>
+		<!-- 관계성 그래프 — d3-force 시뮬레이션. 카테고리 anchor(5) ↔ 시스템(16) -->
+		<section class="overview">
+			<div class="graph-wrap">
+				<MarketGraph
+					services={graphServices}
+					width={1060}
+					height={340}
+					selectedId={selectedSvcId}
+					onSelect={(s) => focusSvc(s.id)}
+				/>
+				<div class="graph-hint">
+					<span>큰 원 = 카테고리 · 작은 원 = 시스템 (크기 ∝ 7일 호출). 노드를 끌어 배치를 바꿀 수 있습니다.</span>
 				</div>
-				<div
-					class="src-bar"
-					role="img"
-					aria-label="공식 {stats.official}개, 커뮤니티 {stats.community}개"
-				>
-					<span class="src-seg" style="--c:#4dbfb3; flex:{stats.official}"></span>
-					<span class="src-seg" style="--c:#a78bfa; flex:{stats.community}"></span>
-				</div>
-				<ul class="sum-breakdown">
-					<li>
-						<span class="sum-dot" style="--c:#4dbfb3"></span>
-						<span class="sum-name">공식 카탈로그</span>
-						<b>{stats.official}</b>
-					</li>
-					<li>
-						<span class="sum-dot" style="--c:#a78bfa"></span>
-						<span class="sum-name">커뮤니티 등록</span>
-						<b>{stats.community}</b>
-					</li>
-					<li>
-						<span class="sum-dot" style="--c:#34d399"></span>
-						<span class="sum-name">연결됨</span>
-						<b>{stats.connected}</b>
-					</li>
-				</ul>
 			</div>
-
-			<div class="sum-div" aria-hidden="true"></div>
-
-			<div class="sum-dist">
-				<div class="sum-dist-head">
-					<span class="sum-cap">카테고리 분포</span>
-					<span class="sum-dist-note">{categoryDist.length}개 분야 · 총 {stats.total}개</span>
-				</div>
-				<ul class="dist-rows">
-					{#each categoryDist as c (c.key)}
-						<li class="dist-row">
-							<span class="dist-row-label">
-								<span class="sum-dot" style="--c:{c.tint}"></span>{c.label}
+			<aside class="ov-top">
+				<header class="ov-top-head">
+					<span class="ov-cap">이번 주 Top 5</span>
+					<span class="ov-cap-sub">7일 호출 기준</span>
+				</header>
+				<ol class="ov-top-list">
+					{#each topServices as t, i (t.id)}
+						<li
+							class:active={hoverSvc?.id === t.id || selectedSvcId === t.id}
+							onmouseenter={() => (hoverSvc = t)}
+							onmouseleave={() => (hoverSvc = null)}
+							onclick={() => focusSvc(t.id)}
+							role="presentation"
+						>
+							<span class="rk">#{i + 1}</span>
+							<span class="rk-dot" style="background:{t.color}"></span>
+							<span class="rk-meta">
+								<span class="rk-name">{t.name}</span>
+								<span class="rk-vendor">{t.vendor}</span>
 							</span>
-							<span class="dist-row-track">
-								<span
-									class="dist-row-fill"
-									style="--c:{c.tint}; width:{(c.count / maxCatCount) * 100}%"
-								></span>
-							</span>
-							<span class="dist-row-val">{c.count}</span>
+							<span class="rk-val">{fmtCalls(t.calls)}</span>
 						</li>
 					{/each}
-				</ul>
-			</div>
+				</ol>
+				<div class="ov-hover" class:dim={!hoverSvc}>
+					{#if hoverSvc}
+						<span class="hov-name">{hoverSvc.name}</span>
+						<span class="hov-meta">
+							{hoverSvc.categoryLabel} · {fmtCalls(hoverSvc.calls)} · {fmtLatency(hoverSvc.latency)}
+						</span>
+					{:else}
+						<span>노드 위에 마우스를 올리면 상세가 표시됩니다</span>
+					{/if}
+				</div>
+			</aside>
 		</section>
+
+		<!-- 현황 strip — 큰 숫자 강조, 박스 없음 -->
+		<aside class="hero-strip">
+			<div class="hs-main">
+				<strong class="hs-num">{stats.total}</strong>
+				<span class="hs-num-cap">개 시스템</span>
+			</div>
+			<div class="hs-breakdown">
+				<span><i class="hs-dot" style="background:#4dbfb3"></i>공식 <b>{stats.official}</b></span>
+				<span><i class="hs-dot" style="background:#a78bfa"></i>커뮤니티 <b>{stats.community}</b></span>
+				<span><i class="hs-dot" style="background:#34d399"></i>연결 <b>{stats.connected}</b></span>
+			</div>
+			<span class="hs-sep" aria-hidden="true"></span>
+			<ul class="hs-cats" aria-label="카테고리 분포">
+				{#each categoryDist as c (c.key)}
+					<li>
+						<i class="hs-dot" style="background:{c.tint}"></i>
+						<span class="hs-cl">{c.label}</span>
+						<b>{c.count}</b>
+					</li>
+				{/each}
+			</ul>
+		</aside>
 
 		<div class="toolbar">
 			<div class="search-box">
@@ -684,12 +854,14 @@
 							</button>
 						</th>
 						<th class="col-tags">태그</th>
+						<th class="col-metrics">7일 호출 · 평균 응답</th>
 						<th class="col-status">
 							<button type="button" class="sort-th" class:on={sortKey === 'status'} onclick={() => sortBy('status')}>
 								상태
 								<span class="sort-ico">{sortKey === 'status' ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}</span>
 							</button>
 						</th>
+						<th class="col-action" aria-label="액션"></th>
 						<th class="col-chev" aria-label="펼치기"></th>
 					</tr>
 				</thead>
@@ -697,21 +869,20 @@
 					{#each rows as svc (svc.id)}
 						{@const cat = CATEGORIES[svc.category]}
 						{@const st = STATUS_META[svc.status]}
+						{@const m = metricsFor(svc.id, svc.status)}
 						<tr
-						class="svc-row"
+						class="svc-row {svc.source}"
 						class:expanded={expandedId === svc.id}
+						class:focused={selectedSvcId === svc.id}
+						data-svc={svc.id}
 						tabindex="0"
 						aria-expanded={expandedId === svc.id}
-						onclick={() => toggle(svc.id)}
+						onclick={() => { toggle(svc.id); selectedSvcId = svc.id; }}
 						onkeydown={(e) => onRowKey(e, svc.id)}
 					>
 							<td class="col-name">
 								<div class="svc-cell">
-									<span class="svc-logo" style="--tint:{cat.tint}">
-										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-											{@render catIcon(svc.category)}
-										</svg>
-									</span>
+									<span class="svc-logo" style="--tint:{cat.tint}" aria-hidden="true">{initials(svc.name)}</span>
 									<span class="svc-meta">
 										<span class="svc-name-row">
 											<span class="svc-name">{svc.name}</span>
@@ -725,20 +896,35 @@
 							</td>
 							<td class="col-desc"><p class="svc-desc">{svc.summary}</p></td>
 							<td class="col-cat">
-								<span class="chip" style="--tint:{cat.tint}">{cat.label}</span>
+								<span class="chip" style="--tint:{cat.tint}">
+									<i class="chip-dot" style="background:{cat.tint}"></i>{cat.label}
+								</span>
 							</td>
 							<td class="col-conn"><span class="conn">{svc.connection}</span></td>
 							<td class="col-tags">
 								<div class="tag-row">
-									{#each svc.tags as t (t)}
+									{#each svc.tags.slice(0, 2) as t (t)}
 										<span class="tag">{t}</span>
 									{/each}
+									{#if svc.tags.length > 2}
+										<span class="tag dim">+{svc.tags.length - 2}</span>
+									{/if}
+								</div>
+							</td>
+							<td class="col-metrics">
+								<div class="met">
+									<span class="met-calls" title="최근 7일 누적 호출">{fmtCalls(m.calls7d)}</span>
+									<span class="met-sep">·</span>
+									<span class="met-lat" title="평균 응답 시간">{fmtLatency(m.latencyMs)}</span>
 								</div>
 							</td>
 							<td class="col-status">
 								<span class="status" style="--c:{st.color}">
 									<span class="dot"></span>{st.label}
 								</span>
+							</td>
+							<td class="col-action">
+								<button type="button" class="cta" onclick={(e) => { e.stopPropagation(); }} title="API 연결 (mock)">연결하기 →</button>
 							</td>
 							<td class="col-chev">
 								<span class="chev" class:open={expandedId === svc.id}>⌄</span>
@@ -807,15 +993,27 @@
 
 <style>
 	/* 디자인 원칙: 컨텐츠 max-width 로 밀도 확보 · 큰 글씨 · 6px 살짝 둥근 · 1px 헤어라인 */
+	/* 페이지 전체 = 100vh 안에 고정. 상단 (header/graph/strip/toolbar) 은 그대로,
+	   table-card 만 남는 공간을 채우며 내부 스크롤. */
 	.page {
 		--box-radius: 6px;
 		--hairline: 1px solid var(--border);
 		--divider: 1px solid rgba(148, 163, 184, 0.1);
-		padding: 30px 32px 48px;
+		padding: 30px 32px 24px;
+		height: 100vh;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		box-sizing: border-box;
 	}
 	.shell {
 		max-width: 1380px;
+		width: 100%;
 		margin: 0 auto;
+		display: flex;
+		flex-direction: column;
+		flex: 1;
+		min-height: 0;
 	}
 
 	.page-header {
@@ -851,6 +1049,168 @@
 	}
 
 	/* summary — 균등 KPI 카드 대신 구성/분포를 보여주는 단일 패널 */
+	/* 관계성 그래프 — Obsidian 풍 */
+	.overview {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) 320px;
+		gap: 32px;
+		margin: 8px 0 22px;
+		padding: 0 0 22px;
+		border-bottom: 1px solid var(--border);
+	}
+	.graph-wrap {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		min-width: 0;
+		width: 100%;
+	}
+	.graph-hint {
+		color: var(--text-muted);
+		font-size: 11px;
+		font-style: italic;
+		line-height: 1.5;
+	}
+	.rk-dot {
+		display: inline-block;
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		justify-self: center;
+	}
+	.ov-top { display: flex; flex-direction: column; gap: 10px; padding-top: 4px; }
+	.ov-top-head {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+	}
+	.ov-cap {
+		color: var(--text-primary);
+		font-size: 13px;
+		font-weight: 800;
+		letter-spacing: -0.01em;
+	}
+	.ov-cap-sub { color: var(--text-muted); font-size: 11px; }
+	.ov-top-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+	.ov-top-list li {
+		display: grid;
+		grid-template-columns: 26px 14px 1fr auto;
+		gap: 10px;
+		align-items: center;
+		cursor: pointer;
+		padding: 4px 0;
+		border-radius: 4px;
+	}
+	.ov-top-list li:hover,
+	.ov-top-list li.active { background: rgba(77, 191, 179, 0.08); }
+	.rk {
+		color: var(--accent);
+		font-size: 13px;
+		font-weight: 800;
+		font-variant-numeric: tabular-nums;
+	}
+	.rk-init {
+		width: 28px;
+		height: 28px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 6px;
+		background: var(--c);
+		color: #0d1117;
+		font-size: 11px;
+		font-weight: 800;
+	}
+	.rk-meta { display: flex; flex-direction: column; min-width: 0; }
+	.rk-name { color: var(--text-primary); font-weight: 700; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.rk-vendor { color: var(--text-muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.rk-val {
+		color: var(--text-primary);
+		font-variant-numeric: tabular-nums;
+		font-weight: 800;
+		font-size: 13px;
+	}
+	.ov-hover {
+		margin-top: 4px;
+		padding-top: 8px;
+		border-top: 1px dashed var(--border);
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-height: 32px;
+	}
+	.ov-hover.dim {
+		color: var(--text-muted);
+		font-size: 11px;
+		font-style: italic;
+	}
+	.hov-name { color: var(--text-primary); font-weight: 700; font-size: 13px; }
+	.hov-meta { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+	/* 현황 strip — 박스 없이 baseline 정렬 */
+	.hero-strip {
+		display: flex;
+		align-items: baseline;
+		gap: 22px;
+		margin: 2px 0 22px;
+		padding: 12px 0 16px;
+		border-bottom: 1px solid var(--border);
+		flex-wrap: wrap;
+	}
+	.hs-main {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 6px;
+	}
+	.hs-num {
+		font-size: 32px;
+		font-weight: 800;
+		color: var(--text-primary);
+		font-variant-numeric: tabular-nums;
+		letter-spacing: -0.02em;
+		line-height: 1;
+	}
+	.hs-num-cap {
+		font-size: 13px;
+		color: var(--text-muted);
+		font-weight: 600;
+	}
+	.hs-breakdown {
+		display: inline-flex;
+		gap: 14px;
+		color: var(--text-muted);
+		font-size: 12.5px;
+		font-variant-numeric: tabular-nums;
+	}
+	.hs-breakdown span { display: inline-flex; align-items: center; gap: 5px; }
+	.hs-breakdown b { color: var(--text-primary); font-weight: 700; }
+	.hs-sep { width: 1px; height: 16px; background: var(--border); align-self: center; }
+	.hs-cats {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: inline-flex;
+		gap: 14px;
+		flex-wrap: wrap;
+	}
+	.hs-cats li {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		color: var(--text-muted);
+		font-size: 12.5px;
+		font-variant-numeric: tabular-nums;
+	}
+	.hs-dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		display: inline-block;
+		flex-shrink: 0;
+	}
+	.hs-cl { color: var(--text-secondary); font-weight: 600; }
+	.hs-cats li b { color: var(--text-primary); font-weight: 800; }
+
 	.summary {
 		display: flex;
 		gap: 36px;
@@ -1149,12 +1509,20 @@
 		font-weight: 800;
 	}
 
-	/* table */
+	/* table — 남은 세로 공간 채우고 내부 스크롤. thead sticky. */
 	.table-card {
-		background: var(--bg-card);
-		border: var(--hairline);
-		border-radius: var(--box-radius);
-		overflow: hidden;
+		background: transparent;
+		border: none;
+		border-top: 1px solid var(--border);
+		flex: 1;
+		min-height: 200px;
+		overflow-y: auto;
+		overflow-x: hidden;
+	}
+	thead th {
+		position: sticky;
+		top: 0;
+		z-index: 4;
 	}
 	table {
 		width: 100%;
@@ -1164,8 +1532,9 @@
 	}
 	thead th {
 		text-align: left;
-		background: rgba(13, 17, 23, 0.66);
-		border-bottom: var(--hairline);
+		background: var(--bg-base); /* sticky 시 뒤 행이 비치지 않도록 불투명 */
+		box-shadow: inset 0 -1px 0 var(--border);
+		border-bottom: none;
 		padding: 0;
 	}
 	thead th:not(:has(.sort-th)) {
@@ -1207,26 +1576,69 @@
 		opacity: 1;
 	}
 	/* 고정 컬럼 폭 — 정렬 흐트러짐 방지 */
-	.col-name { width: 25%; }
-	.col-desc { width: 27%; }
-	.col-cat { width: 11%; }
-	.col-conn { width: 11%; }
-	.col-tags { width: 17%; }
+	.col-name { width: 23%; }
+	.col-desc { width: 26%; }
+	.col-cat { width: 9%; }
+	.col-conn { width: 9%; }
+	.col-tags { width: 16%; }
 	.col-status { width: 9%; }
 	.col-chev { width: 46px; }
+	.col-metrics { width: 152px; white-space: nowrap; }
+	.col-action { width: 90px; }
+	.chip-dot {
+		display: inline-block;
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+	}
+	.met {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 5px;
+		font-variant-numeric: tabular-nums;
+		font-size: 13px;
+	}
+	.met-calls { color: var(--text-primary); font-weight: 800; }
+	.met-sep { color: var(--text-muted); }
+	.met-lat { color: var(--text-muted); font-size: 11.5px; }
+	/* 연결 — 둥근 박스 대신 텍스트 링크 */
+	.cta {
+		appearance: none;
+		background: transparent;
+		border: none;
+		color: var(--accent);
+		font: inherit;
+		font-size: 12px;
+		font-weight: 700;
+		padding: 0;
+		cursor: pointer;
+		white-space: nowrap;
+		text-underline-offset: 3px;
+	}
+	.cta:hover { color: var(--text-primary); text-decoration: underline; }
 
 	.svc-row {
 		cursor: pointer;
 		transition: background 0.12s;
+		position: relative;
 	}
 	.svc-row td {
-		padding: 15px 16px;
+		padding: 11px 14px;
 		border-bottom: var(--divider);
 		vertical-align: middle;
 	}
+	/* 좌측 source 색 strip — 공식=옅은 teal, 커뮤니티=violet */
+	.svc-row td:first-child {
+		box-shadow: inset 2px 0 0 0 transparent;
+	}
+	.svc-row.official td:first-child { box-shadow: inset 2px 0 0 0 rgba(77, 191, 179, 0.5); }
+	.svc-row.community td:first-child { box-shadow: inset 2px 0 0 0 rgba(167, 139, 250, 0.6); }
+	/* zebra — 미세 */
+	.svc-row:nth-child(even) td { background: rgba(255, 255, 255, 0.012); }
 	.svc-row:hover {
 		background: rgba(77, 191, 179, 0.05);
 	}
+	.svc-row:hover td { background: rgba(77, 191, 179, 0.05); }
 	.svc-row:focus-visible {
 		outline: 2px solid var(--accent);
 		outline-offset: -2px;
@@ -1236,7 +1648,13 @@
 	}
 	.svc-row.expanded td {
 		border-bottom-color: transparent;
+		background: rgba(77, 191, 179, 0.07);
 	}
+	/* Top5 / graph 노드에서 선택 → 좌측 strip 컬러 강조 + 미세 ring */
+	.svc-row.focused td:first-child {
+		box-shadow: inset 3px 0 0 0 var(--accent);
+	}
+	.svc-row.focused td { background: rgba(77, 191, 179, 0.11); }
 
 	.svc-cell {
 		display: flex;
@@ -1246,6 +1664,11 @@
 	.svc-logo {
 		display: grid;
 		place-items: center;
+		color: #0d1117;
+		background: var(--tint);
+		font-weight: 800;
+		font-size: 13px;
+		letter-spacing: -0.02em;
 		width: 42px;
 		height: 42px;
 		flex-shrink: 0;
@@ -1270,9 +1693,12 @@
 		gap: 8px;
 	}
 	.svc-name {
-		font-size: 16.5px;
-		font-weight: 750;
+		font-size: 14px;
+		font-weight: 700;
 		color: var(--text-primary);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -1313,16 +1739,17 @@
 		overflow: hidden;
 	}
 
+	/* 카테고리 — 테두리 제거, dot + 텍스트 */
 	.chip {
 		display: inline-flex;
 		align-items: center;
-		padding: 5px 11px;
-		font-size: 13px;
-		font-weight: 800;
-		border-radius: 5px;
+		gap: 5px;
+		padding: 0;
+		font-size: 12.5px;
+		font-weight: 700;
 		color: var(--tint);
-		background: color-mix(in srgb, var(--tint) 12%, transparent);
-		border: 1px solid color-mix(in srgb, var(--tint) 28%, transparent);
+		background: transparent;
+		border: none;
 		white-space: nowrap;
 	}
 	.conn {
@@ -1333,8 +1760,10 @@
 	}
 	.tag-row {
 		display: flex;
-		gap: 6px;
-		flex-wrap: wrap;
+		gap: 4px;
+		flex-wrap: nowrap;
+		overflow: hidden;
+		max-width: 100%;
 	}
 	.tag {
 		padding: 3px 9px;

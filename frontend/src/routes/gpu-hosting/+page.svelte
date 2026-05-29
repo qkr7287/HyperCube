@@ -252,8 +252,8 @@
     display: flex; flex-direction: column; gap: 16px;
     min-width: 0;
   }
-  .right > .section { flex: 1; }
-  .right > .section > :global(*:last-child) { flex: 1; }
+  .right > .section { flex: 1; min-height: 0; }
+  .right > .section > :global(*:last-child) { flex: 1; min-height: 0; }
   .section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   .grid-2 {
     display: grid;
