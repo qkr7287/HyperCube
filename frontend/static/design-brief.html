@@ -164,10 +164,11 @@
     border: 0;
     background: var(--bg-base);
     transform-origin: top left;
-    transform: translateX(-50%) scale(var(--k));
-    /* scale 후 시각적 폭 = vw*k, 따라서 컨테이너 width 가 vw*k 이상이면 가운데 정렬. */
+    transform: scale(var(--k));
+    /* scale 후 시각 폭 = vw*k. left:50% 으로 iframe 좌측이 컨테이너 가운데,
+       margin-left 로 시각 폭의 절반만큼 왼쪽으로 빼서 가운데 정렬. */
+    margin-left: calc(var(--vw) * var(--k) / -2);
   }
-  /* 컨테이너 폭이 vw*k 보다 작으면 가로 스크롤 발생 → 1080px shell 안에서는 1036px 시각 폭 (1480*0.7) 정확히 맞춤. */
   .frame-cap {
     padding: 8px 12px;
     font-size: 12px;
