@@ -137,6 +137,9 @@
 		series: number[];
 	};
 
+	// reason 표시에서 디스크 항목 제외 (사용자 요청 — 카드 폭 wrap 줄임)
+	let visibleReasons = $derived(agent.health_reasons.filter((r) => !/^Disk\s*>=/i.test(r)));
+
 	let compactRows = $derived.by(() => {
 		const cpuValue = agent.latest?.cpu_usage ?? 0;
 		const memValue = agent.latest?.memory_usage ?? 0;
@@ -340,11 +343,11 @@
 					<b>~{Math.round(estimatedPowerW)}W</b> 전력
 				</span>
 			{/if}
-			{#if agent.health_reasons.length > 0}
-				<span class="reason-chip" title={agent.health_reasons.map(humanizeReason).join(' · ')}>
-					{shortReason(agent.health_reasons[0])}
-					{#if agent.health_reasons.length > 1}
-						<b>+{agent.health_reasons.length - 1}</b>
+			{#if visibleReasons.length > 0}
+				<span class="reason-chip" title={visibleReasons.map(humanizeReason).join(' · ')}>
+					{shortReason(visibleReasons[0])}
+					{#if visibleReasons.length > 1}
+						<b>+{visibleReasons.length - 1}</b>
 					{/if}
 				</span>
 			{/if}
